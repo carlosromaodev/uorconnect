@@ -59,16 +59,18 @@ export class StudentRepository {
   }
 
   async listRecentLogins(limit = 25): Promise<Student[]> {
-    const rows = await this.prisma.$queryRawUnsafe<Array<Record<string, unknown>>>(
-      `SELECT id, studentNumber, name, email, course, birthDate, nationality, phone, lastLoginAt, createdAt, updatedAt
-       FROM Student
-       WHERE lastLoginAt IS NOT NULL
-       ORDER BY datetime(lastLoginAt) DESC, datetime(updatedAt) DESC
-       LIMIT ?`,
-      limit
-    );
-
-    return rows.map((row) => this.mapStudentRow(row));
+    return this.prisma.student.findMany({
+      where: {
+        lastLoginAt: {
+          not: null
+        }
+      },
+      orderBy: [
+        { lastLoginAt: "desc" },
+        { updatedAt: "desc" }
+      ],
+      take: limit
+    });
   }
 
   async listAuthorizedAdminStudents(): Promise<AdminAuthorizedStudent[]> {
@@ -141,25 +143,9 @@ export class StudentRepository {
   }
 
   private async touchLastLogin(studentId: number) {
-    await this.prisma.$executeRawUnsafe(
-      `UPDATE Student SET lastLoginAt = CURRENT_TIMESTAMP WHERE id = ?`,
-      studentId
-    );
-  }
-
-  private mapStudentRow(row: Record<string, unknown>): Student {
-    return {
-      id: Number(row.id),
-      studentNumber: String(row.studentNumber),
-      name: (row.name as string | null | undefined) ?? null,
-      email: (row.email as string | null | undefined) ?? null,
-      course: (row.course as string | null | undefined) ?? null,
-      birthDate: row.birthDate ? new Date(String(row.birthDate)) : null,
-      nationality: (row.nationality as string | null | undefined) ?? null,
-      phone: (row.phone as string | null | undefined) ?? null,
-      lastLoginAt: row.lastLoginAt ? new Date(String(row.lastLoginAt)) : null,
-      createdAt: new Date(String(row.createdAt)),
-      updatedAt: new Date(String(row.updatedAt)),
-    };
+    await this.prisma.student.update({
+      where: { id: studentId },
+      data: { lastLoginAt: new Date() }
+    });
   }
 }

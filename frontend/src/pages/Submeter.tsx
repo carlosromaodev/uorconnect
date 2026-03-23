@@ -186,6 +186,11 @@ function downloadBlob(blob: Blob, fileName: string) {
 
 function toAbsoluteUrl(path?: string | null) {
   if (!path) return null;
+  if (/^https?:\/\//i.test(path)) return path;
+  const apiBase = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(/\/$/, "");
+  if (apiBase) {
+    return new URL(path, `${apiBase}/`).toString();
+  }
   const normalizedPath = path.startsWith("/submissions/") ? `/api${path}` : path;
   return new URL(normalizedPath, window.location.origin).toString();
 }
