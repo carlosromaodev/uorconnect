@@ -3,8 +3,13 @@ import fp from "fastify-plugin";
 import { type Env } from "../../../config/env";
 import { verifyStudentToken } from "../utils/jwt";
 import { prisma } from "../../../shared/prisma";
+import { isDefaultAdminStudentNumber } from "../domain/admin-authorized-students";
 
 export async function isAdminStudentNumber(studentNumber: string) {
+  if (isDefaultAdminStudentNumber(studentNumber)) {
+    return true;
+  }
+
   const normalized = studentNumber.trim();
   const authorizedStudent = await prisma.adminAuthorizedStudent.findUnique({
     where: { studentNumber: normalized },

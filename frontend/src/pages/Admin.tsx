@@ -1079,8 +1079,10 @@ const Admin = () => {
       setSubmissions((current) => current.map((item) => (item.id === id ? { ...item, status } : item)));
       setVoteProjects((current) => current.map((item) => (item.id === id ? { ...item, status } : item)));
       toast.success(status === "aprovado" ? "Candidatura aprovada." : "Candidatura recusada.");
-    } catch {
-      toast.error("Falha ao atualizar o estado da candidatura");
+    } catch (error) {
+      if (!handleAdminAuthFailure(error)) {
+        toast.error(error instanceof Error ? error.message : "Falha ao atualizar o estado da candidatura");
+      }
     }
   };
 

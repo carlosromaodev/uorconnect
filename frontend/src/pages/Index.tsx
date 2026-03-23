@@ -11,8 +11,14 @@ import {
   Building2, Instagram, Lock
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from "@/components/ui/accordion";
 import { toast } from "sonner";
-import { api, type ActivityFeedItem, type CoursesContent, type HomeContent, type LiveChatMessage, type ProjectPublicFeedItem, type Stats, getToken, isAuthError, setToken } from "@/lib/api";
+import { api, type ActivityFeedItem, type AgendaLiveState, type CoursesContent, type FaqItem, type HomeContent, type LiveChatMessage, type ProjectPublicFeedItem, type Stats, getToken, isAuthError, setToken } from "@/lib/api";
 import logoUor from "@/assets/logo-uor.png";
 import logoNeic from "@/assets/logo-neic.jpeg";
 import { canVoteSubmission, getSubmissionAreaLabel, getSubmissionAudienceCopy, normalizeSubmissionType } from "@/lib/submission-meta";
@@ -187,14 +193,31 @@ function AnimatedCounter({ target, label, icon: Icon }: { target: string; label:
   );
 }
 
-function LivePreview() {
+function LivePreview({ liveState }: { liveState: AgendaLiveState | null }) {
   const [now, setNow] = useState(new Date());
   useEffect(() => { const t = setInterval(() => setNow(new Date()), 60000); return () => clearInterval(t); }, []);
 
   const hhmm = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
-  let current = liveSchedule.find((a) => hhmm >= a.time && hhmm < a.endTime);
-  let next = current ? liveSchedule[liveSchedule.indexOf(current) + 1] : null;
-  if (!current) { current = liveSchedule[0]; next = liveSchedule[1]; }
+  const fallbackCurrent = liveSchedule.find((a) => hhmm >= a.time && hhmm < a.endTime) ?? liveSchedule[0];
+  const fallbackNext = liveSchedule[liveSchedule.indexOf(fallbackCurrent) + 1] ?? liveSchedule[1] ?? null;
+  const current = liveState?.current
+    ? {
+        time: liveState.current.startTime,
+        endTime: liveState.current.endTime,
+        title: liveState.current.title,
+        local: liveState.current.local,
+        type: liveState.current.type,
+      }
+    : fallbackCurrent;
+  const next = liveState?.next
+    ? {
+        time: liveState.next.startTime,
+        endTime: liveState.next.endTime,
+        title: liveState.next.title,
+        local: liveState.next.local,
+        type: liveState.next.type,
+      }
+    : fallbackNext;
 
   return (
     <div className="grid md:grid-cols-2 gap-5">
@@ -247,6 +270,18 @@ function LivePreview() {
       )}
     </div>
   );
+}
+
+function getActivityLabel(item: ActivityFeedItem) {
+  if (item.type === "vote") {
+    return "votou em";
+  }
+
+  if (item.type === "submission") {
+    return "novo projeto aprovado";
+  }
+
+  return "comentou em";
 }
 
 function TopProjectsCarousel() {
@@ -439,12 +474,6 @@ const speakers = [
   { name: "Eng. Pedro Lopes", role: "Developer & Mentor", talk: "GitHub, LinkedIn e Portfólio" },
 ];
 
-const faqPreview = [
-  { q: "Preciso registrar para assistir?", a: "Sim, o registo é obrigatório para todos os participantes." },
-  { q: "Onde será o evento?", a: "Na Universidade Óscar Ribas, Luanda." },
-  { q: "Quantas pessoas por grupo?", a: "Máximo de 5 membros por grupo." },
-];
-
 const patternIcons = [Wifi, Radio, Globe, Smartphone, Cpu, Monitor, Signal, Zap, MessageSquare, Lightbulb];
 
 function FloatingIcons() {
@@ -541,6 +570,8 @@ export default function Index() {
   const [coursesContent, setCoursesContent] = useState<CoursesContent>({ courses: [], topCourses: [], preview: [] });
   const [activityFeed, setActivityFeed] = useState<ActivityFeedItem[]>([]);
   const [liveChat, setLiveChat] = useState<LiveChatMessage[]>([]);
+  const [liveState, setLiveState] = useState<AgendaLiveState | null>(null);
+  const [faqs, setFaqs] = useState<FaqItem[]>([]);
   const [likedCourseIds, setLikedCourseIds] = useState<Set<number>>(new Set());
   const [enrolledCourseIds, setEnrolledCourseIds] = useState<Set<number>>(new Set());
   const [chatInput, setChatInput] = useState("");
@@ -591,6 +622,14 @@ export default function Index() {
       .then(setLiveChat)
       .catch(() => setLiveChat([]));
 
+    api.agenda.live()
+      .then(setLiveState)
+      .catch(() => setLiveState(null));
+
+    api.faq.list()
+      .then(setFaqs)
+      .catch(() => setFaqs([]));
+
     if (getToken()) {
       api.interactions.me()
         .then((res) => setStudentProfile(res.student ?? null))
@@ -614,6 +653,7 @@ export default function Index() {
   const homepageCourses = coursesContent.preview.length ? coursesContent.preview : defaultCourses;
   const topCourses = coursesContent.topCourses.length ? coursesContent.topCourses : defaultCourses;
   const recentActivity = activityFeed.slice(0, 3);
+  const faqPreviewItems = faqs.slice(0, 5);
   const homepagePanels = homeContent.panelTopics.length
     ? homeContent.panelTopics.map((panel) => ({
         ...panel,
@@ -871,7 +911,7 @@ export default function Index() {
             <p className="text-muted-foreground mb-8 text-base">Acompanha o que está a acontecer agora no evento.</p>
           </motion.div>
 
-          <LivePreview />
+          <LivePreview liveState={liveState} />
 
           <div className="mt-8 grid gap-5 lg:grid-cols-[1.05fr_0.95fr]">
             <div className="relative overflow-hidden rounded-xl border border-border bg-card p-5">
@@ -922,7 +962,7 @@ export default function Index() {
                   <h3 className="font-heading text-lg font-bold">Atividade Recente</h3>
                 </div>
                 <div className="space-y-3">
-                  {recentActivity.map((item) => (
+                  {recentActivity.length ? recentActivity.map((item) => (
                     <motion.div
                       key={item.id}
                       initial={{ opacity: 0, y: 10 }}
@@ -934,7 +974,7 @@ export default function Index() {
                         <div className="min-w-0">
                           <p className="truncate text-sm font-bold text-primary md:text-[0.95rem]">{item.actorName}</p>
                           <p className="mt-1 text-sm text-foreground/90">
-                            comentou em <span className="font-semibold text-foreground">{item.subject}</span>
+                            {getActivityLabel(item)} <span className="font-semibold text-foreground">{item.subject}</span>
                           </p>
                         </div>
                         <div className="flex items-center gap-2 pt-0.5 text-[11px] font-medium text-muted-foreground shrink-0">
@@ -955,7 +995,11 @@ export default function Index() {
                         </span>
                       </div>
                     </motion.div>
-                  ))}
+                  )) : (
+                    <div className="rounded-xl border border-dashed border-border/70 bg-background/75 p-4 text-sm text-muted-foreground">
+                      Ainda não há atividade recente para mostrar.
+                    </div>
+                  )}
                 </div>
                 <div className="mt-4">
                   <Button asChild variant="outline" size="sm">
@@ -1287,26 +1331,38 @@ export default function Index() {
             <p className="text-muted-foreground mb-10 text-base">Respostas rápidas às dúvidas mais comuns.</p>
           </motion.div>
 
-          <div className="max-w-2xl space-y-4">
-            {faqPreview.map((faq, i) => (
-              <motion.div
-                key={i}
-                initial={{ opacity: 0, x: -10 }}
-                whileInView={{ opacity: 1, x: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: i * 0.08 }}
-                whileHover={{ x: 4, transition: { duration: 0.2 } }}
-                className="border border-border rounded-xl bg-card p-6 hover:border-primary/20 transition-colors cursor-pointer"
-              >
-                <h3 className="font-heading font-semibold text-base md:text-lg flex items-center gap-2.5"><HelpCircle className="w-5 h-5 text-primary shrink-0" />{faq.q}</h3>
-                <p className="text-sm md:text-base text-muted-foreground mt-2.5 ml-8">{faq.a}</p>
-              </motion.div>
-            ))}
-          </div>
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            transition={{ delay: 0.05 }}
+            className="max-w-3xl overflow-hidden rounded-xl border border-border bg-card"
+          >
+            <Accordion type="single" collapsible className="divide-y divide-border">
+              {faqPreviewItems.map((faq) => (
+                <AccordionItem key={faq.id} value={`home-faq-${faq.id}`} className="border-none">
+                  <AccordionTrigger className="px-5 py-4 text-sm font-heading font-semibold hover:no-underline hover:bg-secondary/50 transition-colors">
+                    <span className="flex items-center gap-2 text-left">
+                      <HelpCircle className="w-4 h-4 text-primary shrink-0" />
+                      {faq.question}
+                    </span>
+                  </AccordionTrigger>
+                  <AccordionContent className="px-5 pb-4 pl-11 text-sm leading-relaxed text-muted-foreground">
+                    {faq.answer}
+                  </AccordionContent>
+                </AccordionItem>
+              ))}
+            </Accordion>
+            {!faqPreviewItems.length ? (
+              <div className="px-5 py-6 text-sm text-muted-foreground">
+                Ainda não há perguntas frequentes publicadas.
+              </div>
+            ) : null}
+          </motion.div>
 
           <motion.div initial={{ opacity: 0 }} whileInView={{ opacity: 1 }} viewport={{ once: true }} className="mt-8 text-center">
             <Button asChild variant="ghost" size="lg" className="font-semibold text-primary text-base">
-              <Link to="/faq">Ver todas as perguntas <ChevronRight className="ml-1 h-5 w-5" /></Link>
+              <Link to="/faq">{faqs.length > 5 ? "Ver mais perguntas" : "Ver todas as perguntas"} <ChevronRight className="ml-1 h-5 w-5" /></Link>
             </Button>
           </motion.div>
         </div>
