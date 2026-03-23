@@ -1,0 +1,37 @@
+import type { AgendaItem } from "@prisma/client";
+import type { AgendaRepository } from "../domain/agenda.repository";
+
+export type AgendaLiveState = {
+  current: AgendaItem | null;
+  next: AgendaItem | null;
+};
+
+export function getAgendaTimestamp(item: AgendaItem, time: string) {
+  return new Date(`${item.date.toISOString().slice(0, 10)}T${time}:00.000Z`).getTime();
+}
+
+export function resolveAgendaLiveState(items: AgendaItem[], now: Date): AgendaLiveState {
+  const sorted = [...items].sort(
+    (left, right) => getAgendaTimestamp(left, left.startTime) - getAgendaTimestamp(right, right.startTime)
+  );
+
+  const current = sorted.find((item) => {
+    const start = getAgendaTimestamp(item, item.startTime);
+    const end = getAgendaTimestamp(item, item.endTime);
+    return now.getTime() >= start && now.getTime() <= end;
+  }) ?? null;
+
+  const currentStart = current ? getAgendaTimestamp(current, current.startTime) : now.getTime();
+  const next = sorted.find((item) => getAgendaTimestamp(item, item.startTime) > currentStart) ?? null;
+
+  return { current, next };
+}
+
+export class GetAgendaLiveState {
+  constructor(private readonly agendaRepository: AgendaRepository) {}
+
+  async execute(now = new Date()): Promise<AgendaLiveState> {
+    const items = await this.agendaRepository.list();
+    return resolveAgendaLiveState(items, now);
+  }
+}

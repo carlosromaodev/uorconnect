@@ -1,0 +1,114 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700&family=Sora:wght@400;500;600;700;800&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --background: 0 0% 99%;
+    --foreground: 0 0% 9%;
+
+    --card: 0 0% 100%;
+    --card-foreground: 0 0% 9%;
+
+    --popover: 0 0% 100%;
+    --popover-foreground: 0 0% 9%;
+
+    --primary: 27 90% 52%;
+    --primary-foreground: 0 0% 100%;
+
+    --secondary: 30 100% 96%;
+    --secondary-foreground: 27 90% 40%;
+
+    --muted: 30 10% 95%;
+    --muted-foreground: 0 0% 45%;
+
+    --accent: 27 90% 52%;
+    --accent-foreground: 0 0% 100%;
+
+    --destructive: 0 72% 51%;
+    --destructive-foreground: 0 0% 100%;
+
+    --border: 30 10% 91%;
+    --input: 30 10% 91%;
+    --ring: 27 90% 52%;
+
+    --radius: 0.625rem;
+
+    --sidebar-background: 0 0% 98%;
+    --sidebar-foreground: 0 0% 9%;
+    --sidebar-primary: 27 90% 52%;
+    --sidebar-primary-foreground: 0 0% 100%;
+    --sidebar-accent: 30 100% 96%;
+    --sidebar-accent-foreground: 0 0% 9%;
+    --sidebar-border: 30 10% 91%;
+    --sidebar-ring: 27 90% 52%;
+
+    --success: 142 71% 45%;
+    --success-foreground: 0 0% 100%;
+    --warning: 38 92% 50%;
+    --warning-foreground: 0 0% 100%;
+
+    --area-iot: 199 89% 48%;
+    --area-telecom: 27 90% 52%;
+    --area-seguranca: 0 72% 51%;
+    --area-web: 262 83% 58%;
+    --area-ia: 142 71% 45%;
+    --area-negocio: 38 92% 50%;
+    --area-produto: 330 81% 60%;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  .scrollbar-hide {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+
+  .scrollbar-hide::-webkit-scrollbar {
+    display: none;
+  }
+
+  .sponsor-marquee:hover .sponsor-marquee-track {
+    animation-play-state: paused;
+  }
+
+  .sponsor-marquee-track {
+    animation: sponsor-marquee 24s linear infinite;
+    width: max-content;
+    will-change: transform;
+  }
+
+  html {
+    font-size: 16px;
+  }
+
+  body {
+    @apply bg-background text-foreground font-body antialiased;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-heading tracking-tight;
+  }
+
+  @media (min-width: 1024px) {
+    html {
+      font-size: 17px;
+    }
+  }
+}
+
+@keyframes sponsor-marquee {
+  from {
+    transform: translateX(0);
+  }
+
+  to {
+    transform: translateX(calc(-50% - 0.5rem));
+  }
+}

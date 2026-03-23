@@ -1,0 +1,163 @@
+PRAGMA foreign_keys=ON;
+
+CREATE TABLE IF NOT EXISTS User (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  email TEXT NOT NULL UNIQUE,
+  createdAt DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS Submission (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  referenceCode TEXT NOT NULL UNIQUE,
+  type TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'PENDING',
+  name TEXT NOT NULL,
+  description TEXT NOT NULL,
+  area TEXT NOT NULL,
+  course TEXT,
+  stage TEXT,
+  category TEXT,
+  productType TEXT,
+  teamSize INTEGER NOT NULL,
+  members TEXT NOT NULL,
+  leaderName TEXT,
+  leaderPhone TEXT,
+  leaderEmail TEXT NOT NULL,
+  needs TEXT NOT NULL,
+  paymentProof TEXT NOT NULL,
+  repoUrl TEXT,
+  websiteUrl TEXT,
+  agreeRules INTEGER NOT NULL,
+  createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+  leaderId INTEGER NOT NULL,
+  FOREIGN KEY (leaderId) REFERENCES User(id)
+);
+
+CREATE TABLE IF NOT EXISTS SubmissionConfig (
+  key TEXT PRIMARY KEY DEFAULT 'default',
+  isOpen INTEGER NOT NULL DEFAULT 1,
+  iban TEXT NOT NULL DEFAULT 'AO006 0055 0000 3295 0561 10379',
+  accountName TEXT NOT NULL DEFAULT 'Universidade Óscar Ribas',
+  paymentAmount TEXT NOT NULL DEFAULT '15.000 Kz',
+  paymentInstructions TEXT,
+  projectCommunityUrl TEXT,
+  businessCommunityUrl TEXT,
+  productCommunityUrl TEXT,
+  createdAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updatedAt DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TRIGGER IF NOT EXISTS trg_submission_updatedAt
+AFTER UPDATE ON Submission
+BEGIN
+  UPDATE Submission SET updatedAt = CURRENT_TIMESTAMP WHERE id = NEW.id;
+END;
+
+CREATE TABLE IF NOT EXISTS Vote (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  submissionId INTEGER NOT NULL,
+  voterId INTEGER NOT NULL,
+  createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (submissionId) REFERENCES Submission(id),
+  FOREIGN KEY (voterId) REFERENCES User(id),
+  UNIQUE(submissionId, voterId)
+);
+
+CREATE TABLE IF NOT EXISTS Review (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  submissionId INTEGER NOT NULL,
+  reviewerId INTEGER NOT NULL,
+  rating INTEGER NOT NULL,
+  comment TEXT,
+  createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (submissionId) REFERENCES Submission(id),
+  FOREIGN KEY (reviewerId) REFERENCES User(id),
+  UNIQUE(submissionId, reviewerId)
+);
+
+CREATE TRIGGER IF NOT EXISTS trg_review_updatedAt
+AFTER UPDATE ON Review
+BEGIN
+  UPDATE Review SET updatedAt = CURRENT_TIMESTAMP WHERE id = NEW.id;
+END;
+
+CREATE TABLE IF NOT EXISTS Speaker (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL,
+  bio TEXT NOT NULL,
+  specialty TEXT NOT NULL,
+  talk TEXT NOT NULL,
+  day TEXT NOT NULL,
+  linkedin TEXT NOT NULL,
+  avatarUrl TEXT,
+  createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TRIGGER IF NOT EXISTS trg_speaker_updatedAt
+AFTER UPDATE ON Speaker
+BEGIN
+  UPDATE Speaker SET updatedAt = CURRENT_TIMESTAMP WHERE id = NEW.id;
+END;
+
+CREATE TABLE IF NOT EXISTS AgendaItem (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  day TEXT NOT NULL,
+  date DATETIME NOT NULL,
+  startTime TEXT NOT NULL,
+  endTime TEXT NOT NULL,
+  title TEXT NOT NULL,
+  local TEXT NOT NULL,
+  speaker TEXT NOT NULL,
+  description TEXT NOT NULL,
+  type TEXT NOT NULL,
+  theme TEXT NOT NULL,
+  createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TRIGGER IF NOT EXISTS trg_agenda_updatedAt
+AFTER UPDATE ON AgendaItem
+BEGIN
+  UPDATE AgendaItem SET updatedAt = CURRENT_TIMESTAMP WHERE id = NEW.id;
+END;
+
+CREATE TABLE IF NOT EXISTS HomeSocialConfig (
+  key TEXT PRIMARY KEY DEFAULT 'default',
+  instagramUrl TEXT,
+  facebookUrl TEXT,
+  linkedinUrl TEXT,
+  createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TRIGGER IF NOT EXISTS trg_home_social_config_updatedAt
+AFTER UPDATE ON HomeSocialConfig
+BEGIN
+  UPDATE HomeSocialConfig SET updatedAt = CURRENT_TIMESTAMP WHERE key = NEW.key;
+END;
+
+CREATE TABLE IF NOT EXISTS LiveContentConfig (
+  key TEXT PRIMARY KEY DEFAULT 'default',
+  mode TEXT NOT NULL DEFAULT 'AGENDA',
+  title TEXT,
+  local TEXT,
+  speaker TEXT,
+  description TEXT,
+  type TEXT,
+  theme TEXT,
+  day TEXT,
+  date DATETIME,
+  startTime TEXT,
+  endTime TEXT,
+  createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TRIGGER IF NOT EXISTS trg_live_content_config_updatedAt
+AFTER UPDATE ON LiveContentConfig
+BEGIN
+  UPDATE LiveContentConfig SET updatedAt = CURRENT_TIMESTAMP WHERE key = NEW.key;
+END;

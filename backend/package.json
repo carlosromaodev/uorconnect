@@ -1,0 +1,53 @@
+{
+  "name": "aeuor",
+  "version": "1.0.0",
+  "description": "Fastify + Zod API skeleton with Prisma and Vitest",
+  "main": "dist/server.js",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc --project tsconfig.build.json",
+    "start": "node dist/server.js",
+    "test": "vitest",
+    "test:admin-security": "vitest run src/modules/auth/use-cases/login.integration.spec.ts src/modules/auth/use-cases/manage-students.spec.ts src/modules/auth/use-cases/manage-admin-security.spec.ts",
+    "test:watch": "vitest watch",
+    "lint": "tsc --noEmit",
+    "prisma": "prisma",
+    "prisma:prepare:postgres": "node scripts/prepare-prisma-schema.mjs postgresql prisma/schema.deploy.prisma",
+    "prisma:generate:postgres": "npm run prisma:prepare:postgres && prisma generate --schema prisma/schema.deploy.prisma",
+    "prisma:push:postgres": "npm run prisma:prepare:postgres && prisma db push --schema prisma/schema.deploy.prisma",
+    "migrate:data:postgres": "node scripts/migrate-sqlite-to-postgres.cjs",
+    "prepare": "prisma generate",
+    "seed:demo": "tsx src/scripts/seed-demo-submissions.ts"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "dependencies": {
+    "@fastify/cors": "^11.2.0",
+    "@fastify/sensible": "^6.0.4",
+    "@prisma/adapter-better-sqlite3": "^7.5.0",
+    "@prisma/adapter-pg": "^7.5.0",
+    "@prisma/client": "^7.5.0",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/jsonwebtoken": "^9.0.10",
+    "better-sqlite3": "^12.8.0",
+    "dotenv": "^17.3.1",
+    "fastify": "^5.8.2",
+    "fastify-type-provider-zod": "^6.1.0",
+    "jsonwebtoken": "^9.0.3",
+    "pg": "^8.20.0",
+    "playwright": "^1.58.2",
+    "postgres": "^3.4.7",
+    "undici": "^7.24.4",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "@types/node": "^25.5.0",
+    "@vitest/coverage-v8": "^4.1.0",
+    "prisma": "^7.5.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.0"
+  }
+}

@@ -1,0 +1,3 @@
+ALTER TABLE "Submission" ADD COLUMN "primaryColor" TEXT NOT NULL DEFAULT '#FD8305';
+ALTER TABLE "Submission" ADD COLUMN "secondaryColor" TEXT NOT NULL DEFAULT '#223D42';
+ALTER TABLE "Submission" ADD COLUMN "bannerUrl" TEXT;

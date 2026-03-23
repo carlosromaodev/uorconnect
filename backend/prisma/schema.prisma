@@ -1,0 +1,367 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+enum SubmissionType {
+  PROJECT
+  BUSINESS
+  PRODUCT
+}
+
+enum SubmissionStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum AgendaDay {
+  DAY1
+  DAY2
+}
+
+enum AgendaType {
+  PANEL
+  WORKSHOP
+  PRESENTATION
+  CEREMONY
+  BREAK
+}
+
+model User {
+  id          Int          @id @default(autoincrement())
+  email       String       @unique
+  createdAt   DateTime     @default(now())
+  submissions Submission[] @relation("UserSubmissions")
+  votes       Vote[]
+  reviews     Review[]
+}
+
+model Student {
+  id                Int                @id @default(autoincrement())
+  studentNumber     String             @unique
+  name              String?
+  email             String?
+  course            String?
+  birthDate         DateTime?
+  nationality       String?
+  phone             String?
+  lastLoginAt       DateTime?
+  createdAt         DateTime           @default(now())
+  updatedAt         DateTime           @updatedAt
+  likes             StudentLike[]
+  courseLikes       CourseLike[]
+  courseEnrollments CourseEnrollment[]
+  votes             StudentVote[]
+  comments          StudentComment[]
+  liveChatMessages  LiveChatMessage[]
+}
+
+model AdminAuthorizedStudent {
+  id            Int      @id @default(autoincrement())
+  studentNumber String   @unique
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model StudentLike {
+  id           Int        @id @default(autoincrement())
+  student      Student    @relation(fields: [studentId], references: [id])
+  studentId    Int
+  submission   Submission @relation(fields: [submissionId], references: [id])
+  submissionId Int
+  createdAt    DateTime   @default(now())
+
+  @@unique([studentId, submissionId])
+}
+
+model StudentVote {
+  id           Int        @id @default(autoincrement())
+  student      Student    @relation(fields: [studentId], references: [id])
+  studentId    Int
+  submission   Submission @relation(fields: [submissionId], references: [id])
+  submissionId Int
+  createdAt    DateTime   @default(now())
+
+  @@unique([studentId, submissionId])
+}
+
+model StudentComment {
+  id           Int        @id @default(autoincrement())
+  student      Student    @relation(fields: [studentId], references: [id])
+  studentId    Int
+  submission   Submission @relation(fields: [submissionId], references: [id])
+  submissionId Int
+  content      String
+  createdAt    DateTime   @default(now())
+}
+
+model Submission {
+  id               Int              @id @default(autoincrement())
+  referenceCode    String           @unique
+  type             SubmissionType
+  status           SubmissionStatus @default(PENDING)
+  name             String
+  description      String
+  area             String
+  course           String?
+  stage            String?
+  category         String?
+  productType      String?
+  teamSize         Int
+  members          String
+  leaderName       String?
+  leaderPhone      String?
+  leaderEmail      String
+  needs            String
+  paymentProof     String
+  paymentConfirmed Boolean          @default(false)
+  repoUrl          String?
+  websiteUrl       String?
+  observations     String?
+  agreeRules       Boolean
+  primaryColor     String           @default("#FD8305")
+  secondaryColor   String           @default("#223D42")
+  bannerUrl        String?
+  isWinner         Boolean          @default(false)
+  winnerSelectedAt DateTime?
+  createdAt        DateTime         @default(now())
+  updatedAt        DateTime         @updatedAt
+  leader           User             @relation("UserSubmissions", fields: [leaderId], references: [id])
+  leaderId         Int
+  votes            Vote[]
+  reviews          Review[]
+  studentLikes     StudentLike[]
+  studentVotes     StudentVote[]
+  studentComments  StudentComment[]
+}
+
+model SubmissionConfig {
+  key                 String   @id @default("default")
+  isOpen              Boolean  @default(true)
+  iban                String   @default("AO006 0055 0000 3295 0561 10379")
+  accountName         String   @default("Universidade Óscar Ribas")
+  paymentAmount       String   @default("15.000 Kz")
+  paymentInstructions String?
+  projectCommunityUrl String?
+  businessCommunityUrl String?
+  productCommunityUrl String?
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+}
+
+model Vote {
+  id           Int        @id @default(autoincrement())
+  submission   Submission @relation(fields: [submissionId], references: [id])
+  submissionId Int
+  voter        User       @relation(fields: [voterId], references: [id])
+  voterId      Int
+  createdAt    DateTime   @default(now())
+
+  @@unique([submissionId, voterId])
+}
+
+model Review {
+  id           Int        @id @default(autoincrement())
+  submission   Submission @relation(fields: [submissionId], references: [id])
+  submissionId Int
+  reviewer     User       @relation(fields: [reviewerId], references: [id])
+  reviewerId   Int
+  rating       Int
+  comment      String?
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+
+  @@unique([submissionId, reviewerId])
+}
+
+model Speaker {
+  id        Int      @id @default(autoincrement())
+  name      String
+  bio       String
+  specialty String
+  talk      String
+  day       String
+  linkedin  String
+  avatarUrl String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model FaqItem {
+  id          Int      @id @default(autoincrement())
+  question    String
+  answer      String
+  sortOrder   Int      @default(0)
+  isPublished Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model GuideStep {
+  id          Int      @id @default(autoincrement())
+  title       String
+  description String
+  link        String?
+  linkText    String?
+  icon        String
+  sortOrder   Int      @default(0)
+  isPublished Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model GuideTip {
+  id          Int      @id @default(autoincrement())
+  content     String
+  sortOrder   Int      @default(0)
+  isPublished Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Venue {
+  id          Int      @id @default(autoincrement())
+  name        String
+  description String
+  capacity    String
+  floor       String
+  sortOrder   Int      @default(0)
+  isPublished Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model HomeCourse {
+  id          Int      @id @default(autoincrement())
+  title       String
+  description String
+  icon        String
+  ctaText     String?
+  sortOrder   Int      @default(0)
+  isPublished Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model HomeSocialConfig {
+  key          String   @id @default("default")
+  instagramUrl String?
+  facebookUrl  String?
+  linkedinUrl  String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+}
+
+model LiveContentConfig {
+  key         String   @id @default("default")
+  mode        String   @default("AGENDA")
+  title       String?
+  local       String?
+  speaker     String?
+  description String?
+  type        String?
+  theme       String?
+  day         String?
+  date        DateTime?
+  startTime   String?
+  endTime     String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model Course {
+  id                   Int                @id @default(autoincrement())
+  name                 String             @unique
+  description          String
+  preview              String?
+  communityUrl         String?
+  companyName          String
+  companyCategory      String
+  companyLogoUrl       String?
+  companyWebsite       String?
+  companyInstagram     String?
+  companyLinkedin      String?
+  isPaid               Boolean            @default(false)
+  priceLabel           String?
+  studentCount         Int                @default(0)
+  accentColor          String             @default("#f97316")
+  accentColorSecondary String             @default("#fb923c")
+  courseColor          String             @default("#2563eb")
+  sortOrder            Int                @default(0)
+  isPublished          Boolean            @default(true)
+  createdAt            DateTime           @default(now())
+  updatedAt            DateTime           @updatedAt
+  likes                CourseLike[]
+  enrollments          CourseEnrollment[]
+}
+
+model CourseLike {
+  id        Int      @id @default(autoincrement())
+  student   Student  @relation(fields: [studentId], references: [id])
+  studentId Int
+  course    Course   @relation(fields: [courseId], references: [id])
+  courseId  Int
+  createdAt DateTime @default(now())
+
+  @@unique([studentId, courseId])
+}
+
+model CourseEnrollment {
+  id            Int      @id @default(autoincrement())
+  student       Student  @relation(fields: [studentId], references: [id])
+  studentId     Int
+  course        Course   @relation(fields: [courseId], references: [id])
+  courseId      Int
+  studentNumber String
+  studentName   String?
+  studentEmail  String?
+  studentCourse String?
+  createdAt     DateTime @default(now())
+
+  @@unique([studentId, courseId])
+}
+
+model PanelTopic {
+  id          Int      @id @default(autoincrement())
+  title       String
+  description String
+  speaker     String
+  time        String
+  local       String
+  day         String
+  dateLabel   String
+  icon        String
+  type        String
+  sortOrder   Int      @default(0)
+  isPublished Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+model LiveChatMessage {
+  id        Int      @id @default(autoincrement())
+  content   String
+  student   Student  @relation(fields: [studentId], references: [id])
+  studentId Int
+  createdAt DateTime @default(now())
+}
+
+model AgendaItem {
+  id          Int        @id @default(autoincrement())
+  day         AgendaDay
+  date        DateTime
+  startTime   String
+  endTime     String
+  title       String
+  local       String
+  speaker     String
+  description String
+  type        AgendaType
+  theme       String
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+}
