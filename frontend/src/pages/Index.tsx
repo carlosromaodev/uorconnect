@@ -18,7 +18,7 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 import { toast } from "sonner";
-import { api, type ActivityFeedItem, type AgendaLiveState, type CoursesContent, type FaqItem, type HomeContent, type LiveChatMessage, type ProjectPublicFeedItem, type Stats, getToken, isAuthError, setToken } from "@/lib/api";
+import { api, type ActivityFeedItem, type AgendaItem, type AgendaLiveState, type CoursesContent, type FaqItem, type HomeContent, type LiveChatMessage, type ProjectPublicFeedItem, type Stats, getToken, isAuthError, setToken } from "@/lib/api";
 import logoUor from "@/assets/logo-uor.png";
 import logoNeic from "@/assets/logo-neic.jpeg";
 import { canVoteSubmission, getSubmissionAreaLabel, getSubmissionAudienceCopy, normalizeSubmissionType } from "@/lib/submission-meta";
@@ -36,22 +36,12 @@ function openExternal(url?: string | null, emptyMessage = "Link não disponível
   window.open(url, "_blank", "noopener,noreferrer");
 }
 
-/* ─── Live Preview Data ─── */
-const liveSchedule = [
-  { time: "08:30", endTime: "09:30", title: "Credenciamento e Abertura", local: "Auditório Principal", type: "Cerimónia" },
-  { time: "09:30", endTime: "11:00", title: "Inovação nas Telecomunicações em Angola", local: "Auditório Principal", type: "Painel" },
-  { time: "11:00", endTime: "12:30", title: "Workshop: Introdução ao 5G e IoT", local: "Sala B2", type: "Workshop" },
-  { time: "14:00", endTime: "16:00", title: "Apresentação de Projetos — Bloco 1", local: "Sala C1", type: "Apresentação" },
-  { time: "09:00", endTime: "10:30", title: "Marca Pessoal na Era Digital", local: "Auditório Principal", type: "Painel" },
-  { time: "10:30", endTime: "12:00", title: "Workshop: GitHub, LinkedIn e Portfólio", local: "Lab Informática", type: "Workshop" },
-  { time: "15:30", endTime: "17:00", title: "Encerramento & Premiação", local: "Auditório Principal", type: "Cerimónia" },
-];
-
 const liveTypeColors: Record<string, string> = {
   Painel: "bg-primary/10 text-primary",
   Workshop: "bg-accent text-accent-foreground",
   Apresentação: "bg-secondary text-secondary-foreground",
   Cerimónia: "bg-primary text-primary-foreground",
+  Intervalo: "bg-muted text-muted-foreground",
 };
 
 const areaColorMap: Record<string, string> = {
@@ -133,6 +123,98 @@ const quickActions = [
   { label: "Guia do Evento", icon: BookOpen, path: "/guia", color: "bg-[hsl(var(--area-produto))] hover:bg-[hsl(var(--area-produto))]/90 text-primary-foreground", desc: "Tudo o que precisas" },
 ];
 
+function formatAgendaTypeLabel(type?: string) {
+  return {
+    PANEL: "Painel",
+    WORKSHOP: "Workshop",
+    PRESENTATION: "Apresentação",
+    CEREMONY: "Cerimónia",
+    BREAK: "Intervalo",
+  }[type ?? ""] ?? type ?? "Sessão";
+}
+
+function formatAgendaDayLabel(day?: string) {
+  return day === "DAY2" ? "Dia 2" : "Dia 1";
+}
+
+function parseAgendaDate(value: string) {
+  const [year, month, day] = value.slice(0, 10).split("-").map(Number);
+  return new Date(year, month - 1, day);
+}
+
+function formatAgendaShortDate(value?: string) {
+  if (!value) return "";
+
+  return parseAgendaDate(value).toLocaleDateString("pt-PT", {
+    day: "2-digit",
+    month: "short",
+  });
+}
+
+function getAgendaDateTime(date: string, time: string) {
+  const base = parseAgendaDate(date);
+  const [hours, minutes] = time.split(":").map(Number);
+  return new Date(
+    base.getFullYear(),
+    base.getMonth(),
+    base.getDate(),
+    hours,
+    minutes,
+    0,
+    0
+  ).getTime();
+}
+
+function getAgendaIcon(type?: string) {
+  if (type === "PANEL" || type === "Painel") return TrendingUp;
+  if (type === "WORKSHOP" || type === "Workshop" || type === "Curso") return BookOpen;
+  if (type === "CEREMONY" || type === "Cerimónia") return Award;
+  if (type === "BREAK" || type === "Intervalo") return Clock;
+  return Presentation;
+}
+
+type LivePreviewItem = {
+  id: number;
+  time: string;
+  endTime: string;
+  title: string;
+  local: string;
+  type: string;
+};
+
+function toLivePreviewItem(item: AgendaItem | null | undefined): LivePreviewItem | null {
+  if (!item) return null;
+
+  return {
+    id: item.id,
+    time: item.startTime,
+    endTime: item.endTime,
+    title: item.title,
+    local: item.local,
+    type: formatAgendaTypeLabel(item.type),
+  };
+}
+
+function resolveLivePreview(liveState: AgendaLiveState | null, agendaItems: AgendaItem[], now: Date) {
+  const upcoming = [...agendaItems]
+    .sort((left, right) => getAgendaDateTime(left.date, left.startTime) - getAgendaDateTime(right.date, right.startTime))
+    .filter((item) => getAgendaDateTime(item.date, item.endTime) >= now.getTime());
+
+  const current = toLivePreviewItem(liveState?.current);
+  const next = toLivePreviewItem(liveState?.next);
+  const featured = current ?? next ?? toLivePreviewItem(upcoming[0]);
+  const secondary = current
+    ? (next ?? toLivePreviewItem(upcoming.find((item) => item.id !== current.id)))
+    : toLivePreviewItem(upcoming.find((item) => item.id !== featured?.id));
+
+  return {
+    featured,
+    secondary,
+    featuredLabel: current ? "Agora" : featured ? "Próxima sessão" : "Sem programação ao vivo",
+    secondaryLabel: current ? "A seguir" : "Depois",
+  };
+}
+
 function StarRating({ rating, size = 18 }: { rating: number; size?: number }) {
   return (
     <div className="flex items-center gap-0.5">
@@ -193,31 +275,19 @@ function AnimatedCounter({ target, label, icon: Icon }: { target: string; label:
   );
 }
 
-function LivePreview({ liveState }: { liveState: AgendaLiveState | null }) {
+function LivePreview({ liveState, agendaItems }: { liveState: AgendaLiveState | null; agendaItems: AgendaItem[] }) {
   const [now, setNow] = useState(new Date());
   useEffect(() => { const t = setInterval(() => setNow(new Date()), 60000); return () => clearInterval(t); }, []);
 
-  const hhmm = `${String(now.getHours()).padStart(2, "0")}:${String(now.getMinutes()).padStart(2, "0")}`;
-  const fallbackCurrent = liveSchedule.find((a) => hhmm >= a.time && hhmm < a.endTime) ?? liveSchedule[0];
-  const fallbackNext = liveSchedule[liveSchedule.indexOf(fallbackCurrent) + 1] ?? liveSchedule[1] ?? null;
-  const current = liveState?.current
-    ? {
-        time: liveState.current.startTime,
-        endTime: liveState.current.endTime,
-        title: liveState.current.title,
-        local: liveState.current.local,
-        type: liveState.current.type,
-      }
-    : fallbackCurrent;
-  const next = liveState?.next
-    ? {
-        time: liveState.next.startTime,
-        endTime: liveState.next.endTime,
-        title: liveState.next.title,
-        local: liveState.next.local,
-        type: liveState.next.type,
-      }
-    : fallbackNext;
+  const { featured, secondary, featuredLabel, secondaryLabel } = resolveLivePreview(liveState, agendaItems, now);
+
+  if (!featured) {
+    return (
+      <div className="rounded-xl border border-border bg-card p-6 text-sm text-muted-foreground">
+        Ainda não há sessões configuradas para o módulo Ao Vivo.
+      </div>
+    );
+  }
 
   return (
     <div className="grid md:grid-cols-2 gap-5">
@@ -232,21 +302,21 @@ function LivePreview({ liveState }: { liveState: AgendaLiveState | null }) {
         <div className="absolute top-0 right-0 w-40 h-40 bg-primary/5 rounded-full -translate-y-1/2 translate-x-1/2 group-hover:scale-150 transition-transform duration-700" />
         <div className="flex items-center gap-2.5 mb-4">
           <span className="inline-flex items-center gap-1.5 bg-primary text-primary-foreground text-xs font-bold uppercase tracking-wider px-3 py-1.5 rounded-full">
-            <span className="w-2 h-2 bg-primary-foreground rounded-full animate-pulse" />
-            Agora
+            <span className={`w-2 h-2 rounded-full ${featuredLabel === "Agora" ? "bg-primary-foreground animate-pulse" : "bg-primary-foreground/70"}`} />
+            {featuredLabel}
           </span>
-          <span className={`text-xs font-bold uppercase tracking-wider px-2.5 py-1 rounded-full ${liveTypeColors[current.type] || "bg-secondary text-secondary-foreground"}`}>
-            {current.type}
+          <span className={`text-xs font-bold uppercase tracking-wider px-2.5 py-1 rounded-full ${liveTypeColors[featured.type] || "bg-secondary text-secondary-foreground"}`}>
+            {featured.type}
           </span>
         </div>
-        <h3 className="font-heading font-bold text-lg md:text-xl mb-3">{current.title}</h3>
+        <h3 className="font-heading font-bold text-lg md:text-xl mb-3">{featured.title}</h3>
         <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
-          <span className="flex items-center gap-1.5"><Clock className="w-4 h-4 text-primary" />{current.time} — {current.endTime}</span>
-          <span className="flex items-center gap-1.5"><MapPin className="w-4 h-4 text-primary" />{current.local}</span>
+          <span className="flex items-center gap-1.5"><Clock className="w-4 h-4 text-primary" />{featured.time} — {featured.endTime}</span>
+          <span className="flex items-center gap-1.5"><MapPin className="w-4 h-4 text-primary" />{featured.local}</span>
         </div>
       </motion.div>
 
-      {next && (
+      {secondary && (
         <motion.div
           initial={{ opacity: 0, x: 20 }}
           whileInView={{ opacity: 1, x: 0 }}
@@ -256,15 +326,15 @@ function LivePreview({ liveState }: { liveState: AgendaLiveState | null }) {
           className="border border-border rounded-xl bg-card p-6 md:p-8 group cursor-pointer hover:border-primary/30 transition-colors"
         >
           <div className="flex items-center gap-2.5 mb-4">
-            <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground bg-muted px-3 py-1.5 rounded-full">A seguir</span>
-            <span className={`text-xs font-bold uppercase tracking-wider px-2.5 py-1 rounded-full ${liveTypeColors[next.type] || "bg-secondary text-secondary-foreground"}`}>
-              {next.type}
+            <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground bg-muted px-3 py-1.5 rounded-full">{secondaryLabel}</span>
+            <span className={`text-xs font-bold uppercase tracking-wider px-2.5 py-1 rounded-full ${liveTypeColors[secondary.type] || "bg-secondary text-secondary-foreground"}`}>
+              {secondary.type}
             </span>
           </div>
-          <h3 className="font-heading font-bold text-lg md:text-xl mb-3">{next.title}</h3>
+          <h3 className="font-heading font-bold text-lg md:text-xl mb-3">{secondary.title}</h3>
           <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
-            <span className="flex items-center gap-1.5"><Clock className="w-4 h-4 text-primary" />{next.time} — {next.endTime}</span>
-            <span className="flex items-center gap-1.5"><MapPin className="w-4 h-4 text-primary" />{next.local}</span>
+            <span className="flex items-center gap-1.5"><Clock className="w-4 h-4 text-primary" />{secondary.time} — {secondary.endTime}</span>
+            <span className="flex items-center gap-1.5"><MapPin className="w-4 h-4 text-primary" />{secondary.local}</span>
           </div>
         </motion.div>
       )}
@@ -453,15 +523,6 @@ function TopProjectsCarousel() {
   );
 }
 
-const panels = [
-  { day: "Dia 1", date: "17 Mai", icon: TrendingUp, title: "Inovação nas Telecomunicações em Angola", speaker: "Dr. Manuel Santos", time: "09:30", local: "Auditório Principal", desc: "Panorama atual e futuro das telecomunicações no mercado angolano.", type: "Painel" },
-  { day: "Dia 1", date: "17 Mai", icon: Wifi, title: "Curso: Introdução ao 5G e IoT", speaker: "Eng. Ana Ferreira", time: "11:00", local: "Sala B2", desc: "Conceitos práticos sobre redes 5G e Internet das Coisas.", type: "Curso" },
-  { day: "Dia 1", date: "17 Mai", icon: Presentation, title: "Apresentação de Projetos — Bloco 1", speaker: "Vários grupos", time: "14:00", local: "Sala C1", desc: "Primeira ronda de apresentações de projetos académicos.", type: "Apresentação" },
-  { day: "Dia 2", date: "18 Mai", icon: Target, title: "Marca Pessoal na Era Digital", speaker: "Dra. Carla Mendes", time: "09:00", local: "Auditório Principal", desc: "Como construir presença digital e posicionamento profissional.", type: "Painel" },
-  { day: "Dia 2", date: "18 Mai", icon: BookOpen, title: "Curso: GitHub, LinkedIn e Portfólio", speaker: "Eng. Pedro Lopes", time: "10:30", local: "Lab Informática", desc: "Ferramentas essenciais para visibilidade e carreira profissional.", type: "Curso" },
-  { day: "Dia 2", date: "18 Mai", icon: Award, title: "Encerramento & Premiação", speaker: "Júri & Direcção", time: "15:30", local: "Auditório Principal", desc: "Apresentação dos melhores projetos e cerimónia de encerramento.", type: "Apresentação" },
-];
-
 const defaultCourses = [
   { id: 1, name: "Eng. Informática", description: "Formação prática orientada a software, arquitetura de sistemas e produtos digitais.", preview: "Curso gerido por parceiro tecnológico.", communityUrl: null, companyName: "Parceiro Tech AO", companyCategory: "Tecnologia", companyLogoUrl: null, companyWebsite: null, companyInstagram: null, companyLinkedin: null, isPaid: false, priceLabel: "Gratuito", studentCount: 0, likesCount: 0, accentColor: "#2563eb", accentColorSecondary: "#38bdf8", courseColor: "#2563eb", sortOrder: 0, isPublished: true },
   { id: 2, name: "Eng. Telecomunicações", description: "Infraestrutura, redes modernas e operações digitais aplicadas ao mercado.", preview: "Curso gerido por parceiro de telecom.", communityUrl: null, companyName: "Parceiro Connect AO", companyCategory: "Telecomunicações", companyLogoUrl: null, companyWebsite: null, companyInstagram: null, companyLinkedin: null, isPaid: true, priceLabel: "Pago", studentCount: 0, likesCount: 0, accentColor: "#f97316", accentColorSecondary: "#fb923c", courseColor: "#d97706", sortOrder: 1, isPublished: true },
@@ -515,7 +576,10 @@ function TypeBadge({ type }: { type: string }) {
   const colors: Record<string, string> = {
     Painel: "bg-primary/10 text-primary",
     Curso: "bg-accent text-accent-foreground",
+    Workshop: "bg-accent text-accent-foreground",
     Apresentação: "bg-secondary text-secondary-foreground",
+    Cerimónia: "bg-primary text-primary-foreground",
+    Intervalo: "bg-muted text-muted-foreground",
   };
   return (
     <span className={`text-xs font-bold uppercase tracking-wider px-2.5 py-1 rounded-full ${colors[type] || "bg-secondary text-secondary-foreground"}`}>
@@ -568,6 +632,7 @@ export default function Index() {
     socialConfig: { key: "default", instagramUrl: null, facebookUrl: null, linkedinUrl: null, createdAt: "", updatedAt: "" }
   });
   const [coursesContent, setCoursesContent] = useState<CoursesContent>({ courses: [], topCourses: [], preview: [] });
+  const [agendaItems, setAgendaItems] = useState<AgendaItem[]>([]);
   const [activityFeed, setActivityFeed] = useState<ActivityFeedItem[]>([]);
   const [liveChat, setLiveChat] = useState<LiveChatMessage[]>([]);
   const [liveState, setLiveState] = useState<AgendaLiveState | null>(null);
@@ -614,6 +679,10 @@ export default function Index() {
       .then(setCoursesContent)
       .catch(() => setCoursesContent({ courses: [], topCourses: [], preview: [] }));
 
+    api.agenda.list()
+      .then(setAgendaItems)
+      .catch(() => setAgendaItems([]));
+
     api.interactions.activityFeed()
       .then(setActivityFeed)
       .catch(() => setActivityFeed([]));
@@ -659,9 +728,20 @@ export default function Index() {
         ...panel,
         date: panel.dateLabel,
         desc: panel.description,
-        icon: Mic,
+        icon: getAgendaIcon(panel.type),
       }))
-    : panels;
+    : agendaItems.slice(0, 6).map((item) => ({
+        id: item.id,
+        day: formatAgendaDayLabel(item.day),
+        date: formatAgendaShortDate(item.date),
+        icon: getAgendaIcon(item.type),
+        title: item.title,
+        speaker: item.speaker || "Sem orador definido",
+        time: item.startTime,
+        local: item.local,
+        desc: item.description,
+        type: formatAgendaTypeLabel(item.type),
+      }));
 
   const handleLiveChatSend = async () => {
     if (!chatInput.trim()) return;
@@ -911,7 +991,7 @@ export default function Index() {
             <p className="text-muted-foreground mb-8 text-base">Acompanha o que está a acontecer agora no evento.</p>
           </motion.div>
 
-          <LivePreview liveState={liveState} />
+          <LivePreview liveState={liveState} agendaItems={agendaItems} />
 
           <div className="mt-8 grid gap-5 lg:grid-cols-[1.05fr_0.95fr]">
             <div className="relative overflow-hidden rounded-xl border border-border bg-card p-5">
@@ -1239,7 +1319,7 @@ export default function Index() {
           <div className="flex gap-5 overflow-x-auto scrollbar-hide pb-2 lg:grid lg:grid-cols-3 lg:overflow-visible">
             {homepagePanels.map((panel, i) => (
               <motion.div
-                key={panel.title}
+                key={panel.id ?? `${panel.title}-${panel.time}`}
                 initial={{ opacity: 0, y: 16 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
@@ -1267,6 +1347,12 @@ export default function Index() {
               </motion.div>
             ))}
           </div>
+
+          {!homepagePanels.length ? (
+            <div className="rounded-xl border border-border bg-card p-6 text-sm text-muted-foreground">
+              Ainda não há painéis publicados para mostrar na home.
+            </div>
+          ) : null}
 
           <motion.div initial={{ opacity: 0 }} whileInView={{ opacity: 1 }} viewport={{ once: true }} className="mt-10 text-center">
             <Button asChild size="lg" variant="outline" className="font-semibold rounded-xl border-foreground/20 hover:bg-secondary text-base h-12">
