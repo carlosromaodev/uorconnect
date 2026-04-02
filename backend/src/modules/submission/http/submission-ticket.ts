@@ -29,12 +29,16 @@ export function buildSubmissionCommunityUrl(type: Submission["type"], config: {
 export function buildBoardingPassHtml(submission: Submission, options: {
   logoDataUri?: string | null;
   generatedAt: Date;
+  publicAppUrl?: string | null;
+  pdfUrl?: string | null;
 }) {
   const primary = submission.primaryColor || "#FD8305";
   const secondary = submission.secondaryColor || "#223D42";
   const members = submission.members.length > 0 ? submission.members.join(" • ") : "Sem equipa";
   const createdAt = formatDateLabel(submission.createdAt);
   const typeLabel = submissionTypeLabel(submission.type);
+  const siteUrl = options.publicAppUrl?.replace(/\/$/, "") ?? "https://uorconnect.space";
+  const pdfUrl = options.pdfUrl ?? `${siteUrl}/api/submissions/${submission.id}/boarding-pass.pdf`;
 
   return `<!DOCTYPE html>
   <html lang="pt">
@@ -81,23 +85,25 @@ export function buildBoardingPassHtml(submission: Submission, options: {
           gap: 5mm;
         }
         .brand img {
-          width: 18mm;
-          height: 18mm;
-          border-radius: 5mm;
-          background: rgba(255,255,255,0.92);
-          padding: 2.5mm;
+          width: 42mm;
+          height: auto;
+          object-fit: contain;
         }
         .brand small, .label {
           font-size: 9px;
           letter-spacing: 0.26em;
           text-transform: uppercase;
           opacity: 0.86;
+          overflow-wrap: anywhere;
+          word-break: break-word;
         }
         .title {
           margin: 7mm 0 0;
           font-size: 27px;
           line-height: 1.1;
           font-weight: 800;
+          overflow-wrap: anywhere;
+          word-break: break-word;
         }
         .subtitle {
           margin: 3mm 0 0;
@@ -105,6 +111,8 @@ export function buildBoardingPassHtml(submission: Submission, options: {
           line-height: 1.7;
           color: rgba(255,255,255,0.88);
           max-width: 135mm;
+          overflow-wrap: anywhere;
+          word-break: break-word;
         }
         .content {
           padding: 12mm 16mm 16mm;
@@ -128,6 +136,8 @@ export function buildBoardingPassHtml(submission: Submission, options: {
           margin-top: 2.5mm;
           font-size: 24px;
           line-height: 1.15;
+          white-space: normal;
+          overflow-wrap: anywhere;
           word-break: break-word;
         }
         .meta-grid {
@@ -148,6 +158,8 @@ export function buildBoardingPassHtml(submission: Submission, options: {
           margin-top: 2mm;
           font-size: 12px;
           line-height: 1.5;
+          white-space: normal;
+          overflow-wrap: anywhere;
           word-break: break-word;
         }
         .reference {
@@ -161,6 +173,8 @@ export function buildBoardingPassHtml(submission: Submission, options: {
           line-height: 1.08;
           font-weight: 800;
           letter-spacing: 0.08em;
+          white-space: normal;
+          overflow-wrap: anywhere;
           word-break: break-word;
         }
         .notes {
@@ -188,6 +202,8 @@ export function buildBoardingPassHtml(submission: Submission, options: {
           font-size: 11px;
           line-height: 1.7;
           color: #243447;
+          overflow-wrap: anywhere;
+          word-break: break-word;
         }
       </style>
     </head>
@@ -208,14 +224,14 @@ export function buildBoardingPassHtml(submission: Submission, options: {
             </div>
           </div>
           <h1 class="title">${escapeHtml(submission.name)}</h1>
-          <p class="subtitle">Inscrição registada com sucesso. Guarda este talão para validação, entrada na triagem e partilha com a equipa organizadora.</p>
+          <p class="subtitle">O teu embarque no avião do conhecimento foi confirmado. Guarda este convite premium para validação, entrada e partilha com outros estudantes interessados.</p>
         </section>
 
         <section class="content">
           <div class="grid">
             <div>
               <article class="card hero">
-                <div class="label" style="color:#526274;">Responsável principal</div>
+                <div class="label" style="color:#526274;">Passageiro principal</div>
                 <strong>${escapeHtml(compactText(submission.leaderName))}</strong>
                 <div class="meta-grid">
                   <div class="meta-item">
@@ -227,18 +243,18 @@ export function buildBoardingPassHtml(submission: Submission, options: {
                     <strong>${escapeHtml(compactText(submission.course || submission.area))}</strong>
                   </div>
                   <div class="meta-item">
-                    <span>Data de registo</span>
+                    <span>Data de embarque</span>
                     <strong>${escapeHtml(createdAt)}</strong>
                   </div>
                   <div class="meta-item">
-                    <span>Tipo de expositor</span>
+                    <span>Categoria</span>
                     <strong>${escapeHtml(typeLabel)}</strong>
                   </div>
                 </div>
               </article>
 
               <article class="card" style="margin-top: 6mm;">
-                <div class="label" style="color:#526274;">Equipa e operação</div>
+                <div class="label" style="color:#526274;">Manifesto de voo</div>
                 <div class="meta-grid">
                   <div class="meta-item">
                     <span>Área</span>
@@ -254,10 +270,28 @@ export function buildBoardingPassHtml(submission: Submission, options: {
                   </div>
                 </div>
               </article>
+
+              <article class="card" style="margin-top: 6mm;">
+                <div class="label" style="color:#526274;">Partilha e acesso</div>
+                <div class="notes" style="margin-top:4mm;">
+                  <div class="note">
+                    <strong>Site oficial</strong>
+                    <p>${escapeHtml(siteUrl)}</p>
+                  </div>
+                  <div class="note">
+                    <strong>PDF online</strong>
+                    <p>${escapeHtml(pdfUrl)}</p>
+                  </div>
+                  <div class="note">
+                    <strong>Mensagem para partilhar</strong>
+                    <p>Mostra este talão e convida outros estudantes a inscreverem-se no portal UOR Connect para entrarem também neste voo de conhecimento.</p>
+                  </div>
+                </div>
+              </article>
             </div>
 
             <article class="card reference">
-              <div class="label">Número de inscrição</div>
+              <div class="label">Boarding pass</div>
               <div class="reference-code">${softWrapReference(submission.referenceCode)}</div>
               <div class="notes">
                 <div class="note">

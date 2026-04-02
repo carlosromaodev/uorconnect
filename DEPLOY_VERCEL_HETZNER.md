@@ -66,6 +66,8 @@ sudo APP_ROOT=/opt/uorconnect bash /opt/uorconnect/deploy/scripts/setup-cpx11.sh
 4. entrar em `deploy/`
 5. criar `.env` a partir de `.env.example`
 6. definir `APP_DOMAIN`, `POSTGRES_PASSWORD`, `JWT_SECRET` e URLs reais
+   se `POSTGRES_PASSWORD` tiver caracteres reservados de URL como `#`, `@`, `/` ou `:`,
+   também define `DATABASE_URL` com a password em formato URL-encoded
 7. arrancar:
 
 ```bash

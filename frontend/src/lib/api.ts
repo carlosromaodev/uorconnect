@@ -26,12 +26,115 @@ export interface StudentProfile {
   isIncomplete?: boolean;
 }
 
+export interface StudentProfileUpdateInput {
+  name?: string;
+  email?: string;
+  course?: string;
+  phone?: string;
+}
+
+export interface AuthLoginResponse {
+  success: boolean;
+  studentNumber?: string;
+  student?: StudentProfile;
+  token?: string;
+  error?: string;
+}
+
 export interface StudentWithStats extends StudentProfile {
   _count: {
     likes: number;
     votes: number;
     comments: number;
   };
+}
+
+export interface StudentOwnedSubmissionListItem {
+  id: number;
+  referenceCode: string;
+  name: string;
+  status: string;
+  statusLabel: string;
+  type: string;
+  typeLabel: string;
+  createdAt: string;
+  receiptPath: string;
+}
+
+export interface StudentSubmissionReceipt {
+  id: number;
+  referenceCode: string;
+  name: string;
+  description: string;
+  status: string;
+  statusLabel: string;
+  type: string;
+  typeLabel: string;
+  area: string;
+  course: string | null;
+  stage: string | null;
+  category: string | null;
+  productType: string | null;
+  createdAt: string;
+  updatedAt: string;
+  members: string;
+  membersList: string[];
+  teamSize: number;
+  leaderName: string | null;
+  leaderPhone: string | null;
+  leaderEmail: string | null;
+  needs: string[];
+  observations: string | null;
+  repoUrl: string | null;
+  websiteUrl: string | null;
+  primaryColor: string;
+  secondaryColor: string;
+  bannerUrl: string | null;
+  communityUrl: string | null;
+  boardingPassPath: string;
+  paymentProofPath: string | null;
+  receiptPath: string;
+  detailPath: string;
+  canEdit: boolean;
+}
+
+export interface StudentEnrollmentListItem {
+  id: number;
+  courseId: number;
+  courseName: string;
+  companyName: string;
+  referenceCode: string;
+  paymentStatus: string;
+  statusLabel: string;
+  enrolledAt: string;
+  receiptPath: string;
+  ticketPath: string | null;
+  paymentProofPath: string | null;
+}
+
+export interface StudentEnrollmentReceipt {
+  id: number;
+  courseId: number;
+  courseName: string;
+  courseDescription: string;
+  companyName: string;
+  companyCategory: string;
+  communityUrl: string | null;
+  referenceCode: string;
+  studentNumber: string;
+  fullName: string;
+  email: string | null;
+  studentCourse: string | null;
+  phone: string | null;
+  paymentPhone: string | null;
+  paymentStatus: string;
+  statusLabel: string;
+  paymentSubmittedAt: string | null;
+  paymentProofPath: string | null;
+  ticketPath: string | null;
+  whatsAppRedirectUrl: string | null;
+  enrolledAt: string;
+  receiptPath: string;
 }
 
 export interface AdminAuthorizedStudent {
@@ -280,9 +383,43 @@ export interface AdminModerationLiveChatMessage extends LiveChatMessage {
   studentNumber: string;
 }
 
+const STUDENT_SESSION_KEY = "uor_student";
+
+function readSessionStudent() {
+  if (typeof sessionStorage === "undefined") {
+    return null;
+  }
+
+  const raw = sessionStorage.getItem(STUDENT_SESSION_KEY);
+  if (!raw) {
+    return null;
+  }
+
+  try {
+    return JSON.parse(raw) as StudentProfile;
+  } catch {
+    sessionStorage.removeItem(STUDENT_SESSION_KEY);
+    return null;
+  }
+}
+
+export function setSessionStudent(student: StudentProfile | null) {
+  if (typeof sessionStorage === "undefined") {
+    return;
+  }
+
+  if (!student) {
+    sessionStorage.removeItem(STUDENT_SESSION_KEY);
+    return;
+  }
+
+  sessionStorage.setItem(STUDENT_SESSION_KEY, JSON.stringify(student));
+}
+
 export function setToken(token: string | null) {
   if (!token) {
     localStorage.removeItem(TOKEN_KEY);
+    setSessionStudent(null);
     return;
   }
   localStorage.setItem(TOKEN_KEY, token);
@@ -290,6 +427,22 @@ export function setToken(token: string | null) {
 
 export function getToken() {
   return typeof localStorage === "undefined" ? null : localStorage.getItem(TOKEN_KEY);
+}
+
+export function getSessionStudent() {
+  if (!getToken()) {
+    return null;
+  }
+
+  return readSessionStudent();
+}
+
+function storeLoginSession(result: AuthLoginResponse) {
+  if (result.success && result.student) {
+    setSessionStudent(result.student);
+  }
+
+  return result;
 }
 
 export function isAuthError(error: unknown) {
@@ -328,7 +481,7 @@ async function requestRaw(path: string, options?: RequestInit) {
   });
 
   if (!res.ok) {
-    if (res.status === 401 && token) {
+    if (res.status === 401) {
       setToken(null);
     }
     const error = await res.json().catch(() => ({ message: res.statusText }));
@@ -353,12 +506,57 @@ export const api = {
   health: () => request<{ status: string }>("/health"),
 
   auth: {
+    login: (studentNumber: string, password: string, origin?: "uorconnect" | "laboratorio") =>
+      request<AuthLoginResponse>("/auth/login", {
+        method: "POST",
+        body: JSON.stringify({ studentNumber, password, origin }),
+      }).then(storeLoginSession),
+    logout: async () => {
+      try {
+        await request<{ success: boolean }>("/auth/logout", {
+          method: "POST",
+        });
+      } finally {
+        setToken(null);
+      }
+    },
+    me: () =>
+      request<StudentProfile>("/auth/me").then((student) => {
+        setSessionStudent(student);
+        return student;
+      }),
+    updateMe: (data: StudentProfileUpdateInput) =>
+      request<StudentProfile>("/auth/me", {
+        method: "PATCH",
+        body: JSON.stringify(data),
+      }).then((student) => {
+        setSessionStudent(student);
+        return student;
+      }),
+  },
+
+  contest: {
     login: (studentNumber: string, password: string) =>
-      request<{ success: boolean; studentNumber?: string; student?: StudentProfile; token?: string; error?: string }>("/auth/login", {
+      request<AuthLoginResponse>("/contest/auth/login", {
         method: "POST",
         body: JSON.stringify({ studentNumber, password }),
+      }).then(storeLoginSession),
+    me: () =>
+      request<StudentProfile>("/contest/me").then((student) => {
+        setSessionStudent(student);
+        return student;
       }),
-    logout: () => setToken(null),
+    securityOverview: () =>
+      request<AdminSecurityOverview>("/contest/security"),
+    authorizeAdmin: (studentNumber: string) =>
+      request<AdminAuthorizedStudent>("/contest/security/authorized-students", {
+        method: "POST",
+        body: JSON.stringify({ studentNumber }),
+      }),
+    revokeAdmin: (studentNumber: string) =>
+      request<{ success: boolean }>(`/contest/security/authorized-students/${studentNumber}`, {
+        method: "DELETE",
+      }),
   },
 
   reports: {
@@ -460,6 +658,10 @@ export const api = {
       }),
     boardingPassPdf: (id: number) =>
       requestBlob(`/submissions/${id}/boarding-pass.pdf`),
+    mine: () =>
+      request<StudentOwnedSubmissionListItem[]>("/submissions/mine"),
+    receipt: (id: number) =>
+      request<StudentSubmissionReceipt>(`/submissions/${id}/receipt`),
     summary: (id: number) =>
       request<SubmissionSummary | null>(`/submissions/${id}/summary`),
     review: (id: number, data: ReviewInput) =>
@@ -569,6 +771,12 @@ export const api = {
       request<{ likedCourseIds: number[] }>("/courses/liked"),
     myEnrollments: () =>
       request<{ enrolledCourseIds: number[] }>("/courses/enrollments"),
+    enrollmentsMine: () =>
+      request<StudentEnrollmentListItem[]>("/courses/enrollments/mine"),
+    enrollmentReceipt: (id: number) =>
+      request<StudentEnrollmentReceipt>(`/courses/enrollments/${id}`),
+    enrollmentTicketPdf: (id: number) =>
+      requestBlob(`/courses/enrollments/${id}/ticket.pdf`),
     enroll: (id: number) =>
       request<{ enrolled: boolean; communityUrl: string | null; studentCount: number }>(`/courses/${id}/enroll`, { method: "POST" }),
     like: (id: number) =>

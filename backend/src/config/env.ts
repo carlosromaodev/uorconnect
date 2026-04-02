@@ -8,6 +8,8 @@ const envSchema = z.object({
   JWT_SECRET: z.string().min(16).default("dev-secret-change-me"),
   CORS_ORIGIN: z.string().default("*"),
   PUBLIC_API_URL: z.string().url().optional(),
+  PUBLIC_APP_URL: z.string().url().optional(),
+  ANALYTICS_RETENTION_DAYS: z.coerce.number().int().min(7).max(730).default(180),
   INVOICE_GENERATOR_API_URL: z.string().url().default("https://invoice-generator.com"),
   INVOICE_GENERATOR_API_KEY: z.string().min(1).optional()
 });

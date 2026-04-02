@@ -13,6 +13,9 @@ import { guideRoutes } from "../../modules/guide/http/guide.routes";
 import { homeContentRoutes } from "../../modules/home-content/http/home-content.routes";
 import { coursesRoutes } from "../../modules/courses/http/courses.routes";
 import { reportsRoutes } from "../../modules/reports/http/reports.routes";
+import { analyticsRoutes } from "../../modules/analytics/http/analytics.routes";
+import { contestAuthRoutes } from "../../modules/contest/http/contest-auth.routes";
+import { contestAdminRoutes } from "../../modules/contest/http/contest-admin.routes";
 
 export function registerRoutes(app: FastifyInstance, env: Env, deps?: AppDependencies) {
   // Basic landing route so hitting "/" does not 404
@@ -30,4 +33,7 @@ export function registerRoutes(app: FastifyInstance, env: Env, deps?: AppDepende
   app.register(homeContentRoutes, { prefix: "/home-content", env });
   app.register(coursesRoutes, { prefix: "/courses", env });
   app.register(reportsRoutes, { prefix: "/reports", env });
+  app.register(analyticsRoutes, { prefix: "/analytics", env });
+  app.register(contestAuthRoutes, { prefix: "/contest", env });
+  app.register(contestAdminRoutes, { prefix: "/contest", env });
 }

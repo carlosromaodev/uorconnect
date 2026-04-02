@@ -722,7 +722,7 @@ export default function Index() {
 
   const statsData = [
     { value: stats ? `${stats.participants}` : "0", label: "Participantes", icon: Users },
-    { value: stats ? `${stats.approved}` : "0", label: "Projetos Exibidos", icon: FolderOpen },
+    { value: stats ? `${stats.submissions}` : "0", label: "Projetos Exibidos", icon: FolderOpen },
     { value: `${speakers.length}`, label: "Palestrantes", icon: Mic },
     { value: `${agendaItems.length}`, label: "Sessões na Agenda", icon: GraduationCap },
   ];

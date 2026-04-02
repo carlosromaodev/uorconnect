@@ -15,7 +15,7 @@ import {
   UpdateSubmissionStatus
 } from "../use-cases/manage-submissions";
 import { loadEnv } from "../../../config/env";
-import { isCompetitionEligible, normalizeSubmissionType } from "../domain/submission-policy";
+import { getSubmissionTypeLabel, isCompetitionEligible, normalizeSubmissionType } from "../domain/submission-policy";
 import { authGuard } from "../../auth/http/auth.middleware";
 import { adminGuard } from "../../auth/http/admin.middleware";
 import {
@@ -28,29 +28,29 @@ import {
 } from "../domain/submission-format";
 import { buildBoardingPassHtml, buildSubmissionCommunityUrl, parseStoredProof, proofExtensionFromMime } from "./submission-ticket";
 import { loadLogoDataUri, renderPdfFromHtml } from "../../reports/http/pdf-report.utils";
+import { OFFICIAL_COURSES } from "../../../shared/official-courses";
+import { prisma } from "../../../shared/prisma";
+import { normalizeAngolaPhone } from "../../auth/domain/student-format";
+import {
+  buildStudentSubmissionListItem,
+  buildStudentSubmissionReceiptResponse,
+  canStudentEditSubmission,
+} from "./student-submission-presenter";
 
 const submissionRepo = new PrismaSubmissionRepository();
 const submissionConfigRepo = new PrismaSubmissionConfigRepository();
 const voteRepo = new PrismaVoteRepository();
 const reviewRepo = new PrismaReviewRepository();
 
-const submissionCourses = [
-  "Eng. Informática",
-  "Eng. Telecomunicações",
-  "Eng. Eletrotécnica",
-  "Ciências Computação",
-  "Arquitetura e Urbanismo",
-  "Direito",
-  "Contabilidade e Auditoria",
-  "Gestão de Empresas",
-  "Economia",
-  "Enfermagem",
-  "Psicologia",
-  "Outro"
-] as const;
-
 const hexColorSchema = z.string().regex(/^#([0-9a-fA-F]{6})$/);
+const imageDataUrlSchema = z.string().regex(/^data:image\/[a-zA-Z0-9.+-]+;base64,[A-Za-z0-9+/=]+$/);
 const teamMemberSchema = z.string().trim().min(2).max(80);
+const leaderPhoneSchema = z.string()
+  .trim()
+  .transform((value) => normalizeAngolaPhone(value) ?? value.trim())
+  .refine((value) => /^\+2449\d{8}$/.test(value), {
+    message: "Número de telefone inválido.",
+  });
 const teamMembersInputSchema = z.union([
   z.array(teamMemberSchema).min(1).max(MAX_TEAM_MEMBERS),
   z.string().min(3)
@@ -65,7 +65,7 @@ const typeSpecificSchema = z.discriminatedUnion("type", [
   z.object({
     type: z.literal("PROJECT"),
     area: z.enum(["Engenharia", "Tecnologia", "Sustentabilidade", "Inovação", "Ciências Aplicadas", "Outra"]),
-    course: z.enum(submissionCourses)
+    course: z.enum(OFFICIAL_COURSES)
   }),
   z.object({
     type: z.literal("BUSINESS"),
@@ -82,10 +82,13 @@ const typeSpecificSchema = z.discriminatedUnion("type", [
 
 const baseSubmissionSchema = z.object({
   name: z.string().min(3).max(100),
-  description: z.string().min(20).max(500),
+  description: z.string().trim().max(500).refine((value) => value.length === 0 || value.length >= 10, {
+    message: "Descrição deve ter entre 10 e 500 caracteres."
+  }),
   members: teamMembersInputSchema,
   leaderName: z.string().trim().min(3).max(120),
-  leaderPhone: z.string().regex(/^\+244 9\d{8}$/),
+  leaderPhone: leaderPhoneSchema,
+  leaderEmail: z.string().trim().email().optional(),
   needs: z.array(
     z.enum([
       "Tomada elétrica",
@@ -106,7 +109,7 @@ const baseSubmissionSchema = z.object({
   agreeRules: z.literal(true),
   primaryColor: hexColorSchema.optional(),
   secondaryColor: hexColorSchema.optional(),
-  bannerUrl: z.string().url().nullable().optional()
+  bannerUrl: z.union([z.string().url(), imageDataUrlSchema]).nullable().optional()
 });
 
 const submissionConfigSchema = z.object({
@@ -124,7 +127,56 @@ const createSubmissionSchema = baseSubmissionSchema.and(typeSpecificSchema);
 const submissionPresentationSchema = z.object({
   primaryColor: hexColorSchema.optional(),
   secondaryColor: hexColorSchema.optional(),
-  bannerUrl: z.string().url().nullable().optional()
+  bannerUrl: z.union([z.string().url(), imageDataUrlSchema]).nullable().optional()
+});
+
+const studentSubmissionListItemSchema = z.object({
+  id: z.number(),
+  referenceCode: z.string(),
+  name: z.string(),
+  status: z.string(),
+  statusLabel: z.string(),
+  type: z.string(),
+  typeLabel: z.string(),
+  createdAt: z.string(),
+  receiptPath: z.string(),
+});
+
+const studentSubmissionReceiptSchema = z.object({
+  id: z.number(),
+  referenceCode: z.string(),
+  name: z.string(),
+  description: z.string(),
+  status: z.string(),
+  statusLabel: z.string(),
+  type: z.string(),
+  typeLabel: z.string(),
+  area: z.string(),
+  course: z.string().nullable(),
+  stage: z.string().nullable(),
+  category: z.string().nullable(),
+  productType: z.string().nullable(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+  members: z.string(),
+  membersList: z.array(z.string()),
+  teamSize: z.number(),
+  leaderName: z.string().nullable(),
+  leaderPhone: z.string().nullable(),
+  leaderEmail: z.string().nullable(),
+  needs: z.array(z.string()),
+  observations: z.string().nullable(),
+  repoUrl: z.string().nullable(),
+  websiteUrl: z.string().nullable(),
+  primaryColor: z.string(),
+  secondaryColor: z.string(),
+  bannerUrl: z.string().nullable(),
+  communityUrl: z.string().nullable(),
+  boardingPassPath: z.string(),
+  paymentProofPath: z.string().nullable(),
+  receiptPath: z.string(),
+  detailPath: z.string(),
+  canEdit: z.boolean(),
 });
 
 function hexToRgb(value: string) {
@@ -201,63 +253,180 @@ export async function submissionRoutes(app: FastifyInstance, { env }: { env: Ret
     return getSubmissionConfig.execute();
   });
 
-  app.post("/", {
-    schema: {
-      body: createSubmissionSchema,
-      response: {
-        201: z.object({
-          referenceCode: z.string(),
-          status: z.string(),
-          id: z.number(),
-          communityUrl: z.string().nullable(),
-          boardingPassPath: z.string(),
-          paymentProofPath: z.string().nullable()
-        }),
-        400: z.object({ message: z.string() }),
-        403: z.object({ message: z.string() })
+  app.register(async (protectedApp) => {
+    protectedApp.register(authGuard, { env });
+
+    protectedApp.post("/", {
+      schema: {
+        body: createSubmissionSchema,
+        response: {
+          201: z.object({
+            referenceCode: z.string(),
+            status: z.string(),
+            id: z.number(),
+            communityUrl: z.string().nullable(),
+            boardingPassPath: z.string(),
+            paymentProofPath: z.string().nullable(),
+            receiptPath: z.string(),
+          }),
+          400: z.object({ message: z.string() }),
+          401: z.object({ message: z.string() }),
+          403: z.object({ message: z.string() })
+        }
       }
-    }
-  }, async (request, reply) => {
-    const payload = request.body as z.infer<typeof createSubmissionSchema>;
-    const normalizedMembers = normalizeTeamMembersInput(payload.members);
-    const primaryColor = payload.primaryColor ?? DEFAULT_SUBMISSION_PRIMARY_COLOR;
-    const secondaryColor = payload.secondaryColor ?? DEFAULT_SUBMISSION_SECONDARY_COLOR;
-    const themeError = validateSubmissionTheme(primaryColor, secondaryColor);
+    }, async (request, reply) => {
+      if (!request.student?.id) {
+        return reply.code(401).send({ message: "Missing or invalid token" });
+      }
 
-    if (themeError) {
-      return reply.code(400).send({ message: themeError });
-    }
+      const payload = request.body as z.infer<typeof createSubmissionSchema>;
+      const normalizedMembers = normalizeTeamMembersInput(payload.members);
+      const primaryColor = payload.primaryColor ?? DEFAULT_SUBMISSION_PRIMARY_COLOR;
+      const secondaryColor = payload.secondaryColor ?? DEFAULT_SUBMISSION_SECONDARY_COLOR;
+      const themeError = validateSubmissionTheme(primaryColor, secondaryColor);
 
-    const config = await getSubmissionConfig.execute();
-    if (!config.isOpen) {
-      return reply.code(403).send({ message: "As candidaturas estão fechadas neste momento." });
-    }
+      if (themeError) {
+        return reply.code(400).send({ message: themeError });
+      }
 
-    const result = await createSubmission.execute({
-      ...payload,
-      members: normalizedMembers,
-      primaryColor,
-      secondaryColor,
-      bannerUrl: payload.bannerUrl ?? null
+      const config = await getSubmissionConfig.execute();
+      if (!config.isOpen) {
+        return reply.code(403).send({ message: "As candidaturas estão fechadas neste momento." });
+      }
+
+      const student = await prisma.student.findUnique({
+        where: { id: request.student.id },
+      });
+
+      if (!student) {
+        return reply.code(401).send({ message: "Missing or invalid token" });
+      }
+
+      const result = await createSubmission.execute({
+        ...payload,
+        members: normalizedMembers,
+        primaryColor,
+        secondaryColor,
+        bannerUrl: payload.bannerUrl ?? null,
+        studentId: student.id,
+        studentNumberSnapshot: student.studentNumber,
+      });
+
+      const communityUrl = buildSubmissionCommunityUrl(result.type, config);
+
+      return reply.code(201).send({
+        referenceCode: result.referenceCode,
+        status: result.status,
+        id: result.id,
+        communityUrl,
+        boardingPassPath: `/submissions/${result.id}/boarding-pass.pdf`,
+        paymentProofPath: `/submissions/${result.id}/payment-proof`,
+        receiptPath: `/submissoes/${result.id}`,
+      });
     });
 
-    const communityUrl = buildSubmissionCommunityUrl(result.type, config);
+    protectedApp.get("/mine", {
+      schema: {
+        response: {
+          200: z.array(studentSubmissionListItemSchema),
+          401: z.object({ message: z.string() }),
+        }
+      }
+    }, async (request, reply) => {
+      if (!request.student?.id) {
+        return reply.code(401).send({ message: "Missing or invalid token" });
+      }
 
-    return reply.code(201).send({
-      referenceCode: result.referenceCode,
-      status: result.status,
-      id: result.id,
-      communityUrl,
-      boardingPassPath: `/submissions/${result.id}/boarding-pass.pdf`,
-      paymentProofPath: `/submissions/${result.id}/payment-proof`
+      const submissions = await submissionRepo.listByStudent(request.student.id);
+      return reply.send(submissions.map((submission) => buildStudentSubmissionListItem(submission)));
     });
-  });
 
-  app.register(async (adminApp) => {
-    adminApp.register(authGuard, { env });
-    adminApp.register(adminGuard);
+    protectedApp.get("/:id/receipt", {
+      schema: {
+        params: z.object({ id: z.coerce.number().int().positive() }),
+        response: {
+          200: studentSubmissionReceiptSchema,
+          401: z.object({ message: z.string() }),
+          404: z.object({ message: z.string() }),
+        }
+      }
+    }, async (request, reply) => {
+      if (!request.student?.id) {
+        return reply.code(401).send({ message: "Missing or invalid token" });
+      }
 
-    adminApp.put("/config", {
+      const submission = await submissionRepo.findOwnedById((request.params as { id: number }).id, request.student.id);
+      if (!submission) {
+        return reply.code(404).send({ message: "Submission not found" });
+      }
+
+      const config = await getSubmissionConfig.execute();
+      return reply.send(buildStudentSubmissionReceiptResponse(submission, config));
+    });
+
+    protectedApp.patch("/:id", {
+      schema: {
+        params: z.object({ id: z.coerce.number().int().positive() }),
+        body: createSubmissionSchema,
+        response: {
+          200: studentSubmissionReceiptSchema,
+          400: z.object({ message: z.string() }),
+          401: z.object({ message: z.string() }),
+          403: z.object({ message: z.string() }),
+          404: z.object({ message: z.string() }),
+        }
+      }
+    }, async (request, reply) => {
+      if (!request.student?.id) {
+        return reply.code(401).send({ message: "Missing or invalid token" });
+      }
+
+      const submissionId = (request.params as { id: number }).id;
+      const existing = await submissionRepo.findOwnedById(submissionId, request.student.id);
+      if (!existing) {
+        return reply.code(404).send({ message: "Submission not found" });
+      }
+
+      if (!canStudentEditSubmission(existing.status)) {
+        return reply.code(403).send({ message: "Esta submissão já não pode ser editada." });
+      }
+
+      const payload = request.body as z.infer<typeof createSubmissionSchema>;
+      const normalizedMembers = normalizeTeamMembersInput(payload.members);
+      const primaryColor = payload.primaryColor ?? DEFAULT_SUBMISSION_PRIMARY_COLOR;
+      const secondaryColor = payload.secondaryColor ?? DEFAULT_SUBMISSION_SECONDARY_COLOR;
+      const themeError = validateSubmissionTheme(primaryColor, secondaryColor);
+
+      if (themeError) {
+        return reply.code(400).send({ message: themeError });
+      }
+
+      const student = await prisma.student.findUnique({
+        where: { id: request.student.id },
+      });
+
+      if (!student) {
+        return reply.code(401).send({ message: "Missing or invalid token" });
+      }
+
+      const updated = await submissionRepo.updateOwnedSubmission(submissionId, request.student.id, {
+        ...payload,
+        members: normalizedMembers,
+        primaryColor,
+        secondaryColor,
+        bannerUrl: payload.bannerUrl ?? null,
+        studentId: student.id,
+        studentNumberSnapshot: student.studentNumber,
+      });
+
+      const config = await getSubmissionConfig.execute();
+      return reply.send(buildStudentSubmissionReceiptResponse(updated, config));
+    });
+
+    protectedApp.register(async (adminApp) => {
+      adminApp.register(adminGuard);
+
+      adminApp.put("/config", {
       schema: {
         body: submissionConfigSchema,
         response: {
@@ -270,12 +439,12 @@ export async function submissionRoutes(app: FastifyInstance, { env }: { env: Ret
           403: z.object({ message: z.string() })
         }
       }
-    }, async (request) => {
-      const payload = request.body as z.infer<typeof submissionConfigSchema>;
-      return updateSubmissionConfig.execute(payload);
-    });
+      }, async (request) => {
+        const payload = request.body as z.infer<typeof submissionConfigSchema>;
+        return updateSubmissionConfig.execute(payload);
+      });
 
-    adminApp.get("/", {
+      adminApp.get("/", {
       schema: {
         querystring: z.object({ status: z.string().optional(), type: z.string().optional() }),
         response: {
@@ -309,10 +478,10 @@ export async function submissionRoutes(app: FastifyInstance, { env }: { env: Ret
           403: z.object({ message: z.string() })
         }
       }
-    }, async (request) => {
-      const { status, type } = request.query as { status?: any; type?: any };
-      const list = await listDetailedSubmissions.execute(status, type);
-      return list.map((s) => {
+      }, async (request) => {
+        const { status, type } = request.query as { status?: any; type?: any };
+        const list = await listDetailedSubmissions.execute(status, type);
+        return list.map((s) => {
         const competitionEligible = isCompetitionEligible(s.type, s.area);
         const slug = buildSubmissionSlug(s.name, s.id);
 
@@ -343,9 +512,9 @@ export async function submissionRoutes(app: FastifyInstance, { env }: { env: Ret
           eligibleForAward: competitionEligible
         };
       });
-    });
+      });
 
-    adminApp.patch("/:id/status", {
+      adminApp.patch("/:id/status", {
       schema: {
         params: z.object({ id: z.coerce.number().int().positive() }),
         body: z.object({
@@ -358,19 +527,19 @@ export async function submissionRoutes(app: FastifyInstance, { env }: { env: Ret
           404: z.object({ message: z.string() })
         }
       }
-    }, async (request, reply) => {
-      const { id } = request.params as { id: number };
-      const { status } = request.body as { status: "PENDING" | "APPROVED" | "REJECTED" };
+      }, async (request, reply) => {
+        const { id } = request.params as { id: number };
+        const { status } = request.body as { status: "PENDING" | "APPROVED" | "REJECTED" };
 
-      try {
-        await updateSubmissionStatus.execute(id, status);
-        return reply.send({ success: true });
-      } catch (error) {
-        return reply.code(404).send({ message: error instanceof Error ? error.message : "Submission not found" });
-      }
-    });
+        try {
+          await updateSubmissionStatus.execute(id, status);
+          return reply.send({ success: true });
+        } catch (error) {
+          return reply.code(404).send({ message: error instanceof Error ? error.message : "Submission not found" });
+        }
+      });
 
-    adminApp.patch("/:id/winner", {
+      adminApp.patch("/:id/winner", {
       schema: {
         params: z.object({ id: z.coerce.number().int().positive() }),
         response: {
@@ -381,7 +550,7 @@ export async function submissionRoutes(app: FastifyInstance, { env }: { env: Ret
           404: z.object({ message: z.string() })
         }
       }
-    }, async (request, reply) => {
+      }, async (request, reply) => {
       const { id } = request.params as { id: number };
 
       try {
@@ -394,9 +563,9 @@ export async function submissionRoutes(app: FastifyInstance, { env }: { env: Ret
         }
         return reply.code(400).send({ message });
       }
-    });
+      });
 
-    adminApp.patch("/:id/presentation", {
+      adminApp.patch("/:id/presentation", {
       schema: {
         params: z.object({ id: z.coerce.number().int().positive() }),
         body: submissionPresentationSchema,
@@ -415,7 +584,7 @@ export async function submissionRoutes(app: FastifyInstance, { env }: { env: Ret
           404: z.object({ message: z.string() })
         }
       }
-    }, async (request, reply) => {
+      }, async (request, reply) => {
       const { id } = request.params as { id: number };
       const body = request.body as z.infer<typeof submissionPresentationSchema>;
       const existing = await submissionRepo.findById(id);
@@ -443,9 +612,9 @@ export async function submissionRoutes(app: FastifyInstance, { env }: { env: Ret
         secondaryColor: updated.secondaryColor,
         bannerUrl: updated.bannerUrl ?? null
       });
-    });
+      });
 
-    adminApp.delete("/winner", {
+      adminApp.delete("/winner", {
       schema: {
         response: {
           200: z.object({ success: z.literal(true) }),
@@ -453,12 +622,12 @@ export async function submissionRoutes(app: FastifyInstance, { env }: { env: Ret
           403: z.object({ message: z.string() })
         }
       }
-    }, async (_, reply) => {
-      await clearWinnerSubmission.execute();
-      return reply.send({ success: true });
-    });
+      }, async (_, reply) => {
+        await clearWinnerSubmission.execute();
+        return reply.send({ success: true });
+      });
 
-    adminApp.delete("/:id", {
+      adminApp.delete("/:id", {
       schema: {
         params: z.object({ id: z.coerce.number().int().positive() }),
         response: {
@@ -468,13 +637,14 @@ export async function submissionRoutes(app: FastifyInstance, { env }: { env: Ret
           404: z.object({ message: z.string() })
         }
       }
-    }, async (request, reply) => {
-      try {
-        await deleteSubmission.execute((request.params as { id: number }).id);
-        return reply.send({ success: true });
-      } catch (error) {
-        return reply.code(404).send({ message: error instanceof Error ? error.message : "Submission not found" });
-      }
+      }, async (request, reply) => {
+        try {
+          await deleteSubmission.execute((request.params as { id: number }).id);
+          return reply.send({ success: true });
+        } catch (error) {
+          return reply.code(404).send({ message: error instanceof Error ? error.message : "Submission not found" });
+        }
+      });
     });
   });
 
@@ -525,7 +695,14 @@ export async function submissionRoutes(app: FastifyInstance, { env }: { env: Ret
 
     const generatedAt = new Date();
     const logoDataUri = await loadLogoDataUri();
-    const html = buildBoardingPassHtml(submission, { generatedAt, logoDataUri });
+    const publicAppUrl = env.PUBLIC_APP_URL ?? env.CORS_ORIGIN.split(",").map((item) => item.trim()).find((item) => item.startsWith("http")) ?? null;
+    const publicApiUrl = env.PUBLIC_API_URL?.replace(/\/$/, "") ?? null;
+    const html = buildBoardingPassHtml(submission, {
+      generatedAt,
+      logoDataUri,
+      publicAppUrl,
+      pdfUrl: publicApiUrl ? `${publicApiUrl}/submissions/${submission.id}/boarding-pass.pdf` : null
+    });
     const pdf = await renderPdfFromHtml(html, {
       footerLabel: `Talão ${submission.referenceCode}`
     });

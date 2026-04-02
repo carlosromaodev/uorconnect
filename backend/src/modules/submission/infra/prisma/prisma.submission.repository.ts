@@ -9,6 +9,7 @@ import type {
 } from "../../domain/submission.repository";
 import type { Submission } from "../../domain/submission";
 import { prisma } from "../../../../shared/prisma";
+import { normalizeAngolaPhone } from "../../../auth/domain/student-format";
 import {
   countTeamMembers,
   DEFAULT_SUBMISSION_PRIMARY_COLOR,
@@ -27,53 +28,109 @@ function parseNeeds(value: string) {
   }
 }
 
-export class PrismaSubmissionRepository implements SubmissionRepository {
-  async create(data: CreateSubmissionInput): Promise<Submission> {
-    const members = normalizeTeamMembersInput(data.members);
-    const digits = data.leaderPhone.replace(/\D/g, "");
-    const syntheticLeaderEmail = data.leaderEmail?.trim() || `submission-${digits}@uor-connect.local`;
+function isMissingSubmissionOwnershipColumnError(error: unknown) {
+  return error instanceof Error
+    && /studentId/i.test(error.message)
+    && /does not exist|unknown arg|no such column/i.test(error.message);
+}
 
-    const submission = await prisma.submission.create({
-      data: {
-        type: data.type,
-        name: data.name,
-        description: data.description,
-        area: data.area,
-        course: data.course ?? null,
-        stage: data.stage ?? null,
-        category: data.category ?? null,
-        productType: data.productType ?? null,
-        teamSize: members.length,
-        members: stringifyTeamMembers(members),
-        leaderName: data.leaderName.trim(),
-        leaderPhone: data.leaderPhone,
-        leaderEmail: syntheticLeaderEmail,
-        needs: JSON.stringify(data.needs),
-        paymentProof: data.paymentProof,
-        paymentConfirmed: data.paymentConfirmed,
-        repoUrl: data.repoUrl ?? null,
-        websiteUrl: data.websiteUrl ?? null,
-        observations: data.observations ?? null,
-        agreeRules: data.agreeRules,
-        primaryColor: data.primaryColor ?? DEFAULT_SUBMISSION_PRIMARY_COLOR,
-        secondaryColor: data.secondaryColor ?? DEFAULT_SUBMISSION_SECONDARY_COLOR,
-        bannerUrl: data.bannerUrl ?? null,
-        referenceCode: data.referenceCode ?? (await this.nextReference()),
-        leader: {
-          connectOrCreate: {
-            where: { email: syntheticLeaderEmail },
-            create: { email: syntheticLeaderEmail }
-          }
+function isSyntheticLeaderEmail(value?: string | null) {
+  return Boolean(value && /^submission-\d+@uor-connect\.local$/i.test(value));
+}
+
+function buildSubmissionWriteData(data: CreateSubmissionInput, options?: { includeOwnership?: boolean }) {
+  const members = normalizeTeamMembersInput(data.members);
+  const digits = data.leaderPhone.replace(/\D/g, "");
+  const syntheticLeaderEmail = data.leaderEmail?.trim() || `submission-${digits}@uor-connect.local`;
+  const includeOwnership = options?.includeOwnership ?? true;
+
+  return {
+    members,
+    syntheticLeaderEmail,
+    writeData: {
+      type: data.type,
+      name: data.name,
+      description: data.description,
+      area: data.area,
+      course: data.course ?? null,
+      stage: data.stage ?? null,
+      category: data.category ?? null,
+      productType: data.productType ?? null,
+      teamSize: members.length,
+      members: stringifyTeamMembers(members),
+      leaderName: data.leaderName.trim(),
+      leaderPhone: data.leaderPhone,
+      leaderEmail: syntheticLeaderEmail,
+      needs: JSON.stringify(data.needs),
+      paymentProof: data.paymentProof,
+      paymentConfirmed: data.paymentConfirmed,
+      repoUrl: data.repoUrl ?? null,
+      websiteUrl: data.websiteUrl ?? null,
+      observations: data.observations ?? null,
+      agreeRules: data.agreeRules,
+      primaryColor: data.primaryColor ?? DEFAULT_SUBMISSION_PRIMARY_COLOR,
+      secondaryColor: data.secondaryColor ?? DEFAULT_SUBMISSION_SECONDARY_COLOR,
+      bannerUrl: data.bannerUrl ?? null,
+      studentNumberSnapshot: includeOwnership ? (data.studentNumberSnapshot ?? null) : undefined,
+      student: includeOwnership && data.studentId ? { connect: { id: data.studentId } } : undefined,
+      leader: {
+        connectOrCreate: {
+          where: { email: syntheticLeaderEmail },
+          create: { email: syntheticLeaderEmail }
         }
       }
-    });
+    },
+  };
+}
 
-    return this.map(submission);
+export class PrismaSubmissionRepository implements SubmissionRepository {
+  async create(data: CreateSubmissionInput): Promise<Submission> {
+    const referenceCode = data.referenceCode ?? (await this.nextReference());
+
+    try {
+      const { writeData } = buildSubmissionWriteData(data);
+      const submission = await prisma.submission.create({
+        data: {
+          referenceCode,
+          ...writeData,
+        }
+      });
+
+      return this.map(submission);
+    } catch (error) {
+      if (!isMissingSubmissionOwnershipColumnError(error)) {
+        throw error;
+      }
+
+      const { writeData } = buildSubmissionWriteData(data, { includeOwnership: false });
+      const submission = await prisma.submission.create({
+        data: {
+          referenceCode,
+          ...writeData,
+        }
+      });
+
+      return this.map(submission);
+    }
   }
 
   async findById(id: number): Promise<Submission | null> {
     const submission = await prisma.submission.findUnique({ where: { id } });
     return submission ? this.map(submission) : null;
+  }
+
+  async findOwnedById(id: number, studentId: number): Promise<Submission | null> {
+    try {
+      const submission = await prisma.submission.findFirst({
+        where: { id, studentId },
+      });
+      return submission ? this.map(submission) : null;
+    } catch (error) {
+      if (isMissingSubmissionOwnershipColumnError(error)) {
+        return null;
+      }
+      throw error;
+    }
   }
 
   async findByReference(ref: string): Promise<Submission | null> {
@@ -90,6 +147,21 @@ export class PrismaSubmissionRepository implements SubmissionRepository {
       orderBy: { createdAt: "desc" }
     });
     return submissions.map(this.map);
+  }
+
+  async listByStudent(studentId: number): Promise<Submission[]> {
+    try {
+      const submissions = await prisma.submission.findMany({
+        where: { studentId },
+        orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }],
+      });
+      return submissions.map(this.map);
+    } catch (error) {
+      if (isMissingSubmissionOwnershipColumnError(error)) {
+        return [];
+      }
+      throw error;
+    }
   }
 
   async summary(id: number): Promise<SubmissionSummary | null> {
@@ -146,6 +218,34 @@ export class PrismaSubmissionRepository implements SubmissionRepository {
     return count > 0;
   }
 
+  async updateOwnedSubmission(id: number, studentId: number, data: Omit<CreateSubmissionInput, "referenceCode">): Promise<Submission> {
+    let existing: { id: number } | null = null;
+
+    try {
+      existing = await prisma.submission.findFirst({
+        where: { id, studentId },
+        select: { id: true },
+      });
+    } catch (error) {
+      if (isMissingSubmissionOwnershipColumnError(error)) {
+        throw new Error("Database migration required before editing owned submissions.");
+      }
+      throw error;
+    }
+
+    if (!existing) {
+      throw new Error("Submission not found");
+    }
+
+    const { writeData } = buildSubmissionWriteData(data);
+    const submission = await prisma.submission.update({
+      where: { id },
+      data: writeData,
+    });
+
+    return this.map(submission);
+  }
+
   async updatePresentation(id: number, data: {
     primaryColor?: string;
     secondaryColor?: string;
@@ -180,6 +280,40 @@ export class PrismaSubmissionRepository implements SubmissionRepository {
     ]);
   }
 
+  async assignOwnershipByPhone(studentId: number, studentNumber: string, phone?: string | null): Promise<number> {
+    const normalizedPhone = normalizeAngolaPhone(phone);
+    if (!normalizedPhone) return 0;
+
+    const matchingStudents = await prisma.student.findMany({
+      where: { phone: normalizedPhone },
+      select: { id: true },
+    });
+
+    if (matchingStudents.length !== 1 || matchingStudents[0]?.id !== studentId) {
+      return 0;
+    }
+
+    try {
+      const result = await prisma.submission.updateMany({
+        where: {
+          studentId: null,
+          leaderPhone: normalizedPhone,
+        },
+        data: {
+          studentId,
+          studentNumberSnapshot: studentNumber,
+        },
+      });
+
+      return result.count;
+    } catch (error) {
+      if (isMissingSubmissionOwnershipColumnError(error)) {
+        return 0;
+      }
+      throw error;
+    }
+  }
+
   private async nextReference() {
     const latest = await prisma.submission.findFirst({ orderBy: { id: "desc" }, select: { id: true } });
     const seq = (latest?.id ?? 0) + 1;
@@ -191,6 +325,7 @@ export class PrismaSubmissionRepository implements SubmissionRepository {
     members: normalizeTeamMembersInput(submission.members),
     teamSize: countTeamMembers(submission.members),
     needs: parseNeeds(submission.needs),
+    leaderEmail: isSyntheticLeaderEmail(submission.leaderEmail) ? null : submission.leaderEmail,
     primaryColor: submission.primaryColor ?? DEFAULT_SUBMISSION_PRIMARY_COLOR,
     secondaryColor: submission.secondaryColor ?? DEFAULT_SUBMISSION_SECONDARY_COLOR,
     bannerUrl: submission.bannerUrl ?? null

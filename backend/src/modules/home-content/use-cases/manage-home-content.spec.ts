@@ -19,6 +19,8 @@ class InMemoryHomeContentRepository implements HomeContentRepository {
     instagramUrl: "https://www.instagram.com/uorconnect??igsh=bmo4enl2cGN2cGc2&utm_source=qr",
     facebookUrl: null,
     linkedinUrl: null,
+    courseEnrollmentEnabled: true,
+    firstYearContestEnabled: true,
     createdAt: new Date(),
     updatedAt: new Date(),
   };
@@ -150,10 +152,14 @@ describe("Home content use cases", () => {
   it("updates social config", async () => {
     const result = await new UpdateHomeSocialConfig(repository).execute({
       facebookUrl: "https://facebook.com/uorconnect",
-      linkedinUrl: "https://linkedin.com/company/uorconnect"
+      linkedinUrl: "https://linkedin.com/company/uorconnect",
+      courseEnrollmentEnabled: false,
+      firstYearContestEnabled: false,
     });
 
     expect(result.facebookUrl).toContain("facebook.com/uorconnect");
     expect(result.linkedinUrl).toContain("linkedin.com/company/uorconnect");
+    expect(result.courseEnrollmentEnabled).toBe(false);
+    expect(result.firstYearContestEnabled).toBe(false);
   });
 });

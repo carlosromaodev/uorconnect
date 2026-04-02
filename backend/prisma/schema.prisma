@@ -52,12 +52,39 @@ model Student {
   lastLoginAt       DateTime?
   createdAt         DateTime           @default(now())
   updatedAt         DateTime           @updatedAt
+  submissions       Submission[]
   likes             StudentLike[]
   courseLikes       CourseLike[]
   courseEnrollments CourseEnrollment[]
   votes             StudentVote[]
   comments          StudentComment[]
   liveChatMessages  LiveChatMessage[]
+  analyticsSessions AnalyticsSession[]
+  analyticsEvents   AnalyticsEvent[]
+  consentRecords    ConsentRecord[]
+  loginAudits       StudentLoginAudit[]
+}
+
+enum StudentLoginOrigin {
+  UORCONNECT
+  LABORATORIO
+}
+
+enum AnalyticsAudience {
+  ANONYMOUS
+  AUTHENTICATED
+}
+
+enum AnalyticsCategory {
+  NAVIGATION
+  ENGAGEMENT
+  CONVERSION
+  LIVE
+  AUTH
+  MARKETING
+  FUNCTIONAL
+  CONSENT
+  SECURITY
 }
 
 model AdminAuthorizedStudent {
@@ -65,6 +92,19 @@ model AdminAuthorizedStudent {
   studentNumber String   @unique
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
+}
+
+model StudentLoginAudit {
+  id            Int                @id @default(autoincrement())
+  student       Student            @relation(fields: [studentId], references: [id])
+  studentId     Int
+  studentNumber String
+  origin        StudentLoginOrigin
+  loggedAt      DateTime           @default(now())
+
+  @@index([loggedAt])
+  @@index([studentId, loggedAt])
+  @@index([origin, loggedAt])
 }
 
 model StudentLike {
@@ -132,11 +172,16 @@ model Submission {
   updatedAt        DateTime         @updatedAt
   leader           User             @relation("UserSubmissions", fields: [leaderId], references: [id])
   leaderId         Int
+  student          Student?         @relation(fields: [studentId], references: [id])
+  studentId        Int?
+  studentNumberSnapshot String?
   votes            Vote[]
   reviews          Review[]
   studentLikes     StudentLike[]
   studentVotes     StudentVote[]
   studentComments  StudentComment[]
+
+  @@index([studentId, createdAt])
 }
 
 model SubmissionConfig {
@@ -248,12 +293,14 @@ model HomeCourse {
 }
 
 model HomeSocialConfig {
-  key          String   @id @default("default")
-  instagramUrl String?
-  facebookUrl  String?
-  linkedinUrl  String?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  key                     String   @id @default("default")
+  instagramUrl            String?
+  facebookUrl             String?
+  linkedinUrl             String?
+  courseEnrollmentEnabled Boolean  @default(true)
+  firstYearContestEnabled Boolean  @default(true)
+  createdAt               DateTime @default(now())
+  updatedAt               DateTime @updatedAt
 }
 
 model LiveContentConfig {
@@ -320,6 +367,10 @@ model CourseEnrollment {
   studentName   String?
   studentEmail  String?
   studentCourse String?
+  paymentProof  String?
+  paymentPhone  String?
+  paymentStatus String   @default("PENDING")
+  paymentSubmittedAt DateTime?
   createdAt     DateTime @default(now())
 
   @@unique([studentId, courseId])
@@ -348,6 +399,97 @@ model LiveChatMessage {
   student   Student  @relation(fields: [studentId], references: [id])
   studentId Int
   createdAt DateTime @default(now())
+}
+
+model AnalyticsSession {
+  id                Int               @id @default(autoincrement())
+  sessionId         String            @unique
+  visitorId         String
+  student           Student?          @relation(fields: [studentId], references: [id])
+  studentId         Int?
+  studentName       String?
+  studentCourse     String?
+  userRole          String?
+  audience          AnalyticsAudience @default(ANONYMOUS)
+  lastPageUrl       String?
+  entryPageUrl      String?
+  referrer          String?
+  utmSource         String?
+  utmMedium         String?
+  utmCampaign       String?
+  utmContent        String?
+  utmTerm           String?
+  deviceId          String?
+  analyticsAllowed  Boolean           @default(false)
+  functionalAllowed Boolean           @default(false)
+  marketingAllowed  Boolean           @default(false)
+  consentVersion    String?
+  eventCount        Int               @default(0)
+  startedAt         DateTime          @default(now())
+  lastSeenAt        DateTime          @default(now())
+  createdAt         DateTime          @default(now())
+  updatedAt         DateTime          @updatedAt
+  events            AnalyticsEvent[]
+
+  @@index([visitorId, startedAt])
+  @@index([studentId, startedAt])
+  @@index([audience, startedAt])
+}
+
+model AnalyticsEvent {
+  id             Int               @id @default(autoincrement())
+  visitorId      String
+  sessionId      String
+  session        AnalyticsSession? @relation(fields: [sessionId], references: [sessionId])
+  student        Student?          @relation(fields: [studentId], references: [id])
+  studentId      Int?
+  studentName    String?
+  studentCourse  String?
+  userRole       String?
+  audience       AnalyticsAudience @default(ANONYMOUS)
+  eventType      String
+  eventCategory  AnalyticsCategory
+  pageUrl        String?
+  routeName      String?
+  referrer       String?
+  elementId      String?
+  elementLabel   String?
+  duration       Int?
+  scrollDepth    Int?
+  consentVersion String?
+  metadata       Json?
+  ipHash         String?
+  userAgent      String?
+  createdAt      DateTime          @default(now())
+
+  @@index([createdAt])
+  @@index([eventType, createdAt])
+  @@index([eventCategory, createdAt])
+  @@index([visitorId, createdAt])
+  @@index([sessionId, createdAt])
+  @@index([studentId, createdAt])
+  @@index([audience, createdAt])
+}
+
+model ConsentRecord {
+  id                Int      @id @default(autoincrement())
+  visitorId         String?
+  sessionId         String?
+  student           Student? @relation(fields: [studentId], references: [id])
+  studentId         Int?
+  source            String   @default("banner")
+  consentVersion    String
+  essential         Boolean  @default(true)
+  analytics         Boolean  @default(false)
+  functional        Boolean  @default(false)
+  marketing         Boolean  @default(false)
+  lastVisitedPage   String?
+  lastCampaign      String?
+  createdAt         DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([studentId, createdAt])
+  @@index([visitorId, createdAt])
 }
 
 model AgendaItem {

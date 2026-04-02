@@ -20,14 +20,14 @@ export function formatDateLabel(value: Date) {
 
 export async function loadLogoDataUri() {
   const candidates = [
-    path.resolve(process.cwd(), "../frontend/public/logo.svg"),
-    path.resolve(process.cwd(), "public/logo.svg"),
+    { filePath: path.resolve(process.cwd(), "../frontend/public/logoworconnect.png"), mimeType: "image/png" },
+    { filePath: path.resolve(process.cwd(), "public/logoworconnect.png"), mimeType: "image/png" },
   ];
 
   for (const candidate of candidates) {
     try {
-      const logo = await readFile(candidate, "utf8");
-      return `data:image/svg+xml;base64,${Buffer.from(logo).toString("base64")}`;
+      const logo = await readFile(candidate.filePath);
+      return `data:${candidate.mimeType};base64,${logo.toString("base64")}`;
     } catch {
       continue;
     }

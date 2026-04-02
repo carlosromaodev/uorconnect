@@ -12,6 +12,18 @@ import { adminGuard, getAdminAccessResult } from "../../auth/http/admin.middlewa
 import { prisma } from "../../../shared/prisma";
 import type { Env } from "../../../config/env";
 import { renderCourseEnrollmentsPdf } from "./course-enrollments-report";
+import { renderCourseEnrollmentTicketPdf } from "./course-enrollment-ticket";
+import { normalizeAngolaPhone } from "../../auth/domain/student-format";
+import {
+  buildEnrollmentReference,
+  buildPaymentShareUrl,
+  buildStudentEnrollmentListItem,
+  buildStudentEnrollmentReceipt,
+  buildWhatsAppUrl,
+  getEnrollmentStatusLabel,
+  normalizePhoneForWhatsApp,
+  toAbsoluteUrl,
+} from "./course-enrollment-helpers";
 
 const courseSchema = z.object({
   id: z.number(),
@@ -64,8 +76,57 @@ const courseEnrollmentSchema = z.object({
   fullName: z.string(),
   course: z.string().nullable(),
   phone: z.string().nullable(),
+  paymentPhone: z.string().nullable(),
+  paymentStatus: z.string(),
+  paymentSubmittedAt: z.string().nullable(),
+  paymentProofPath: z.string().nullable(),
   whatsAppUrl: z.string().nullable(),
   enrolledAt: z.string()
+});
+
+const paidCourseEnrollmentSchema = z.object({
+  paymentProof: z.string().regex(/^(data:|https?:\/\/)/, "Anexa o comprovativo do pagamento."),
+  paymentConfirmed: z.literal(true),
+  paymentPhone: z.string().min(8).max(20)
+});
+
+const studentEnrollmentListItemSchema = z.object({
+  id: z.number(),
+  courseId: z.number(),
+  courseName: z.string(),
+  companyName: z.string(),
+  referenceCode: z.string(),
+  paymentStatus: z.string(),
+  statusLabel: z.string(),
+  enrolledAt: z.string(),
+  receiptPath: z.string(),
+  ticketPath: z.string().nullable(),
+  paymentProofPath: z.string().nullable(),
+});
+
+const studentEnrollmentReceiptSchema = z.object({
+  id: z.number(),
+  courseId: z.number(),
+  courseName: z.string(),
+  courseDescription: z.string(),
+  companyName: z.string(),
+  companyCategory: z.string(),
+  communityUrl: z.string().nullable(),
+  referenceCode: z.string(),
+  studentNumber: z.string(),
+  fullName: z.string(),
+  email: z.string().nullable(),
+  studentCourse: z.string().nullable(),
+  phone: z.string().nullable(),
+  paymentPhone: z.string().nullable(),
+  paymentStatus: z.string(),
+  statusLabel: z.string(),
+  paymentSubmittedAt: z.string().nullable(),
+  paymentProofPath: z.string().nullable(),
+  ticketPath: z.string().nullable(),
+  whatsAppRedirectUrl: z.string().nullable(),
+  enrolledAt: z.string(),
+  receiptPath: z.string(),
 });
 
 function normalizeFreeText(value?: string | null) {
@@ -79,26 +140,32 @@ function normalizeFreeText(value?: string | null) {
   return cleaned || null;
 }
 
-function normalizePhoneForWhatsApp(value?: string | null) {
-  if (!value) return null;
+function sendStoredEnrollmentProof(reply: FastifyReply, enrollment: { id: number; paymentProof: string | null }) {
+  if (!enrollment.paymentProof) {
+    return reply.code(409).send({ message: "Comprovativo indisponível para esta inscrição." });
+  }
 
-  const digits = value.replace(/\D/g, "");
-  if (!digits) return null;
-  if (digits.startsWith("244")) return digits;
-  if (digits.length === 9) return `244${digits}`;
-  return digits.length >= 9 ? digits : null;
-}
+  const stored = enrollment.paymentProof;
+  if (stored.startsWith("data:")) {
+    const [metadata, content] = stored.split(",", 2);
+    const mimeType = metadata.match(/^data:([^;]+);base64$/)?.[1] ?? "application/octet-stream";
+    const extension = mimeType.includes("pdf") ? "pdf" : mimeType.includes("png") ? "png" : mimeType.includes("webp") ? "webp" : "jpg";
 
-function buildWhatsAppUrl(phone: string | null, params: { courseName: string; fullName: string }) {
-  const normalizedPhone = normalizePhoneForWhatsApp(phone);
-  if (!normalizedPhone) return null;
+    reply.header("Content-Type", mimeType);
+    reply.header("Content-Disposition", `inline; filename="curso-comprovativo-${enrollment.id}.${extension}"`);
+    return reply.send(Buffer.from(content, "base64"));
+  }
 
-  const firstName = params.fullName.split(" ").filter(Boolean)[0] ?? "estudante";
-  const message = `Olá ${firstName}, aqui é a equipa do UOR Connect. Estamos a entrar em contacto sobre a tua inscrição no curso ${params.courseName}.`;
-  return `https://wa.me/${normalizedPhone}?text=${encodeURIComponent(message)}`;
+  if (/^https?:\/\//i.test(stored)) {
+    return reply.redirect(stored);
+  }
+
+  return reply.code(409).send({ message: "Comprovativo inválido para esta inscrição." });
 }
 
 export async function coursesRoutes(app: FastifyInstance, opts: { env: Env }) {
+  const publicApiBaseUrl = opts.env.PUBLIC_API_URL?.replace(/\/$/, "") ?? null;
+  const publicAppUrl = opts.env.PUBLIC_APP_URL?.replace(/\/$/, "") ?? "https://uorconnect.space";
   const listCourses = new ListCourses();
   const createCourse = new CreateCourse();
   const updateCourse = new UpdateCourse();
@@ -163,6 +230,12 @@ export async function coursesRoutes(app: FastifyInstance, opts: { env: Env }) {
             fullName,
             course: studentCourse,
             phone,
+            paymentPhone: normalizeFreeText(entry.paymentPhone),
+            paymentStatus: entry.paymentStatus,
+            paymentSubmittedAt: entry.paymentSubmittedAt?.toISOString() ?? null,
+            paymentProofPath: entry.paymentProof
+              ? `${publicApiBaseUrl ?? ""}/courses/enrollments/${entry.id}/payment-proof`
+              : null,
             whatsAppUrl: buildWhatsAppUrl(phone, { courseName: course.name, fullName }),
             enrolledAt: entry.createdAt.toISOString()
           };
@@ -355,16 +428,160 @@ export async function coursesRoutes(app: FastifyInstance, opts: { env: Env }) {
       };
     });
 
+    protectedApp.get("/enrollments/mine", {
+      schema: {
+        response: {
+          200: z.array(studentEnrollmentListItemSchema),
+          401: z.object({ message: z.string() }),
+        }
+      }
+    }, async (request, reply) => {
+      const student = request.student;
+      if (!student) return reply.status(401).send({ message: "Unauthorized" });
+
+      const enrollments = await prisma.courseEnrollment.findMany({
+        where: { studentId: student.id },
+        include: {
+          course: {
+            select: {
+              name: true,
+              companyName: true,
+            }
+          }
+        },
+        orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      });
+
+      return reply.send(enrollments.map((entry) => buildStudentEnrollmentListItem({
+        id: entry.id,
+        courseId: entry.courseId,
+        enrolledAt: entry.createdAt.toISOString(),
+        paymentStatus: entry.paymentStatus,
+        paymentProofPath: entry.paymentProof ? `/courses/enrollments/${entry.id}/payment-proof` : null,
+        ticketPath: `/courses/enrollments/${entry.id}/ticket.pdf`,
+        course: entry.course,
+      })));
+    });
+
+    protectedApp.get("/enrollments/:id", {
+      schema: {
+        params: z.object({ id: z.coerce.number().int().positive() }),
+        response: {
+          200: studentEnrollmentReceiptSchema,
+          401: z.object({ message: z.string() }),
+          403: z.object({ message: z.string() }),
+          404: z.object({ message: z.string() }),
+        }
+      }
+    }, async (request, reply) => {
+      const student = request.student;
+      if (!student) return reply.status(401).send({ message: "Unauthorized" });
+
+      const enrollment = await prisma.courseEnrollment.findUnique({
+        where: { id: (request.params as { id: number }).id },
+        include: {
+          course: true,
+          student: true,
+        }
+      });
+
+      if (!enrollment) {
+        return reply.code(404).send({ message: "Enrollment not found" });
+      }
+
+      if (enrollment.studentId !== student.id) {
+        return reply.status(403).send({ message: "Access denied" });
+      }
+
+      const paymentProofPath = enrollment.paymentProof
+        ? `/courses/enrollments/${enrollment.id}/payment-proof`
+        : null;
+      const ticketPath = `/courses/enrollments/${enrollment.id}/ticket.pdf`;
+
+      return reply.send(buildStudentEnrollmentReceipt({
+        id: enrollment.id,
+        courseId: enrollment.courseId,
+        studentNumber: enrollment.studentNumber,
+        fullName: normalizeFreeText(enrollment.studentName ?? enrollment.student?.name) ?? `Estudante ${enrollment.studentNumber}`,
+        email: normalizeFreeText(enrollment.studentEmail ?? enrollment.student?.email),
+        studentCourse: normalizeFreeText(enrollment.studentCourse ?? enrollment.student?.course),
+        phone: normalizeFreeText(enrollment.student?.phone),
+        paymentPhone: normalizeFreeText(enrollment.paymentPhone),
+        paymentStatus: enrollment.paymentStatus,
+        paymentSubmittedAt: enrollment.paymentSubmittedAt?.toISOString() ?? null,
+        paymentProofPath,
+        ticketPath,
+        whatsAppRedirectUrl: enrollment.course.isPaid ? buildPaymentShareUrl({
+          courseName: enrollment.course.name,
+          fullName: normalizeFreeText(enrollment.studentName ?? enrollment.student?.name) ?? `Estudante ${enrollment.studentNumber}`,
+          studentNumber: enrollment.studentNumber,
+          destinationUrl: enrollment.course.communityUrl ?? null,
+          paymentProofPath,
+          ticketPath,
+          publicApiBaseUrl,
+          publicAppUrl,
+        }) : null,
+        enrolledAt: enrollment.createdAt.toISOString(),
+        course: {
+          name: enrollment.course.name,
+          description: enrollment.course.description,
+          companyName: enrollment.course.companyName,
+          companyCategory: enrollment.course.companyCategory,
+          communityUrl: enrollment.course.communityUrl ?? null,
+        }
+      }));
+    });
+
+    protectedApp.get("/enrollments/:id/payment-proof", {
+      schema: {
+        params: z.object({ id: z.coerce.number().int().positive() }),
+        response: {
+          401: z.object({ message: z.string() }),
+          403: z.object({ message: z.string() }),
+          404: z.object({ message: z.string() }),
+          409: z.object({ message: z.string() }),
+        }
+      }
+    }, async (request, reply) => {
+      const student = request.student;
+      if (!student) return reply.status(401).send({ message: "Unauthorized" });
+
+      const enrollment = await prisma.courseEnrollment.findUnique({
+        where: { id: (request.params as { id: number }).id },
+      });
+
+      if (!enrollment) {
+        return reply.code(404).send({ message: "Enrollment not found" });
+      }
+
+      if (enrollment.studentId !== student.id) {
+        const access = await getAdminAccessResult(request, opts.env);
+        if (!access.allowed) {
+          return reply.status(403).send({ message: "Access denied" });
+        }
+      }
+
+      return sendStoredEnrollmentProof(reply, enrollment);
+    });
+
     protectedApp.post("/:id/enroll", {
     schema: {
       params: z.object({ id: z.coerce.number().int().positive() }),
+      body: paidCourseEnrollmentSchema.partial().optional(),
       response: {
         200: z.object({
           enrolled: z.boolean(),
+          enrollmentId: z.number().nullable(),
           communityUrl: z.string().nullable(),
-          studentCount: z.number()
+          studentCount: z.number(),
+          paymentStatus: z.string().nullable(),
+          paymentProofPath: z.string().nullable(),
+          ticketPath: z.string().nullable(),
+          whatsAppRedirectUrl: z.string().nullable(),
+          receiptPath: z.string().nullable(),
         }),
         401: z.object({ message: z.string() }),
+        400: z.object({ message: z.string() }),
         404: z.object({ message: z.string() })
       }
     }
@@ -380,6 +597,21 @@ export async function coursesRoutes(app: FastifyInstance, opts: { env: Env }) {
       if (!course) {
         return reply.status(404).send({ message: "Course not found" });
       }
+
+      const body = (request.body ?? {}) as Partial<z.infer<typeof paidCourseEnrollmentSchema>>;
+      if (course.isPaid) {
+        const parsed = paidCourseEnrollmentSchema.safeParse({
+          paymentProof: body.paymentProof,
+          paymentConfirmed: body.paymentConfirmed,
+          paymentPhone: body.paymentPhone
+        });
+
+        if (!parsed.success) {
+          return reply.status(400).send({ message: parsed.error.issues[0]?.message ?? "Dados do pagamento inválidos." });
+        }
+      }
+
+      const normalizedPaymentPhone = normalizeAngolaPhone(body.paymentPhone ?? studentProfile?.phone ?? null) ?? null;
 
       const existing = await prisma.courseEnrollment.findUnique({
         where: {
@@ -398,16 +630,132 @@ export async function coursesRoutes(app: FastifyInstance, opts: { env: Env }) {
             studentNumber: student.studentNumber,
             studentName: studentProfile?.name ?? null,
             studentEmail: studentProfile?.email ?? null,
-            studentCourse: studentProfile?.course ?? null
+            studentCourse: studentProfile?.course ?? null,
+            paymentProof: course.isPaid ? body.paymentProof ?? null : null,
+            paymentPhone: course.isPaid ? normalizedPaymentPhone : null,
+            paymentStatus: course.isPaid ? "PENDING" : "CONFIRMED",
+            paymentSubmittedAt: course.isPaid ? new Date() : null
+          }
+        });
+      } else if (course.isPaid && body.paymentProof) {
+        await prisma.courseEnrollment.update({
+          where: { id: existing.id },
+          data: {
+            paymentProof: body.paymentProof,
+            paymentPhone: normalizedPaymentPhone,
+            paymentStatus: "PENDING",
+            paymentSubmittedAt: new Date()
           }
         });
       }
 
+      const finalEnrollment = await prisma.courseEnrollment.findUnique({
+        where: {
+          studentId_courseId: {
+            studentId: student.id,
+            courseId: course.id
+          }
+        }
+      });
+
+      const paymentProofPath = finalEnrollment?.paymentProof
+        ? `${publicApiBaseUrl ?? ""}/courses/enrollments/${finalEnrollment.id}/payment-proof`
+        : null;
+      const ticketPath = finalEnrollment
+        ? `${publicApiBaseUrl ?? ""}/courses/enrollments/${finalEnrollment.id}/ticket.pdf`
+        : null;
+
       return {
         enrolled: true,
+        enrollmentId: finalEnrollment?.id ?? null,
         communityUrl: course.communityUrl ?? null,
-        studentCount: await prisma.courseEnrollment.count({ where: { courseId: course.id } })
+        studentCount: await prisma.courseEnrollment.count({ where: { courseId: course.id } }),
+        paymentStatus: finalEnrollment?.paymentStatus ?? null,
+        paymentProofPath,
+        ticketPath,
+        receiptPath: finalEnrollment ? `/cursos/inscricoes/${finalEnrollment.id}` : null,
+        whatsAppRedirectUrl: course.isPaid ? buildPaymentShareUrl({
+          courseName: course.name,
+          fullName: studentProfile?.name ?? `Estudante ${student.studentNumber}`,
+          studentNumber: student.studentNumber,
+          destinationUrl: course.communityUrl ?? null,
+          paymentProofPath,
+          ticketPath,
+          publicApiBaseUrl,
+          publicAppUrl
+        }) : null
       };
+    });
+
+    protectedApp.get("/enrollments/:id/ticket.pdf", {
+      schema: {
+        params: z.object({ id: z.coerce.number().int().positive() }),
+        response: {
+          401: z.object({ message: z.string() }),
+          403: z.object({ message: z.string() }),
+          404: z.object({ message: z.string() }),
+          502: z.object({ message: z.string() })
+        }
+      }
+    }, async (request, reply) => {
+      const student = request.student;
+      if (!student) return reply.status(401).send({ message: "Unauthorized" });
+
+      const enrollment = await prisma.courseEnrollment.findUnique({
+        where: { id: (request.params as { id: number }).id },
+        include: {
+          course: true,
+          student: true
+        }
+      });
+
+      if (!enrollment) {
+        return reply.code(404).send({ message: "Enrollment not found" });
+      }
+
+      if (enrollment.studentId !== student.id) {
+        const access = await getAdminAccessResult(request, opts.env);
+        if (!access.allowed) {
+          return reply.status(403).send({ message: "Access denied" });
+        }
+      }
+
+      const fullName = normalizeFreeText(enrollment.studentName ?? enrollment.student?.name) ?? `Estudante ${enrollment.studentNumber}`;
+      const studentCourse = normalizeFreeText(enrollment.studentCourse ?? enrollment.student?.course);
+      const paymentPhone = normalizeFreeText(enrollment.paymentPhone);
+      const paymentProofPath = enrollment.paymentProof
+        ? `${publicApiBaseUrl ?? ""}/courses/enrollments/${enrollment.id}/payment-proof`
+        : null;
+      const ticketPath = `${publicApiBaseUrl ?? ""}/courses/enrollments/${enrollment.id}/ticket.pdf`;
+
+      try {
+        const pdfBuffer = await renderCourseEnrollmentTicketPdf({
+          courseName: enrollment.course.name,
+          courseDescription: enrollment.course.description,
+          companyName: enrollment.course.companyName,
+          companyCategory: enrollment.course.companyCategory,
+          courseAccessUrl: `${publicAppUrl}/cursos/inscricoes/${enrollment.id}`,
+          studentName: fullName,
+          studentNumber: enrollment.studentNumber,
+          studentCourse,
+          paymentStatus: enrollment.paymentStatus,
+          paymentPhone,
+          enrolledAt: enrollment.createdAt,
+          siteUrl: publicAppUrl,
+          ticketUrl: toAbsoluteUrl(publicApiBaseUrl, ticketPath),
+          proofUrl: toAbsoluteUrl(publicApiBaseUrl, paymentProofPath),
+          communityUrl: enrollment.course.communityUrl ?? null
+        });
+
+        reply.header("Content-Type", "application/pdf");
+        reply.header("Content-Disposition", `attachment; filename="uor-connect-curso-${enrollment.courseId}-inscricao-${enrollment.id}.pdf"`);
+        return reply.send(pdfBuffer);
+      } catch (error) {
+        request.log.error({ err: error }, "course enrollment ticket render failed");
+        return reply.status(502).send({
+          message: "Falha ao gerar o talão PDF localmente. Verifica se o Chromium do Playwright está instalado neste ambiente.",
+        });
+      }
     });
 
     protectedApp.post("/:id/like", {

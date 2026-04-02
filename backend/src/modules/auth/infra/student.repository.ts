@@ -1,8 +1,25 @@
-import { PrismaClient } from "@prisma/client";
-import { type AdminAuthorizedStudent, type Student, type StudentProfile, type StudentWithStats } from "../domain/student";
+import { PrismaClient, StudentLoginOrigin as PrismaStudentLoginOrigin } from "@prisma/client";
+import {
+  type AdminAuthorizedStudent,
+  type Student,
+  type StudentLoginAudit,
+  type StudentLoginOrigin,
+  type StudentProfile,
+  type StudentWithStats,
+} from "../domain/student";
 
 export class StudentRepository {
   constructor(private prisma: PrismaClient) {}
+
+  private toPrismaLoginOrigin(origin: StudentLoginOrigin) {
+    return origin === "laboratorio"
+      ? PrismaStudentLoginOrigin.LABORATORIO
+      : PrismaStudentLoginOrigin.UORCONNECT;
+  }
+
+  private fromPrismaLoginOrigin(origin: PrismaStudentLoginOrigin): StudentLoginOrigin {
+    return origin === PrismaStudentLoginOrigin.LABORATORIO ? "laboratorio" : "uorconnect";
+  }
 
   async findByStudentNumber(studentNumber: string): Promise<Student | null> {
     // Busca aluno pelo número na base local (sqlite)
@@ -73,6 +90,34 @@ export class StudentRepository {
     });
   }
 
+  async recordLoginAudit(student: Student, origin: StudentLoginOrigin): Promise<void> {
+    await this.prisma.studentLoginAudit.create({
+      data: {
+        studentId: student.id,
+        studentNumber: student.studentNumber,
+        origin: this.toPrismaLoginOrigin(origin),
+      }
+    });
+  }
+
+  async listLoginHistory(limit = 25): Promise<StudentLoginAudit[]> {
+    const audits = await this.prisma.studentLoginAudit.findMany({
+      include: {
+        student: true,
+      },
+      orderBy: [
+        { loggedAt: "desc" },
+        { id: "desc" },
+      ],
+      take: limit,
+    });
+
+    return audits.map((audit) => ({
+      ...audit,
+      origin: this.fromPrismaLoginOrigin(audit.origin),
+    })) as StudentLoginAudit[];
+  }
+
   async listAuthorizedAdminStudents(): Promise<AdminAuthorizedStudent[]> {
     return this.prisma.adminAuthorizedStudent.findMany({
       orderBy: [{ createdAt: "asc" }, { studentNumber: "asc" }],
@@ -115,6 +160,15 @@ export class StudentRepository {
         }
       }
     }) as Promise<StudentWithStats | null>;
+  }
+
+  async updateProfile(id: number, profile: Partial<StudentProfile>): Promise<Student | null> {
+    const mapped = this.mapProfile(profile as StudentProfile);
+
+    return this.prisma.student.update({
+      where: { id },
+      data: mapped,
+    });
   }
 
   async deleteWithRelations(id: number): Promise<void> {

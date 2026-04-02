@@ -24,3 +24,5 @@ deploy/.env
 deploy/backups/
 
 .vscode/
+.vercel
+.env*.local

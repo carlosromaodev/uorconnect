@@ -6,6 +6,8 @@ export type Submission = {
   referenceCode: string;
   type: SubmissionType;
   status: SubmissionStatus;
+  studentId?: number | null;
+  studentNumberSnapshot?: string | null;
   name: string;
   description: string;
   area: string;

@@ -1,4 +1,46 @@
-{$APP_DOMAIN} {
+{$FRONTEND_DOMAIN} {
+  encode gzip zstd
+
+  header {
+    X-Content-Type-Options "nosniff"
+    X-Frame-Options "SAMEORIGIN"
+    Referrer-Policy "strict-origin-when-cross-origin"
+  }
+
+  @contest-main-home {
+    host uorconnect.space www.uorconnect.space
+    path /desafios
+  }
+  redir @contest-main-home https://laboratorio.uorconnect.space/ 308
+
+  @contest-main-ranking {
+    host uorconnect.space www.uorconnect.space
+    path /desafios/ranking
+  }
+  redir @contest-main-ranking https://laboratorio.uorconnect.space/ranking 308
+
+  @contest-main-rules {
+    host uorconnect.space www.uorconnect.space
+    path /desafios/regras
+  }
+  redir @contest-main-rules https://laboratorio.uorconnect.space/regras 308
+
+  @contest-main-submit {
+    host uorconnect.space www.uorconnect.space
+    path_regexp contest_submit ^/desafios/([^/]+)/submeter/?$
+  }
+  redir @contest-main-submit https://laboratorio.uorconnect.space/{re.contest_submit.1}/submeter 308
+
+  @contest-main-detail {
+    host uorconnect.space www.uorconnect.space
+    path_regexp contest_detail ^/desafios/([^/]+)/?$
+  }
+  redir @contest-main-detail https://laboratorio.uorconnect.space/{re.contest_detail.1} 308
+
+  reverse_proxy frontend:80
+}
+
+{$API_DOMAIN} {
   encode gzip zstd
 
   header {

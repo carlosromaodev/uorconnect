@@ -72,6 +72,8 @@ const socialConfigSchema = z.object({
   instagramUrl: z.string().url().nullable(),
   facebookUrl: z.string().url().nullable(),
   linkedinUrl: z.string().url().nullable(),
+  courseEnrollmentEnabled: z.boolean(),
+  firstYearContestEnabled: z.boolean(),
   createdAt: z.coerce.date(),
   updatedAt: z.coerce.date()
 });
@@ -79,7 +81,9 @@ const socialConfigSchema = z.object({
 const socialConfigInputSchema = z.object({
   instagramUrl: z.string().url().nullable().optional(),
   facebookUrl: z.string().url().nullable().optional(),
-  linkedinUrl: z.string().url().nullable().optional()
+  linkedinUrl: z.string().url().nullable().optional(),
+  courseEnrollmentEnabled: z.boolean().optional(),
+  firstYearContestEnabled: z.boolean().optional()
 });
 
 export async function homeContentRoutes(app: FastifyInstance, opts: { env: Env }) {

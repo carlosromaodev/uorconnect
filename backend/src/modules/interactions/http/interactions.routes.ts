@@ -21,26 +21,51 @@ import {
   normalizeTeamMembersInput
 } from "../../submission/domain/submission-format";
 
+let optsEnvCache: Env;
+
 function normalizeCourseName(value?: string | null) {
   return (value ?? "").trim().toLowerCase();
 }
 
-function resolvePublicOrigin(request: FastifyRequest) {
-  const forwardedProto = String(request.headers["x-forwarded-proto"] ?? request.protocol ?? "http")
-    .split(",")[0]
-    .trim();
-  const forwardedHost = String(request.headers["x-forwarded-host"] ?? request.headers.host ?? "")
-    .split(",")[0]
-    .trim();
+function resolvePublicOrigin(request: FastifyRequest, env: Env) {
+  if (env.PUBLIC_APP_URL) {
+    return env.PUBLIC_APP_URL.replace(/\/$/, "");
+  }
 
+  const corsOrigins = env.CORS_ORIGIN
+    .split(",")
+    .map((value) => value.trim())
+    .filter((value) => value.startsWith("http://") || value.startsWith("https://"));
+
+  if (corsOrigins.length > 0) {
+    return corsOrigins[0].replace(/\/$/, "");
+  }
+
+  const originHeader = String(request.headers.origin ?? "").trim();
+  if (originHeader.startsWith("http://") || originHeader.startsWith("https://")) {
+    return originHeader.replace(/\/$/, "");
+  }
+
+  const refererHeader = String(request.headers.referer ?? "").trim();
+  if (refererHeader) {
+    try {
+      return new URL(refererHeader).origin;
+    } catch {
+      // Ignore malformed referer and continue to forwarded headers.
+    }
+  }
+
+  const forwardedProto = String(request.headers["x-forwarded-proto"] ?? request.protocol ?? "http").split(",")[0].trim();
+  const forwardedHost = String(request.headers["x-forwarded-host"] ?? request.headers.host ?? "").split(",")[0].trim();
   if (!forwardedHost) return null;
+
   return `${forwardedProto}://${forwardedHost}`;
 }
 
-function buildProjectShareMetadata(request: FastifyRequest, submission: { id: number; name: string }) {
+function buildProjectShareMetadata(request: FastifyRequest, env: Env, submission: { id: number; name: string }) {
   const slug = buildSubmissionSlug(submission.name, submission.id);
   const detailPath = `/projeto/${slug}`;
-  const origin = resolvePublicOrigin(request);
+  const origin = resolvePublicOrigin(request, env);
   const shareUrl = origin ? `${origin}${detailPath}` : detailPath;
 
   return {
@@ -76,7 +101,7 @@ function buildProjectResponse(submission: any, request: FastifyRequest) {
   const normalizedType = normalizeSubmissionType(submission.type, submission.area);
   const competitionEligible = isCompetitionEligible(submission.type, submission.area);
   const membersList = normalizeTeamMembersInput(submission.members);
-  const share = buildProjectShareMetadata(request, submission);
+  const share = buildProjectShareMetadata(request, optsEnvCache, submission);
 
   return {
     id: submission.id,
@@ -124,6 +149,7 @@ function extractSubmissionIdFromSlug(slug: string) {
 }
 
 export async function interactionsRoutes(app: FastifyInstance, opts: { env: Env }) {
+  optsEnvCache = opts.env;
   const adminVotesOverview = new GetAdminVotesOverview(new PrismaAdminVotesRepository());
   const moderationRepository = new PrismaInteractionModerationRepository();
   const interactionModerationOverview = new GetInteractionModerationOverview(moderationRepository);

@@ -128,7 +128,7 @@ function buildCourseEnrollmentsHtml(params: RenderCourseEnrollmentsPdfParams & {
           }
 
           .brand-logo {
-            width: 128px;
+            width: 164px;
             height: auto;
             object-fit: contain;
           }

@@ -1,11 +1,17 @@
 import { type FastifyInstance, type FastifyRequest, type FastifyReply } from "fastify";
+import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { prisma } from "../../../shared/prisma";
 import { LoginUseCase } from "../use-cases/login";
 import { StudentRepository } from "../infra/student.repository";
 import { signStudentToken } from "../utils/jwt";
 import { type Env } from "../../../config/env";
-import { normalizeStudentProfile } from "../domain/student-format";
+import {
+  normalizeAngolaPhone,
+  normalizeCourse,
+  normalizeStudentName,
+  normalizeStudentProfile,
+} from "../domain/student-format";
 import { DeleteStudentUseCase, ListStudentsWithStatsUseCase } from "../use-cases/manage-students";
 import {
   AuthorizeAdminStudentUseCase,
@@ -14,13 +20,44 @@ import {
 } from "../use-cases/manage-admin-security";
 import { authGuard } from "./auth.middleware";
 import { adminGuard } from "./admin.middleware";
+import {
+  appendCookie,
+  clearCookie,
+  getCookie,
+  resolveSharedCookieDomain,
+  serializeCookie,
+  shouldUseSecureCookies,
+} from "../../../shared/cookies";
+import { PrismaSubmissionRepository } from "../../submission/infra/prisma/prisma.submission.repository";
+import { type StudentLoginOrigin } from "../domain/student";
+
+const AUTH_COOKIE = "uor_auth";
+const CSRF_COOKIE = "uor_csrf";
+const SESSION_HINT_COOKIE = "uor_session_hint";
+const DEVICE_COOKIE = "uor_device";
+const LAST_CONNECTION_COOKIE = "uor_last_connection";
+const AUTH_MAX_AGE = 60 * 60 * 24 * 7;
+const DEVICE_MAX_AGE = 60 * 60 * 24 * 180;
 
 const loginSchema = z.object({
   studentNumber: z.string()
     .trim()
     .transform((v) => v.replace(/\D/g, ""))
     .refine((v) => v.length === 8, "Student number must have exactly 8 digits"),
-  password: z.string().min(1, "Password is required")
+  password: z.string().min(1, "Password is required"),
+  origin: z.enum(["uorconnect", "laboratorio"]).optional(),
+});
+
+const authErrorSchema = z.object({
+  success: z.literal(false),
+  error: z.string()
+});
+
+const fastifyErrorSchema = z.object({
+  statusCode: z.number(),
+  code: z.string(),
+  message: z.string(),
+  error: z.string().optional()
 });
 
 const studentResponseSchema = z.object({
@@ -56,7 +93,15 @@ const securityStudentNumberSchema = z.object({
     .refine((value) => value.length === 8, "Student number must have exactly 8 digits"),
 });
 
+const profileUpdateSchema = z.object({
+  name: z.string().trim().min(2).max(120).optional(),
+  email: z.union([z.string().trim().email(), z.literal("")]).optional(),
+  course: z.string().trim().min(2).max(120).optional(),
+  phone: z.union([z.string().trim().min(8).max(20), z.literal("")]).optional(),
+});
+
 const studentRepository = new StudentRepository(prisma);
+const submissionRepository = new PrismaSubmissionRepository();
 let envCache: Env;
 const loginUseCase = new LoginUseCase(studentRepository);
 const listStudentsWithStatsUseCase = new ListStudentsWithStatsUseCase(studentRepository);
@@ -65,8 +110,91 @@ const listAdminSecurityOverviewUseCase = new ListAdminSecurityOverviewUseCase(st
 const authorizeAdminStudentUseCase = new AuthorizeAdminStudentUseCase(studentRepository);
 const revokeAdminStudentUseCase = new RevokeAdminStudentUseCase(studentRepository);
 
+function normalizeLoginOrigin(origin?: string | null): StudentLoginOrigin {
+  return origin === "laboratorio" ? "laboratorio" : "uorconnect";
+}
+
 export async function authRoutes(app: FastifyInstance, opts: { env?: Env } = {}) {
   envCache = opts.env ?? (app as any).config?.env ?? { JWT_SECRET: "dev-secret-change-me" } as Env;
+  const secureCookies = shouldUseSecureCookies(envCache);
+  const sharedCookieDomain = resolveSharedCookieDomain(envCache) ?? undefined;
+
+  function appendAuthCookies(reply: FastifyReply, token: string, request: FastifyRequest) {
+    const csrfToken = randomUUID();
+    const deviceId = getCookie(request, DEVICE_COOKIE) ?? randomUUID();
+    const nowIso = new Date().toISOString();
+
+    appendCookie(reply, serializeCookie(AUTH_COOKIE, token, {
+      path: "/",
+      maxAge: AUTH_MAX_AGE,
+      httpOnly: true,
+      secure: secureCookies,
+      sameSite: "Strict"
+    }));
+    appendCookie(reply, serializeCookie(CSRF_COOKIE, csrfToken, {
+      path: "/",
+      maxAge: AUTH_MAX_AGE,
+      domain: sharedCookieDomain,
+      httpOnly: false,
+      secure: secureCookies,
+      sameSite: "Strict"
+    }));
+    appendCookie(reply, serializeCookie(SESSION_HINT_COOKIE, "1", {
+      path: "/",
+      maxAge: AUTH_MAX_AGE,
+      domain: sharedCookieDomain,
+      httpOnly: false,
+      secure: secureCookies,
+      sameSite: "Strict"
+    }));
+    appendCookie(reply, serializeCookie(DEVICE_COOKIE, deviceId, {
+      path: "/",
+      maxAge: DEVICE_MAX_AGE,
+      httpOnly: true,
+      secure: secureCookies,
+      sameSite: "Strict"
+    }));
+    appendCookie(reply, serializeCookie(LAST_CONNECTION_COOKIE, nowIso, {
+      path: "/",
+      maxAge: AUTH_MAX_AGE,
+      httpOnly: true,
+      secure: secureCookies,
+      sameSite: "Strict"
+    }));
+  }
+
+  function clearAuthCookies(reply: FastifyReply) {
+    clearCookie(reply, AUTH_COOKIE, {
+      path: "/",
+      httpOnly: true,
+      secure: secureCookies,
+      sameSite: "Strict"
+    });
+    clearCookie(reply, CSRF_COOKIE, {
+      path: "/",
+      domain: sharedCookieDomain,
+      secure: secureCookies,
+      sameSite: "Strict"
+    });
+    clearCookie(reply, SESSION_HINT_COOKIE, {
+      path: "/",
+      domain: sharedCookieDomain,
+      secure: secureCookies,
+      sameSite: "Strict"
+    });
+    clearCookie(reply, DEVICE_COOKIE, {
+      path: "/",
+      httpOnly: true,
+      secure: secureCookies,
+      sameSite: "Strict"
+    });
+    clearCookie(reply, LAST_CONNECTION_COOKIE, {
+      path: "/",
+      httpOnly: true,
+      secure: secureCookies,
+      sameSite: "Strict"
+    });
+  }
 
   app.post<{ Body: z.infer<typeof loginSchema> }>(
     "/login",
@@ -82,18 +210,9 @@ export async function authRoutes(app: FastifyInstance, opts: { env?: Env } = {})
             student: studentResponseSchema,
             token: z.string()
           }),
-          400: z.object({
-            success: z.literal(false),
-            error: z.string()
-          }),
-          401: z.object({
-            success: z.literal(false),
-            error: z.string()
-          }),
-          500: z.object({
-            success: z.literal(false),
-            error: z.string()
-          })
+          400: z.union([authErrorSchema, fastifyErrorSchema]),
+          401: authErrorSchema,
+          500: z.union([authErrorSchema, fastifyErrorSchema])
         }
       }
     },
@@ -106,9 +225,17 @@ export async function authRoutes(app: FastifyInstance, opts: { env?: Env } = {})
 
         if (result.success) {
           const token = signStudentToken(result.student!.id, result.studentNumber ?? request.body.studentNumber, envCache);
+          const normalizedStudent = normalizeStudentProfile(result.student!);
+          await studentRepository.recordLoginAudit(normalizedStudent, normalizeLoginOrigin(request.body.origin));
+          await submissionRepository.assignOwnershipByPhone(
+            normalizedStudent.id,
+            normalizedStudent.studentNumber,
+            normalizedStudent.phone,
+          );
+          appendAuthCookies(reply, token, request);
           return reply.status(200).send({
             ...result,
-            student: normalizeStudentProfile(result.student!),
+            student: normalizedStudent,
             token
           });
         }
@@ -125,6 +252,111 @@ export async function authRoutes(app: FastifyInstance, opts: { env?: Env } = {})
       }
     }
   );
+
+  app.post("/logout", {
+    schema: {
+      response: {
+        200: z.object({ success: z.literal(true) })
+      }
+    }
+  }, async (_, reply) => {
+    clearAuthCookies(reply);
+    return reply.send({ success: true });
+  });
+
+  app.register(async (protectedApp) => {
+    protectedApp.register(authGuard, { env: envCache });
+
+    protectedApp.get(
+      "/me",
+      {
+        schema: {
+          description: "Obtém o perfil autenticado do estudante atual",
+          tags: ["Auth"],
+          response: {
+            200: studentResponseSchema,
+            401: z.object({ message: z.string() }),
+            404: z.object({ message: z.string() }),
+          }
+        }
+      },
+      async (request, reply) => {
+        const studentId = request.student?.id;
+
+        if (!studentId) {
+          return reply.code(401).send({ message: "Missing or invalid token" });
+        }
+
+        const student = await studentRepository.findByIdWithStats(studentId);
+
+        if (!student) {
+          return reply.code(404).send({ message: "Student not found" });
+        }
+
+        const normalizedStudent = normalizeStudentProfile(student);
+        await submissionRepository.assignOwnershipByPhone(
+          normalizedStudent.id,
+          normalizedStudent.studentNumber,
+          normalizedStudent.phone,
+        );
+
+        return reply.send(normalizedStudent);
+      }
+    );
+
+    protectedApp.patch(
+      "/me",
+      {
+        schema: {
+          description: "Atualiza campos editáveis do perfil autenticado do estudante atual",
+          tags: ["Auth"],
+          body: profileUpdateSchema,
+          response: {
+            200: studentResponseSchema,
+            400: z.object({ message: z.string() }),
+            401: z.object({ message: z.string() }),
+            404: z.object({ message: z.string() }),
+          }
+        }
+      },
+      async (request, reply) => {
+        const studentId = request.student?.id;
+        if (!studentId) {
+          return reply.code(401).send({ message: "Missing or invalid token" });
+        }
+
+        const existing = await studentRepository.findByIdWithStats(studentId);
+        if (!existing) {
+          return reply.code(404).send({ message: "Student not found" });
+        }
+
+        const body = request.body as z.infer<typeof profileUpdateSchema>;
+        if (Object.keys(body).length === 0) {
+          return reply.code(400).send({ message: "Nenhum campo para atualizar foi enviado." });
+        }
+
+        const updated = await studentRepository.updateProfile(studentId, {
+          name: body.name !== undefined ? normalizeStudentName(body.name) : undefined,
+          email: body.email !== undefined ? (body.email.trim() || undefined) : undefined,
+          course: body.course !== undefined ? normalizeCourse(body.course) : undefined,
+          phone: body.phone !== undefined ? normalizeAngolaPhone(body.phone) : undefined,
+        });
+
+        if (!updated) {
+          return reply.code(404).send({ message: "Student not found" });
+        }
+
+        const normalizedStudent = normalizeStudentProfile(updated);
+        await submissionRepository.assignOwnershipByPhone(
+          normalizedStudent.id,
+          normalizedStudent.studentNumber,
+          normalizedStudent.phone,
+        );
+
+        return reply.send(normalizedStudent);
+      }
+    );
+  });
 
   app.get<{ Params: { studentNumber: string } }>(
     "/students/:studentNumber",

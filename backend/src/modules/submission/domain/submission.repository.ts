@@ -2,6 +2,8 @@ import type { Submission, SubmissionConfig, SubmissionSummary, SubmissionStatus,
 
 export type CreateSubmissionInput = {
   type: SubmissionType;
+  studentId?: number | null;
+  studentNumberSnapshot?: string | null;
   name: string;
   description: string;
   area: string;
@@ -29,13 +31,16 @@ export type CreateSubmissionInput = {
 export interface SubmissionRepository {
   create(data: CreateSubmissionInput): Promise<Submission>;
   findById(id: number): Promise<Submission | null>;
+  findOwnedById(id: number, studentId: number): Promise<Submission | null>;
   findByReference(ref: string): Promise<Submission | null>;
   list(status?: SubmissionStatus, type?: SubmissionType): Promise<Submission[]>;
+  listByStudent(studentId: number): Promise<Submission[]>;
   summary(id: number): Promise<SubmissionSummary | null>;
   setStatus(id: number, status: SubmissionStatus): Promise<void>;
   setWinner(id: number): Promise<void>;
   clearWinners(): Promise<void>;
   hasDuplicate(name: string, leaderPhone: string): Promise<boolean>;
+  updateOwnedSubmission(id: number, studentId: number, data: Omit<CreateSubmissionInput, "referenceCode">): Promise<Submission>;
 }
 
 export interface VoteRepository {

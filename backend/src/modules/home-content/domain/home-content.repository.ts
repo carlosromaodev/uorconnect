@@ -27,6 +27,8 @@ export type HomeSocialConfigInput = {
   instagramUrl?: string | null;
   facebookUrl?: string | null;
   linkedinUrl?: string | null;
+  courseEnrollmentEnabled?: boolean;
+  firstYearContestEnabled?: boolean;
 };
 
 export interface HomeContentRepository {

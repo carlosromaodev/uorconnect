@@ -31,7 +31,7 @@ export default function Navbar() {
             </Link>
           </div>
 
-          <div className="hidden lg:flex items-center gap-1">
+          <div className="hidden xl:flex items-center gap-1">
             {navItems.map((item) => (
               <Link
                 key={item.path}
@@ -49,7 +49,7 @@ export default function Navbar() {
               href={getSaasShowcaseHref("/")}
               className="ml-1 inline-flex shrink-0 items-center whitespace-nowrap rounded-lg bg-[#25D366] px-3 py-1.5 text-sm font-semibold text-white shadow-sm transition-all duration-200 hover:-translate-y-px hover:bg-[#20bd5a]"
             >
-              Agendar Evento
+              Marcar evento
             </a>
           </div>
 
@@ -61,14 +61,14 @@ export default function Navbar() {
             >
               <Search className="h-5 w-5 text-muted-foreground" />
             </button>
-            <button onClick={() => setOpen(!open)} className="lg:hidden rounded-lg p-2.5 hover:bg-secondary">
+            <button onClick={() => setOpen(!open)} className="xl:hidden rounded-lg p-2.5 hover:bg-secondary">
               {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
             </button>
           </div>
         </div>
 
         {open && (
-          <div className="lg:hidden border-t border-border bg-card px-4 pb-3 pt-1">
+          <div className="xl:hidden border-t border-border bg-card px-4 pb-3 pt-1">
             {navItems.map((item) => (
               <Link
                 key={item.path}
@@ -88,7 +88,7 @@ export default function Navbar() {
               onClick={() => setOpen(false)}
               className="mt-2 block rounded-lg bg-[#25D366] px-3 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#20bd5a]"
             >
-              Agendar para meu evento
+              Marcar evento
             </a>
           </div>
         )}

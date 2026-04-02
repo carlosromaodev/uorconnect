@@ -14,6 +14,17 @@ export interface Student {
   updatedAt: Date;
 }
 
+export type StudentLoginOrigin = "uorconnect" | "laboratorio";
+
+export interface StudentLoginAudit {
+  id: number;
+  studentId: number;
+  studentNumber: string;
+  origin: StudentLoginOrigin;
+  loggedAt: Date;
+  student?: Student | null;
+}
+
 export interface LoginCredentials {
   studentNumber: string;
   password: string;

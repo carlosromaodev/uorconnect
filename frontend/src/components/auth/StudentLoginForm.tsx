@@ -4,6 +4,7 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { api, setToken, type StudentProfile } from "@/lib/api";
+import { getAuthOrigin } from "@/lib/contest-lab";
 
 export function StudentLoginForm({
   onSuccess,
@@ -28,7 +29,10 @@ export function StudentLoginForm({
 
     setLoading(true);
     try {
-      const result = await api.auth.login(normalizedNumber, password);
+      const authOrigin = getAuthOrigin();
+      const result = authOrigin === "laboratorio"
+        ? await api.contest.login(normalizedNumber, password)
+        : await api.auth.login(normalizedNumber, password, authOrigin);
       if (result.success && result.token) {
         setToken(result.token);
         toast.success("Sessão iniciada com sucesso.");

@@ -125,7 +125,12 @@ export class DeleteCourse {
   async execute(id: number) {
     const existing = await prisma.course.findUnique({ where: { id } });
     if (!existing) throw new Error("Course not found");
-    await prisma.course.delete({ where: { id } });
+
+    await prisma.$transaction([
+      prisma.courseLike.deleteMany({ where: { courseId: id } }),
+      prisma.courseEnrollment.deleteMany({ where: { courseId: id } }),
+      prisma.course.delete({ where: { id } }),
+    ]);
   }
 }
 
