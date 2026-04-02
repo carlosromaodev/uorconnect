@@ -7,7 +7,7 @@ import {
   MessageSquare, Clock, MapPin, User, Presentation, BookOpen,
   Lightbulb, Target, Award, TrendingUp, HelpCircle, ChevronRight,
   Sparkles, ThumbsUp, Star, ChevronLeft, Briefcase, Package, GraduationCap,
-  Settings, Vote, Rocket, Trophy, Play, Heart, Share2, ExternalLink, Loader2, Crown,
+  Settings, Vote, Rocket, Trophy, Play, Heart, Share2, Loader2, Crown,
   Building2, Instagram, Lock
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -18,7 +18,7 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 import { toast } from "sonner";
-import { api, type ActivityFeedItem, type AgendaItem, type AgendaLiveState, type CoursesContent, type FaqItem, type HomeContent, type LiveChatMessage, type ProjectPublicFeedItem, type Stats, getToken, isAuthError, setToken } from "@/lib/api";
+import { api, type ActivityFeedItem, type AgendaItem, type AgendaLiveState, type CoursesContent, type FaqItem, type HomeContent, type LiveChatMessage, type ProjectPublicFeedItem, type Speaker, type Stats, getToken, isAuthError, setToken } from "@/lib/api";
 import logoUor from "@/assets/logo-uor.png";
 import logoNeic from "@/assets/logo-neic.jpeg";
 import { canVoteSubmission, getSubmissionAreaLabel, getSubmissionAudienceCopy, normalizeSubmissionType } from "@/lib/submission-meta";
@@ -112,10 +112,13 @@ const sponsors = [
   { src: "/logo.svg", alt: "UOR Connect", label: "UOR Connect", logoClassName: "h-12 w-12 object-contain" },
 ];
 
+const AGENDAR_EVENTO_URL = "https://agendar.uorconnect.space/";
+
 /* ─── Quick Actions for Students ─── */
 const quickActions = [
   { label: "Votar Projetos", icon: Vote, path: "/projetos", color: "bg-primary hover:bg-primary/90 text-primary-foreground", desc: "Vota nos teus favoritos" },
   { label: "Submeter Projeto", icon: Send, path: "/submeter", color: "bg-[hsl(var(--area-ia))] hover:bg-[hsl(var(--area-ia))]/90 text-primary-foreground", desc: "Inscreve o teu trabalho" },
+  { label: "Agendar Evento", icon: CalendarDays, href: AGENDAR_EVENTO_URL, external: true, color: "bg-emerald-600 hover:bg-emerald-500 text-white", desc: "Leva a plataforma para o teu evento" },
   { label: "Ao Vivo", icon: Play, path: "/ao-vivo", color: "bg-destructive hover:bg-destructive/90 text-destructive-foreground", desc: "Acompanha em direto" },
   { label: "Ver Agenda", icon: CalendarDays, path: "/agenda", color: "bg-[hsl(var(--area-web))] hover:bg-[hsl(var(--area-web))]/90 text-primary-foreground", desc: "Horários e sessões" },
   { label: "Palestrantes", icon: Mic, path: "/palestrantes", color: "bg-[hsl(var(--area-negocio))] hover:bg-[hsl(var(--area-negocio))]/90 text-primary-foreground", desc: "Quem vai falar" },
@@ -633,6 +636,7 @@ export default function Index() {
   });
   const [coursesContent, setCoursesContent] = useState<CoursesContent>({ courses: [], topCourses: [], preview: [] });
   const [agendaItems, setAgendaItems] = useState<AgendaItem[]>([]);
+  const [speakers, setSpeakers] = useState<Speaker[]>([]);
   const [activityFeed, setActivityFeed] = useState<ActivityFeedItem[]>([]);
   const [liveChat, setLiveChat] = useState<LiveChatMessage[]>([]);
   const [liveState, setLiveState] = useState<AgendaLiveState | null>(null);
@@ -683,6 +687,10 @@ export default function Index() {
       .then(setAgendaItems)
       .catch(() => setAgendaItems([]));
 
+    api.speakers.list()
+      .then(setSpeakers)
+      .catch(() => setSpeakers([]));
+
     api.interactions.activityFeed()
       .then(setActivityFeed)
       .catch(() => setActivityFeed([]));
@@ -713,10 +721,10 @@ export default function Index() {
   }, []);
 
   const statsData = [
-    { value: stats ? `${stats.participants}` : "0", label: "Estudantes", icon: Users },
-    { value: stats ? `${stats.submissions}` : "42", label: "Projetos", icon: FolderOpen },
-    { value: "12", label: "Palestrantes", icon: Mic },
-    { value: `${coursesContent.courses.length || defaultCourses.length}`, label: "Cursos", icon: GraduationCap },
+    { value: stats ? `${stats.participants}` : "0", label: "Participantes", icon: Users },
+    { value: stats ? `${stats.approved}` : "0", label: "Projetos Exibidos", icon: FolderOpen },
+    { value: `${speakers.length}`, label: "Palestrantes", icon: Mic },
+    { value: `${agendaItems.length}`, label: "Sessões na Agenda", icon: GraduationCap },
   ];
 
   const homepageCourses = coursesContent.preview.length ? coursesContent.preview : defaultCourses;
@@ -866,20 +874,20 @@ export default function Index() {
               initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.7 }}
-              className="flex flex-wrap gap-4 mb-4"
+              className="mb-4 grid max-w-3xl gap-3 sm:grid-cols-2 xl:grid-cols-3"
             >
-              <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.97 }}>
-                <Button asChild size="lg" className="font-semibold rounded-xl shadow-lg hover:shadow-xl transition-shadow text-base px-6 h-12">
+              <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }} className="min-w-0">
+                <Button asChild size="lg" className="h-12 w-full justify-center rounded-xl px-6 text-base font-semibold shadow-lg transition-shadow hover:shadow-xl">
                   <Link to="/projetos"><Vote className="mr-2 h-5 w-5" />Votar Projetos</Link>
                 </Button>
               </motion.div>
-              <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.97 }}>
-                <Button asChild size="lg" variant="outline" className="font-semibold rounded-xl border-foreground/20 hover:bg-secondary text-base px-6 h-12">
+              <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }} className="min-w-0">
+                <Button asChild size="lg" variant="outline" className="h-12 w-full justify-center rounded-xl border-foreground/20 px-6 text-base font-semibold hover:bg-secondary">
                   <Link to="/submeter"><Send className="mr-2 h-5 w-5" />Submeter Projeto</Link>
                 </Button>
               </motion.div>
-              <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.97 }}>
-                <Button asChild size="lg" variant="outline" className="font-semibold rounded-xl border-destructive/30 text-destructive hover:bg-destructive/10 text-base px-6 h-12">
+              <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }} className="min-w-0">
+                <Button asChild size="lg" variant="outline" className="h-12 w-full justify-center rounded-xl border-destructive/30 px-6 text-base font-semibold text-destructive hover:bg-destructive/10">
                   <Link to="/ao-vivo"><Play className="mr-2 h-5 w-5" />Ao Vivo</Link>
                 </Button>
               </motion.div>
@@ -949,7 +957,7 @@ export default function Index() {
             <Rocket className="w-6 h-6 text-primary" />
             <span className="text-lg font-heading font-bold">Acesso Rápido</span>
           </motion.div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
             {quickActions.map((action, i) => (
               <motion.div
                 key={action.label}
@@ -960,13 +968,25 @@ export default function Index() {
                 whileHover={{ y: -4, transition: { duration: 0.2 } }}
                 whileTap={{ scale: 0.96 }}
               >
-                <Link
-                  to={action.path}
-                  className={`flex flex-col items-center gap-3 p-5 md:p-6 rounded-xl ${action.color} transition-all duration-200 shadow-sm hover:shadow-lg text-center`}
-                >
-                  <action.icon className="w-7 h-7 md:w-8 md:h-8" />
-                  <span className="text-sm font-bold leading-tight">{action.label}</span>
-                </Link>
+                {action.external ? (
+                  <a
+                    href={action.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={`flex flex-col items-center gap-3 rounded-xl p-5 text-center shadow-sm transition-all duration-200 hover:shadow-lg md:p-6 ${action.color}`}
+                  >
+                    <action.icon className="h-7 w-7 md:h-8 md:w-8" />
+                    <span className="text-sm font-bold leading-tight">{action.label}</span>
+                  </a>
+                ) : (
+                  <Link
+                    to={action.path ?? "/"}
+                    className={`flex flex-col items-center gap-3 rounded-xl p-5 text-center shadow-sm transition-all duration-200 hover:shadow-lg md:p-6 ${action.color}`}
+                  >
+                    <action.icon className="h-7 w-7 md:h-8 md:w-8" />
+                    <span className="text-sm font-bold leading-tight">{action.label}</span>
+                  </Link>
+                )}
               </motion.div>
             ))}
           </div>
