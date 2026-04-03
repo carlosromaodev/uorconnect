@@ -316,3 +316,26 @@ Headers: {"Alt-Svc":["h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000"],"Cont
 - Push para `origin/main`.
 - Deploy frontend na VPS via pacote + `docker compose up -d --build frontend`.
 - Verificacao final com `curl` e inspeccao de bundle.
+
+### Execucao real na VPS (2026-04-03)
+1. GitHub:
+   - commit: `aeec7e8`
+   - push concluido para `main`.
+2. VPS:
+   - o repositório remoto estava com muitas alteracoes locais, por isso o deploy foi feito por `scp` dos ficheiros alterados em vez de `git pull`.
+   - ficheiros enviados:
+     - `frontend/package.json`
+     - `frontend/package-lock.json`
+     - `frontend/src/components/ui/sonner.tsx`
+     - `frontend/src/index.css`
+     - `frontend/src/pages/Index.tsx`
+     - `frontend/src/lib/phosphor-icons.tsx`
+     - `frontend/src/lib/home-content.ts`
+3. Build/Release:
+   - comando: `docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env up -d --build frontend`
+   - primeira tentativa falhou por ficheiro em falta (`src/lib/phosphor-icons`); corrigido com envio do ficheiro.
+   - segunda tentativa falhou por export em falta de `defaultHeroSponsors`; corrigido com envio de `src/lib/home-content.ts`.
+   - terceira tentativa concluiu com sucesso e container ficou `healthy`.
+4. Verificacao:
+   - `deploy-frontend-1` em estado `Up ... (healthy)`.
+   - `https://uorconnect.space` a responder `HTTP 200`.
