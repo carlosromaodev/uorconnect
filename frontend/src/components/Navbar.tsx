@@ -85,8 +85,8 @@ export default function Navbar() {
           const amount = unread.length;
           toast.success(
             amount === 1
-              ? `O teu projeto "${unread[0]?.name ?? ""}" foi aprovado.`
-              : `${amount} projetos teus foram aprovados.`
+              ? `Parabéns! O teu ${unread[0]?.typeLabel?.toLowerCase() ?? "projeto"} "${unread[0]?.name ?? ""}" foi aprovado. Já podes editar as informações na tua área.`
+              : `${amount} dos teus projetos foram aprovados. Acede à tua área para editares as informações.`
           );
         }
       })
@@ -178,7 +178,7 @@ export default function Navbar() {
                 to="/minha-area?tab=submissoes"
                 className="hidden rounded-lg border border-border/60 bg-card/70 px-3 py-1.5 text-xs font-semibold text-foreground transition-colors hover:bg-card sm:inline-flex"
               >
-                Editar perfil
+                Gerir Submissões
               </Link>
             ) : null}
 
@@ -194,14 +194,27 @@ export default function Navbar() {
             </button>
 
             {notificationOpen && hasApprovalNotifications ? (
-              <div className="absolute right-0 top-12 z-50 w-[320px] rounded-2xl border border-border/60 bg-card/95 p-3 shadow-lg backdrop-blur-xl">
-                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Aprovações</p>
-                <div className="mt-2 space-y-2">
+              <div className="absolute right-0 top-12 z-50 w-[360px] rounded-2xl border border-border/60 bg-card/95 p-4 shadow-lg backdrop-blur-xl">
+                <div className="flex items-center gap-2 mb-3">
+                  <div className="h-2 w-2 rounded-full bg-green-500"></div>
+                  <p className="text-sm font-semibold text-foreground">Aprovações Recentes</p>
+                </div>
+                <div className="space-y-3">
                   {approvedSubmissions.slice(0, 3).map((submission) => (
-                    <div key={submission.id} className="rounded-xl border border-border/60 bg-muted/20 px-3 py-2">
-                      <p className="line-clamp-1 text-sm font-medium">{submission.name}</p>
-                      <p className="text-xs text-muted-foreground">
-                        Aprovado · {dateLabel(submission.createdAt)}
+                    <div key={submission.id} className="rounded-xl border border-border/60 bg-muted/20 p-3 transition-colors hover:bg-muted/30">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium text-foreground line-clamp-2">{submission.name}</p>
+                          <p className="text-xs text-muted-foreground mt-1">
+                            {submission.typeLabel} aprovado • {dateLabel(submission.createdAt)}
+                          </p>
+                        </div>
+                        <div className="flex-shrink-0">
+                          <div className="h-2 w-2 rounded-full bg-green-500"></div>
+                        </div>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-2">
+                        Já podes editar as informações na tua área pessoal.
                       </p>
                     </div>
                   ))}
@@ -209,9 +222,9 @@ export default function Navbar() {
                 <Link
                   to="/minha-area?tab=submissoes"
                   onClick={() => setNotificationOpen(false)}
-                  className="mt-3 inline-flex w-full items-center justify-center rounded-xl bg-primary px-3 py-2 text-sm font-semibold text-primary-foreground"
+                  className="mt-4 inline-flex w-full items-center justify-center rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
                 >
-                  Editar perfil
+                  Gerir Submissões
                 </Link>
               </div>
             ) : null}
@@ -240,7 +253,7 @@ export default function Navbar() {
                 onClick={() => setOpen(false)}
                 className="mt-2 block rounded-lg border border-border/60 bg-card/80 px-3 py-2.5 text-sm font-semibold text-foreground"
               >
-                Editar perfil
+                Gerir Submissões
               </Link>
             ) : null}
             <a
