@@ -1,4 +1,4 @@
-{$FRONTEND_DOMAIN} {
+uorconnect.space www.uorconnect.space laboratorio.uorconnect.space {
   encode gzip zstd
 
   header {
@@ -40,7 +40,7 @@
   reverse_proxy frontend:80
 }
 
-{$API_DOMAIN} {
+api.uorconnect.space {
   encode gzip zstd
 
   header {
