@@ -339,3 +339,19 @@ Headers: {"Alt-Svc":["h3=\":443\"; ma=2592000,h3-29=\":443\"; ma=2592000"],"Cont
 4. Verificacao:
    - `deploy-frontend-1` em estado `Up ... (healthy)`.
    - `https://uorconnect.space` a responder `HTTP 200`.
+
+### Ajuste complementar de compatibilidade (2026-04-03 18:52)
+1. Problema identificado apos simplificacao de dependencias:
+   - ao remover `sonner` do `package.json`, o build remoto falhava porque existem modulos legados (ex.: `frontend/src/pages/Projetos.tsx`) que ainda importam `sonner` diretamente.
+2. Correcao aplicada:
+   - restaurada a dependencia `sonner` no frontend para manter compatibilidade durante a migracao gradual para `react-toastify`.
+   - commit de correcao: `2d8f849` (`fix(frontend): restore sonner dependency for remote compatibility`).
+   - push realizado para `origin/main`.
+3. Deploy final:
+   - sincronizados `frontend/package.json` e `frontend/package-lock.json` via `scp`.
+   - executado novamente:
+     - `docker compose -f deploy/docker-compose.prod.yml --env-file deploy/.env up -d --build frontend`
+   - resultado:
+     - imagem reconstruida sem erro.
+     - `deploy-frontend-1` em `Up ... (healthy)`.
+     - verificacao publica: `curl -I https://uorconnect.space` -> `HTTP/2 200` (Fri, 03 Apr 2026 18:52:39 GMT).
