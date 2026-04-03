@@ -1,15 +1,17 @@
-import { useState, useEffect, useRef } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   CalendarDays, Send, Users, FolderOpen, Mic, ArrowRight,
-  Wifi, Radio, Globe, Smartphone, Cpu, Monitor, Signal, Zap,
+  Radio, Globe,
   MessageSquare, Clock, MapPin, User, Presentation, BookOpen,
-  Lightbulb, Target, Award, TrendingUp, HelpCircle, ChevronRight,
+  Target, Award, TrendingUp, HelpCircle, ChevronRight,
   Sparkles, ThumbsUp, Star, ChevronLeft, Briefcase, Package, GraduationCap,
-  Settings, Vote, Rocket, Trophy, Play, Heart, Share2, Loader2, Crown,
+  Settings, Vote, Rocket, Play, Heart, Loader2, Binary,
   Building2, Instagram, Lock
 } from "lucide-react";
+import { ProjectQrDialog, type ProjectCardItem } from "@/components/projects/ProjectQrDialog";
+import { ProjectShowcaseCard } from "@/components/projects/ProjectShowcaseCard";
 import { Button } from "@/components/ui/button";
 import {
   Accordion,
@@ -17,10 +19,10 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
-import { toast } from "sonner";
+import { toast } from "@/components/ui/sonner";
 import { api, type ActivityFeedItem, type AgendaItem, type AgendaLiveState, type CoursesContent, type FaqItem, type HomeContent, type LiveChatMessage, type ProjectPublicFeedItem, type Speaker, type Stats, getToken, isAuthError, setToken } from "@/lib/api";
-import logoUor from "@/assets/logo-uor.png";
-import logoNeic from "@/assets/logo-neic.jpeg";
+import { defaultHeroSponsors, defaultHomeSocialConfig } from "@/lib/home-content";
+import { getHeroIconByName } from "@/lib/phosphor-icons";
 import { canVoteSubmission, getSubmissionAreaLabel, getSubmissionAudienceCopy, normalizeSubmissionType } from "@/lib/submission-meta";
 
 function withAlpha(color?: string | null, alpha = "22") {
@@ -101,24 +103,41 @@ function getAreaClasses(area: string, type?: string) {
 }
 
 const projectTypes = [
-  { key: "projeto", label: "Projetos Académicos", icon: GraduationCap, color: "bg-primary text-primary-foreground hover:bg-primary/90", desc: "Trabalhos de estudantes avaliados por júri" },
-  { key: "negocio", label: "Expor Negócio", icon: Briefcase, color: "bg-[hsl(var(--area-negocio))] text-primary-foreground hover:bg-[hsl(var(--area-negocio))]/90", desc: "Ideias e modelos de negócio inovadores" },
-  { key: "produto", label: "Expor Produto", icon: Package, color: "bg-[hsl(var(--area-produto))] text-primary-foreground hover:bg-[hsl(var(--area-produto))]/90", desc: "Produtos e protótipos tecnológicos" },
-];
-
-const sponsors = [
-  { src: logoUor, alt: "Universidade Óscar Ribas", label: "", logoClassName: "h-10 w-10 object-contain" },
-  { src: logoNeic, alt: "Núcleo de Engenharia Informática e Comunicações", label: "Núcleo de Engenharia Informática e Comunicações", logoClassName: "h-10 w-10 rounded-lg object-cover" },
-  { src: "/logo.svg", alt: "UOR Connect", label: "UOR Connect", logoClassName: "h-12 w-12 object-contain" },
+  {
+    key: "projeto",
+    label: "Projetos Académicos",
+    icon: GraduationCap,
+    color: "bg-primary text-primary-foreground hover:bg-primary/90",
+    surface: "from-primary/15 via-primary/5 to-transparent",
+    desc: "Trabalhos de estudantes avaliados por júri",
+  },
+  {
+    key: "negocio",
+    label: "Expor Negócio",
+    icon: Briefcase,
+    color: "bg-[hsl(var(--area-negocio))] text-primary-foreground hover:bg-[hsl(var(--area-negocio))]/90",
+    surface: "from-[hsl(var(--area-negocio))]/18 via-[hsl(var(--area-negocio))]/8 to-transparent",
+    desc: "Ideias e modelos de negócio inovadores",
+  },
+  {
+    key: "produto",
+    label: "Expor Produto",
+    icon: Package,
+    color: "bg-[hsl(var(--area-produto))] text-primary-foreground hover:bg-[hsl(var(--area-produto))]/90",
+    surface: "from-[hsl(var(--area-produto))]/18 via-[hsl(var(--area-produto))]/8 to-transparent",
+    desc: "Produtos e protótipos tecnológicos",
+  },
 ];
 
 const AGENDAR_EVENTO_URL = "https://agendar.uorconnect.space/";
+const DESAFIOS_URL = "https://laboratorio.uorconnect.space/";
 
 /* ─── Quick Actions for Students ─── */
 const quickActions = [
   { label: "Votar Projetos", icon: Vote, path: "/projetos", color: "bg-primary hover:bg-primary/90 text-primary-foreground", desc: "Vota nos teus favoritos" },
   { label: "Submeter Projeto", icon: Send, path: "/submeter", color: "bg-[hsl(var(--area-ia))] hover:bg-[hsl(var(--area-ia))]/90 text-primary-foreground", desc: "Inscreve o teu trabalho" },
   { label: "Agendar Evento", icon: CalendarDays, href: AGENDAR_EVENTO_URL, external: true, color: "bg-emerald-600 hover:bg-emerald-500 text-white", desc: "Leva a plataforma para o teu evento" },
+  { label: "Desafios", icon: Binary, href: DESAFIOS_URL, external: true, color: "cta-hacker", desc: "Entrar no ambiente de desafios" },
   { label: "Ao Vivo", icon: Play, path: "/ao-vivo", color: "bg-destructive hover:bg-destructive/90 text-destructive-foreground", desc: "Acompanha em direto" },
   { label: "Ver Agenda", icon: CalendarDays, path: "/agenda", color: "bg-[hsl(var(--area-web))] hover:bg-[hsl(var(--area-web))]/90 text-primary-foreground", desc: "Horários e sessões" },
   { label: "Palestrantes", icon: Mic, path: "/palestrantes", color: "bg-[hsl(var(--area-negocio))] hover:bg-[hsl(var(--area-negocio))]/90 text-primary-foreground", desc: "Quem vai falar" },
@@ -359,10 +378,10 @@ function getActivityLabel(item: ActivityFeedItem) {
 
 function TopProjectsCarousel() {
   const scrollRef = useRef<HTMLDivElement>(null);
-  const [votedProjects, setVotedProjects] = useState<Set<number>>(new Set());
-  const [loggedIn, setLoggedIn] = useState(false);
-  const [projects, setProjects] = useState<ProjectPublicFeedItem[]>([]);
+  const [projects, setProjects] = useState<ProjectCardItem[]>([]);
+  const [loggedIn, setLoggedIn] = useState(Boolean(getToken()));
   const [mode, setMode] = useState<"winners" | "now">("winners");
+  const [qrProject, setQrProject] = useState<ProjectCardItem | null>(null);
   const navigate = useNavigate();
   const sorted = [...projects].sort((a, b) => {
     const leftCanVote = canVoteSubmission(a.type, a.area, a.canVote);
@@ -375,9 +394,15 @@ function TopProjectsCarousel() {
   });
 
   useEffect(() => {
-    if (getToken()) setLoggedIn(true);
+    setLoggedIn(Boolean(getToken()));
     api.interactions.projects()
-      .then(setProjects)
+      .then((items) => {
+        setProjects(items.map((item) => ({
+          ...item,
+          userHasLiked: false,
+          userHasVoted: false,
+        })));
+      })
       .catch(() => setProjects([]));
   }, []);
 
@@ -385,27 +410,69 @@ function TopProjectsCarousel() {
     scrollRef.current?.scrollBy({ left: dir === "left" ? -360 : 360, behavior: "smooth" });
   };
 
-  const handleVote = async (id: number) => {
-    const project = projects.find((item) => item.id === id);
+  const handleRequireLogin = (message: string) => {
+    toast.error(message);
+    navigate("/login?redirect=/projetos");
+  };
 
-    if (project && !canVoteSubmission(project.type, project.area, project.canVote)) {
-      toast.info("Esta candidatura está em exposição e não participa na votação pública.");
-      return;
+  const handleShare = async (project: ProjectPublicFeedItem) => {
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: project.name,
+          text: project.summary,
+          url: project.shareUrl,
+        });
+        return;
+      }
+
+      await navigator.clipboard.writeText(project.shareUrl);
+      toast.success("Link do expositor copiado.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Falha ao partilhar expositor.");
     }
+  };
+
+  const handlePrimaryAction = async (project: ProjectCardItem) => {
+    const canVote = canVoteSubmission(project.type, project.area, project.canVote);
 
     if (!loggedIn) {
-      toast.error("Faz login para votar.");
-      navigate("/login?redirect=/projetos");
+      handleRequireLogin(canVote ? "Faz login para votar." : "Faz login para gostar deste expositor.");
       return;
     }
-    if (votedProjects.has(id)) { toast.info("Já votaste neste projeto."); return; }
+
+    if (canVote && project.userHasVoted) {
+      toast.info("Já votaste neste projeto.");
+      return;
+    }
+
     try {
-      await api.interactions.vote(id);
-      setVotedProjects(prev => new Set(prev).add(id));
-      setProjects(prev => prev.map((project) => project.id === id ? { ...project, votesCount: project.votesCount + 1 } : project));
-      toast.success("Voto registado! 🏆");
+      if (canVote) {
+        const result = await api.interactions.vote(project.id);
+        setProjects((current) => current.map((entry) => (
+          entry.id === project.id
+            ? { ...entry, userHasVoted: true, votesCount: result.votesCount }
+            : entry
+        )));
+        toast.success("Voto registado.");
+        return;
+      }
+
+      const result = await api.interactions.like(project.id);
+      setProjects((current) => current.map((entry) => (
+        entry.id === project.id
+          ? { ...entry, userHasLiked: result.liked, likesCount: result.likesCount }
+          : entry
+      )));
+      toast.success(result.liked ? "Like registado." : "Like removido.");
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Erro ao votar.");
+      if (isAuthError(err)) {
+        setToken(null);
+        setLoggedIn(false);
+        handleRequireLogin("A tua sessão expirou. Inicia novamente.");
+        return;
+      }
+      toast.error(err instanceof Error ? err.message : "Erro ao interagir com o expositor.");
     }
   };
 
@@ -428,100 +495,24 @@ function TopProjectsCarousel() {
       </button>
 
       <div ref={scrollRef} className="flex gap-5 overflow-x-auto scrollbar-hide pb-2 snap-x snap-mandatory -mx-1 px-1">
-        {sorted.map((p, i) => {
-          const areaUi = getAreaClasses(p.area, p.type);
-          const displayArea = getSubmissionAreaLabel(p.area, p.type);
-          const canVote = canVoteSubmission(p.type, p.area, p.canVote);
-
-          return (
-          <motion.div
-            key={p.id}
-            initial={{ opacity: 0, scale: 0.9, y: 20 }}
-            whileInView={{ opacity: 1, scale: 1, y: 0 }}
-            viewport={{ once: true }}
-            transition={{ delay: i * 0.07, type: "spring", stiffness: 200 }}
-            whileHover={{ y: -6, transition: { duration: 0.2 } }}
-            className={`relative min-w-[320px] max-w-[360px] snap-start overflow-hidden rounded-2xl border bg-card transition-all duration-300 hover:shadow-lg ${areaUi.border}`}
-          >
-            <div className={`h-1.5 ${areaUi.topBar}`} />
-
-            {(p.isWinner || i < 3) && (
-              <motion.div
-                initial={{ scale: 0 }}
-                animate={{ scale: 1 }}
-                transition={{ delay: 0.3 + i * 0.1, type: "spring" }}
-                className={`absolute top-5 right-4 w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold text-primary-foreground shadow-lg ${
-                  p.isWinner ? "bg-[hsl(var(--warning))] text-[hsl(var(--warning-foreground))]" : i === 0 ? "bg-primary" : i === 1 ? "bg-muted-foreground" : "bg-[hsl(var(--area-negocio))]"
-                }`}
-              >
-                {p.isWinner ? <Crown className="w-5 h-5" /> : i === 0 ? <Trophy className="w-5 h-5" /> : `#${i + 1}`}
-              </motion.div>
-            )}
-
-            <div className="flex flex-1 flex-col p-4 sm:p-5">
-              <div className="mb-3 flex items-center justify-between gap-3">
-                <span className={`rounded-full px-2.5 py-1 text-[11px] font-semibold ${areaUi.badge}`}>
-                  {displayArea}
-                </span>
-                <span className="inline-flex items-center gap-1 text-[11px] font-medium text-muted-foreground">
-                  <MessageSquare className="h-3.5 w-3.5" />
-                  {p.commentsCount}
-                </span>
-              </div>
-
-              <div className="mb-2 flex items-start gap-2">
-                {p.isWinner && <Crown className="mt-0.5 h-4 w-4 shrink-0 text-[hsl(var(--warning))]" />}
-                <h3 className="font-heading text-base font-bold leading-snug sm:text-lg">{p.name}</h3>
-              </div>
-
-              <p className="mb-2 line-clamp-3 text-sm text-muted-foreground">{p.description}</p>
-              <p className="mb-4 text-xs text-muted-foreground">Equipa: {p.members}</p>
-              <p className="mb-4 rounded-xl border border-dashed border-border/60 bg-muted/20 px-3 py-2 text-[11px] leading-5 text-muted-foreground">
-                {getSubmissionAudienceCopy(p.type, p.area)}
-              </p>
-
-              <div className="mb-4 flex items-center gap-3 text-xs text-muted-foreground">
-                <span className="flex items-center gap-1">
-                  <Heart className="h-3.5 w-3.5" /> {p.likesCount}
-                </span>
-                {canVote ? (
-                  <span className="flex items-center gap-1">
-                    <ThumbsUp className="h-3.5 w-3.5" /> {p.votesCount}
-                  </span>
-                ) : (
-                  <span className="flex items-center gap-1 text-[hsl(var(--area-negocio))]">
-                    <Lock className="h-3.5 w-3.5" /> Exposição
-                  </span>
-                )}
-                <span className="flex items-center gap-1">
-                  <MessageSquare className="h-3.5 w-3.5" /> {p.commentsCount}
-                </span>
-              </div>
-
-              <div className="grid grid-cols-2 gap-2">
-                <motion.div className="flex-1" whileTap={{ scale: 0.95 }}>
-                  <Button
-                    variant={canVote && votedProjects.has(p.id) ? "default" : "outline"}
-                    className={`h-10 w-full rounded-xl text-xs font-semibold ${canVote && votedProjects.has(p.id) ? "bg-primary text-primary-foreground hover:bg-primary/90" : canVote ? "border-primary/30 text-primary hover:border-primary/60 hover:bg-primary/10" : "border-border text-muted-foreground"}`}
-                    onClick={() => canVote ? handleVote(p.id) : undefined}
-                    disabled={!canVote}
-                  >
-                    {canVote ? <Trophy className="mr-1.5 h-4 w-4" /> : <Lock className="mr-1.5 h-4 w-4" />}
-                    {canVote ? (votedProjects.has(p.id) ? "Votado" : "Votar") : "Exposição"}
-                  </Button>
-                </motion.div>
-                <Button asChild variant="outline" className="h-10 rounded-xl text-xs font-semibold">
-                  <Link to="/projetos">
-                    <Trophy className="mr-1.5 h-4 w-4" />
-                    Detalhes
-                  </Link>
-                </Button>
-              </div>
-            </div>
-          </motion.div>
-          );
-        })}
+        {sorted.map((project, index) => (
+          <ProjectShowcaseCard
+            key={project.id}
+            project={project}
+            index={index}
+            className="min-w-[320px] max-w-[360px] snap-start"
+            onShare={handleShare}
+            onOpenQr={(item) => setQrProject(item)}
+            onPrimaryAction={handlePrimaryAction}
+          />
+        ))}
       </div>
+
+      <ProjectQrDialog
+        project={qrProject}
+        open={Boolean(qrProject)}
+        onClose={() => setQrProject(null)}
+      />
     </div>
   );
 }
@@ -538,39 +529,157 @@ const speakers = [
   { name: "Eng. Pedro Lopes", role: "Developer & Mentor", talk: "GitHub, LinkedIn e Portfólio" },
 ];
 
-const patternIcons = [Wifi, Radio, Globe, Smartphone, Cpu, Monitor, Signal, Zap, MessageSquare, Lightbulb];
+const patternIconNames = [
+  "WifiHigh",
+  "GlobeHemisphereWest",
+  "CellSignalHigh",
+  "Lightning",
+  "ChatCenteredText",
+  "LightbulbFilament",
+  "GraduationCap",
+  "Briefcase",
+];
 
-function FloatingIcons() {
+function clampPercent(value: number) {
+  return Math.max(4, Math.min(96, value));
+}
+
+function toFiniteNumber(value: unknown, fallback: number) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : fallback;
+}
+
+function parseSizeToRem(value: string | undefined, fallback: number) {
+  if (!value) return fallback;
+  const normalized = value.trim().toLowerCase();
+  const parsed = Number.parseFloat(normalized);
+  if (!Number.isFinite(parsed)) return fallback;
+  if (normalized.endsWith("px")) return parsed / 16;
+  return parsed;
+}
+
+function buildFluidRem(minRem: number, maxRem: number, baseRem: number, vwSlope: number) {
+  return `clamp(${minRem.toFixed(2)}rem, calc(${baseRem.toFixed(2)}rem + ${vwSlope.toFixed(2)}vw), ${maxRem.toFixed(2)}rem)`;
+}
+
+function spreadFloatingIcons(items: typeof defaultHomeSocialConfig.heroFloatingIcons) {
+  if (!items.length) return items;
+
+  const minDecorativeIcons = 8;
+  const expanded = [...items];
+  let cursor = 0;
+
+  while (expanded.length < minDecorativeIcons) {
+    const base = items[cursor % items.length];
+    const baseTop = clampPercent(toFiniteNumber(base.top, 50));
+    const baseLeft = clampPercent(toFiniteNumber(base.left, 50));
+    const baseRotate = toFiniteNumber(base.rotate, 0);
+    const baseSize = toFiniteNumber(base.size, 32);
+    const baseOpacity = toFiniteNumber(base.opacity, 100);
+    const ring = Math.floor(cursor / items.length) + 1;
+    const offsetY = 12 + ring * 9;
+    const offsetX = 18 + ring * 10;
+    const direction = cursor % 2 === 0 ? 1 : -1;
+
+    expanded.push({
+      ...base,
+      id: `${base.id}-auto-${ring}-${cursor}`,
+      top: clampPercent(baseTop + direction * offsetY),
+      left: clampPercent(baseLeft - direction * offsetX),
+      rotate: baseRotate + direction * (22 + ring * 9),
+      size: Math.max(18, Math.min(96, Math.round(baseSize * (0.84 + (cursor % 3) * 0.08)))),
+      opacity: Math.max(8, Math.round(baseOpacity * 0.82)),
+    });
+
+    cursor += 1;
+  }
+
+  return expanded;
+}
+
+function FloatingIcons({
+  items,
+  accentColor,
+  iconsOpacity,
+}: {
+  items: typeof defaultHomeSocialConfig.heroFloatingIcons;
+  accentColor: string;
+  iconsOpacity: number;
+}) {
+  const spreadItems = spreadFloatingIcons(items);
+
   return (
     <div className="absolute inset-0 overflow-hidden pointer-events-none">
-      {patternIcons.map((Icon, i) => (
-        <motion.div
-          key={i}
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.5 + i * 0.15, duration: 0.8 }}
-        >
-          <Icon className="absolute text-primary/[0.06]" style={{
-            width: `${28 + (i % 3) * 12}px`, height: `${28 + (i % 3) * 12}px`,
-            top: `${10 + (i * 23) % 80}%`, left: `${5 + (i * 31) % 85}%`,
-            transform: `rotate(${i * 37}deg)`,
-          }} />
-        </motion.div>
-      ))}
+      {spreadItems.map((item, i) => {
+        const Icon = getHeroIconByName(item.icon);
+        const top = clampPercent(toFiniteNumber(item.top, 50));
+        const left = clampPercent(toFiniteNumber(item.left, 50));
+        const rotate = toFiniteNumber(item.rotate, 0);
+        const size = Math.max(18, Math.min(96, toFiniteNumber(item.size, 32)));
+        const itemOpacity = Math.max(0, Math.min(100, toFiniteNumber(item.opacity, 100)));
+        const globalOpacity = Math.max(0, Math.min(100, toFiniteNumber(iconsOpacity, 100)));
+        const rawOpacity = (itemOpacity / 100) * (globalOpacity / 100);
+        const finalOpacity = rawOpacity === 0 ? 0 : Math.max(0.14, rawOpacity);
+        const floatAmplitude = 8 + (i % 4) * 2;
+        const floatDuration = 5 + (i % 5) * 0.7;
+        return (
+          <div
+            key={item.id}
+            className="pointer-events-none absolute"
+            style={{
+              top: `${top}%`,
+              left: `${left}%`,
+              transform: "translate(-50%, -50%)",
+              color: accentColor,
+              opacity: finalOpacity,
+              filter: "drop-shadow(0 10px 20px rgba(15,23,42,0.14))",
+            }}
+          >
+            <motion.div
+              initial={{ opacity: 0, y: 14, scale: 0.84 }}
+              animate={{
+                opacity: 1,
+                y: [0, -floatAmplitude, 0, floatAmplitude * 0.6, 0],
+                rotate: [rotate, rotate + 7, rotate - 6, rotate],
+                scale: [1, 1.04, 1],
+              }}
+              transition={{
+                delay: 0.22 + i * 0.06,
+                duration: floatDuration,
+                ease: "easeInOut",
+                repeat: Infinity,
+              }}
+            >
+              <Icon size={size} />
+            </motion.div>
+          </div>
+        );
+      })}
     </div>
   );
 }
 
 function IconPattern({ className, density = 10 }: { className?: string; density?: number }) {
+  const safeDensity = Math.max(1, Math.min(density, patternIconNames.length));
+
   return (
-    <div className={`absolute inset-0 overflow-hidden pointer-events-none ${className}`}>
-      {patternIcons.slice(0, density).map((Icon, i) => (
-        <Icon key={i} className="absolute text-primary/[0.04]" style={{
-          width: `${24 + (i % 3) * 10}px`, height: `${24 + (i % 3) * 10}px`,
-          top: `${10 + (i * 23) % 80}%`, left: `${5 + (i * 31) % 85}%`,
-          transform: `rotate(${i * 37}deg)`,
-        }} />
-      ))}
+    <div className={`absolute inset-0 overflow-hidden pointer-events-none ${className ?? ""}`}>
+      {patternIconNames.slice(0, safeDensity).map((iconName, i) => {
+        const Icon = getHeroIconByName(iconName);
+        return (
+          <Icon
+            key={`${iconName}-${i}`}
+            className="absolute text-foreground/10"
+            style={{
+              width: `${24 + (i % 3) * 10}px`,
+              height: `${24 + (i % 3) * 10}px`,
+              top: `${8 + (i * 19) % 84}%`,
+              left: `${6 + (i * 23) % 88}%`,
+              transform: `translate(-50%, -50%) rotate(${i * 37}deg)`,
+            }}
+          />
+        );
+      })}
     </div>
   );
 }
@@ -599,23 +708,32 @@ function SectionDivider() {
   );
 }
 
-function SponsorsMarquee() {
-  const marqueeItems = [...sponsors, ...sponsors];
+function SponsorsMarquee({
+  items,
+  dashedColor,
+  dashedOpacity,
+}: {
+  items: typeof defaultHeroSponsors;
+  dashedColor: string;
+  dashedOpacity: number;
+}) {
+  const safeItems = items.length ? items : defaultHeroSponsors;
+  const marqueeItems = [...safeItems, ...safeItems];
 
   return (
     <div className="mb-6">
       <div className="mb-3 flex items-center gap-3">
         <span className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Patrocinadores</span>
-        <div className="h-px flex-1 border-t border-dashed border-primary/25" />
+        <div className="h-px flex-1 border-t border-dashed" style={{ borderColor: dashedColor, opacity: dashedOpacity / 100 }} />
       </div>
-      <div className="sponsor-marquee overflow-hidden rounded-2xl border border-border/70 bg-white/80 px-3 py-3 shadow-sm backdrop-blur">
+      <div className="sponsor-marquee overflow-hidden rounded-2xl border border-border/45 bg-white/40 px-3 py-3 shadow-sm backdrop-blur-2xl supports-[backdrop-filter]:bg-white/30">
         <div className="sponsor-marquee-track flex min-w-max items-center gap-4">
           {marqueeItems.map((item, index) => (
             <div
-              key={`${item.alt}-${index}`}
-              className="flex shrink-0 items-center gap-3 rounded-xl border border-border/70 bg-background/95 px-4 py-3 shadow-sm"
+              key={`${item.id}-${index}`}
+              className="flex shrink-0 items-center gap-3 rounded-xl border border-border/50 bg-white/55 px-4 py-3 shadow-sm backdrop-blur-md supports-[backdrop-filter]:bg-white/38"
             >
-              <img src={item.src} alt={item.alt} className={item.logoClassName} />
+              <img src={item.imageUrl} alt={item.name} className="h-12 w-12 object-contain" />
               {item.label ? <span className="whitespace-nowrap text-xs font-semibold text-foreground">{item.label}</span> : null}
             </div>
           ))}
@@ -632,7 +750,7 @@ export default function Index() {
   const [homeContent, setHomeContent] = useState<HomeContent>({
     courses: [],
     panelTopics: [],
-    socialConfig: { key: "default", instagramUrl: null, facebookUrl: null, linkedinUrl: null, createdAt: "", updatedAt: "" }
+    socialConfig: defaultHomeSocialConfig,
   });
   const [coursesContent, setCoursesContent] = useState<CoursesContent>({ courses: [], topCourses: [], preview: [] });
   const [agendaItems, setAgendaItems] = useState<AgendaItem[]>([]);
@@ -676,7 +794,7 @@ export default function Index() {
       .catch(() => setHomeContent({
         courses: [],
         panelTopics: [],
-        socialConfig: { key: "default", instagramUrl: null, facebookUrl: null, linkedinUrl: null, createdAt: "", updatedAt: "" }
+        socialConfig: defaultHomeSocialConfig,
       }));
 
     api.courses.list()
@@ -730,6 +848,40 @@ export default function Index() {
   const homepageCourses = coursesContent.preview.length ? coursesContent.preview : defaultCourses;
   const topCourses = coursesContent.topCourses.length ? coursesContent.topCourses : defaultCourses;
   const recentActivity = activityFeed.slice(0, 3);
+  const heroConfig = useMemo(() => ({
+    ...defaultHomeSocialConfig,
+    ...homeContent.socialConfig,
+    heroFloatingIcons: homeContent.socialConfig?.heroFloatingIcons?.length ? homeContent.socialConfig.heroFloatingIcons : defaultHomeSocialConfig.heroFloatingIcons,
+    sponsors: homeContent.socialConfig?.sponsors?.length ? homeContent.socialConfig.sponsors : defaultHeroSponsors,
+  }), [homeContent.socialConfig]);
+  const heroTypography = useMemo(() => {
+    const titleMobile = parseSizeToRem(heroConfig.heroTitleMobileSize, 2.8);
+    const titleTablet = parseSizeToRem(heroConfig.heroTitleTabletSize, 4.2);
+    const titleDesktop = parseSizeToRem(heroConfig.heroTitleDesktopSize, 5.4);
+    const subtitleMobile = parseSizeToRem(heroConfig.heroSubtitleMobileSize, 1.05);
+    const subtitleTablet = parseSizeToRem(heroConfig.heroSubtitleTabletSize, 1.2);
+    const subtitleDesktop = parseSizeToRem(heroConfig.heroSubtitleDesktopSize, 1.35);
+
+    const titleMax = Math.max(titleTablet, titleDesktop);
+    const titleMin = Math.max(1.9, Math.min(titleMobile * 0.78, titleMax));
+    const titleBase = Math.max(1.1, Math.min(titleMobile * 0.56, titleMax - 0.4));
+
+    const subtitleMax = Math.max(subtitleTablet, subtitleDesktop);
+    const subtitleMin = Math.max(0.96, Math.min(subtitleMobile * 0.88, subtitleMax));
+    const subtitleBase = Math.max(0.78, Math.min(subtitleMobile * 0.72, subtitleMax - 0.15));
+
+    return {
+      titleFluid: buildFluidRem(titleMin, titleMax, titleBase, 4.1),
+      subtitleFluid: buildFluidRem(subtitleMin, subtitleMax, subtitleBase, 1.55),
+    };
+  }, [
+    heroConfig.heroTitleMobileSize,
+    heroConfig.heroTitleTabletSize,
+    heroConfig.heroTitleDesktopSize,
+    heroConfig.heroSubtitleMobileSize,
+    heroConfig.heroSubtitleTabletSize,
+    heroConfig.heroSubtitleDesktopSize,
+  ]);
   const faqPreviewItems = faqs.slice(0, 5);
   const homepagePanels = homeContent.panelTopics.length
     ? homeContent.panelTopics.map((panel) => ({
@@ -816,127 +968,257 @@ export default function Index() {
   return (
     <div className="min-h-screen">
       {/* ─── HERO ─── */}
-      <section className="relative py-16 md:py-28 overflow-hidden">
-        <FloatingIcons />
-        <div className="absolute top-10 right-10 w-80 h-80 bg-primary/10 rounded-full blur-3xl pointer-events-none" />
-        <div className="absolute bottom-0 left-0 w-64 h-64 bg-[hsl(var(--area-web))]/10 rounded-full blur-3xl pointer-events-none" />
+      <section className={`relative overflow-x-clip py-16 md:py-28 ${heroConfig.heroMeshEnabled ? "hero-mesh" : ""}`}>
+        <div
+          className="pointer-events-none absolute inset-0"
+          style={{ backgroundImage: heroConfig.primaryGradient, opacity: heroConfig.heroBlobsIntensity / 280 }}
+        />
+        <FloatingIcons items={heroConfig.heroFloatingIcons} accentColor={heroConfig.accentColor} iconsOpacity={heroConfig.heroIconsOpacity} />
+        {/* Soft glow orbs */}
+        <div className="absolute top-0 right-0 h-[600px] w-[600px] rounded-full blur-[120px] pointer-events-none -translate-y-1/3 translate-x-1/3" style={{ backgroundColor: withAlpha(heroConfig.primaryColor, "18"), opacity: heroConfig.heroBlobsIntensity / 100 }} />
+        <div className="absolute bottom-0 left-0 h-[400px] w-[400px] rounded-full blur-[90px] pointer-events-none" style={{ backgroundColor: withAlpha(heroConfig.accentColor, "16"), opacity: heroConfig.heroBlobsIntensity / 100 }} />
+        <div className="absolute top-1/2 left-1/2 h-[300px] w-[300px] rounded-full blur-[80px] pointer-events-none -translate-x-1/2 -translate-y-1/2" style={{ backgroundColor: withAlpha(heroConfig.titleColor, "10"), opacity: heroConfig.heroBlobsIntensity / 150 }} />
 
-        <div className="container mx-auto px-4 relative z-10">
-          <div className="max-w-3xl">
-            <motion.div
-              initial={{ opacity: 0, x: -20 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ duration: 0.5 }}
-              className="flex items-center gap-3 mb-6"
-            >
-              <img src="/logo.svg" alt="UOR" className="h-12" />
-              <span className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">NEIC · Universidade Óscar Ribas</span>
-            </motion.div>
-
-            <motion.div
-              initial={{ opacity: 0, scale: 0.9 }}
-              animate={{ opacity: 1, scale: 1 }}
-              transition={{ delay: 0.2, type: "spring" }}
-              className="inline-flex items-center gap-2 bg-primary/10 text-primary text-sm font-semibold px-4 py-2 rounded-full mb-6"
-            >
-              <Sparkles className="w-4 h-4 animate-pulse" />
-              17 — 18 Maio 2026
-            </motion.div>
-
-            <motion.h1
-              initial={{ opacity: 0, y: 30 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.3, duration: 0.6, ease: "easeOut" }}
-              className="text-4xl md:text-6xl lg:text-7xl font-heading font-800 leading-[1.03] mb-5"
-            >
-              3ª edição da{" "}
-              <motion.span
-                className="text-primary inline-block"
-                initial={{ opacity: 0, y: 20 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.5, duration: 0.5 }}
+        <div className="relative z-10 mx-auto w-full max-w-screen-xl px-4 sm:px-6 md:px-8 lg:px-12">
+          <div className="grid grid-cols-1 items-start gap-10 lg:grid-cols-[minmax(0,1fr)_410px] xl:grid-cols-[minmax(0,1fr)_450px] 2xl:grid-cols-[minmax(0,1fr)_480px] lg:gap-20 xl:gap-24">
+            {/* Left: Main content */}
+            <div className="mx-auto w-full min-w-0 max-w-4xl text-left lg:pr-4">
+              <motion.div
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ duration: 0.5 }}
+                className="mb-6 flex min-w-0 flex-col items-start justify-start gap-2 sm:flex-row sm:gap-3"
               >
-                Feira do Dia das Telecomunicações
-              </motion.span>
-            </motion.h1>
-
-            <motion.p
-              initial={{ opacity: 0 }}
-              animate={{ opacity: 1 }}
-              transition={{ delay: 0.6 }}
-              className="text-lg md:text-xl text-muted-foreground leading-relaxed mb-10 max-w-xl"
-            >
-              Conectando conhecimento académico, produto e empreendedorismo ao mercado tecnológico com uma experiência mais viva, estruturada e pública.
-            </motion.p>
-
-            {/* Primary CTAs */}
-            <motion.div
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              transition={{ delay: 0.7 }}
-              className="mb-4 grid max-w-3xl gap-3 sm:grid-cols-2 xl:grid-cols-3"
-            >
-              <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }} className="min-w-0">
-                <Button asChild size="lg" className="h-12 w-full justify-center rounded-xl px-6 text-base font-semibold shadow-lg transition-shadow hover:shadow-xl">
-                  <Link to="/projetos"><Vote className="mr-2 h-5 w-5" />Votar Projetos</Link>
-                </Button>
+                <img src="/logo-gestor.png" alt="UOR" className="h-10 shrink-0 drop-shadow-sm sm:h-12" />
+                <div className="hidden h-6 w-px bg-border sm:block" />
+                <span className="max-w-[17rem] text-left text-[11px] font-semibold uppercase leading-4 tracking-[0.16em] text-muted-foreground sm:max-w-none sm:text-sm sm:leading-normal sm:tracking-wider">
+                  NEIC · Universidade Óscar Ribas
+                </span>
               </motion.div>
-              <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }} className="min-w-0">
-                <Button asChild size="lg" variant="outline" className="h-12 w-full justify-center rounded-xl border-foreground/20 px-6 text-base font-semibold hover:bg-secondary">
-                  <Link to="/submeter"><Send className="mr-2 h-5 w-5" />Submeter Projeto</Link>
-                </Button>
-              </motion.div>
-              <motion.div whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.97 }} className="min-w-0">
-                <Button asChild size="lg" variant="outline" className="h-12 w-full justify-center rounded-xl border-destructive/30 px-6 text-base font-semibold text-destructive hover:bg-destructive/10">
-                  <Link to="/ao-vivo"><Play className="mr-2 h-5 w-5" />Ao Vivo</Link>
-                </Button>
-              </motion.div>
-            </motion.div>
 
-            {!studentProfile && (
-              <div className="mb-8 max-w-2xl rounded-2xl border border-dashed border-primary/30 bg-card/90 p-4 sm:p-5">
-                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="flex items-start gap-3">
-                    <div className="rounded-2xl bg-primary/10 p-2.5 text-primary">
-                      <Lock className="h-5 w-5" />
-                    </div>
-                    <div>
-                      <p className="text-sm font-heading font-bold text-primary">Faz login para desbloquear todos os recursos</p>
-                      <p className="text-xs leading-6 text-muted-foreground">Sem sessão ativa consegues ver projetos, mas votar, gostar e comentar exigem autenticação.</p>
-                    </div>
-                  </div>
-                  <Button asChild className="rounded-xl font-semibold">
-                    <Link to="/login?redirect=/projetos">Entrar</Link>
+              {/* Badge da edição — font-mono para feel técnico/académico */}
+              <motion.div
+                initial={{ opacity: 0, scale: 0.9 }}
+                animate={{ opacity: 1, scale: 1 }}
+                transition={{ delay: 0.2, type: "spring" }}
+                className="mb-6 inline-flex max-w-full items-center gap-2 rounded-full px-4 py-2 text-center text-sm font-semibold shadow-sm sm:text-sm"
+                style={{
+                  backgroundColor: withAlpha(heroConfig.primaryColor, "16"),
+                  color: heroConfig.accentColor,
+                  boxShadow: `0 10px 30px ${withAlpha(heroConfig.primaryColor, "14")}`,
+                }}
+              >
+                <Sparkles className="h-4 w-4 animate-pulse" />
+                {heroConfig.heroBadgeText}
+              </motion.div>
+
+              {/* Título H1 — separado em duas partes para aplicar duas cores e quebra responsiva */}
+              <motion.h1
+                initial={{ opacity: 0, y: 30 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.3, duration: 0.6, ease: "easeOut" }}
+                className="mb-5 w-full min-w-0 max-w-[12ch] break-words hyphens-auto font-heading font-extrabold tracking-tight leading-[1.03] text-balance text-pretty text-[length:var(--hero-title-fluid-size)] lg:max-w-[10.2ch]"
+                style={{
+                  ["--hero-title-fluid-size" as string]: heroTypography.titleFluid,
+                }}
+              >
+                <span className="inline" style={{ color: heroConfig.titleColor }}>{heroConfig.heroTitlePrefix} </span>
+                <motion.span
+                  className="inline-block"
+                  style={{ color: heroConfig.accentColor }}
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.45, duration: 0.45 }}
+                >
+                  {heroConfig.heroTitleHighlight}
+                </motion.span>
+              </motion.h1>
+
+              <motion.p
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.54, duration: 0.5 }}
+                className="mb-10 max-w-xl font-normal leading-relaxed tracking-normal text-pretty text-[length:var(--hero-subtitle-fluid-size)]"
+                style={{
+                  color: heroConfig.heroSubtitleColor,
+                  ["--hero-subtitle-fluid-size" as string]: heroTypography.subtitleFluid,
+                }}
+              >
+                {heroConfig.heroSubtitleText}
+              </motion.p>
+
+              {/* CTAs — estrutura inspirada no bloco de exemplo */}
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: 0.68 }}
+                className="mb-12 grid w-full max-w-4xl grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5"
+              >
+                <motion.div whileHover={{ scale: 1.015 }} whileTap={{ scale: 0.985 }} className="w-full min-w-0">
+                  <Button
+                    asChild
+                    size="lg"
+                    className="h-11 w-full justify-center gap-2 rounded-xl px-3 text-sm font-bold text-white shadow-lg transition-all hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2"
+                    style={{
+                      backgroundColor: heroConfig.primaryColor,
+                      boxShadow: `0 22px 40px ${withAlpha(heroConfig.primaryColor, "26")}`,
+                    }}
+                  >
+                    <Link to="/projetos"><Vote className="h-4 w-4" />Votar Projetos</Link>
                   </Button>
-                </div>
-              </div>
-            )}
+                </motion.div>
 
-            {studentProfile && (
-              <div className="border border-primary/20 rounded-xl bg-primary/5 p-4 md:p-5 mb-8 flex items-center gap-3 max-w-lg">
-                <div className="w-10 h-10 rounded-lg bg-primary/15 flex items-center justify-center text-primary font-heading font-bold">
-                  <User className="h-5 w-5" />
-                </div>
-                <div className="flex-1">
-                  <p className="text-sm font-heading font-bold text-primary">Sessão ativa</p>
-                  <p className="text-base font-semibold">{(studentProfile?.name ?? "").split(" ").slice(0, 2).join(" ") || "Estudante"}</p>
-                  <p className="text-xs text-muted-foreground">{studentProfile?.course ?? "Curso não informado"}</p>
-                </div>
-                <Button size="sm" variant="outline" className="h-8 text-xs" onClick={handleLogout}>
-                  Logout
-                </Button>
-              </div>
-            )}
+                <motion.div whileHover={{ scale: 1.015 }} whileTap={{ scale: 0.985 }} className="w-full min-w-0">
+                  <Button
+                    asChild
+                    size="lg"
+                    variant="outline"
+                    className="h-11 w-full justify-center gap-2 rounded-xl bg-card px-3 text-sm font-semibold transition-colors hover:bg-secondary focus-visible:outline-none focus-visible:ring-2"
+                    style={{ borderColor: withAlpha(heroConfig.titleColor, "26"), color: heroConfig.titleColor }}
+                  >
+                    <Link to="/submeter"><Send className="h-4 w-4" />Submeter Projeto</Link>
+                  </Button>
+                </motion.div>
 
-            <SponsorsMarquee />
+                <motion.div whileHover={{ scale: 1.015 }} whileTap={{ scale: 0.985 }} className="w-full min-w-0">
+                  <Button
+                    asChild
+                    size="lg"
+                    className="h-11 w-full justify-center rounded-xl border border-destructive/30 bg-destructive/8 px-3 text-sm font-semibold text-destructive shadow-none transition-all hover:border-destructive/50 hover:bg-destructive/15 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive active:scale-[0.98]"
+                    style={{ backdropFilter: "blur(4px)" }}
+                  >
+                    <Link to="/ao-vivo" className="flex items-center gap-2">
+                      <span className="relative flex h-2.5 w-2.5 shrink-0">
+                        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-destructive opacity-70" />
+                        <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-destructive" />
+                      </span>
+                      Ao Vivo
+                    </Link>
+                  </Button>
+                </motion.div>
+
+                <motion.div whileHover={{ scale: 1.015 }} whileTap={{ scale: 0.985 }} className="w-full min-w-0">
+                  <Button
+                    asChild
+                    size="lg"
+                    className="h-11 w-full justify-center gap-2 rounded-xl bg-emerald-600 px-3 text-sm font-semibold text-white shadow-lg shadow-emerald-700/20 transition-all hover:bg-emerald-500"
+                  >
+                    <a href={AGENDAR_EVENTO_URL} target="_blank" rel="noopener noreferrer">
+                      <CalendarDays className="h-4 w-4" />
+                      Agendar evento
+                    </a>
+                  </Button>
+                </motion.div>
+
+                <motion.div whileHover={{ scale: 1.015 }} whileTap={{ scale: 0.985 }} className="w-full min-w-0">
+                  <Button
+                    asChild
+                    size="lg"
+                    className="cta-hacker h-11 w-full justify-center gap-2 rounded-xl px-3 text-sm font-semibold uppercase"
+                  >
+                    <a href={DESAFIOS_URL} target="_blank" rel="noopener noreferrer">
+                      <Binary className="h-4 w-4" />
+                      Desafios
+                    </a>
+                  </Button>
+                </motion.div>
+              </motion.div>
+
+              {/* Login prompt or user profile */}
+              {!studentProfile && (
+                <motion.div
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.8 }}
+                  className="mx-auto mb-8 w-full max-w-md rounded-2xl border border-dashed bg-card/80 p-4 backdrop-blur-sm sm:mx-0 sm:max-w-2xl sm:p-5"
+                  style={{ borderColor: withAlpha(heroConfig.primaryColor, "40") }}
+                >
+                  <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex min-w-0 items-start gap-3 text-left">
+                      <div className="shrink-0 rounded-2xl p-2.5" style={{ backgroundColor: withAlpha(heroConfig.primaryColor, "14"), color: heroConfig.primaryColor }}>
+                        <Lock className="h-5 w-5" />
+                      </div>
+                      <div className="min-w-0">
+                        <p className="text-sm font-heading font-bold" style={{ color: heroConfig.primaryColor }}>Faz login para desbloquear todos os recursos</p>
+                        <p className="text-xs leading-5 text-muted-foreground mt-1">Sem sessão ativa consegues ver projetos, mas votar, gostar e comentar exigem autenticação.</p>
+                      </div>
+                    </div>
+                    <Button asChild className="w-full shrink-0 rounded-xl font-semibold sm:w-auto">
+                      <Link to="/login?redirect=/projetos">Entrar</Link>
+                    </Button>
+                  </div>
+                </motion.div>
+              )}
+
+              {studentProfile && (
+                <motion.div
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.8 }}
+                  className="mx-auto mb-8 flex w-full max-w-md flex-col items-start gap-3 rounded-2xl border p-4 backdrop-blur-sm sm:mx-0 sm:max-w-lg sm:flex-row sm:items-center md:p-5"
+                  style={{ borderColor: withAlpha(heroConfig.primaryColor, "33"), backgroundColor: withAlpha(heroConfig.primaryColor, "10") }}
+                >
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl font-heading font-bold" style={{ backgroundColor: withAlpha(heroConfig.primaryColor, "18"), color: heroConfig.primaryColor }}>
+                    <User className="h-5 w-5" />
+                  </div>
+                  <div className="min-w-0 flex-1 text-left">
+                    <p className="text-sm font-heading font-bold" style={{ color: heroConfig.primaryColor }}>Sessão ativa</p>
+                    <p className="truncate text-base font-semibold">{(studentProfile?.name ?? "").split(" ").slice(0, 2).join(" ") || "Estudante"}</p>
+                    <p className="truncate text-xs text-muted-foreground">{studentProfile?.course ?? "Curso não informado"}</p>
+                  </div>
+                  <Button size="sm" variant="outline" className="h-9 w-full rounded-lg text-xs sm:h-8 sm:w-auto" onClick={handleLogout}>
+                    Logout
+                  </Button>
+                </motion.div>
+              )}
+
+              <SponsorsMarquee items={heroConfig.sponsors} dashedColor={heroConfig.dashedColor} dashedOpacity={heroConfig.dashedOpacity} />
+            </div>
+
+            {/* Right: Stats — visible on large screens */}
+            <motion.div
+              className="hidden lg:block lg:mt-[450px]"
+              initial={{ opacity: 0, x: 30 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ delay: 0.9, duration: 0.6 }}
+            >
+              <div className="rounded-3xl border border-border/60 bg-card/80 backdrop-blur-md p-6 shadow-xl shadow-black/5">
+                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground mb-4">Em números</p>
+                <div className="grid grid-cols-2 gap-3">
+                  {statsData.map((s) => (
+                    <AnimatedCounter key={s.label} target={s.value} label={s.label} icon={s.icon} />
+                  ))}
+                </div>
+                {/* Live badge */}
+                <div className="mt-4 flex items-center gap-2.5 rounded-2xl border border-destructive/20 bg-destructive/[0.06] px-4 py-3">
+                  <span className="relative flex h-2.5 w-2.5">
+                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-destructive opacity-60" />
+                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-destructive" />
+                  </span>
+                  <Link to="/ao-vivo" className="text-sm font-semibold text-destructive hover:underline">
+                    Acompanhar Ao Vivo
+                  </Link>
+                  <ArrowRight className="ml-auto h-4 w-4 text-destructive" />
+                </div>
+                {/* Quick link to schedule */}
+                <Link
+                  to="/agenda"
+                  className="mt-3 flex items-center gap-2.5 rounded-2xl border border-border/60 bg-muted/30 px-4 py-3 text-sm font-semibold text-foreground hover:bg-muted transition-colors"
+                >
+                  <CalendarDays className="h-4 w-4 text-primary" />
+                  Ver Agenda Completa
+                  <ArrowRight className="ml-auto h-4 w-4 text-muted-foreground" />
+                </Link>
+              </div>
+            </motion.div>
           </div>
 
-          {/* Stats */}
+          {/* Stats — mobile only */}
           <motion.div
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.9 }}
-            className="mt-12 grid max-w-5xl grid-cols-2 gap-3 sm:grid-cols-4"
+            className="mt-10 grid max-w-5xl grid-cols-2 gap-3 sm:grid-cols-4 lg:hidden"
           >
             {statsData.map((s) => (
               <AnimatedCounter key={s.label} target={s.value} label={s.label} icon={s.icon} />
@@ -946,26 +1228,32 @@ export default function Index() {
       </section>
 
       {/* ─── QUICK ACTIONS BAR ─── */}
-      <section className="border-y border-border bg-muted/40 py-8 md:py-10">
+      <section className="border-y border-border bg-muted/30 py-10 md:py-14">
         <div className="container mx-auto px-4">
           <motion.div
-            initial={{ opacity: 0 }}
-            whileInView={{ opacity: 1 }}
+            initial={{ opacity: 0, y: 8 }}
+            whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
-            className="flex items-center gap-2.5 mb-6"
+            className="mb-8 flex items-center gap-4"
           >
-            <Rocket className="w-6 h-6 text-primary" />
-            <span className="text-lg font-heading font-bold">Acesso Rápido</span>
+            <div className="flex items-center gap-2.5">
+              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                <Rocket className="w-5 h-5" />
+              </div>
+              <span className="text-xl font-heading font-bold">Acesso Rápido</span>
+            </div>
+            <div className="h-px flex-1 border-t border-dashed border-primary/20" />
+            <span className="text-xs font-medium text-muted-foreground">{quickActions.length} atalhos</span>
           </motion.div>
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-6">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-8">
             {quickActions.map((action, i) => (
               <motion.div
                 key={action.label}
                 initial={{ opacity: 0, y: 15 }}
                 whileInView={{ opacity: 1, y: 0 }}
                 viewport={{ once: true }}
-                transition={{ delay: i * 0.06 }}
-                whileHover={{ y: -4, transition: { duration: 0.2 } }}
+                transition={{ delay: i * 0.05 }}
+                whileHover={{ y: -5, scale: 1.03, transition: { duration: 0.18 } }}
                 whileTap={{ scale: 0.96 }}
               >
                 {action.external ? (
@@ -973,18 +1261,18 @@ export default function Index() {
                     href={action.href}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className={`flex flex-col items-center gap-3 rounded-xl p-5 text-center shadow-sm transition-all duration-200 hover:shadow-lg md:p-6 ${action.color}`}
+                    className={`quick-action-card ${action.color}`}
                   >
                     <action.icon className="h-7 w-7 md:h-8 md:w-8" />
-                    <span className="text-sm font-bold leading-tight">{action.label}</span>
+                    <span className="text-xs font-bold leading-tight">{action.label}</span>
                   </a>
                 ) : (
                   <Link
                     to={action.path ?? "/"}
-                    className={`flex flex-col items-center gap-3 rounded-xl p-5 text-center shadow-sm transition-all duration-200 hover:shadow-lg md:p-6 ${action.color}`}
+                    className={`quick-action-card ${action.color}`}
                   >
                     <action.icon className="h-7 w-7 md:h-8 md:w-8" />
-                    <span className="text-sm font-bold leading-tight">{action.label}</span>
+                    <span className="text-xs font-bold leading-tight">{action.label}</span>
                   </Link>
                 )}
               </motion.div>
@@ -1125,42 +1413,49 @@ export default function Index() {
       {/* ─── TIPOS DE EXPOSIÇÃO ─── */}
       <section className="py-14 md:py-20">
         <div className="container mx-auto px-4">
-          <motion.div initial={{ opacity: 0, y: 12 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}>
-            <h2 className="text-2xl md:text-4xl font-heading font-bold mb-3">Tipos de Exposição</h2>
-            <p className="text-muted-foreground mb-10 text-base">Três formas de participar e mostrar o teu trabalho.</p>
-          </motion.div>
+          <div className="relative overflow-hidden rounded-[30px] border border-border/70 bg-card/90 p-5 shadow-xl shadow-black/5 md:p-10">
+            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(2,132,199,0.15),transparent_42%),radial-gradient(circle_at_bottom_right,rgba(217,119,6,0.12),transparent_46%)]" />
+            <IconPattern density={8} />
+            <motion.div initial={{ opacity: 0, y: 12 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="relative z-10 mb-8 md:mb-10">
+              <div className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-white/80 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-primary shadow-sm sm:text-xs">
+                <Sparkles className="h-3.5 w-3.5" />
+                Exposição na 3ª edição da Feira do Dia das Telecomunicações
+              </div>
+              <h2 className="mt-3 text-xl font-heading font-bold leading-snug sm:text-2xl md:text-[1.9rem]">Tipos de Exposição</h2>
+              <p className="mt-2 max-w-2xl text-sm text-muted-foreground sm:text-[15px]">Três formas de participar e mostrar o teu trabalho.</p>
+            </motion.div>
 
-          <div className="flex gap-5 overflow-x-auto scrollbar-hide pb-2 md:grid md:grid-cols-3 md:overflow-visible">
-            {projectTypes.map((t, i) => (
-              <motion.div
-                key={t.key}
-                initial={{ opacity: 0, y: 20, rotate: -2 }}
-                whileInView={{ opacity: 1, y: 0, rotate: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: i * 0.1, type: "spring", stiffness: 200 }}
-                whileHover={{ y: -8, transition: { duration: 0.2 } }}
-                className="min-w-[285px] md:min-w-0"
-              >
-                <Link to="/submeter" className="relative block overflow-hidden rounded-xl border border-border bg-card p-8 md:p-10 hover:shadow-xl transition-all duration-300 group text-center">
-                  <div className="absolute inset-0 bg-gradient-to-br from-primary/8 via-transparent to-[hsl(var(--area-web))]/8" />
-                  <IconPattern density={6} />
-                  <div className="relative z-10">
-                    <motion.div
-                      whileHover={{ rotate: [0, -10, 10, 0], scale: 1.15 }}
-                      transition={{ duration: 0.5 }}
-                      className={`w-20 h-20 rounded-2xl ${t.color} flex items-center justify-center mx-auto mb-5`}
-                    >
-                      <t.icon className="w-10 h-10" />
-                    </motion.div>
-                    <h3 className="font-heading font-bold text-lg md:text-xl mb-2">{t.label}</h3>
-                    <p className="text-sm md:text-base text-muted-foreground mb-4">{t.desc}</p>
-                    <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-primary opacity-0 group-hover:opacity-100 transition-opacity">
-                      Submeter <ArrowRight className="w-4 h-4" />
-                    </span>
-                  </div>
-                </Link>
-              </motion.div>
-            ))}
+            <div className="relative z-10 flex gap-5 overflow-x-auto scrollbar-hide pb-2 md:grid md:grid-cols-3 md:overflow-visible">
+              {projectTypes.map((t, i) => (
+                <motion.div
+                  key={t.key}
+                  initial={{ opacity: 0, y: 20, rotate: -2 }}
+                  whileInView={{ opacity: 1, y: 0, rotate: 0 }}
+                  viewport={{ once: true }}
+                  transition={{ delay: i * 0.1, type: "spring", stiffness: 200 }}
+                  whileHover={{ y: -8, transition: { duration: 0.2 } }}
+                  className="min-w-[285px] md:min-w-0"
+                >
+                  <Link to="/submeter" className="group relative block overflow-hidden rounded-2xl border border-border/70 bg-white/85 p-8 text-center shadow-sm transition-all duration-300 hover:-translate-y-1.5 hover:shadow-xl md:p-9">
+                    <div className={`absolute inset-0 bg-gradient-to-br ${t.surface}`} />
+                    <div className="relative z-10">
+                      <motion.div
+                        whileHover={{ rotate: [0, -10, 10, 0], scale: 1.12 }}
+                        transition={{ duration: 0.5 }}
+                        className={`mx-auto mb-5 flex h-20 w-20 items-center justify-center rounded-2xl shadow-lg ${t.color}`}
+                      >
+                        <t.icon className="h-10 w-10" />
+                      </motion.div>
+                      <h3 className="mb-2 font-heading text-lg font-bold md:text-xl">{t.label}</h3>
+                      <p className="mb-4 text-sm text-muted-foreground md:text-base">{t.desc}</p>
+                      <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-primary opacity-0 transition-opacity group-hover:opacity-100">
+                        Submeter <ArrowRight className="h-4 w-4" />
+                      </span>
+                    </div>
+                  </Link>
+                </motion.div>
+              ))}
+            </div>
           </div>
         </div>
       </section>
@@ -1486,12 +1781,18 @@ export default function Index() {
             className="relative bg-primary rounded-2xl p-10 md:p-14 flex flex-col md:flex-row items-start md:items-center justify-between gap-8 overflow-hidden"
           >
             <div className="absolute inset-0 overflow-hidden pointer-events-none">
-              {patternIcons.map((Icon, i) => (
-                <Icon key={i} className="absolute text-primary-foreground/[0.08]" style={{
-                  width: `${28 + (i % 3) * 12}px`, height: `${28 + (i % 3) * 12}px`,
-                  top: `${5 + (i * 27) % 80}%`, left: `${3 + (i * 29) % 90}%`, transform: `rotate(${i * 41}deg)`,
-                }} />
-              ))}
+              {patternIconNames.map((iconName, i) => {
+                const Icon = getHeroIconByName(iconName);
+                return (
+                  <Icon key={`${iconName}-${i}`} className="absolute text-primary-foreground/[0.08]" style={{
+                    width: `${28 + (i % 3) * 12}px`,
+                    height: `${28 + (i % 3) * 12}px`,
+                    top: `${5 + (i * 27) % 80}%`,
+                    left: `${3 + (i * 29) % 90}%`,
+                    transform: `rotate(${i * 41}deg)`,
+                  }} />
+                );
+              })}
             </div>
             <div className="relative z-10">
               <h2 className="text-2xl md:text-4xl font-heading font-bold text-primary-foreground mb-3">Tens um projeto, negócio ou produto?</h2>

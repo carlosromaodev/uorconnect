@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700&family=Sora:wght@400;500;600;700;800&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700&family=Sora:wght@400;500;600;700;800&family=Space+Mono:wght@400;700&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -65,6 +65,16 @@
     @apply border-border;
   }
 
+  /* Prevent iOS auto-zoom on input focus (requires font-size >= 16px) */
+  input, select, textarea {
+    font-size: max(16px, 1em);
+  }
+
+  /* Prevent text overflow in table cells and long strings */
+  td, th {
+    @apply min-w-0 break-words;
+  }
+
   .scrollbar-hide {
     -ms-overflow-style: none;
     scrollbar-width: none;
@@ -103,6 +113,225 @@
   }
 }
 
+@layer components {
+  .page-section {
+    @apply relative py-10 md:py-16;
+  }
+
+  .page-shell {
+    @apply mx-auto w-full max-w-6xl px-4 sm:px-6;
+  }
+
+  .page-shell-narrow {
+    @apply mx-auto w-full max-w-5xl px-4 sm:px-6;
+  }
+
+  .surface-card {
+    @apply min-w-0 overflow-hidden rounded-[28px] border border-border/50 bg-card/80 shadow-[0_8px_30px_rgba(0,0,0,0.04)] backdrop-blur-md transition-all duration-300 hover:shadow-[0_20px_40px_rgba(0,0,0,0.08)];
+  }
+
+  .responsive-two-col {
+    @apply grid gap-4 md:grid-cols-2 lg:gap-6;
+  }
+
+  .responsive-grid {
+    @apply grid gap-3 sm:grid-cols-2 xl:grid-cols-3;
+  }
+
+  .surface-scroll-y {
+    @apply overflow-y-auto overscroll-contain pr-1;
+  }
+
+  .field-note {
+    @apply text-xs font-medium text-muted-foreground;
+  }
+
+  .document-frame {
+    @apply min-w-0 overflow-hidden rounded-[24px] border border-border/60 bg-card/95 shadow-sm;
+  }
+
+  .document-frame__viewport {
+    @apply min-w-0 overflow-hidden bg-muted/20;
+  }
+
+  .input-valid {
+    @apply border-success focus-visible:ring-success/20;
+    /* Subtle green glow on valid fields */
+    box-shadow: 0 0 0 0px hsl(var(--success) / 0.3);
+    transition: box-shadow 0.25s ease, border-color 0.25s ease;
+  }
+
+  .input-valid:focus {
+    box-shadow: 0 0 0 3px hsl(var(--success) / 0.15);
+  }
+
+  .input-invalid {
+    @apply border-destructive focus-visible:ring-destructive/20;
+    box-shadow: 0 0 0 0px hsl(var(--destructive) / 0.3);
+    transition: box-shadow 0.25s ease, border-color 0.25s ease;
+  }
+
+  .input-invalid:focus {
+    box-shadow: 0 0 0 3px hsl(var(--destructive) / 0.15);
+  }
+
+  .input-warning {
+    @apply border-warning focus-visible:ring-warning/20;
+  }
+
+  /* Auto-fill pill badge */
+  .auto-fill-pill {
+    @apply inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold;
+    background: linear-gradient(135deg, hsl(var(--primary) / 0.14) 0%, hsl(var(--area-ia) / 0.14) 100%);
+    border: 1px solid hsl(var(--primary) / 0.28);
+    color: hsl(var(--primary));
+    animation: autofillPop 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+  }
+
+  /* Field message helpers */
+  .field-error-msg {
+    @apply mt-1 flex items-center gap-1 text-xs font-medium text-destructive;
+  }
+
+  .field-success-msg {
+    @apply mt-1 flex items-center gap-1 text-xs font-medium text-[hsl(var(--success))];
+  }
+
+  .field-warning-msg {
+    @apply mt-1 flex items-center gap-1 text-xs font-medium text-[hsl(var(--warning))];
+  }
+
+  /* Hero Gradient Mesh */
+  .hero-mesh {
+    background:
+      radial-gradient(ellipse 80% 50% at 15% 40%, hsl(var(--primary) / 0.14) 0%, transparent 60%),
+      radial-gradient(ellipse 60% 40% at 85% 60%, hsl(var(--area-web) / 0.09) 0%, transparent 55%),
+      radial-gradient(ellipse 50% 35% at 50% 0%, hsl(var(--area-ia) / 0.07) 0%, transparent 50%);
+  }
+
+  /* Section title badge */
+  .section-title-badge {
+    @apply inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-3.5 py-1.5 text-xs font-semibold uppercase tracking-[0.18em] text-primary;
+  }
+
+  /* Quick action card */
+  .quick-action-card {
+    @apply flex flex-col items-center gap-3 rounded-2xl p-5 text-center shadow-sm
+           transition-all duration-200 hover:shadow-lg md:p-6;
+  }
+
+  /* Neon hover glow for premium cards and buttons */
+  .glow-primary {
+    box-shadow: 0 0 0 0px hsl(var(--primary) / 0);
+    transition: box-shadow 0.3s ease, transform 0.2s ease;
+  }
+
+  .glow-primary:hover {
+    box-shadow: 0 0 24px hsl(var(--primary) / 0.25), 0 8px 24px hsl(var(--primary) / 0.12);
+    transform: translateY(-2px);
+  }
+
+  /* Responsive table wrapper */
+  .table-scroll {
+    @apply w-full overflow-x-auto overscroll-x-contain;
+  }
+
+  .table-scroll table {
+    @apply min-w-full;
+  }
+
+  .fade-in {
+    animation: fadeIn 0.5s ease-in-out forwards;
+  }
+
+  .uor-toast-container {
+    @apply px-3 sm:px-0;
+    width: min(100vw - 1.25rem, 430px);
+  }
+
+  .uor-toast {
+    @apply relative rounded-2xl border px-4 py-3 shadow-xl backdrop-blur-sm;
+    min-height: 64px;
+  }
+
+  .uor-toast-inner {
+    @apply m-0 p-0;
+  }
+
+  .uor-toast-body {
+    @apply flex min-w-0 flex-col;
+  }
+
+  .uor-toast-title {
+    @apply text-sm font-semibold leading-5;
+  }
+
+  .uor-toast-description {
+    @apply mt-1 text-xs leading-5 opacity-95;
+  }
+
+  .uor-toast-close {
+    @apply absolute right-2 top-2 inline-flex h-6 w-6 items-center justify-center rounded-md text-base leading-none;
+    background: rgb(15 23 42 / 16%);
+    color: inherit;
+    transition: background-color 0.2s ease;
+  }
+
+  .uor-toast-close:hover {
+    background: rgb(15 23 42 / 26%);
+  }
+
+  .uor-toast--success {
+    background: linear-gradient(135deg, hsl(var(--success) / 0.97), hsl(var(--success) / 0.84));
+    border-color: hsl(var(--success) / 0.65);
+    color: hsl(var(--success-foreground));
+  }
+
+  .uor-toast--warning {
+    background: linear-gradient(135deg, hsl(var(--warning) / 0.97), hsl(var(--warning) / 0.86));
+    border-color: hsl(var(--warning) / 0.65);
+    color: hsl(var(--warning-foreground));
+  }
+
+  .uor-toast--error {
+    background: linear-gradient(135deg, hsl(var(--destructive) / 0.96), hsl(var(--destructive) / 0.84));
+    border-color: hsl(var(--destructive) / 0.7);
+    color: hsl(var(--destructive-foreground));
+  }
+
+  .uor-toast--info,
+  .uor-toast--default {
+    background: linear-gradient(135deg, rgb(10 61 98 / 0.97), rgb(17 94 89 / 0.88));
+    border-color: rgb(56 189 248 / 0.48);
+    color: white;
+  }
+
+  .cta-hacker {
+    @apply relative overflow-hidden border border-emerald-300/70 text-emerald-200;
+    font-family: "Space Mono", "JetBrains Mono", "IBM Plex Mono", monospace;
+    letter-spacing: 0.08em;
+    background:
+      linear-gradient(135deg, rgb(5 10 14 / 0.95), rgb(6 25 23 / 0.95)),
+      linear-gradient(90deg, transparent 24%, rgb(16 185 129 / 0.2) 25%, rgb(16 185 129 / 0.2) 26%, transparent 27%, transparent 74%, rgb(16 185 129 / 0.2) 75%, rgb(16 185 129 / 0.2) 76%, transparent 77%),
+      linear-gradient(0deg, transparent 24%, rgb(16 185 129 / 0.2) 25%, rgb(16 185 129 / 0.2) 26%, transparent 27%, transparent 74%, rgb(16 185 129 / 0.2) 75%, rgb(16 185 129 / 0.2) 76%, transparent 77%);
+    background-size: 100% 100%, 18px 18px, 18px 18px;
+    box-shadow: inset 0 0 24px rgb(16 185 129 / 0.18), 0 0 18px rgb(16 185 129 / 0.12);
+    text-shadow: 0 0 8px rgb(16 185 129 / 0.35);
+  }
+
+  .cta-hacker::after {
+    content: "";
+    @apply absolute inset-0 opacity-0 transition-opacity duration-300;
+    background: linear-gradient(120deg, transparent 0%, rgb(16 185 129 / 0.28) 50%, transparent 100%);
+    transform: translateX(-100%);
+    animation: hackerScan 3.8s linear infinite;
+  }
+
+  .cta-hacker:hover::after {
+    @apply opacity-100;
+  }
+}
+
 @keyframes sponsor-marquee {
   from {
     transform: translateX(0);
@@ -111,4 +340,19 @@
   to {
     transform: translateX(calc(-50% - 0.5rem));
   }
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes autofillPop {
+  from { opacity: 0; transform: scale(0.85) translateY(-4px); }
+  to { opacity: 1; transform: scale(1) translateY(0); }
+}
+
+@keyframes hackerScan {
+  0% { transform: translateX(-120%); }
+  100% { transform: translateX(120%); }
 }
