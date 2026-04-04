@@ -73,6 +73,10 @@ export default defineConfig(({ mode }) => ({
         ]
       },
       workbox: {
+        navigateFallbackDenylist: [
+          /^\/desafios(?:\/.*)?$/,
+          /^\/api(?:\/.*)?$/,
+        ],
         runtimeCaching: [
           {
             urlPattern: ({ url, request }) =>
