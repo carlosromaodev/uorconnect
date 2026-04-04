@@ -26,3 +26,11 @@ deploy/backups/
 .vscode/
 .vercel
 .env*.local
+.codex
+.deploy-stage/
+.playwright-browsers/
+backups/
+frontend/dev-dist/
+frontend/exemploDesing/
+laboratorio/node_modules/
+laboratorio/dist/

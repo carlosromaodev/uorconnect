@@ -18,17 +18,17 @@ import {
   Crown,
   Share2
 } from "lucide-react";
+import { ProjectQrDialog, type ProjectCardItem } from "@/components/projects/ProjectQrDialog";
+import { ProjectShowcaseCard } from "@/components/projects/ProjectShowcaseCard";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { toast } from "sonner";
+import { toast } from "@/components/ui/sonner";
 import { StudentLoginForm } from "@/components/auth/StudentLoginForm";
 import {
   api,
   type ProjectPublicComment,
-  type ProjectPublicFeedItem,
   setToken,
   getToken
 } from "@/lib/api";
@@ -64,10 +64,7 @@ const areaBorderAccent: Record<string, string> = {
   Produto: "border-[hsl(330,81%,60%)]/30 hover:border-[hsl(330,81%,60%)]/60",
 };
 
-type Project = ProjectPublicFeedItem & {
-  userHasLiked?: boolean;
-  userHasVoted?: boolean;
-};
+type Project = ProjectCardItem;
 
 function getAreaClasses(area: string, type?: string) {
   const normalizedType = normalizeSubmissionType(type, area);
@@ -423,6 +420,7 @@ export default function Projetos() {
   const [studentProfile, setStudentProfile] = useState<{ name?: string | null; course?: string | null } | null>(null);
   const [loginOpen, setLoginOpen] = useState(false);
   const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null);
+  const [qrProject, setQrProject] = useState<ProjectCardItem | null>(null);
 
   const selectedProject = useMemo(
     () => projects.find((project) => project.id === selectedProjectId) ?? null,
@@ -705,87 +703,22 @@ export default function Projetos() {
                 Ainda não há projetos aprovados para mostrar.
               </div>
             ) : (
-            <div className="grid gap-4 md:grid-cols-2 2xl:grid-cols-3">
-              {projects.map((project, index) => {
-                const areaUi = getAreaClasses(project.area, project.type);
-                const displayArea = getSubmissionAreaLabel(project.area, project.type);
-                const canVote = canVoteSubmission(project.type, project.area, project.canVote);
-
-                return (
-                <motion.div
-                  key={project.id}
-                  initial={{ opacity: 0, y: 12 }}
-                  whileInView={{ opacity: 1, y: 0 }}
-                  viewport={{ once: true }}
-                  transition={{ delay: index * 0.04 }}
-                  className={`border rounded-2xl bg-card overflow-hidden flex flex-col transition-all duration-300 hover:shadow-lg ${areaUi.border}`}
-                >
-                  <div className={`h-1.5 ${areaUi.topBar}`} />
-                  <div className="p-4 sm:p-5 flex flex-col flex-1">
-                    <div className="flex items-center justify-between mb-3">
-                      <span className={`text-[11px] font-bold px-2.5 py-0.5 rounded-full ${areaUi.badge}`}>
-                        {displayArea}
-                      </span>
-                      <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground"><MessageCircle className="h-3 w-3" /> {project.commentsCount}</span>
-                    </div>
-
-                    <h3 className="font-heading font-semibold text-sm sm:text-base mb-1 flex items-center gap-2">
-                      {project.isWinner && <Crown className="h-4 w-4 text-[hsl(var(--warning))]" />}
-                      <span>{project.name}</span>
-                    </h3>
-                    <p className="text-muted-foreground text-sm mb-3 flex-1 line-clamp-3">{project.summary || project.description}</p>
-                    <p className="text-xs text-muted-foreground mb-4">Equipa: {project.members}</p>
-                    <p className="mb-4 rounded-xl border border-dashed border-border/60 bg-muted/20 px-3 py-2 text-[11px] leading-5 text-muted-foreground">
-                      {getSubmissionAudienceCopy(project.type, project.area)}
-                    </p>
-
-                    <div className="flex items-center gap-3 text-xs text-muted-foreground mb-4">
-                      <span className="flex items-center gap-1"><Heart className="w-3.5 h-3.5" /> {project.likesCount}</span>
-                      {canVote ? (
-                        <span className="flex items-center gap-1"><ThumbsUp className="w-3.5 h-3.5" /> {project.votesCount}</span>
-                      ) : (
-                        <span className="flex items-center gap-1 text-[hsl(var(--area-negocio))]"><Shield className="w-3.5 h-3.5" /> Sem votação</span>
-                      )}
-                      <span className="flex items-center gap-1"><MessageCircle className="w-3.5 h-3.5" /> {project.commentsCount}</span>
-                    </div>
-
-                    <div className="grid grid-cols-[repeat(3,minmax(0,1fr))] gap-2">
-                      <Button
-                        asChild
-                        size="sm"
-                        className="h-10 rounded-xl text-xs font-semibold"
-                        title="Abrir página do projeto"
-                      >
-                        <Link to={project.detailPath || `/projeto/${project.slug}`}>
-                          Ver mais
-                        </Link>
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-10 rounded-xl text-xs font-semibold"
-                        title="Partilhar projeto"
-                        onClick={() => void handleShare(project)}
-                      >
-                        <Share2 className="mr-1.5 h-4 w-4" />
-                        Partilhar
-                      </Button>
-                      <Button
-                        variant={!canVote && project.userHasLiked ? "default" : canVote && project.userHasVoted ? "default" : "outline"}
-                        size="sm"
-                        className={`h-10 rounded-xl text-xs font-semibold ${canVote && project.userHasVoted ? "bg-primary text-primary-foreground hover:bg-primary/90" : canVote ? "border-primary/30 text-primary hover:border-primary/60 hover:bg-primary/10" : "border-border text-muted-foreground"}`}
-                        title={canVote ? "Votar no projeto" : "Gostar do expositor"}
-                        onClick={() => canVote ? void handleVote(project.id) : void handleLike(project.id)}
-                      >
-                        {canVote ? <Trophy className="mr-1.5 h-4 w-4" /> : <Heart className={`mr-1.5 h-4 w-4 ${project.userHasLiked ? "fill-current" : ""}`} />}
-                        {canVote ? (project.userHasVoted ? "Votado" : "Votar") : (project.userHasLiked ? "Gostei" : "Gostar")}
-                      </Button>
-                    </div>
-                  </div>
-                </motion.div>
-                );
-              })}
-            </div>
+              <div className="grid gap-5 md:grid-cols-2 2xl:grid-cols-3">
+                {projects.map((project, index) => (
+                  <ProjectShowcaseCard
+                    key={project.id}
+                    project={project}
+                    index={index}
+                    onShare={handleShare}
+                    onOpenQr={(item) => setQrProject(item)}
+                    onPrimaryAction={(item) => (
+                      canVoteSubmission(item.type, item.area, item.canVote)
+                        ? handleVote(item.id)
+                        : handleLike(item.id)
+                    )}
+                  />
+                ))}
+              </div>
             )}
           </>
         )}
@@ -810,6 +743,12 @@ export default function Projetos() {
         onLike={handleLike}
         onComment={handleComment}
         onVote={handleVote}
+      />
+
+      <ProjectQrDialog
+        project={qrProject}
+        open={Boolean(qrProject)}
+        onClose={() => setQrProject(null)}
       />
     </div>
   );

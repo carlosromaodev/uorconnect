@@ -3,8 +3,8 @@ import { motion } from "framer-motion";
 import { BookOpen, Building2, Globe, GraduationCap, Heart, Instagram, Loader2, Lock, Users } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
-import { toast } from "sonner";
-import { api, type Course, getToken, isAuthError, setToken } from "@/lib/api";
+import { toast } from "@/components/ui/sonner";
+import { api, type Course, type StudentEnrollmentListItem, getToken, isAuthError, setToken } from "@/lib/api";
 
 function withAlpha(color: string, alpha = "22") {
   return `${color}${alpha}`;
@@ -25,6 +25,7 @@ export default function Cursos() {
   const [topCourses, setTopCourses] = useState<Course[]>([]);
   const [likedCourseIds, setLikedCourseIds] = useState<Set<number>>(new Set());
   const [enrolledCourseIds, setEnrolledCourseIds] = useState<Set<number>>(new Set());
+  const [enrollmentsByCourse, setEnrollmentsByCourse] = useState<Record<number, StudentEnrollmentListItem>>({});
   const [loading, setLoading] = useState(true);
 
   const redirectToLogin = (message: string) => {
@@ -43,6 +44,23 @@ export default function Cursos() {
     return false;
   };
 
+  const refreshMyEnrollments = async () => {
+    if (!getToken()) {
+      setEnrollmentsByCourse({});
+      setEnrolledCourseIds(new Set());
+      return;
+    }
+
+    const enrollmentItems = await api.courses.enrollmentsMine();
+    setEnrollmentsByCourse(
+      enrollmentItems.reduce<Record<number, StudentEnrollmentListItem>>((acc, item) => {
+        acc[item.courseId] = item;
+        return acc;
+      }, {})
+    );
+    setEnrolledCourseIds(new Set(enrollmentItems.map((item) => item.courseId)));
+  };
+
   useEffect(() => {
     api.courses.list()
       .then((data) => {
@@ -59,9 +77,7 @@ export default function Cursos() {
       .then((data) => setLikedCourseIds(new Set(data.likedCourseIds)))
       .catch(() => undefined);
 
-    api.courses.myEnrollments()
-      .then((data) => setEnrolledCourseIds(new Set(data.enrolledCourseIds)))
-      .catch(() => undefined);
+    void refreshMyEnrollments().catch(() => undefined);
   }, []);
 
   const handleLike = async (courseId: number) => {
@@ -93,10 +109,10 @@ export default function Cursos() {
 
     try {
       const result = await api.courses.enroll(course.id);
-      setEnrolledCourseIds((current) => new Set(current).add(course.id));
       setCourses((current) => current.map((item) => item.id === course.id ? { ...item, studentCount: result.studentCount } : item));
       setTopCourses((current) => current.map((item) => item.id === course.id ? { ...item, studentCount: result.studentCount } : item));
-      toast.success(`Inscrição ${course.isPaid ? "registada" : "confirmada"} no curso. A comunidade foi desbloqueada.`);
+      await refreshMyEnrollments();
+      toast.success(`Inscrição ${course.isPaid ? "registada" : "confirmada"} no curso.`);
     } catch (error) {
       handleCourseAccessError(error, "Erro ao inscrever no curso.");
     }
@@ -163,6 +179,11 @@ export default function Cursos() {
               ) : (
                 <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
                   {courses.map((course, index) => (
+                    (() => {
+                      const enrollment = enrollmentsByCourse[course.id];
+                      const enrolled = Boolean(enrollment);
+
+                      return (
                     <motion.article
                       key={course.id}
                       initial={{ opacity: 0, scale: 0.9, y: 20 }}
@@ -235,9 +256,9 @@ export default function Cursos() {
 
                         <div className="mt-5 flex flex-wrap items-center gap-3 text-sm md:text-base">
                           <span className="rounded-full bg-white/80 px-3 py-1.5 font-semibold shadow-sm">{course.studentCount} inscritos</span>
-                          {enrolledCourseIds.has(course.id) && (
+                          {enrollment && (
                             <span className="rounded-full px-3 py-1.5 font-semibold" style={{ backgroundColor: withAlpha(course.courseColor, "1c"), color: course.courseColor }}>
-                              Inscrição confirmada
+                              {enrollment.statusLabel}
                             </span>
                           )}
                         </div>
@@ -246,13 +267,18 @@ export default function Cursos() {
                           <Button
                             size="sm"
                             className="h-auto min-h-10 w-full min-w-0 rounded-xl px-3 py-2 text-center text-sm font-semibold leading-tight shadow-sm whitespace-normal md:text-base"
-                            onClick={() => void handleEnroll(course)}
-                            disabled={enrolledCourseIds.has(course.id)}
+                            onClick={() => {
+                              if (enrollment?.receiptPath) {
+                                navigate(enrollment.receiptPath);
+                                return;
+                              }
+                              void handleEnroll(course);
+                            }}
                           >
-                            {enrolledCourseIds.has(course.id) ? "Inscrito" : "Inscrever"}
+                            {enrolled ? "Ver inscrição" : "Inscrever"}
                           </Button>
-                          <Button size="sm" variant="outline" className="h-auto min-h-10 w-full min-w-0 rounded-xl bg-white/70 px-3 py-2 text-center text-sm font-semibold leading-tight whitespace-normal md:text-base" onClick={() => handleCommunity(course)} disabled={!enrolledCourseIds.has(course.id)}>
-                            {enrolledCourseIds.has(course.id) ? "Entrar na comunidade" : "Comunidade bloqueada"}
+                          <Button size="sm" variant="outline" className="h-auto min-h-10 w-full min-w-0 rounded-xl bg-white/70 px-3 py-2 text-center text-sm font-semibold leading-tight whitespace-normal md:text-base" onClick={() => handleCommunity(course)} disabled={!enrolled}>
+                            {enrolled ? "Entrar na comunidade" : "Comunidade bloqueada"}
                           </Button>
                           <Button size="sm" variant={likedCourseIds.has(course.id) ? "default" : "outline"} className="h-auto min-h-10 rounded-xl px-3 py-2 text-sm font-semibold leading-tight sm:col-span-2 md:text-base" onClick={() => void handleLike(course.id)}>
                             <Heart className="mr-1.5 h-4 w-4" />
@@ -260,7 +286,7 @@ export default function Cursos() {
                           </Button>
                         </div>
 
-                        {!enrolledCourseIds.has(course.id) && (
+                        {!enrolled && (
                           <p className="mt-3 flex items-center gap-2 text-xs md:text-sm text-muted-foreground">
                             <Lock className="h-4 w-4" />
                             A comunidade do curso só abre depois da inscrição.
@@ -268,6 +294,8 @@ export default function Cursos() {
                         )}
                       </div>
                     </motion.article>
+                      );
+                    })()
                   ))}
                 </div>
               )}

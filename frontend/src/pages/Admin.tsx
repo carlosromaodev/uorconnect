@@ -1,4 +1,4 @@
-import { type ReactNode, useEffect, useMemo, useState } from "react";
+import { type ReactNode, Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import type { LucideIcon } from "lucide-react";
 import {
@@ -9,6 +9,7 @@ import {
   Briefcase,
   CalendarDays,
   CheckCircle,
+  Cookie,
   ChevronLeft,
   ChevronRight,
   Clock,
@@ -20,11 +21,13 @@ import {
   FolderOpen,
   GraduationCap,
   HelpCircle,
+  Palette,
   Loader2,
   MapPin,
   MessageSquare,
   Mic,
   Package,
+  ImagePlus,
   Radio,
   Search,
   Settings,
@@ -39,8 +42,20 @@ import {
   XCircle,
   Zap,
 } from "lucide-react";
-import { toast } from "sonner";
+import {
+  Heart as PhHeart,
+  ChatTeardrop as PhChatTeardrop,
+  Trophy as PhTrophy,
+  UsersThree as PhUsers,
+  Clock as PhClock,
+  TrendUp as PhTrendUp,
+  Eye as PhEye,
+  FloppyDisk as PhFloppy,
+  Lightning as PhLightning,
+} from "@/icons/phosphor";
+import { toast } from "@/components/ui/sonner";
 import { Link } from "react-router-dom";
+import PhosphorIcon from "@/lib/icons/phosphor-icon";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -57,8 +72,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import { defaultHomeSocialConfig } from "@/lib/home-content";
 import {
   type AdminAuthorizedStudent,
+  type AnalyticsDashboard,
+  type AnalyticsEventsPayload,
+  type AnalyticsFilterInput,
   type AdminModerationLiveChatMessage,
   type AdminModerationProjectComment,
   api,
@@ -72,6 +91,7 @@ import {
   type FaqInput,
   type FaqItem,
   type GuideContent,
+  type HomeSocialConfig,
   type HomeSocialConfigInput,
   type GuideStepInput,
   type GuideTipInput,
@@ -88,15 +108,25 @@ import {
   isForbiddenError,
   setToken,
 } from "@/lib/api";
+import { readImageFileAsDataUrl } from "@/lib/project-media";
+
+const EventoTab = lazy(() =>
+  import("@/components/admin/EventoTab").then((module) => ({ default: module.EventoTab })),
+);
+const AdminAnalyticsTab = lazy(() =>
+  import("@/components/admin/AdminAnalyticsTab").then((module) => ({ default: module.AdminAnalyticsTab })),
+);
 
 const tabs = [
   { id: "overview", label: "Visão Geral", icon: BarChart3 },
+  { id: "analytics", label: "Cookies & Analytics", icon: Cookie },
   { id: "submissions", label: "Candidaturas", icon: FolderOpen },
   { id: "speakers", label: "Palestrantes", icon: Mic },
   { id: "schedule", label: "Agenda", icon: CalendarDays },
   { id: "guide", label: "Guia", icon: BookOpen },
   { id: "courses", label: "Cursos", icon: GraduationCap },
   { id: "panels", label: "Painéis", icon: Zap },
+  { id: "evento", label: "Evento", icon: Palette },
   { id: "faq", label: "FAQ", icon: HelpCircle },
   { id: "live", label: "Ao Vivo", icon: Radio },
   { id: "votes", label: "Votações", icon: ThumbsUp },
@@ -124,6 +154,9 @@ type AdminSubmission = {
   observacoes: string;
   status: "pendente" | "aprovado" | "recusado";
   data: string;
+  primaryColor: string;
+  secondaryColor: string;
+  bannerUrl: string | null;
   isWinner: boolean;
   canVote: boolean;
 };
@@ -131,6 +164,7 @@ type AdminSubmission = {
 type VoteProjectSummary = {
   id: number;
   nome: string;
+  equipa: string;
   tipo: "projeto" | "negocio" | "produto";
   votos: number;
   rating: number;
@@ -231,6 +265,21 @@ const defaultGuideTipForm: GuideTipInput = {
   isPublished: true,
 };
 
+function AdminPanelFallback({ label }: { label: string }) {
+  return (
+    <Card className="border-border/60">
+      <CardContent className="flex min-h-[220px] items-center justify-center p-8 text-center">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">A carregar módulo</p>
+          <p className="mt-3 text-sm text-muted-foreground">
+            A preparar a área de {label.toLowerCase()} do painel administrativo.
+          </p>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 const defaultVenueForm: VenueInput = {
   name: "",
   description: "",
@@ -275,10 +324,66 @@ const defaultPanelTopicForm: PanelTopicInput = {
 };
 
 const defaultSocialConfigForm: HomeSocialConfigInput = {
-  instagramUrl: "https://www.instagram.com/uorconnect??igsh=bmo4enl2cGN2cGc2&utm_source=qr",
-  facebookUrl: null,
-  linkedinUrl: null,
+  instagramUrl: defaultHomeSocialConfig.instagramUrl,
+  facebookUrl: defaultHomeSocialConfig.facebookUrl,
+  linkedinUrl: defaultHomeSocialConfig.linkedinUrl,
+  courseEnrollmentEnabled: defaultHomeSocialConfig.courseEnrollmentEnabled,
+  firstYearContestEnabled: defaultHomeSocialConfig.firstYearContestEnabled,
+  primaryColor: defaultHomeSocialConfig.primaryColor,
+  primaryGradient: defaultHomeSocialConfig.primaryGradient,
+  titleColor: defaultHomeSocialConfig.titleColor,
+  accentColor: defaultHomeSocialConfig.accentColor,
+  dashedColor: defaultHomeSocialConfig.dashedColor,
+  dashedOpacity: defaultHomeSocialConfig.dashedOpacity,
+  heroIconsOpacity: defaultHomeSocialConfig.heroIconsOpacity,
+  heroBlobsIntensity: defaultHomeSocialConfig.heroBlobsIntensity,
+  heroMeshEnabled: defaultHomeSocialConfig.heroMeshEnabled,
+  heroBadgeText: defaultHomeSocialConfig.heroBadgeText,
+  heroTitlePrefix: defaultHomeSocialConfig.heroTitlePrefix,
+  heroTitleHighlight: defaultHomeSocialConfig.heroTitleHighlight,
+  heroSubtitleText: defaultHomeSocialConfig.heroSubtitleText,
+  heroSubtitleColor: defaultHomeSocialConfig.heroSubtitleColor,
+  heroTitleMobileSize: defaultHomeSocialConfig.heroTitleMobileSize,
+  heroTitleTabletSize: defaultHomeSocialConfig.heroTitleTabletSize,
+  heroTitleDesktopSize: defaultHomeSocialConfig.heroTitleDesktopSize,
+  heroSubtitleMobileSize: defaultHomeSocialConfig.heroSubtitleMobileSize,
+  heroSubtitleTabletSize: defaultHomeSocialConfig.heroSubtitleTabletSize,
+  heroSubtitleDesktopSize: defaultHomeSocialConfig.heroSubtitleDesktopSize,
+  heroFloatingIcons: defaultHomeSocialConfig.heroFloatingIcons,
+  sponsors: defaultHomeSocialConfig.sponsors,
 };
+
+function toSocialConfigForm(config: HomeSocialConfig): HomeSocialConfigInput {
+  return {
+    instagramUrl: config.instagramUrl ?? null,
+    facebookUrl: config.facebookUrl ?? null,
+    linkedinUrl: config.linkedinUrl ?? null,
+    courseEnrollmentEnabled: config.courseEnrollmentEnabled,
+    firstYearContestEnabled: config.firstYearContestEnabled,
+    primaryColor: config.primaryColor,
+    primaryGradient: config.primaryGradient,
+    titleColor: config.titleColor,
+    accentColor: config.accentColor,
+    dashedColor: config.dashedColor,
+    dashedOpacity: config.dashedOpacity,
+    heroIconsOpacity: config.heroIconsOpacity,
+    heroBlobsIntensity: config.heroBlobsIntensity,
+    heroMeshEnabled: config.heroMeshEnabled,
+    heroBadgeText: config.heroBadgeText,
+    heroTitlePrefix: config.heroTitlePrefix,
+    heroTitleHighlight: config.heroTitleHighlight,
+    heroSubtitleText: config.heroSubtitleText,
+    heroSubtitleColor: config.heroSubtitleColor,
+    heroTitleMobileSize: config.heroTitleMobileSize,
+    heroTitleTabletSize: config.heroTitleTabletSize,
+    heroTitleDesktopSize: config.heroTitleDesktopSize,
+    heroSubtitleMobileSize: config.heroSubtitleMobileSize,
+    heroSubtitleTabletSize: config.heroSubtitleTabletSize,
+    heroSubtitleDesktopSize: config.heroSubtitleDesktopSize,
+    heroFloatingIcons: config.heroFloatingIcons,
+    sponsors: config.sponsors,
+  };
+}
 
 const defaultSubmissionConfigForm: Omit<SubmissionConfig, "key" | "createdAt" | "updatedAt"> = {
   isOpen: true,
@@ -309,7 +414,38 @@ const statusColors: Record<AdminSubmission["status"], string> = {
   recusado: "bg-destructive/15 text-destructive border-destructive/30",
 };
 
+type CourseEnrollmentStatus = "PENDING" | "CONFIRMED" | "REJECTED" | "CANCELED";
+
+const courseEnrollmentStatusBadge: Record<CourseEnrollmentStatus, string> = {
+  PENDING: "bg-[hsl(var(--warning))]/15 text-[hsl(var(--warning))] border-[hsl(var(--warning))]/30",
+  CONFIRMED: "bg-[hsl(var(--success))]/15 text-[hsl(var(--success))] border-[hsl(var(--success))]/30",
+  REJECTED: "bg-destructive/15 text-destructive border-destructive/30",
+  CANCELED: "bg-slate-200 text-slate-700 border-slate-300",
+};
+
+const courseEnrollmentStatusLabel: Record<CourseEnrollmentStatus, string> = {
+  PENDING: "Pendente",
+  CONFIRMED: "Confirmado",
+  REJECTED: "Rejeitado",
+  CANCELED: "Cancelado",
+};
+
+function normalizeCourseEnrollmentStatus(status: string): CourseEnrollmentStatus {
+  if (status === "CONFIRMED" || status === "REJECTED" || status === "CANCELED") {
+    return status;
+  }
+
+  return "PENDING";
+}
+
 const guideIconOptions = ["BookOpen", "UserCheck", "CalendarDays", "Mic", "MapPin", "Zap"];
+
+const defaultAnalyticsFilters: AnalyticsFilterInput = {
+  audience: "all",
+  consent: "all",
+  limit: 50,
+  page: 1,
+};
 
 function mapSubmissionType(type: string): AdminSubmission["tipo"] {
   if (type === "BUSINESS") return "negocio";
@@ -345,6 +481,10 @@ function studentInteractions(student: StudentWithStats) {
 function formatDateLabel(value: string) {
   if (!value) return "Sem data";
   return new Date(value).toLocaleDateString("pt-PT", { day: "2-digit", month: "short", year: "numeric" });
+}
+
+function submissionCoverGradient(submission: Pick<AdminSubmission, "primaryColor" | "secondaryColor">) {
+  return `linear-gradient(135deg, ${submission.primaryColor}E8 0%, ${submission.secondaryColor}D9 100%)`;
 }
 
 function formatAgendaDay(day: string) {
@@ -425,6 +565,9 @@ const FormField = ({
 
 const Admin = () => {
   const [activeTab, setActiveTab] = useState<TabId>("overview");
+  const [showLeftGradient, setShowLeftGradient] = useState(false);
+  const [showRightGradient, setShowRightGradient] = useState(true);
+  const tabsScrollRef = useRef<HTMLDivElement>(null);
   const [loading, setLoading] = useState(true);
   const [accessState, setAccessState] = useState<"checking" | "allowed" | "unauthenticated" | "forbidden">("checking");
   const [sessionStudentNumber, setSessionStudentNumber] = useState<string | null>(null);
@@ -446,8 +589,14 @@ const Admin = () => {
   const [moderationPageSize, setModerationPageSize] = useState(10);
   const [moderationCommentPage, setModerationCommentPage] = useState(1);
   const [moderationChatPage, setModerationChatPage] = useState(1);
+  const [loadingAnalytics, setLoadingAnalytics] = useState(false);
+  const [analyticsDashboard, setAnalyticsDashboard] = useState<AnalyticsDashboard | null>(null);
+  const [analyticsEvents, setAnalyticsEvents] = useState<AnalyticsEventsPayload | null>(null);
+  const [analyticsError, setAnalyticsError] = useState<string | null>(null);
+  const [analyticsFilters, setAnalyticsFilters] = useState<AnalyticsFilterInput>(defaultAnalyticsFilters);
 
   const [submissions, setSubmissions] = useState<AdminSubmission[]>([]);
+  const [submissionBannerDrafts, setSubmissionBannerDrafts] = useState<Record<number, string | null | undefined>>({});
   const [submissionConfig, setSubmissionConfig] = useState<Omit<SubmissionConfig, "key" | "createdAt" | "updatedAt">>(defaultSubmissionConfigForm);
   const [students, setStudents] = useState<StudentWithStats[]>([]);
   const [authorizedAdminStudents, setAuthorizedAdminStudents] = useState<AdminAuthorizedStudent[]>([]);
@@ -462,6 +611,7 @@ const Admin = () => {
   const [liveConfigForm, setLiveConfigForm] = useState<AgendaLiveConfigInput>(defaultLiveConfigForm);
   const [voteProjects, setVoteProjects] = useState<VoteProjectSummary[]>([]);
   const [voteEntries, setVoteEntries] = useState<VoteEntry[]>([]);
+  const [votesUpdatedAt, setVotesUpdatedAt] = useState<string | null>(null);
   const [projectComments, setProjectComments] = useState<AdminModerationProjectComment[]>([]);
   const [liveChatMessages, setLiveChatMessages] = useState<AdminModerationLiveChatMessage[]>([]);
   const [selectedWinners, setSelectedWinners] = useState<{ projectWinner: number | null; studentWinner: number | null }>({
@@ -477,6 +627,7 @@ const Admin = () => {
   const [expandedCourseId, setExpandedCourseId] = useState<number | null>(null);
   const [loadingCourseId, setLoadingCourseId] = useState<number | null>(null);
   const [exportingCourseId, setExportingCourseId] = useState<number | null>(null);
+  const [updatingEnrollmentStatusId, setUpdatingEnrollmentStatusId] = useState<number | null>(null);
 
   const [editingSpeakerId, setEditingSpeakerId] = useState<number | null>(null);
   const [speakerForm, setSpeakerForm] = useState<SpeakerInput>(defaultSpeakerForm);
@@ -496,6 +647,40 @@ const Admin = () => {
   const [panelTopicForm, setPanelTopicForm] = useState<PanelTopicInput>(defaultPanelTopicForm);
   const [socialConfigForm, setSocialConfigForm] = useState<HomeSocialConfigInput>(defaultSocialConfigForm);
   const [authorizedStudentNumber, setAuthorizedStudentNumber] = useState("");
+
+  const applyVoteSnapshot = (
+    interactionData: Awaited<ReturnType<typeof api.interactions.adminVotes>>,
+    submissionList: AdminSubmission[]
+  ) => {
+    const submissionStatusMap = new Map(submissionList.map((item) => [item.id, item.status]));
+    const submissionTeamMap = new Map(submissionList.map((item) => [item.id, item.equipa]));
+    const submissionWinnerMap = new Map(submissionList.map((item) => [item.id, item.isWinner]));
+
+    setVoteProjects(
+      interactionData.projects.map((project) => ({
+        id: project.id,
+        nome: project.name,
+        equipa: submissionTeamMap.get(project.id) || "Equipa por confirmar",
+        tipo: mapSubmissionType(project.type),
+        votos: project.votes,
+        rating: project.averageRating,
+        comentarios: project.comments,
+        status: submissionStatusMap.get(project.id) ?? "pendente",
+        isWinner: submissionWinnerMap.get(project.id) ?? false,
+      }))
+    );
+    setVoteEntries(
+      interactionData.votes.map((vote) => ({
+        id: vote.id,
+        studentId: vote.studentId,
+        estudante: vote.studentName || `Estudante ${vote.studentNumber}`,
+        email: vote.studentEmail || "Sem email",
+        projeto: vote.submissionName,
+        data: vote.createdAt,
+      }))
+    );
+    setVotesUpdatedAt(new Date().toISOString());
+  };
 
   const loadAdminData = async () => {
     if (!getToken()) {
@@ -587,27 +772,35 @@ const Admin = () => {
         toast.warning("Alguns blocos da administração falharam ao carregar. O resto do painel foi mantido.");
       }
 
-      setSubmissions(
-        submissionList.map((submission) => ({
-          id: submission.id,
-          slug: submission.slug,
-          detailPath: submission.detailPath,
-          referenceCode: submission.referenceCode,
-          nome: submission.name,
-          descricao: submission.description,
-          tipo: mapSubmissionType(submission.type),
-          area: submission.area ?? "Geral",
-          curso: submission.course ?? "Sem curso",
-          equipa: submission.members ?? "",
-          responsavel: submission.leaderName ?? "Responsável não informado",
-          telefone: submission.leaderPhone ?? "",
-          necessidades: submission.needs ?? [],
-          observacoes: submission.observations ?? "",
-          status: mapSubmissionStatus(submission.status),
-          data: submission.createdAt ?? "",
-          isWinner: submission.isWinner,
-          canVote: submission.canVote,
-        }))
+      const mappedSubmissions = submissionList.map((submission) => ({
+        id: submission.id,
+        slug: submission.slug,
+        detailPath: submission.detailPath,
+        referenceCode: submission.referenceCode,
+        nome: submission.name,
+        descricao: submission.description,
+        tipo: mapSubmissionType(submission.type),
+        area: submission.area ?? "Geral",
+        curso: submission.course ?? "Sem curso",
+        equipa: submission.members ?? "",
+        responsavel: submission.leaderName ?? "Responsável não informado",
+        telefone: submission.leaderPhone ?? "",
+        necessidades: submission.needs ?? [],
+        observacoes: submission.observations ?? "",
+        status: mapSubmissionStatus(submission.status),
+        data: submission.createdAt ?? "",
+        primaryColor: submission.primaryColor,
+        secondaryColor: submission.secondaryColor,
+        bannerUrl: submission.bannerUrl ?? null,
+        isWinner: submission.isWinner,
+        canVote: submission.canVote,
+      }));
+      setSubmissions(mappedSubmissions);
+      setSubmissionBannerDrafts(
+        mappedSubmissions.reduce<Record<number, string | null>>((acc, item) => {
+          acc[item.id] = item.bannerUrl ?? null;
+          return acc;
+        }, {})
       );
       if (config) {
         setSubmissionConfig({
@@ -628,11 +821,7 @@ const Admin = () => {
       setGuideContent(guide);
       setCourses(courseData.courses);
       setPanelTopics(homepage.panelTopics);
-      setSocialConfigForm({
-        instagramUrl: homepage.socialConfig.instagramUrl ?? null,
-        facebookUrl: homepage.socialConfig.facebookUrl ?? null,
-        linkedinUrl: homepage.socialConfig.linkedinUrl ?? null,
-      });
+      setSocialConfigForm(toSocialConfigForm(homepage.socialConfig));
       setLiveState(live);
       setLiveConfigForm({
         mode: liveConfig.mode,
@@ -641,29 +830,7 @@ const Admin = () => {
       setProjectComments(moderationData.projectComments);
       setLiveChatMessages(moderationData.liveChatMessages);
 
-      const submissionStatusMap = new Map(submissionList.map((item) => [item.id, mapSubmissionStatus(item.status)]));
-      setVoteProjects(
-        interactionData.projects.map((project) => ({
-          id: project.id,
-          nome: project.name,
-          tipo: mapSubmissionType(project.type),
-          votos: project.votes,
-          rating: project.averageRating,
-          comentarios: project.comments,
-          status: submissionStatusMap.get(project.id) ?? "pendente",
-          isWinner: submissionList.find((submission) => submission.id === project.id)?.isWinner ?? false,
-        }))
-      );
-      setVoteEntries(
-        interactionData.votes.map((vote) => ({
-          id: vote.id,
-          studentId: vote.studentId,
-          estudante: vote.studentName || `Estudante ${vote.studentNumber}`,
-          email: vote.studentEmail || "Sem email",
-          projeto: vote.submissionName,
-          data: vote.createdAt,
-        }))
-      );
+      applyVoteSnapshot(interactionData, mappedSubmissions);
 
       const winner = submissionList.find((submission) => submission.isWinner);
       setSelectedWinners((current) => ({ ...current, projectWinner: winner?.id ?? null }));
@@ -683,6 +850,79 @@ const Admin = () => {
     }
   };
 
+  const loadAnalyticsData = async (filters: AnalyticsFilterInput = analyticsFilters) => {
+    try {
+      setLoadingAnalytics(true);
+      setAnalyticsError(null);
+      const [dashboard, events] = await Promise.all([
+        api.analytics.dashboard(filters),
+        api.analytics.events(filters),
+      ]);
+      setAnalyticsDashboard(dashboard);
+      setAnalyticsEvents(events);
+    } catch (error) {
+      if (isAuthError(error)) {
+        setToken(null);
+        setAccessState("unauthenticated");
+        setAnalyticsError("A sessão expirou. Inicia sessão de novo para abrir a central de cookies.");
+        return;
+      }
+
+      if (isForbiddenError(error)) {
+        setAccessState("forbidden");
+        setAnalyticsError("A conta atual não tem acesso à central de cookies e analytics.");
+        return;
+      }
+
+      setAnalyticsError(error instanceof Error ? error.message : "Falha ao carregar a central de cookies.");
+    } finally {
+      setLoadingAnalytics(false);
+    }
+  };
+
+  const handleAnalyticsFiltersChange = (patch: Partial<AnalyticsFilterInput>) => {
+    setAnalyticsFilters((current) => ({
+      ...current,
+      ...patch,
+      page: patch.page ?? (patch.search !== undefined || patch.from !== undefined || patch.to !== undefined || patch.course !== undefined || patch.audience !== undefined || patch.consent !== undefined || patch.source !== undefined ? 1 : current.page),
+    }));
+  };
+
+  const handleAnalyticsExport = async () => {
+    try {
+      const csv = await api.analytics.exportCsv(analyticsFilters);
+      downloadBlob(csv, `uor-connect-cookies-analytics-${new Date().toISOString().slice(0, 10)}.csv`);
+      toast.success("Exportação de analytics concluída.");
+    } catch (error) {
+      if (isAuthError(error)) {
+        setToken(null);
+        setAccessState("unauthenticated");
+        toast.warning("Inicia sessão novamente para exportar o histórico de cookies.");
+      } else if (isForbiddenError(error)) {
+        setAccessState("forbidden");
+        toast.error("A conta atual não pode exportar os dados de cookies.");
+      } else {
+        toast.error(error instanceof Error ? error.message : "Falha ao exportar analytics.");
+      }
+    }
+  };
+
+  // Handler para atualizar visibilidade dos gradients de scroll das abas
+  const handleTabsScroll = () => {
+    if (!tabsScrollRef.current) return;
+    
+    const { scrollLeft, scrollWidth, clientWidth } = tabsScrollRef.current;
+    setShowLeftGradient(scrollLeft > 10);
+    setShowRightGradient(scrollLeft < scrollWidth - clientWidth - 10);
+  };
+
+  // Inicializar estado dos gradients e monitorer resize
+  useEffect(() => {
+    handleTabsScroll();
+    window.addEventListener('resize', handleTabsScroll);
+    return () => window.removeEventListener('resize', handleTabsScroll);
+  }, []);
+
   useEffect(() => {
     void loadAdminData();
   }, []);
@@ -691,7 +931,7 @@ const Admin = () => {
     if (accessState !== "allowed") return;
 
     const interval = window.setInterval(() => {
-      Promise.allSettled([api.agenda.live(), api.agenda.list()]).then(([liveResult, agendaResult]) => {
+      Promise.allSettled([api.agenda.live(), api.agenda.list(), api.interactions.adminVotes()]).then(([liveResult, agendaResult, votesResult]) => {
         if (liveResult.status === "fulfilled") {
           setLiveState(liveResult.value);
         }
@@ -699,11 +939,21 @@ const Admin = () => {
         if (agendaResult.status === "fulfilled") {
           setSchedule(agendaResult.value);
         }
+
+        if (votesResult.status === "fulfilled") {
+          applyVoteSnapshot(votesResult.value, submissions);
+        }
       });
     }, 30000);
 
     return () => window.clearInterval(interval);
-  }, [accessState]);
+  }, [accessState, submissions]);
+
+  useEffect(() => {
+    if (accessState !== "allowed" || activeTab !== "analytics") return;
+    void loadAnalyticsData();
+  }, [accessState, activeTab, analyticsFilters]);
+
 
   const rankedStudents = useMemo(
     () => [...students].sort((left, right) => studentInteractions(right) - studentInteractions(left)),
@@ -906,6 +1156,8 @@ const Admin = () => {
     }
   };
 
+
+
   if (accessState === "unauthenticated" || accessState === "forbidden") {
     return (
       <div className="min-h-screen py-12 md:py-16">
@@ -1086,6 +1338,103 @@ const Admin = () => {
     }
   };
 
+  const resolveSubmissionBannerPreview = (submission: AdminSubmission) => {
+    const draftBanner = submissionBannerDrafts[submission.id];
+    return draftBanner !== undefined ? draftBanner : submission.bannerUrl;
+  };
+
+  const handleSubmissionBannerFile = async (submission: AdminSubmission, file: File | null) => {
+    if (!file) return;
+
+    if (submission.status !== "aprovado") {
+      toast.info("A edição da capa só fica disponível quando a candidatura é aprovada.");
+      return;
+    }
+
+    if (!file.type.startsWith("image/")) {
+      toast.error("Seleciona um ficheiro de imagem válido.");
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("A imagem deve ter no máximo 5MB.");
+      return;
+    }
+
+    try {
+      const dataUrl = await readImageFileAsDataUrl(file);
+      setSubmissionBannerDrafts((current) => ({ ...current, [submission.id]: dataUrl }));
+      toast.success("Imagem preparada. Clica em \"Guardar capa\" para aplicar.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Falha ao processar imagem.");
+    }
+  };
+
+  const handleSubmissionBannerSave = async (submission: AdminSubmission) => {
+    if (submission.status !== "aprovado") {
+      toast.info("A edição da capa só fica disponível quando a candidatura é aprovada.");
+      return;
+    }
+
+    const nextBannerUrl = resolveSubmissionBannerPreview(submission) ?? null;
+    const busyId = `submission-banner-save-${submission.id}`;
+
+    try {
+      setBusyKey(busyId);
+      const updated = await api.submissions.updatePresentation(submission.id, { bannerUrl: nextBannerUrl });
+      setSubmissions((current) => current.map((item) => (
+        item.id === submission.id
+          ? {
+            ...item,
+            bannerUrl: updated.bannerUrl ?? null,
+            primaryColor: updated.primaryColor,
+            secondaryColor: updated.secondaryColor,
+          }
+          : item
+      )));
+      setSubmissionBannerDrafts((current) => ({ ...current, [submission.id]: updated.bannerUrl ?? null }));
+      toast.success("Capa do expositor atualizada.");
+    } catch (error) {
+      if (!handleAdminAuthFailure(error)) {
+        toast.error(error instanceof Error ? error.message : "Falha ao guardar capa do expositor.");
+      }
+    } finally {
+      setBusyKey(null);
+    }
+  };
+
+  const handleSubmissionBannerRemove = async (submission: AdminSubmission) => {
+    if (submission.status !== "aprovado") {
+      toast.info("A edição da capa só fica disponível quando a candidatura é aprovada.");
+      return;
+    }
+
+    const busyId = `submission-banner-remove-${submission.id}`;
+
+    try {
+      setBusyKey(busyId);
+      const updated = await api.submissions.updatePresentation(submission.id, { bannerUrl: null });
+      setSubmissions((current) => current.map((item) => (
+        item.id === submission.id
+          ? {
+            ...item,
+            bannerUrl: null,
+            primaryColor: updated.primaryColor,
+            secondaryColor: updated.secondaryColor,
+          }
+          : item
+      )));
+      setSubmissionBannerDrafts((current) => ({ ...current, [submission.id]: null }));
+      toast.success("Foto da capa removida.");
+    } catch (error) {
+      if (!handleAdminAuthFailure(error)) {
+        toast.error(error instanceof Error ? error.message : "Falha ao remover capa do expositor.");
+      }
+    } finally {
+      setBusyKey(null);
+    }
+  };
+
   const handleSubmissionConfigSave = async () => {
     if (!submissionConfig.iban || !submissionConfig.accountName || !submissionConfig.paymentAmount) {
       toast.error("Preenche IBAN, nome da conta e valor da candidatura.");
@@ -1216,6 +1565,38 @@ const Admin = () => {
       }
     } finally {
       setExportingCourseId(null);
+    }
+  };
+
+  const handleEnrollmentStatusUpdate = async (
+    courseId: number,
+    enrollmentId: number,
+    status: CourseEnrollmentStatus
+  ) => {
+    try {
+      setUpdatingEnrollmentStatusId(enrollmentId);
+      const payload = await api.courses.updateEnrollmentStatus(enrollmentId, status);
+      setCourseEnrollments((current) => {
+        const currentCourse = current[courseId];
+        if (!currentCourse) return current;
+
+        return {
+          ...current,
+          [courseId]: {
+            ...currentCourse,
+            enrollments: currentCourse.enrollments.map((entry) => (
+              entry.id === enrollmentId ? payload.enrollment : entry
+            )),
+          },
+        };
+      });
+      toast.success(`Estado da inscrição atualizado para ${courseEnrollmentStatusLabel[status].toLowerCase()}.`);
+    } catch (error) {
+      if (!handleAdminAuthFailure(error)) {
+        toast.error(error instanceof Error ? error.message : "Falha ao atualizar estado da inscrição");
+      }
+    } finally {
+      setUpdatingEnrollmentStatusId(null);
     }
   };
 
@@ -1611,16 +1992,51 @@ const Admin = () => {
         instagramUrl: normalizeOptionalText(socialConfigForm.instagramUrl) || null,
         facebookUrl: normalizeOptionalText(socialConfigForm.facebookUrl) || null,
         linkedinUrl: normalizeOptionalText(socialConfigForm.linkedinUrl) || null,
+        courseEnrollmentEnabled: socialConfigForm.courseEnrollmentEnabled,
+        firstYearContestEnabled: socialConfigForm.firstYearContestEnabled,
+        primaryColor: socialConfigForm.primaryColor,
+        primaryGradient: socialConfigForm.primaryGradient,
+        titleColor: socialConfigForm.titleColor,
+        accentColor: socialConfigForm.accentColor,
+        dashedColor: socialConfigForm.dashedColor,
+        dashedOpacity: socialConfigForm.dashedOpacity,
+        heroIconsOpacity: socialConfigForm.heroIconsOpacity,
+        heroBlobsIntensity: socialConfigForm.heroBlobsIntensity,
+        heroMeshEnabled: socialConfigForm.heroMeshEnabled,
+        heroBadgeText: socialConfigForm.heroBadgeText,
+        heroTitlePrefix: socialConfigForm.heroTitlePrefix,
+        heroTitleHighlight: socialConfigForm.heroTitleHighlight,
+        heroSubtitleText: socialConfigForm.heroSubtitleText,
+        heroSubtitleColor: socialConfigForm.heroSubtitleColor,
+        heroTitleMobileSize: socialConfigForm.heroTitleMobileSize,
+        heroTitleTabletSize: socialConfigForm.heroTitleTabletSize,
+        heroTitleDesktopSize: socialConfigForm.heroTitleDesktopSize,
+        heroSubtitleMobileSize: socialConfigForm.heroSubtitleMobileSize,
+        heroSubtitleTabletSize: socialConfigForm.heroSubtitleTabletSize,
+        heroSubtitleDesktopSize: socialConfigForm.heroSubtitleDesktopSize,
+        heroFloatingIcons: socialConfigForm.heroFloatingIcons,
+        sponsors: socialConfigForm.sponsors,
       });
 
-      setSocialConfigForm({
-        instagramUrl: saved.instagramUrl,
-        facebookUrl: saved.facebookUrl,
-        linkedinUrl: saved.linkedinUrl,
-      });
-      toast.success("Redes sociais do UOR Connect atualizadas.");
+      setSocialConfigForm(toSocialConfigForm(saved));
+      toast.success("Hero, patrocinadores e identidade visual atualizados.");
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Falha ao guardar redes sociais");
+      toast.error(error instanceof Error ? error.message : "Falha ao guardar configurações do evento");
+    } finally {
+      setBusyKey(null);
+    }
+  };
+
+  const handleRefreshVotes = async () => {
+    try {
+      setBusyKey("votes-refresh");
+      const snapshot = await api.interactions.adminVotes();
+      applyVoteSnapshot(snapshot, submissions);
+      toast.success("Votação sincronizada com o banco de dados.");
+    } catch (error) {
+      if (!handleAdminAuthFailure(error)) {
+        toast.error(error instanceof Error ? error.message : "Falha ao atualizar votação");
+      }
     } finally {
       setBusyKey(null);
     }
@@ -1698,33 +2114,57 @@ const Admin = () => {
 
       <div className="sticky top-16 z-30 border-b border-border bg-card">
         <div className="mx-auto max-w-7xl px-4 py-4">
-          <div className="mb-4 flex items-center gap-3">
-            <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary">
-              <Shield className="h-5 w-5 text-primary-foreground" />
+          <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-3">
+              <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary">
+                <Shield className="h-5 w-5 text-primary-foreground" />
+              </div>
+              <div>
+                <h1 className="font-heading text-xl font-bold">Painel Administrativo</h1>
+                <p className="text-xs text-muted-foreground">Gestão completa ligada ao banco de dados</p>
+              </div>
             </div>
-            <div>
-              <h1 className="font-heading text-xl font-bold">Painel Administrativo</h1>
-              <p className="text-xs text-muted-foreground">Gestão completa ligada ao banco de dados</p>
+            <div className="flex flex-wrap gap-2">
+              <Button asChild className="rounded-xl bg-[#0A3D62] text-white hover:bg-[#082f4b]">
+                <Link to="/">Ver portal público</Link>
+              </Button>
             </div>
           </div>
 
-          <div className="flex gap-1 overflow-x-auto pb-1">
-            {tabs.map((tab) => {
+          <div className="relative">
+            {/* Gradient fade left - mostra que há conteúdo à esquerda */}
+            {showLeftGradient && (
+              <div className="pointer-events-none absolute left-0 top-0 bottom-0 w-8 z-20 bg-gradient-to-r from-card via-card to-transparent" />
+            )}
+
+            {/* Tabs scroll container com padding responsivo */}
+            <div
+              ref={tabsScrollRef}
+              onScroll={handleTabsScroll}
+              className="flex gap-1 sm:gap-1.5 overflow-x-auto pb-2 scroll-smooth snap-x snap-mandatory"
+            >
+              {tabs.map((tab) => {
               const Icon = tab.icon;
               const isActive = activeTab === tab.id;
               return (
                 <button
                   key={tab.id}
-                  className={`flex items-center gap-1.5 whitespace-nowrap rounded-lg px-3 py-2 text-xs font-medium transition-all ${
+                  className={`flex min-w-max flex-shrink-0 items-center gap-1 sm:gap-1.5 whitespace-nowrap rounded-lg px-2 sm:px-3 py-1.5 sm:py-2 text-xs sm:text-sm font-medium transition-all snap-start ${
                     isActive ? "bg-primary text-primary-foreground" : "text-muted-foreground hover:bg-muted hover:text-foreground"
                   }`}
                   onClick={() => setActiveTab(tab.id)}
                 >
-                  <Icon className="h-3.5 w-3.5" />
+                  <Icon className="h-4 w-4 sm:h-3.5 sm:w-3.5 flex-shrink-0" />
                   {tab.label}
                 </button>
               );
             })}
+            </div>
+
+            {/* Gradient fade right - mostra que há conteúdo à direita */}
+            {showRightGradient && (
+              <div className="pointer-events-none absolute right-0 top-0 bottom-0 w-8 z-20 bg-gradient-to-l from-card via-card to-transparent" />
+            )}
           </div>
         </div>
       </div>
@@ -1818,6 +2258,21 @@ const Admin = () => {
                 </>
               )}
 
+              {activeTab === "analytics" && (
+                <Suspense fallback={<AdminPanelFallback label="Analytics" />}>
+                  <AdminAnalyticsTab
+                    loading={loadingAnalytics}
+                    dashboard={analyticsDashboard}
+                    events={analyticsEvents}
+                    error={analyticsError}
+                    filters={analyticsFilters}
+                    onFiltersChange={handleAnalyticsFiltersChange}
+                    onRefresh={() => void loadAnalyticsData()}
+                    onExport={() => void handleAnalyticsExport()}
+                  />
+                </Suspense>
+              )}
+
               {activeTab === "submissions" && (
                 <>
                   <div className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
@@ -1883,43 +2338,59 @@ const Admin = () => {
                     </Card>
                   </div>
 
-                  <div className="flex flex-col gap-3 lg:flex-row">
-                    <div className="relative flex-1">
-                      <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                      <Input className="pl-9" placeholder="Pesquisar por nome, número de inscrição, curso ou contacto..." value={searchTerm} onChange={(event) => setSearchTerm(event.target.value)} />
+                  <div className="surface-card p-4 sm:p-5">
+                    <div className="grid gap-3 xl:grid-cols-[minmax(0,1.25fr)_repeat(2,minmax(180px,220px))]">
+                      <div className="relative min-w-0">
+                        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                        <Input
+                          className="pl-9"
+                          placeholder="Pesquisar por nome, número de inscrição, curso ou contacto..."
+                          value={searchTerm}
+                          onChange={(event) => setSearchTerm(event.target.value)}
+                        />
+                      </div>
+                      <select
+                        className="touch-safe h-11 rounded-2xl border border-input/80 bg-white/80 px-4 text-sm shadow-[0_6px_18px_rgba(15,23,42,0.04)] transition-all duration-200 hover:border-primary/25 hover:bg-white focus:outline-none focus:ring-2 focus:ring-ring/25"
+                        value={submissionSortBy}
+                        onChange={(event) => setSubmissionSortBy(event.target.value as typeof submissionSortBy)}
+                      >
+                        <option value="recentes">Mais recentes</option>
+                        <option value="nome">Nome A-Z</option>
+                        <option value="inscricao">Número de inscrição</option>
+                        <option value="curso">Curso</option>
+                      </select>
+                      <select
+                        className="touch-safe h-11 rounded-2xl border border-input/80 bg-white/80 px-4 text-sm shadow-[0_6px_18px_rgba(15,23,42,0.04)] transition-all duration-200 hover:border-primary/25 hover:bg-white focus:outline-none focus:ring-2 focus:ring-ring/25"
+                        value={submissionPageSize}
+                        onChange={(event) => setSubmissionPageSize(Number(event.target.value))}
+                      >
+                        <option value={10}>10 por página</option>
+                        <option value={20}>20 por página</option>
+                        <option value={50}>50 por página</option>
+                      </select>
                     </div>
-                    <select
-                      className="h-10 rounded-md border border-input bg-background px-3 text-sm"
-                      value={submissionSortBy}
-                      onChange={(event) => setSubmissionSortBy(event.target.value as typeof submissionSortBy)}
-                    >
-                      <option value="recentes">Mais recentes</option>
-                      <option value="nome">Nome A-Z</option>
-                      <option value="inscricao">Número de inscrição</option>
-                      <option value="curso">Curso</option>
-                    </select>
-                    <select
-                      className="h-10 rounded-md border border-input bg-background px-3 text-sm"
-                      value={submissionPageSize}
-                      onChange={(event) => setSubmissionPageSize(Number(event.target.value))}
-                    >
-                      <option value={10}>10 por página</option>
-                      <option value={20}>20 por página</option>
-                      <option value={50}>50 por página</option>
-                    </select>
-                    <div className="flex flex-wrap gap-2">
-                      {["todos", "pendente", "aprovado", "recusado"].map((status) => (
-                        <Button key={status} size="sm" variant={filterStatus === status ? "default" : "outline"} onClick={() => setFilterStatus(status)} className="capitalize">
-                          {status}
-                        </Button>
-                      ))}
-                    </div>
-                    <div className="flex flex-wrap gap-2">
-                      {["todos", "projeto", "negocio", "produto"].map((tipo) => (
-                        <Button key={tipo} size="sm" variant={filterTipo === tipo ? "default" : "outline"} onClick={() => setFilterTipo(tipo)} className="capitalize">
-                          {tipo === "todos" ? "Todos os tipos" : tipo}
-                        </Button>
-                      ))}
+
+                    <div className="mt-4 grid gap-3 xl:grid-cols-2">
+                      <div className="min-w-0 rounded-[24px] border border-border/60 bg-muted/15 p-3">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Estado</p>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {["todos", "pendente", "aprovado", "recusado"].map((status) => (
+                            <Button key={status} size="sm" variant={filterStatus === status ? "default" : "outline"} onClick={() => setFilterStatus(status)} className="capitalize">
+                              {status}
+                            </Button>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="min-w-0 rounded-[24px] border border-border/60 bg-muted/15 p-3">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Tipo</p>
+                        <div className="mt-3 flex flex-wrap gap-2">
+                          {["todos", "projeto", "negocio", "produto"].map((tipo) => (
+                            <Button key={tipo} size="sm" variant={filterTipo === tipo ? "default" : "outline"} onClick={() => setFilterTipo(tipo)} className="capitalize">
+                              {tipo === "todos" ? "Todos os tipos" : tipo}
+                            </Button>
+                          ))}
+                        </div>
+                      </div>
                     </div>
                   </div>
 
@@ -1990,8 +2461,10 @@ const Admin = () => {
                       const Icon = tipoIcons[submission.tipo];
                       const whatsappUrl = whatsappLink(submission.telefone);
                       const communityUrl = communityUrlBySubmissionType(submission.tipo, submissionConfig);
+                      const bannerPreview = resolveSubmissionBannerPreview(submission);
+                      const canManageBanner = submission.status === "aprovado";
                       return (
-                        <Card key={submission.id} className="border-border/60">
+                        <Card key={submission.id} className="min-w-0 border-border/60">
                           <CardContent className="p-4">
                             <div className="flex flex-col gap-4">
                               <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
@@ -2001,11 +2474,11 @@ const Admin = () => {
                                   </div>
                                   <div className="min-w-0 flex-1">
                                     <div className="flex flex-wrap items-center gap-2">
-                                      <p className="truncate text-base font-semibold">{submission.nome}</p>
+                                      <p className="safe-break text-base font-semibold">{submission.nome}</p>
                                       {submission.isWinner && <Crown className="h-4 w-4 text-[hsl(var(--warning))]" />}
                                     </div>
                                     <p className="mt-1 text-xs text-muted-foreground">{submission.referenceCode} · {formatDateLabel(submission.data)}</p>
-                                    <p className="mt-3 text-sm leading-6 text-muted-foreground">{submission.descricao}</p>
+                                    <p className="safe-break mt-3 text-sm leading-6 text-muted-foreground">{submission.descricao}</p>
                                   </div>
                                 </div>
                                 <div className="flex flex-wrap items-center gap-2">
@@ -2022,23 +2495,23 @@ const Admin = () => {
                                 </div>
                                 <div className="rounded-xl border border-border/70 bg-muted/20 p-3">
                                   <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Área</p>
-                                  <p className="mt-2 text-sm font-medium">{submission.area}</p>
+                                  <p className="safe-break mt-2 text-sm font-medium">{submission.area}</p>
                                 </div>
                                 <div className="rounded-xl border border-border/70 bg-muted/20 p-3">
                                   <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Curso</p>
-                                  <p className="mt-2 text-sm font-medium">{submission.curso}</p>
+                                  <p className="safe-break mt-2 text-sm font-medium">{submission.curso}</p>
                                 </div>
                                 <div className="rounded-xl border border-border/70 bg-muted/20 p-3">
                                   <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Grupo</p>
-                                  <p className="mt-2 text-sm font-medium">{submission.equipa || "Sem equipa"}</p>
+                                  <p className="safe-break mt-2 text-sm font-medium">{submission.equipa || "Sem equipa"}</p>
                                 </div>
                                 <div className="rounded-xl border border-border/70 bg-muted/20 p-3">
                                   <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Responsável</p>
-                                  <p className="mt-2 text-sm font-medium">{submission.responsavel}</p>
+                                  <p className="safe-break mt-2 text-sm font-medium">{submission.responsavel}</p>
                                 </div>
                                 <div className="rounded-xl border border-border/70 bg-muted/20 p-3">
                                   <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">WhatsApp</p>
-                                  <p className="mt-2 text-sm font-medium">{submission.telefone || "Sem número"}</p>
+                                  <p className="safe-break mt-2 text-sm font-medium">{submission.telefone || "Sem número"}</p>
                                 </div>
                                 <div className="rounded-xl border border-border/70 bg-muted/20 p-3">
                                   <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Valor base</p>
@@ -2046,27 +2519,89 @@ const Admin = () => {
                                 </div>
                                 <div className="rounded-xl border border-border/70 bg-muted/20 p-3 xl:col-span-2">
                                   <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Necessidades técnicas</p>
-                                  <p className="mt-2 text-sm font-medium">
+                                  <p className="safe-break mt-2 text-sm font-medium">
                                     {submission.necessidades.length > 0 ? submission.necessidades.join(", ") : "Sem necessidades adicionais"}
                                   </p>
                                 </div>
                                 <div className="rounded-xl border border-border/70 bg-muted/20 p-3 xl:col-span-2">
                                   <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Observações</p>
-                                  <p className="mt-2 text-sm font-medium whitespace-pre-wrap">
+                                  <p className="safe-break mt-2 whitespace-pre-wrap text-sm font-medium">
                                     {submission.observacoes || "Sem observações adicionais"}
                                   </p>
                                 </div>
                               </div>
 
+                              <div className="rounded-2xl border border-border/70 bg-muted/10 p-3">
+                                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
+                                    Capa do card do expositor
+                                  </p>
+                                  <Badge variant="outline" className={canManageBanner ? "border-[hsl(var(--success))]/30 text-[hsl(var(--success))]" : ""}>
+                                    {canManageBanner ? "Edição disponível" : "Disponível após aprovação"}
+                                  </Badge>
+                                </div>
+
+                                <div className="relative h-36 overflow-hidden rounded-xl border border-border/70">
+                                  {bannerPreview ? (
+                                    <img
+                                      src={bannerPreview}
+                                      alt={`Capa do expositor ${submission.nome}`}
+                                      className="h-full w-full object-cover"
+                                    />
+                                  ) : (
+                                    <div
+                                      className="h-full w-full"
+                                      style={{ background: submissionCoverGradient(submission) }}
+                                    />
+                                  )}
+                                  <div className="pointer-events-none absolute inset-0 bg-[linear-gradient(180deg,rgba(15,23,42,0.08)_0%,rgba(15,23,42,0.28)_100%)]" />
+                                  <div className="absolute left-3 top-3 inline-flex items-center gap-1.5 rounded-full border border-white/25 bg-black/35 px-2.5 py-1 text-[11px] font-semibold text-white backdrop-blur-sm">
+                                    <ImagePlus className="h-3.5 w-3.5" />
+                                    Hero do expositor
+                                  </div>
+                                </div>
+
+                                <div className="mt-3 flex flex-wrap items-center gap-2">
+                                  <Input
+                                    type="file"
+                                    accept="image/*"
+                                    className="max-w-[260px] text-sm"
+                                    disabled={!canManageBanner}
+                                    onChange={(event) => {
+                                      void handleSubmissionBannerFile(submission, event.target.files?.[0] ?? null);
+                                      event.currentTarget.value = "";
+                                    }}
+                                  />
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    disabled={!canManageBanner || busyKey === `submission-banner-save-${submission.id}`}
+                                    onClick={() => void handleSubmissionBannerSave(submission)}
+                                  >
+                                    {busyKey === `submission-banner-save-${submission.id}` ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : null}
+                                    Guardar capa
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    disabled={!canManageBanner || !bannerPreview || busyKey === `submission-banner-remove-${submission.id}`}
+                                    onClick={() => void handleSubmissionBannerRemove(submission)}
+                                  >
+                                    {busyKey === `submission-banner-remove-${submission.id}` ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <Trash2 className="mr-1 h-3.5 w-3.5" />}
+                                    Remover foto
+                                  </Button>
+                                </div>
+                              </div>
+
                               <div className="flex flex-wrap items-center gap-2">
-                                <Button asChild size="sm" variant="outline">
+                                <Button asChild size="sm" variant="outline" className="h-auto whitespace-normal px-2.5 py-1.5 text-xs leading-tight">
                                   <Link to={submission.detailPath}>
                                     <Eye className="mr-1 h-3.5 w-3.5" />
                                     Ver página
                                   </Link>
                                 </Button>
                                 {whatsappUrl ? (
-                                  <Button size="sm" variant="outline" asChild>
+                                  <Button size="sm" variant="outline" asChild className="h-auto whitespace-normal px-2.5 py-1.5 text-xs leading-tight">
                                     <a href={whatsappUrl} target="_blank" rel="noreferrer noopener">
                                       <MessageSquare className="mr-1 h-3.5 w-3.5" />
                                       Contactar no WhatsApp
@@ -2074,7 +2609,7 @@ const Admin = () => {
                                   </Button>
                                 ) : null}
                                 {communityUrl ? (
-                                  <Button size="sm" variant="outline" asChild>
+                                  <Button size="sm" variant="outline" asChild className="h-auto whitespace-normal px-2.5 py-1.5 text-xs leading-tight">
                                     <a href={communityUrl} target="_blank" rel="noreferrer noopener">
                                       <ExternalLink className="mr-1 h-3.5 w-3.5" />
                                       Abrir comunidade
@@ -2083,11 +2618,11 @@ const Admin = () => {
                                 ) : null}
                                 {submission.status === "pendente" && (
                                   <>
-                                    <Button size="sm" className="bg-[hsl(var(--success))] text-[hsl(var(--success-foreground))] hover:bg-[hsl(var(--success))]/90" onClick={() => void handleStatusChange(submission.id, "aprovado")}>
+                                    <Button size="sm" className="h-auto whitespace-normal bg-[hsl(var(--success))] px-2.5 py-1.5 text-xs leading-tight text-[hsl(var(--success-foreground))] hover:bg-[hsl(var(--success))]/90" onClick={() => void handleStatusChange(submission.id, "aprovado")}>
                                       <CheckCircle className="mr-1 h-3.5 w-3.5" />
                                       Aprovar
                                     </Button>
-                                    <Button size="sm" variant="destructive" onClick={() => void handleStatusChange(submission.id, "recusado")}>
+                                    <Button size="sm" variant="destructive" className="h-auto whitespace-normal px-2.5 py-1.5 text-xs leading-tight" onClick={() => void handleStatusChange(submission.id, "recusado")}>
                                       <XCircle className="mr-1 h-3.5 w-3.5" />
                                       Recusar
                                     </Button>
@@ -2096,6 +2631,7 @@ const Admin = () => {
                                 <Button
                                   size="sm"
                                   variant="destructive"
+                                  className="h-auto whitespace-normal px-2.5 py-1.5 text-xs leading-tight"
                                   onClick={() => setSubmissionPendingRemoval(submission)}
                                   disabled={isRemovingSubmission && submissionPendingRemoval?.id === submission.id}
                                 >
@@ -2731,44 +3267,84 @@ const Admin = () => {
                                     Ainda não há inscritos neste curso.
                                   </div>
                                 ) : (
-                                  courseEnrollments[course.id]?.enrollments.map((entry) => (
-                                    <div key={entry.id} className="rounded-2xl border border-border/60 bg-background/90 p-4 shadow-sm">
-                                      <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                                        <div className="grid flex-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
-                                          <div>
-                                            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Número</p>
-                                            <p className="mt-1 text-sm font-medium">{entry.studentNumber}</p>
-                                          </div>
-                                          <div>
-                                            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Nome</p>
-                                            <p className="mt-1 text-sm font-medium">{entry.fullName}</p>
-                                          </div>
-                                          <div>
-                                            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Curso</p>
-                                            <p className="mt-1 text-sm font-medium">{entry.course || "Curso não informado"}</p>
-                                          </div>
-                                          <div>
-                                            <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Telefone</p>
-                                            <p className="mt-1 text-sm font-medium">{entry.phone || "Sem telefone"}</p>
-                                          </div>
-                                        </div>
+                                  courseEnrollments[course.id]?.enrollments.map((entry) => {
+                                    const enrollmentStatus = normalizeCourseEnrollmentStatus(entry.paymentStatus);
+                                    const isUpdating = updatingEnrollmentStatusId === entry.id;
 
-                                        <div className="flex flex-wrap gap-2">
-                                          {entry.whatsAppUrl || whatsappLink(entry.phone) ? (
-                                            <Button asChild size="sm" variant="outline">
-                                              <a href={entry.whatsAppUrl || whatsappLink(entry.phone) || "#"} target="_blank" rel="noreferrer">
-                                                <MessageSquare className="mr-1 h-3.5 w-3.5" />
-                                                Contactar via WhatsApp
-                                              </a>
-                                            </Button>
-                                          ) : null}
+                                    return (
+                                      <div key={entry.id} className="rounded-2xl border border-border/60 bg-background/90 p-4 shadow-sm">
+                                        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+                                          <div className="grid flex-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
+                                            <div>
+                                              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Número</p>
+                                              <p className="mt-1 text-sm font-medium">{entry.studentNumber}</p>
+                                            </div>
+                                            <div>
+                                              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Nome</p>
+                                              <p className="mt-1 text-sm font-medium">{entry.fullName}</p>
+                                            </div>
+                                            <div>
+                                              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Curso</p>
+                                              <p className="mt-1 text-sm font-medium">{entry.course || "Curso não informado"}</p>
+                                            </div>
+                                            <div>
+                                              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Telefone</p>
+                                              <p className="mt-1 text-sm font-medium">{entry.phone || "Sem telefone"}</p>
+                                            </div>
+                                            <div>
+                                              <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Estado</p>
+                                              <Badge variant="outline" className={`mt-1 ${courseEnrollmentStatusBadge[enrollmentStatus]}`}>
+                                                {entry.statusLabel || courseEnrollmentStatusLabel[enrollmentStatus]}
+                                              </Badge>
+                                            </div>
+                                          </div>
+
+                                          <div className="flex flex-wrap gap-2">
+                                            {entry.whatsAppUrl || whatsappLink(entry.phone) ? (
+                                              <Button asChild size="sm" variant="outline">
+                                                <a href={entry.whatsAppUrl || whatsappLink(entry.phone) || "#"} target="_blank" rel="noreferrer">
+                                                  <MessageSquare className="mr-1 h-3.5 w-3.5" />
+                                                  Contactar via WhatsApp
+                                                </a>
+                                              </Button>
+                                            ) : null}
+                                          </div>
                                         </div>
+                                        <div className="mt-3 flex flex-wrap gap-2">
+                                          <Button
+                                            size="sm"
+                                            variant={enrollmentStatus === "CONFIRMED" ? "default" : "outline"}
+                                            disabled={isUpdating}
+                                            onClick={() => void handleEnrollmentStatusUpdate(course.id, entry.id, "CONFIRMED")}
+                                          >
+                                            {isUpdating ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <CheckCircle className="mr-1 h-3.5 w-3.5" />}
+                                            Aprovar
+                                          </Button>
+                                          <Button
+                                            size="sm"
+                                            variant={enrollmentStatus === "PENDING" ? "default" : "outline"}
+                                            disabled={isUpdating}
+                                            onClick={() => void handleEnrollmentStatusUpdate(course.id, entry.id, "PENDING")}
+                                          >
+                                            {isUpdating ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <Clock className="mr-1 h-3.5 w-3.5" />}
+                                            Pendente
+                                          </Button>
+                                          <Button
+                                            size="sm"
+                                            variant={enrollmentStatus === "REJECTED" ? "destructive" : "outline"}
+                                            disabled={isUpdating}
+                                            onClick={() => void handleEnrollmentStatusUpdate(course.id, entry.id, "REJECTED")}
+                                          >
+                                            {isUpdating ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <XCircle className="mr-1 h-3.5 w-3.5" />}
+                                            Rejeitar
+                                          </Button>
+                                        </div>
+                                        <p className="mt-3 text-[11px] text-muted-foreground">
+                                          Inscrição registada em {formatDateLabel(entry.enrolledAt)}
+                                        </p>
                                       </div>
-                                      <p className="mt-3 text-[11px] text-muted-foreground">
-                                        Inscrição registada em {formatDateLabel(entry.enrolledAt)}
-                                      </p>
-                                    </div>
-                                  ))
+                                    );
+                                  })
                                 )}
                               </div>
                             </div>
@@ -2911,6 +3487,17 @@ const Admin = () => {
                     </CardContent>
                   </Card>
                 </div>
+              )}
+
+              {activeTab === "evento" && (
+                <Suspense fallback={<AdminPanelFallback label="Evento" />}>
+                  <EventoTab
+                    value={socialConfigForm}
+                    onChange={setSocialConfigForm}
+                    onSave={() => void handleSocialConfigSave()}
+                    isSaving={busyKey === "social-config"}
+                  />
+                </Suspense>
               )}
 
               {activeTab === "faq" && (
@@ -3296,56 +3883,135 @@ const Admin = () => {
               )}
 
               {activeTab === "votes" && (
-                <div className="space-y-4">
-                  <Card>
-                    <CardHeader className="pb-2">
-                      <CardTitle className="flex items-center gap-2 text-sm">
-                        <BarChart3 className="h-4 w-4 text-primary" />
-                        Resumo por Projeto
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-2">
-                      {rankedProjects.map((project) => {
-                        const maxVotes = Math.max(...rankedProjects.map((item) => item.votos), 1);
-                        const pct = (project.votos / maxVotes) * 100;
-                        return (
-                          <div key={project.id} className="space-y-1">
-                            <div className="flex justify-between text-xs">
-                              <span className="font-medium">{project.nome}</span>
-                              <span className="text-muted-foreground">{project.votos} votos · ⭐ {project.rating} · 💬 {project.comentarios}</span>
-                            </div>
-                            <div className="h-2 overflow-hidden rounded-full bg-muted">
-                              <motion.div initial={{ width: 0 }} animate={{ width: `${pct}%` }} className="h-full rounded-full bg-primary" />
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </CardContent>
-                  </Card>
+                <div className="space-y-5">
+                  <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+                    <div>
+                      <p className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.2em] text-primary">
+                        <PhLightning className="h-4 w-4" />
+                        Ao vivo
+                      </p>
+                      <h2 className="text-xl font-heading font-bold">Votação ao Vivo</h2>
+                      <p className="text-sm text-muted-foreground">Resultados em tempo real da 3ª Feira das Telecomunicações</p>
+                    </div>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Button variant="outline" size="sm" onClick={() => void handleRefreshVotes()} disabled={busyKey === "votes-refresh"}>
+                        <PhClock className="mr-2 h-4 w-4" />
+                        {busyKey === "votes-refresh" ? "A atualizar..." : "Atualizar agora"}
+                      </Button>
+                      <span className="text-xs text-muted-foreground">
+                        Última atualização: {votesUpdatedAt ? new Date(votesUpdatedAt).toLocaleTimeString("pt-PT", { hour: "2-digit", minute: "2-digit" }) : "agora"}
+                      </span>
+                    </div>
+                  </div>
 
-                  <Card>
-                    <CardHeader className="pb-2">
-                      <CardTitle className="flex items-center gap-2 text-sm">
-                        <Eye className="h-4 w-4 text-primary" />
-                        Quem Votou
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-2">
-                      {voteEntries.map((vote) => (
-                        <div key={vote.id} className="flex items-center gap-3 rounded-lg p-2 text-xs hover:bg-muted/50">
-                          <div className="flex h-7 w-7 items-center justify-center rounded-full bg-primary/10">
-                            <UserCheck className="h-3.5 w-3.5 text-primary" />
-                          </div>
-                          <div className="flex-1">
-                            <p className="font-medium">{vote.estudante}</p>
-                            <p className="text-muted-foreground">{vote.email}</p>
-                          </div>
-                          <span className="font-medium">{vote.projeto}</span>
-                          <span className="text-muted-foreground">{vote.data.slice(11, 16)}</span>
+                  <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                    <StatCard icon={PhTrophy} label="Total de votos" value={rankedProjects.reduce((s, p) => s + p.votos, 0)} color="bg-primary/10 text-primary" />
+                    <StatCard icon={PhTrendUp} label="Projetos ativos" value={rankedProjects.length} color="bg-[hsl(var(--area-negocio))]/10 text-[hsl(var(--area-negocio))]" />
+                    <StatCard icon={PhHeart} label="Likes totais" value={rankedProjects.reduce((s, p) => s + p.rating, 0)} color="bg-[hsl(var(--area-ia))]/10 text-[hsl(var(--area-ia))]" />
+                    <StatCard icon={PhChatTeardrop} label="Comentários" value={rankedProjects.reduce((s, p) => s + p.comentarios, 0)} color="bg-[hsl(var(--area-web))]/10 text-[hsl(var(--area-web))]" />
+                  </div>
+
+                  <div className="grid gap-5 lg:grid-cols-[1.1fr_0.9fr]">
+                    <Card className="border-border/60 bg-card/80 backdrop-blur">
+                      <CardHeader className="pb-3">
+                        <CardTitle className="flex items-center gap-2 text-base">
+                          <PhTrophy className="h-5 w-5 text-primary" />
+                          Resumo por Projeto
+                          <span className="ml-2 inline-flex items-center gap-1 rounded-full bg-destructive/10 px-2 py-1 text-[10px] font-bold uppercase text-destructive">
+                            <span className="h-2 w-2 rounded-full bg-destructive animate-ping" />
+                            Ao vivo
+                          </span>
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-3">
+                        {rankedProjects
+                          .slice()
+                          .sort((a, b) => b.votos - a.votos || b.comentarios - a.comentarios)
+                          .map((project, idx) => {
+                            const maxVotes = Math.max(...rankedProjects.map((item) => item.votos), 1);
+                            const pct = (project.votos / maxVotes) * 100;
+                            const medalColor = idx === 0 ? "from-amber-400 to-amber-500" : idx === 1 ? "from-slate-200 to-slate-400" : idx === 2 ? "from-orange-300 to-orange-400" : "from-muted to-muted";
+                            return (
+                              <motion.div
+                                key={project.id}
+                                initial={{ opacity: 0, y: 12 }}
+                                animate={{ opacity: 1, y: 0 }}
+                                className="group rounded-2xl border border-border/60 bg-white/70 p-4 shadow-sm backdrop-blur transition hover:-translate-y-1 hover:shadow-lg"
+                              >
+                                <div className="flex items-start justify-between gap-3">
+                                  <div className="space-y-1">
+                                    <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">{project.equipa ?? "Equipa"}</p>
+                                    <p className="text-lg font-heading font-bold leading-tight">{project.nome}</p>
+                                  </div>
+                                  <div className={`flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br ${medalColor} text-xs font-bold text-white shadow-lg`}>
+                                    #{idx + 1}
+                                  </div>
+                                </div>
+                                <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
+                                  <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-1 text-primary">
+                                    <PhHeart className="h-3.5 w-3.5" />
+                                    {project.rating} likes
+                                  </span>
+                                  <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-1 text-primary">
+                                    <PhChatTeardrop className="h-3.5 w-3.5" />
+                                    {project.comentarios} comentários
+                                  </span>
+                                </div>
+                                <div className="mt-3 h-2 overflow-hidden rounded-full bg-muted">
+                                  <motion.div
+                                    initial={{ width: 0 }}
+                                    animate={{ width: `${pct}%` }}
+                                    transition={{ duration: 0.6 }}
+                                    className="h-full rounded-full bg-primary"
+                                  />
+                                </div>
+                                <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
+                                  <span className="font-semibold text-foreground">{project.votos} votos</span>
+                                  <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-1">
+                                    <PhTrendUp className="h-3.5 w-3.5 text-primary" />
+                                    {project.rating} score
+                                  </span>
+                                </div>
+                              </motion.div>
+                            );
+                          })}
+                      </CardContent>
+                    </Card>
+
+                    <Card className="border-border/60 bg-card/85 backdrop-blur">
+                      <CardHeader className="pb-3">
+                        <CardTitle className="flex items-center gap-2 text-base">
+                          <PhUsers className="h-5 w-5 text-primary" />
+                          Votos em Tempo Real
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-3">
+                        <div className="flex items-center justify-between text-xs text-muted-foreground">
+                          <span>Feed ao vivo</span>
+                          <span>{voteEntries.length} registos</span>
                         </div>
-                      ))}
-                    </CardContent>
-                  </Card>
+                        <div className="space-y-2">
+                          {voteEntries.map((vote) => (
+                            <motion.div
+                              key={vote.id}
+                              initial={{ opacity: 0, x: 12 }}
+                              animate={{ opacity: 1, x: 0 }}
+                              className="flex items-center gap-3 rounded-xl border border-border/60 bg-white/80 p-3 text-sm shadow-sm backdrop-blur hover:border-primary/40"
+                            >
+                              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-primary/10 text-primary font-semibold">
+                                {vote.estudante?.[0] || "V"}
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <p className="truncate font-semibold text-foreground">{vote.estudante}</p>
+                                <p className="truncate text-xs text-muted-foreground">Votou em {vote.projeto}</p>
+                              </div>
+                              <div className="text-[11px] text-muted-foreground">{vote.data.slice(11, 16)}</div>
+                            </motion.div>
+                          ))}
+                        </div>
+                      </CardContent>
+                    </Card>
+                  </div>
                 </div>
               )}
 
@@ -3431,7 +4097,7 @@ const Admin = () => {
                                     </p>
                                   </div>
                                   {whatsappUrl && (
-                                    <Button size="sm" variant="outline" asChild>
+                                    <Button size="sm" className="bg-[#25D366] text-white hover:bg-[#1fb85a]" asChild>
                                       <a href={whatsappUrl} target="_blank" rel="noreferrer noopener">
                                         <MessageSquare className="mr-1 h-3.5 w-3.5" />
                                         Puxar no WhatsApp

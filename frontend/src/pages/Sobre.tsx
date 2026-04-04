@@ -1,5 +1,4 @@
 import { motion } from "framer-motion";
-import logoUor from "@/assets/logo-uor.png";
 import logoNeic from "@/assets/logo-neic.jpeg";
 
 export default function Sobre() {
@@ -30,17 +29,13 @@ export default function Sobre() {
 
           <div className="border-t border-border pt-6">
             <h2 className="font-heading font-bold text-lg mb-3">Organizadores</h2>
-            <div className="flex items-center justify-center gap-12 py-4">
-              <div className="text-center">
-                <img src={logoUor} alt="UOR" className="h-12 mx-auto mb-2" />
-                <p className="text-xs text-muted-foreground font-medium">Universidade Óscar Ribas</p>
-              </div>
+            <div className="flex items-center justify-center gap-10 py-4">
               <div className="text-center">
                 <img src={logoNeic} alt="NEIC" className="h-12 mx-auto mb-2 rounded-lg" />
                 <p className="text-xs text-muted-foreground font-medium">NEIC</p>
               </div>
               <div className="text-center">
-                <img src="/logo.svg" alt="UOR Connect" className="h-12 mx-auto mb-2" />
+                <img src="/logoworconnect.png" alt="UOR Connect" className="h-12 mx-auto mb-2" />
                 <p className="text-xs text-muted-foreground font-medium">UOR Connect</p>
               </div>
             </div>

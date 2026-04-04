@@ -74,6 +74,7 @@ describe("LoginUseCase – integração com secretaria", () => {
       });
 
       expect(result.success).toBe(false);
+      expect(result.error).toBe("Número de estudante ou palavra-passe inválidos.");
     },
     30_000
   );

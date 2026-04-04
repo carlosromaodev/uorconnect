@@ -1,5 +1,27 @@
 import type { HomeCourse, HomeSocialConfig, PanelTopic } from "@prisma/client";
 
+export type HeroFloatingIconInput = {
+  id: string;
+  icon: string;
+  top: number;
+  left: number;
+  size: number;
+  rotate: number;
+  opacity: number;
+};
+
+export type HomeSponsorInput = {
+  id: string;
+  name: string;
+  imageUrl: string;
+  label?: string | null;
+};
+
+export type HomeSocialConfigRecord = Omit<HomeSocialConfig, "heroFloatingIconsJson" | "sponsorsJson"> & {
+  heroFloatingIcons: HeroFloatingIconInput[];
+  sponsors: HomeSponsorInput[];
+};
+
 export type HomeCourseInput = {
   title: string;
   description: string;
@@ -29,6 +51,28 @@ export type HomeSocialConfigInput = {
   linkedinUrl?: string | null;
   courseEnrollmentEnabled?: boolean;
   firstYearContestEnabled?: boolean;
+  primaryColor?: string;
+  primaryGradient?: string;
+  titleColor?: string;
+  accentColor?: string;
+  dashedColor?: string;
+  dashedOpacity?: number;
+  heroIconsOpacity?: number;
+  heroBlobsIntensity?: number;
+  heroMeshEnabled?: boolean;
+  heroBadgeText?: string;
+  heroTitlePrefix?: string;
+  heroTitleHighlight?: string;
+  heroSubtitleText?: string;
+  heroSubtitleColor?: string;
+  heroTitleMobileSize?: string;
+  heroTitleTabletSize?: string;
+  heroTitleDesktopSize?: string;
+  heroSubtitleMobileSize?: string;
+  heroSubtitleTabletSize?: string;
+  heroSubtitleDesktopSize?: string;
+  heroFloatingIcons?: HeroFloatingIconInput[];
+  sponsors?: HomeSponsorInput[];
 };
 
 export interface HomeContentRepository {
@@ -44,6 +88,6 @@ export interface HomeContentRepository {
   updatePanelTopic(id: number, data: PanelTopicInput): Promise<PanelTopic>;
   deletePanelTopic(id: number): Promise<void>;
 
-  getSocialConfig(): Promise<HomeSocialConfig>;
-  updateSocialConfig(data: HomeSocialConfigInput): Promise<HomeSocialConfig>;
+  getSocialConfig(): Promise<HomeSocialConfigRecord>;
+  updateSocialConfig(data: HomeSocialConfigInput): Promise<HomeSocialConfigRecord>;
 }

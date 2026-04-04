@@ -112,6 +112,7 @@ function Toaster() {
   return (
     <ToastContainer
       position="top-center"
+      theme="colored"
       newestOnTop
       closeOnClick
       pauseOnHover
@@ -120,6 +121,7 @@ function Toaster() {
       limit={4}
       role="alert"
       className="uor-toast-container"
+      icon={false}
       toastClassName={(context) => {
         const type = context?.type ?? "default";
         return cn("uor-toast", `uor-toast--${type}`);

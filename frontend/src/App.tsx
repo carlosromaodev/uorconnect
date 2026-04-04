@@ -1,41 +1,75 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Route, Routes, useLocation } from "react-router-dom";
-import { useEffect } from "react";
+import { Suspense, lazy, type ReactNode, useEffect } from "react";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
-import Navbar from "@/components/Navbar";
-import Footer from "@/components/Footer";
-import Index from "./pages/Index";
-import Agenda from "./pages/Agenda";
-import Submeter from "./pages/Submeter";
-import Projetos from "./pages/Projetos";
-import ProjetoDetalhe from "./pages/ProjetoDetalhe";
-import Cursos from "./pages/Cursos";
-import CursoInscricao from "./pages/CursoInscricao";
-import CourseEnrollmentReceipt from "./pages/CourseEnrollmentReceipt";
-import Regras from "./pages/Regras";
-import Sobre from "./pages/Sobre";
-import Palestrantes from "./pages/Palestrantes";
-import FAQ from "./pages/FAQ";
-import Guia from "./pages/Guia";
-import EventoAoVivo from "./pages/EventoAoVivo";
-import NotFound from "./pages/NotFound";
-import Admin from "./pages/Admin";
-import Login from "./pages/Login";
-import SaasShowcase from "./pages/SaasShowcase";
-import MinhaArea from "./pages/MinhaArea";
-import SubmissionReceipt from "./pages/SubmissionReceipt";
-import Desafios from "./pages/Desafios";
-import DesafiosLobby from "./pages/DesafiosLobby";
-import DesafiosArena from "./pages/DesafiosArena";
-import DesafiosRanking from "./pages/DesafiosRanking";
-import DesafiosRegras from "./pages/DesafiosRegras";
-import DesafioDetalhe from "./pages/DesafioDetalhe";
-import DesafioSubmissao from "./pages/DesafioSubmissao";
-import LaboratorioAdmin from "./pages/LaboratorioAdmin";
-import { getSaasShowcaseHref, isContestLabHost, isContestRoutePath, isSaasShowcaseHost } from "@/lib/contest-lab";
+import {
+  getContestAbsoluteUrl,
+  getSaasShowcaseHref,
+  isContestLabHost,
+  isContestRoutePath,
+  isSaasShowcaseHost,
+} from "@/lib/contest-lab";
 
 const queryClient = new QueryClient();
+const LazyAnalyticsProvider = lazy(() =>
+  import("./components/analytics/AnalyticsProvider").then((module) => ({ default: module.AnalyticsProvider })),
+);
+const Navbar = lazy(() => import("./components/Navbar"));
+const Footer = lazy(() => import("./components/Footer"));
+const PwaSystemBanner = lazy(() =>
+  import("./components/features/PwaSystemBanner").then((module) => ({ default: module.PwaSystemBanner })),
+);
+const Index = lazy(() => import("./pages/Index"));
+const Agenda = lazy(() => import("./pages/Agenda"));
+const Submeter = lazy(() => import("./pages/Submeter"));
+const Projetos = lazy(() => import("./pages/Projetos"));
+const ProjetoDetalhe = lazy(() => import("./pages/ProjetoDetalhe"));
+const Cursos = lazy(() => import("./pages/Cursos"));
+const CursoInscricao = lazy(() => import("./pages/CursoInscricao"));
+const CourseEnrollmentReceipt = lazy(() => import("./pages/CourseEnrollmentReceipt"));
+const Regras = lazy(() => import("./pages/Regras"));
+const Sobre = lazy(() => import("./pages/Sobre"));
+const Palestrantes = lazy(() => import("./pages/Palestrantes"));
+const FAQ = lazy(() => import("./pages/FAQ"));
+const Guia = lazy(() => import("./pages/Guia"));
+const EventoAoVivo = lazy(() => import("./pages/EventoAoVivo"));
+const NotFound = lazy(() => import("./pages/NotFound"));
+const Admin = lazy(() => import("./pages/Admin"));
+const Login = lazy(() => import("./pages/Login"));
+const SaasShowcase = lazy(() => import("./pages/SaasShowcase"));
+const MinhaArea = lazy(() => import("./pages/MinhaArea"));
+const SubmissionReceipt = lazy(() => import("./pages/SubmissionReceipt"));
+
+function RouteFallback() {
+  return (
+    <div className="flex min-h-[60vh] items-center justify-center px-4">
+      <div className="surface-card w-full max-w-md px-6 py-8 text-center">
+        <p className="premium-kicker">A carregar módulo</p>
+        <h2 className="mt-3 text-2xl font-semibold text-slate-900">Preparando a área solicitada</h2>
+        <p className="mt-3 text-sm leading-6 text-muted-foreground">
+          O frontend está a carregar apenas o necessário para esta rota.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function ChromeFallback({ position = "top" }: { position?: "top" | "bottom" }) {
+  if (position === "bottom") {
+    return <div className="h-6" aria-hidden="true" />;
+  }
+
+  return <div className="h-[72px]" aria-hidden="true" />;
+}
+
+function AnalyticsShell({ children }: { children: ReactNode }) {
+  return (
+    <Suspense fallback={<>{children}</>}>
+      <LazyAnalyticsProvider>{children}</LazyAnalyticsProvider>
+    </Suspense>
+  );
+}
 
 function SaasShowcaseRedirect() {
   const location = useLocation();
@@ -52,61 +86,91 @@ function SaasShowcaseRedirect() {
   return null;
 }
 
+function ContestExperienceRedirect() {
+  const location = useLocation();
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const targetPath = `${location.pathname}${location.search}${location.hash}` || "/desafios";
+    const href = getContestAbsoluteUrl(targetPath);
+
+    if (window.location.href === href) {
+      return;
+    }
+
+    window.location.replace(href);
+  }, [location.hash, location.pathname, location.search]);
+
+  return null;
+}
+
 const AppContent = () => {
   const location = useLocation();
   const hostname = typeof window !== "undefined" ? window.location.hostname : "";
-  const contestLabHost = isContestLabHost(hostname);
   const saasShowcaseHost = isSaasShowcaseHost(hostname);
-  const contestRoute = isContestRoutePath(location.pathname, hostname);
+  const contestLabHost = isContestLabHost(hostname);
   const isSaas = saasShowcaseHost || location.pathname.startsWith("/plataforma");
-  const showChrome = !isSaas && !contestLabHost && !contestRoute;
+  const isContestExperience = contestLabHost || isContestRoutePath(location.pathname, hostname);
+  const showChrome = !isSaas && !isContestExperience;
 
   return (
     <div className="flex min-h-screen flex-col">
-      {showChrome ? <Navbar /> : null}
+      {showChrome ? (
+        <Suspense fallback={<ChromeFallback />}>
+          <Navbar />
+        </Suspense>
+      ) : null}
       <main className="flex-1">
-        <Routes>
-          <Route path="/" element={contestLabHost ? <Desafios /> : saasShowcaseHost ? <SaasShowcase /> : <Index />} />
+        <Suspense fallback={<RouteFallback />}>
+          <Routes>
+            {contestLabHost ? (
+              <>
+                <Route path="*" element={<ContestExperienceRedirect />} />
+              </>
+            ) : (
+              <>
+                <Route path="/" element={saasShowcaseHost ? <SaasShowcase /> : <Index />} />
 
-          <Route path="/agenda" element={<Agenda />} />
-          <Route path="/submeter" element={<Submeter />} />
-          <Route path="/projetos" element={<Projetos />} />
-          <Route path="/projeto/:slug" element={<ProjetoDetalhe />} />
-          <Route path="/cursos" element={<Cursos />} />
-          <Route path="/cursos/:id/inscricao" element={<CursoInscricao />} />
-          <Route path="/cursos/inscricoes/:id" element={<CourseEnrollmentReceipt />} />
-          <Route path="/regras" element={contestLabHost ? <DesafiosRegras /> : <Regras />} />
-          <Route path="/sobre" element={<Sobre />} />
-          <Route path="/palestrantes" element={<Palestrantes />} />
-          <Route path="/faq" element={<FAQ />} />
-          <Route path="/guia" element={<Guia />} />
-          <Route path="/ao-vivo" element={<EventoAoVivo />} />
-          <Route path="/login" element={<Login />} />
-          <Route path="/admin" element={contestLabHost ? <LaboratorioAdmin /> : <Admin />} />
-          <Route path="/minha-area" element={<MinhaArea />} />
-          <Route path="/submissoes/:id" element={<SubmissionReceipt />} />
+                <Route path="/agenda" element={<Agenda />} />
+                <Route path="/submeter" element={<Submeter />} />
+                <Route path="/projetos" element={<Projetos />} />
+                <Route path="/projeto/:slug" element={<ProjetoDetalhe />} />
+                <Route path="/cursos" element={<Cursos />} />
+                <Route path="/cursos/:id/inscricao" element={<CursoInscricao />} />
+                <Route path="/cursos/inscricoes/:id" element={<CourseEnrollmentReceipt />} />
+                <Route path="/regras" element={<Regras />} />
+                <Route path="/sobre" element={<Sobre />} />
+                <Route path="/palestrantes" element={<Palestrantes />} />
+                <Route path="/faq" element={<FAQ />} />
+                <Route path="/guia" element={<Guia />} />
+                <Route path="/ao-vivo" element={<EventoAoVivo />} />
+                <Route path="/login" element={<Login />} />
+                <Route path="/admin" element={<Admin />} />
+                <Route path="/minha-area" element={<MinhaArea />} />
+                <Route path="/submissoes/:id" element={<SubmissionReceipt />} />
 
-          <Route path="/desafios" element={<Desafios />} />
-          <Route path="/desafios/lobby" element={<DesafiosLobby />} />
-          <Route path="/desafios/arena" element={<DesafiosArena />} />
-          <Route path="/desafios/ranking" element={<DesafiosRanking />} />
-          <Route path="/desafios/regras" element={<DesafiosRegras />} />
-          <Route path="/desafios/:slug" element={<DesafioDetalhe />} />
-          <Route path="/desafios/:slug/submeter" element={<DesafioSubmissao />} />
+                <Route path="/desafios" element={<ContestExperienceRedirect />} />
+                <Route path="/desafios/*" element={<ContestExperienceRedirect />} />
 
-          <Route path="/lobby" element={<DesafiosLobby />} />
-          <Route path="/arena" element={<DesafiosArena />} />
-          <Route path="/ranking" element={<DesafiosRanking />} />
-          <Route path="/regras-laboratorio" element={<DesafiosRegras />} />
-          <Route path="/:slug" element={<DesafioDetalhe />} />
-          <Route path="/:slug/submeter" element={<DesafioSubmissao />} />
-
-          <Route path="/plataforma" element={<SaasShowcaseRedirect />} />
-          <Route path="/plataforma/*" element={<SaasShowcaseRedirect />} />
-          <Route path="*" element={<NotFound />} />
-        </Routes>
+                <Route path="/plataforma" element={<SaasShowcaseRedirect />} />
+                <Route path="/plataforma/*" element={<SaasShowcaseRedirect />} />
+                <Route path="*" element={<NotFound />} />
+              </>
+            )}
+          </Routes>
+        </Suspense>
       </main>
-      {showChrome ? <Footer /> : null}
+      {showChrome ? (
+        <Suspense fallback={null}>
+          <PwaSystemBanner />
+        </Suspense>
+      ) : null}
+      {showChrome ? (
+        <Suspense fallback={<ChromeFallback position="bottom" />}>
+          <Footer />
+        </Suspense>
+      ) : null}
     </div>
   );
 };
@@ -116,7 +180,9 @@ const App = () => (
     <TooltipProvider>
       <Sonner />
       <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-        <AppContent />
+        <AnalyticsShell>
+          <AppContent />
+        </AnalyticsShell>
       </BrowserRouter>
     </TooltipProvider>
   </QueryClientProvider>

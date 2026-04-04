@@ -1,0 +1,11 @@
+{
+  "name": "uor-project",
+  "private": true,
+  "scripts": {
+    "dev:frontend": "npm --prefix frontend run dev",
+    "dev:laboratorio": "npm --prefix laboratorio run dev",
+    "build:frontend": "npm --prefix frontend run build",
+    "build:laboratorio": "npm --prefix laboratorio run build",
+    "test:frontend": "npm --prefix frontend run test"
+  }
+}

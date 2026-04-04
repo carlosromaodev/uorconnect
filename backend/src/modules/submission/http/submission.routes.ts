@@ -139,6 +139,8 @@ const studentSubmissionListItemSchema = z.object({
   type: z.string(),
   typeLabel: z.string(),
   createdAt: z.string(),
+  detailPath: z.string(),
+  bannerUrl: z.string().nullable(),
   receiptPath: z.string(),
 });
 
@@ -421,6 +423,65 @@ export async function submissionRoutes(app: FastifyInstance, { env }: { env: Ret
 
       const config = await getSubmissionConfig.execute();
       return reply.send(buildStudentSubmissionReceiptResponse(updated, config));
+    });
+
+    protectedApp.patch("/:id/presentation/mine", {
+      schema: {
+        params: z.object({ id: z.coerce.number().int().positive() }),
+        body: submissionPresentationSchema,
+        response: {
+          200: z.object({
+            id: z.number(),
+            slug: z.string(),
+            detailPath: z.string(),
+            primaryColor: z.string(),
+            secondaryColor: z.string(),
+            bannerUrl: z.string().nullable(),
+            status: z.string(),
+          }),
+          400: z.object({ message: z.string() }),
+          401: z.object({ message: z.string() }),
+          403: z.object({ message: z.string() }),
+          404: z.object({ message: z.string() }),
+        }
+      }
+    }, async (request, reply) => {
+      if (!request.student?.id) {
+        return reply.code(401).send({ message: "Missing or invalid token" });
+      }
+
+      const { id } = request.params as { id: number };
+      const body = request.body as z.infer<typeof submissionPresentationSchema>;
+      const existing = await submissionRepo.findOwnedById(id, request.student.id);
+
+      if (!existing) {
+        return reply.code(404).send({ message: "Submission not found" });
+      }
+
+      if (existing.status !== "APPROVED") {
+        return reply.code(403).send({ message: "A personalização da capa só fica disponível depois da aprovação." });
+      }
+
+      const nextPrimaryColor = body.primaryColor ?? existing.primaryColor;
+      const nextSecondaryColor = body.secondaryColor ?? existing.secondaryColor;
+      const themeError = validateSubmissionTheme(nextPrimaryColor, nextSecondaryColor);
+
+      if (themeError) {
+        return reply.code(400).send({ message: themeError });
+      }
+
+      const updated = await updateSubmissionPresentation.execute(id, body);
+      const slug = buildSubmissionSlug(updated.name, updated.id);
+
+      return reply.send({
+        id: updated.id,
+        slug,
+        detailPath: `/projeto/${slug}`,
+        primaryColor: updated.primaryColor,
+        secondaryColor: updated.secondaryColor,
+        bannerUrl: updated.bannerUrl ?? null,
+        status: updated.status,
+      });
     });
 
     protectedApp.register(async (adminApp) => {

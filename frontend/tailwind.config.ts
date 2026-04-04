@@ -19,6 +19,7 @@ export default {
       fontFamily: {
         heading: ['"Sora"', 'system-ui', 'sans-serif'],
         body: ['"DM Sans"', 'system-ui', 'sans-serif'],
+        "tech-mono": ['"Space Mono"', '"IBM Plex Mono"', 'monospace'],
       },
       colors: {
         border: "hsl(var(--border))",

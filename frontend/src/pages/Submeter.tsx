@@ -1,69 +1,64 @@
-import { useEffect, useMemo, useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { motion } from "framer-motion";
-import { z } from "zod";
-import { Send, CheckCircle, ExternalLink, Info, Lightbulb, Store, Package, Loader2, ShieldCheck, ShieldX, Plus, X, Plane, Ticket, Sparkles, ArrowRight, Download, Copy, MessageSquareMore, Paperclip } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
+import { motion, AnimatePresence } from "framer-motion";
+
+import {
+  ArrowLeft,
+  CheckCircle2,
+  ExternalLink,
+  FileBadge2,
+  Lightbulb,
+  Loader2,
+  Package,
+  Paperclip,
+  Plus,
+  ShieldX,
+  ShieldCheck,
+  Store,
+  Trash2,
+  Upload,
+  X,
+  Info,
+} from "lucide-react";
+import { toast } from "@/components/ui/sonner";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
-import { Label } from "@/components/ui/label";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { toast } from "sonner";
-import { api, type CreateSubmissionInput, type SubmissionConfig } from "@/lib/api";
+import { Textarea } from "@/components/ui/textarea";
+import { AutoFillBadge } from "@/components/auth/AutoFillBadge";
+import { ResponsiveDocumentViewer } from "@/components/documents/ResponsiveDocumentViewer";
+import {
+  api,
+  type CreateSubmissionInput,
+  type StudentProfile,
+  type StudentSubmissionReceipt,
+  type SubmissionConfig,
+  isAuthError,
+  setToken,
+} from "@/lib/api";
+import { buildSubmeterSchema } from "./submeter.schema";
+import { buildRoutePath, redirectToStudentLogin } from "@/lib/auth-routing";
+import {
+  getOfficialCourseFieldValue,
+  getOfficialCourseSelectOptions,
+  normalizeOfficialCourse,
+} from "@/lib/official-courses";
+import { syncStudentProfileIfNeeded } from "@/lib/student-profile";
+import { toAbsoluteAssetUrl } from "@/lib/student-documents";
 
-type TipoSubmissao = "projeto" | "negocio" | "produto";
+type SubmissionKind = "projeto" | "negocio" | "produto";
 
-const tiposSubmissao = [
-  { id: "projeto" as TipoSubmissao, label: "Expor Projeto", icon: Lightbulb, desc: "Projeto académico ou tecnológico com acesso a votação pública e prémio", color: "from-[hsl(var(--area-iot))]/20 to-primary/10" },
-  { id: "negocio" as TipoSubmissao, label: "Expor Negócio", icon: Store, desc: "Startup, empresa ou ideia de negócio em categoria de exposição", color: "from-[hsl(var(--area-negocio))]/20 to-[hsl(var(--area-negocio))]/10" },
-  { id: "produto" as TipoSubmissao, label: "Expor Produto", icon: Package, desc: "Produto físico ou digital em categoria de exposição", color: "from-[hsl(var(--area-produto))]/20 to-[hsl(var(--area-produto))]/10" },
-];
-
-const cursosUniversidade = [
-  "Eng. Informática",
-  "Eng. Telecomunicações",
-  "Eng. Eletrotécnica",
-  "Ciências Computação",
-  "Arquitetura e Urbanismo",
-  "Direito",
-  "Contabilidade e Auditoria",
-  "Gestão de Empresas",
-  "Economia",
-  "Enfermagem",
-  "Psicologia",
-  "Outro",
-];
-
-const areasProjeto = ["Engenharia", "Tecnologia", "Sustentabilidade", "Inovação", "Ciências Aplicadas", "Outra"];
-const areasNegocio = ["Tecnologia", "Comércio", "Serviços", "Alimentação", "Educação", "Saúde", "Outra"];
-const areasProduto = ["Hardware", "Software", "Alimentar", "Artesanato", "Vestuário", "Outro"];
-const necessidades = ["Tomada elétrica", "Projetor multimédia", "Ligação à internet", "Mesa de exposição", "Espaço extra"];
-
-const defaultConfig: SubmissionConfig = {
-  key: "default",
-  isOpen: true,
-  iban: "AO006 0055 0000 3295 0561 10379",
-  accountName: "Universidade Óscar Ribas",
-  paymentAmount: "15.000 Kz",
-  paymentInstructions: "Confirma a transferência antes de enviar a candidatura.",
-  projectCommunityUrl: null,
-  businessCommunityUrl: null,
-  productCommunityUrl: null,
-  createdAt: new Date().toISOString(),
-  updatedAt: new Date().toISOString(),
-};
-
-type FormState = {
+type SubmissionFormState = {
   leaderName: string;
-  phone: string;
-  course: string;
-  organizationName: string;
-  members: string;
+  phoneDigits: string;
+  academicCourse: string;
   name: string;
   description: string;
   area: string;
   advisor: string;
+  organizationName: string;
   stage: string;
   category: string;
   productType: string;
@@ -74,19 +69,74 @@ type FormState = {
   agreeRules: boolean;
   paymentConfirmed: boolean;
   paymentProof: string;
+  paymentProofName: string;
+  members: string[];
   needs: string[];
 };
 
-const defaultFormState: FormState = {
+type SubmissionFieldKey = keyof SubmissionFormState;
+
+const submissionKinds: Array<{
+  id: SubmissionKind;
+  label: string;
+  description: string;
+  icon: typeof Lightbulb;
+  gradient: string;
+}> = [
+  {
+    id: "projeto",
+    label: "Expor Projeto",
+    description: "Projeto académico ou tecnológico com acesso a votação pública e prémio.",
+    icon: Lightbulb,
+    gradient: "from-[hsl(var(--area-iot))]/20 to-primary/10",
+  },
+  {
+    id: "negocio",
+    label: "Expor Negócio",
+    description: "Startup, empresa ou ideia de negócio em categoria de exposição.",
+    icon: Store,
+    gradient: "from-[hsl(var(--area-negocio))]/20 to-[hsl(var(--area-negocio))]/10",
+  },
+  {
+    id: "produto",
+    label: "Expor Produto",
+    description: "Produto físico ou digital em categoria de exposição.",
+    icon: Package,
+    gradient: "from-[hsl(var(--area-produto))]/20 to-[hsl(var(--area-produto))]/10",
+  },
+];
+
+const projectAreas = ["Engenharia", "Tecnologia", "Sustentabilidade", "Inovação", "Ciências Aplicadas", "Outra"];
+const businessAreas = ["Tecnologia", "Comércio", "Serviços", "Alimentação", "Educação", "Saúde", "Outra"];
+const productAreas = ["Hardware", "Software", "Alimentar", "Artesanato", "Vestuário", "Outro"];
+const businessStages = ["Ideia", "Protótipo", "MVP", "Funcionando", "Já no Mercado"];
+const productTypes = ["Físico", "Digital", "Híbrido"];
+const needsOptions = ["Tomada elétrica", "Projetor multimédia", "Ligação à internet", "Mesa de exposição", "Espaço extra"];
+
+
+const defaultConfig: SubmissionConfig = {
+  key: "default",
+  isOpen: true,
+  iban: "AO006 0055 0000 3295 0561 10379",
+  accountName: "Universidade Óscar Ribas",
+  paymentAmount: "15.000 Kz",
+  paymentInstructions: "Confirma a transferência antes de finalizar a candidatura.",
+  projectCommunityUrl: null,
+  businessCommunityUrl: null,
+  productCommunityUrl: null,
+  createdAt: new Date().toISOString(),
+  updatedAt: new Date().toISOString(),
+};
+
+const emptyFormState: SubmissionFormState = {
   leaderName: "",
-  phone: "",
-  course: "",
-  organizationName: "",
-  members: "",
+  phoneDigits: "",
+  academicCourse: "",
   name: "",
   description: "",
   area: "",
   advisor: "",
+  organizationName: "",
   stage: "",
   category: "",
   productType: "",
@@ -97,102 +147,32 @@ const defaultFormState: FormState = {
   agreeRules: false,
   paymentConfirmed: false,
   paymentProof: "",
+  paymentProofName: "",
+  members: [],
   needs: [],
 };
 
-const buildSchema = (tipo: TipoSubmissao) =>
-  z.object({
-    leaderName: z.string().min(3, "Informa o nome do responsável."),
-    phone: z.string().regex(/^\d{8}$/, "Completa os 8 dígitos finais do contacto."),
-    course: tipo === "projeto" ? z.string().min(2, "Seleciona o curso.") : z.string().optional(),
-    organizationName: tipo !== "projeto" ? z.string().min(2, "Informa o nome da empresa ou marca.") : z.string().optional(),
-    members: z.string().min(3, "Informa os membros da equipa."),
-    name: z.string().min(3, "Informa o nome da candidatura."),
-    description: z.string().min(20, "A descrição precisa de mais detalhe.").max(500, "Máximo de 500 caracteres."),
-    area: z.string().min(2, "Seleciona a área."),
-    advisor: tipo === "projeto" ? z.string().min(3, "Informa o docente orientador.") : z.string().optional(),
-    stage: tipo === "negocio" ? z.string().min(2, "Seleciona o estágio do negócio.") : z.string().optional(),
-    category: tipo === "produto" ? z.string().min(2, "Seleciona a categoria do produto.") : z.string().optional(),
-    productType: tipo === "produto" ? z.string().min(2, "Seleciona o tipo do produto.") : z.string().optional(),
-    priceAverage: tipo === "produto" ? z.string().min(2, "Informa a média de preço estimado.") : z.string().optional(),
-    repoUrl: z.union([z.literal(""), z.string().url("Usa um link válido.")]),
-    websiteUrl: z.union([z.literal(""), z.string().url("Usa um link válido.")]),
-    observations: z.string().max(500, "Máximo de 500 caracteres.").optional(),
-    agreeRules: z.literal(true, { errorMap: () => ({ message: "Precisas aceitar as regras." }) }),
-    paymentProof: z.string().regex(/^(data:|https?:\/\/)/, "Anexa o comprovativo do pagamento."),
-    paymentConfirmed: z.literal(true, { errorMap: () => ({ message: "Confirma que já fizeste a transferência." }) }),
-    needs: z.array(z.enum(["Tomada elétrica", "Projetor multimédia", "Ligação à internet", "Mesa de exposição", "Espaço extra"])),
-  });
 
-function fieldError(errors: Record<string, string>, key: keyof FormState) {
-  return errors[key] ? <p className="text-[11px] font-medium text-destructive">{errors[key]}</p> : null;
+
+function normalizeSubmissionPhoneDigits(value?: string | null) {
+  const digits = (value ?? "").replace(/\D/g, "");
+  if (!digits) return "";
+  if (digits.startsWith("2449")) return digits.slice(4, 12);
+  if (digits.startsWith("9")) return digits.slice(1, 9);
+  return digits.slice(-8);
 }
 
-const ANGOLA_PHONE_PREFIX = "+244 9";
-
-const submissionThemes: Record<TipoSubmissao, { primary: string; secondary: string; surface: string; badge: string }> = {
-  projeto: {
-    primary: "#FD8305",
-    secondary: "#223D42",
-    surface: "linear-gradient(135deg, rgba(253,131,5,0.18), rgba(34,61,66,0.12))",
-    badge: "Projeto em embarque"
-  },
-  negocio: {
-    primary: "#0F766E",
-    secondary: "#164E63",
-    surface: "linear-gradient(135deg, rgba(15,118,110,0.18), rgba(22,78,99,0.12))",
-    badge: "Negócio em embarque"
-  },
-  produto: {
-    primary: "#8B5CF6",
-    secondary: "#1E293B",
-    surface: "linear-gradient(135deg, rgba(139,92,246,0.18), rgba(30,41,59,0.12))",
-    badge: "Produto em embarque"
-  }
-};
-
-function normalizePhoneDigits(value: string) {
-  return value.replace(/\D/g, "").slice(0, 8);
-}
-
-function extractPhoneDigitsFromInput(value: string) {
+function extractSubmissionPhoneDigits(value: string) {
   const digits = value.replace(/\D/g, "");
-
-  if (digits.startsWith("2449")) {
-    return normalizePhoneDigits(digits.slice(4));
-  }
-
-  if (digits.startsWith("244")) {
-    return normalizePhoneDigits(digits.slice(3));
-  }
-
-  if (digits.startsWith("9")) {
-    return normalizePhoneDigits(digits.slice(1));
-  }
-
-  return normalizePhoneDigits(digits);
+  if (!digits) return "";
+  if (digits.startsWith("2449")) return digits.slice(4, 12);
+  if (digits.startsWith("244")) return digits.slice(3, 11);
+  if (digits.startsWith("9")) return digits.slice(1, 9);
+  return digits.slice(0, 8);
 }
 
-function downloadBlob(blob: Blob, fileName: string) {
-  const blobUrl = URL.createObjectURL(blob);
-  const anchor = document.createElement("a");
-  anchor.href = blobUrl;
-  anchor.download = fileName;
-  document.body.appendChild(anchor);
-  anchor.click();
-  anchor.remove();
-  URL.revokeObjectURL(blobUrl);
-}
-
-function toAbsoluteUrl(path?: string | null) {
-  if (!path) return null;
-  if (/^https?:\/\//i.test(path)) return path;
-  const apiBase = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(/\/$/, "");
-  if (apiBase) {
-    return new URL(path, `${apiBase}/`).toString();
-  }
-  const normalizedPath = path.startsWith("/submissions/") ? `/api${path}` : path;
-  return new URL(normalizedPath, window.location.origin).toString();
+function formatSubmissionPhone(digits: string) {
+  return `+244 9${digits}`;
 }
 
 function readFileAsDataUrl(file: File) {
@@ -204,97 +184,312 @@ function readFileAsDataUrl(file: File) {
   });
 }
 
+function normalizeText(value?: string | null) {
+  return value?.trim().toLowerCase() ?? "";
+}
+
+/**
+ * Renders an animated error message for a form field.
+ * Uses AnimatePresence for smooth mount/unmount. Accessible via role+aria-live.
+ */
+function errorId(key: SubmissionFieldKey) {
+  return `${String(key)}-error`;
+}
+
+function fieldError(
+  errors: Record<string, string>,
+  key: SubmissionFieldKey,
+  touched = true,
+  id?: string
+) {
+  const message = errors[key];
+  const shouldShow = Boolean(touched && message);
+  if (!shouldShow) return null;
+
+  const text = message.startsWith("⚠") ? message : `⚠ ${message}`;
+  return (
+    <AnimatePresence>
+      {shouldShow ? (
+        <motion.p
+          key={`err-${key}`}
+          id={id}
+          role="alert"
+          aria-live="polite"
+          initial={{ opacity: 0, y: -4 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -4 }}
+          transition={{ duration: 0.15 }}
+          className="mt-1.5 flex items-center gap-1 font-mono text-xs text-red-400"
+        >
+          {text}
+        </motion.p>
+      ) : null}
+    </AnimatePresence>
+  );
+}
+
+/** Returns Tailwind classes for an input based on its validation state */
+function inputCls(
+  errors: Record<string, string>,
+  key: SubmissionFieldKey,
+  value: string | boolean | string[],
+  base = "h-11 rounded-xl px-4 text-base md:text-sm",
+  touched = false
+) {
+  const hasError = Boolean(errors[key]);
+  const hasValue = Array.isArray(value) ? value.length > 0 : Boolean(value);
+  if (touched && hasError) return `${base} input-invalid`;
+  if (touched && hasValue) return `${base} input-valid`;
+  return base;
+}
+
+function studentFieldCardClassName(autoFilled: boolean) {
+  return autoFilled ? "field-shell field-shell--auto space-y-2" : "field-shell space-y-2";
+}
+
+function extractObservationValue(observations: string | null, prefix: string) {
+  if (!observations) return "";
+  const line = observations.split("\n").find((entry) => entry.startsWith(prefix));
+  return line ? line.slice(prefix.length).trim() : "";
+}
+
+function cleanEditableObservations(observations: string | null) {
+  if (!observations) return "";
+
+  return observations
+    .split("\n")
+    .filter((line) => ![
+      "Docente orientador:",
+      "Entidade:",
+      "Média de preço estimado:",
+    ].some((prefix) => line.startsWith(prefix)))
+    .join("\n")
+    .trim();
+}
+
+function typeFromReceipt(receiptType: string): SubmissionKind {
+  if (receiptType === "BUSINESS") return "negocio";
+  if (receiptType === "PRODUCT") return "produto";
+  return "projeto";
+}
+
+function mapReceiptToForm(receipt: StudentSubmissionReceipt): SubmissionFormState {
+  return {
+    leaderName: receipt.leaderName ?? "",
+    phoneDigits: normalizeSubmissionPhoneDigits(receipt.leaderPhone),
+    academicCourse: getOfficialCourseFieldValue(receipt.course),
+    name: receipt.name,
+    description: receipt.description,
+    area: receipt.area,
+    advisor: extractObservationValue(receipt.observations, "Docente orientador: "),
+    organizationName: extractObservationValue(receipt.observations, "Entidade: "),
+    stage: receipt.stage ?? "",
+    category: receipt.category ?? "",
+    productType: receipt.productType ?? "",
+    priceAverage: extractObservationValue(receipt.observations, "Média de preço estimado: "),
+    repoUrl: receipt.repoUrl ?? "",
+    websiteUrl: receipt.websiteUrl ?? "",
+    observations: cleanEditableObservations(receipt.observations),
+    agreeRules: true,
+    paymentConfirmed: true,
+    paymentProof: toAbsoluteAssetUrl(receipt.paymentProofPath) ?? "",
+    paymentProofName: receipt.paymentProofPath ? "Comprovativo atual" : "",
+    members: receipt.membersList,
+    needs: receipt.needs,
+  };
+}
+
+function hydrateFromStudent(form: SubmissionFormState, student: StudentProfile | null) {
+  if (!student) return form;
+
+  return {
+    ...form,
+    leaderName: form.leaderName || student.name || "",
+    academicCourse: form.academicCourse || getOfficialCourseFieldValue(student.course),
+    phoneDigits: form.phoneDigits || normalizeSubmissionPhoneDigits(student.phone),
+  };
+}
+
+function withCurrentOption(options: readonly string[], value?: string | null) {
+  const trimmedValue = value?.trim();
+
+  if (!trimmedValue || options.includes(trimmedValue)) {
+    return [...options];
+  }
+
+  return [trimmedValue, ...options];
+}
+
+function submissionTypeToApi(kind: SubmissionKind): CreateSubmissionInput["type"] {
+  if (kind === "negocio") return "BUSINESS";
+  if (kind === "produto") return "PRODUCT";
+  return "PROJECT";
+}
+
 export default function Submeter() {
   const navigate = useNavigate();
-  const [tipo, setTipo] = useState<TipoSubmissao | null>(null);
-  const [submitted, setSubmitted] = useState(false);
-  const [loading, setLoading] = useState(false);
-  const [loadingConfig, setLoadingConfig] = useState(true);
-  const [errors, setErrors] = useState<Record<string, string>>({});
-  const [referenceCode, setReferenceCode] = useState("");
-  const [submittedMeta, setSubmittedMeta] = useState<{ id: number; communityUrl: string | null; boardingPassPath: string; paymentProofPath: string | null } | null>(null);
+  const location = useLocation();
+  const [searchParams] = useSearchParams();
+  const editId = Number(searchParams.get("editar"));
+  const isEditMode = Number.isFinite(editId) && editId > 0;
+
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [config, setConfig] = useState<SubmissionConfig>(defaultConfig);
-  const [form, setForm] = useState<FormState>(defaultFormState);
+  const [student, setStudent] = useState<StudentProfile | null>(null);
+  const [editingReceipt, setEditingReceipt] = useState<StudentSubmissionReceipt | null>(null);
+  const [kind, setKind] = useState<SubmissionKind | null>(null);
+  const [form, setForm] = useState<SubmissionFormState>(emptyFormState);
   const [memberInput, setMemberInput] = useState("");
-  const [paymentProofName, setPaymentProofName] = useState("");
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [touchedFields, setTouchedFields] = useState<Partial<Record<SubmissionFieldKey, boolean>>>({});
+  const [isDragging, setIsDragging] = useState(false);
 
   useEffect(() => {
-    api.submissions.config()
-      .then(setConfig)
-      .catch(() => setConfig(defaultConfig))
-      .finally(() => setLoadingConfig(false));
-  }, []);
+    const previousTitle = document.title;
+    document.title = isEditMode ? "UOR Connect | Editar Submissão" : "UOR Connect | Submeter Exposição";
+    return () => {
+      document.title = previousTitle;
+    };
+  }, [isEditMode]);
 
-  const tipoAtual = useMemo(() => tiposSubmissao.find((item) => item.id === tipo) ?? null, [tipo]);
-  const areas = tipo === "projeto" ? areasProjeto : tipo === "negocio" ? areasNegocio : areasProduto;
-  const submissionTheme = tipo ? submissionThemes[tipo] : submissionThemes.projeto;
-  const formattedLeaderPhone = `${ANGOLA_PHONE_PREFIX}${form.phone}`;
-  const phoneInputValue = `${ANGOLA_PHONE_PREFIX}${form.phone}`;
-  const memberList = useMemo(
-    () => form.members.split(",").map((item) => item.trim()).filter(Boolean),
-    [form.members]
+  useEffect(() => {
+    let active = true;
+
+    Promise.all([
+      api.submissions.config().catch(() => defaultConfig),
+      api.auth.me(),
+      isEditMode ? api.submissions.receipt(editId) : Promise.resolve(null),
+    ])
+      .then(([submissionConfig, currentStudent, receipt]) => {
+        if (!active) return;
+
+        setConfig(submissionConfig);
+        setStudent(currentStudent);
+        setEditingReceipt(receipt);
+
+        if (receipt) {
+          const nextKind = typeFromReceipt(receipt.type);
+          setKind(nextKind);
+          setForm(hydrateFromStudent(mapReceiptToForm(receipt), currentStudent));
+          setTouchedFields({});
+          setErrors({});
+          return;
+        }
+
+        setForm((current) => hydrateFromStudent(current, currentStudent));
+        setTouchedFields({});
+        setErrors({});
+      })
+      .catch((error) => {
+        if (!active) return;
+
+        if (isAuthError(error)) {
+          setToken(null);
+          redirectToStudentLogin(
+            navigate,
+            buildRoutePath(location.pathname, location.search, location.hash),
+            { replace: true, state: { from: location } }
+          );
+          return;
+        }
+
+        toast.error(error instanceof Error ? error.message : "Não foi possível preparar a submissão.");
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [editId, isEditMode, location, navigate]);
+
+  const selectedKind = useMemo(() => submissionKinds.find((entry) => entry.id === kind) ?? null, [kind]);
+  const previewDocumentSource = form.paymentProof || toAbsoluteAssetUrl(editingReceipt?.paymentProofPath);
+  const editingLocked = Boolean(isEditMode && editingReceipt && !editingReceipt.canEdit);
+  const academicCourseOptions = useMemo(
+    () => getOfficialCourseSelectOptions(form.academicCourse),
+    [form.academicCourse]
   );
+  const availableAreas = useMemo(
+    () => withCurrentOption(kind === "projeto" ? projectAreas : kind === "negocio" ? businessAreas : productAreas, form.area),
+    [form.area, kind]
+  );
+  const availableBusinessStages = useMemo(() => withCurrentOption(businessStages, form.stage), [form.stage]);
+  const availableProductAreas = useMemo(() => withCurrentOption(productAreas, form.category), [form.category]);
+  const availableProductTypes = useMemo(() => withCurrentOption(productTypes, form.productType), [form.productType]);
 
-  const updateField = <K extends keyof FormState>(key: K, value: FormState[K]) => {
-    setForm((current) => ({ ...current, [key]: value }));
-    setErrors((current) => {
-      if (!current[key]) return current;
-      const next = { ...current };
-      delete next[key];
-      return next;
+  const matchesStudentField = (field: "leaderName" | "academicCourse" | "phoneDigits") => {
+    if (!student) return false;
+
+    if (field === "phoneDigits") {
+      return normalizeSubmissionPhoneDigits(student.phone) === form.phoneDigits && Boolean(form.phoneDigits);
+    }
+
+    if (field === "leaderName") return normalizeText(student.name) === normalizeText(form.leaderName) && Boolean(form.leaderName);
+
+    const studentCourse = getOfficialCourseFieldValue(student.course);
+    const formCourse = getOfficialCourseFieldValue(form.academicCourse);
+    return normalizeText(studentCourse) === normalizeText(formCourse) && Boolean(formCourse);
+  };
+
+  const autofilledFieldsCount = [
+    matchesStudentField("leaderName"),
+    matchesStudentField("phoneDigits"),
+    matchesStudentField("academicCourse"),
+  ].filter(Boolean).length;
+
+  const validateField = (key: SubmissionFieldKey, nextForm: SubmissionFormState, nextKind: SubmissionKind | null = kind) => {
+    if (!nextKind) return null;
+
+    const parsed = buildSubmeterSchema(nextKind).safeParse(nextForm);
+    if (parsed.success) return null;
+    return parsed.error.issues.find((issue) => String(issue.path[0] ?? "form") === key)?.message ?? null;
+  };
+
+  const updateField = <K extends SubmissionFieldKey>(key: K, value: SubmissionFormState[K]) => {
+    setForm((current) => {
+      const nextForm = { ...current, [key]: value };
+      const fieldError = validateField(key, nextForm);
+
+      setTouchedFields((touched) => ({ ...touched, [key]: true }));
+      setErrors((errs) => {
+        if (!fieldError) {
+          if (!errs[key]) return errs;
+          const next = { ...errs };
+          delete next[key];
+          return next;
+        }
+        return { ...errs, [key]: fieldError };
+      });
+
+      return nextForm;
     });
   };
 
-  const toggleNeed = (need: string) => {
+  const isTouched = (key: SubmissionFieldKey) => Boolean(touchedFields[key]);
+
+  const toggleNeed = (value: string) => {
     updateField(
       "needs",
-      form.needs.includes(need) ? form.needs.filter((item) => item !== need) : [...form.needs, need]
+      form.needs.includes(value)
+        ? form.needs.filter((entry) => entry !== value)
+        : [...form.needs, value]
     );
   };
 
-  const syncMembers = (members: string[]) => {
-    updateField("members", members.join(", "));
+  const handlePickKind = (nextKind: SubmissionKind) => {
+    setKind(nextKind);
+    setTouchedFields({});
+    setErrors({});
+    setForm((current) => hydrateFromStudent(current, student));
   };
 
-  const buildShareLegend = () => {
-    const boardingPassUrl = toAbsoluteUrl(submittedMeta?.boardingPassPath);
-    const paymentProofUrl = toAbsoluteUrl(submittedMeta?.paymentProofPath);
-
-    return [
-      `UOR Connect | ${tipoAtual?.label ?? "Candidatura"}`,
-      `Inscrição: ${referenceCode}`,
-      `Candidatura: ${form.name}`,
-      `Responsável: ${form.leaderName} (${formattedLeaderPhone})`,
-      boardingPassUrl ? `Talão de embarque: ${boardingPassUrl}` : "",
-      paymentProofUrl ? `Comprovativo do pagamento: ${paymentProofUrl}` : "",
-      "Legenda: segue o talão de embarque e o comprovativo do pagamento para validação da candidatura."
-    ].filter(Boolean).join("\n");
-  };
-
-  const handleDownloadBoardingPass = async () => {
-    if (!submittedMeta) return;
-
-    try {
-      const pdf = await api.submissions.boardingPassPdf(submittedMeta.id);
-      downloadBlob(pdf, `${referenceCode.toLowerCase()}-talao-embarque.pdf`);
-    } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Falha ao baixar o talão.");
-    }
-  };
-
-  const handleCopyLegend = async () => {
-    try {
-      await navigator.clipboard.writeText(buildShareLegend());
-      toast.success("Legenda copiada.");
-    } catch {
-      toast.error("Não foi possível copiar a legenda.");
-    }
-  };
-
-  const handlePaymentProofSelected = async (file?: File | null) => {
+  const handleProofSelected = async (file?: File | null) => {
     if (!file) {
       updateField("paymentProof", "");
-      setPaymentProofName("");
+      updateField("paymentProofName", "");
       return;
     }
 
@@ -306,34 +501,55 @@ export default function Submeter() {
     try {
       const dataUrl = await readFileAsDataUrl(file);
       updateField("paymentProof", dataUrl);
-      setPaymentProofName(file.name);
+      updateField("paymentProofName", file.name);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Falha ao ler o comprovativo.");
     }
   };
 
-  const handleAddMember = () => {
-    const nextName = memberInput.trim();
-    if (!nextName) return;
+  const handleProofDrop: React.DragEventHandler<HTMLLabelElement> = async (event) => {
+    event.preventDefault();
+    setIsDragging(false);
+    const file = event.dataTransfer?.files?.[0];
+    if (file) {
+      await handleProofSelected(file);
+    }
+  };
 
-    if (memberList.length >= 5) {
+  const handleDragOver: React.DragEventHandler<HTMLLabelElement> = (event) => {
+    event.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave: React.DragEventHandler<HTMLLabelElement> = () => setIsDragging(false);
+
+  const handleAddMember = () => {
+    const cleaned = memberInput.trim();
+    if (!cleaned) return;
+
+    if (form.members.length >= 5) {
       toast.error("Máximo de 5 membros por candidatura.");
       return;
     }
 
-    syncMembers([...memberList, nextName]);
+    if (form.members.some((member) => normalizeText(member) === normalizeText(cleaned))) {
+      toast.info("Este membro já foi adicionado.");
+      return;
+    }
+
+    updateField("members", [...form.members, cleaned]);
     setMemberInput("");
   };
 
-  const handleRemoveMember = (name: string) => {
-    syncMembers(memberList.filter((item) => item !== name));
+  const handleRemoveMember = (member: string) => {
+    updateField("members", form.members.filter((entry) => entry !== member));
   };
 
   const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    if (!tipo) return;
+    if (!kind) return;
 
-    const parsed = buildSchema(tipo).safeParse(form);
+    const parsed = buildSubmeterSchema(kind).safeParse(form);
     if (!parsed.success) {
       const nextErrors = parsed.error.issues.reduce<Record<string, string>>((acc, issue) => {
         const key = String(issue.path[0] ?? "form");
@@ -341,247 +557,117 @@ export default function Submeter() {
         return acc;
       }, {});
       setErrors(nextErrors);
-      toast.error("Revê os campos destacados antes de submeter.");
+      toast.error("Revê os campos destacados antes de continuar.");
       return;
     }
 
-    if (!config.isOpen) {
+    if (!config.isOpen && !isEditMode) {
       toast.error("As candidaturas estão fechadas neste momento.");
       return;
     }
 
-    const observations = [
-      form.observations.trim(),
-      tipo === "projeto" && form.advisor.trim() ? `Docente orientador: ${form.advisor.trim()}` : "",
-      tipo !== "projeto" && form.organizationName.trim() ? `Entidade: ${form.organizationName.trim()}` : "",
-      tipo === "produto" && form.priceAverage.trim() ? `Média de preço estimado: ${form.priceAverage.trim()}` : "",
-      form.leaderName.trim() ? `Responsável: ${form.leaderName.trim()}` : "",
-    ].filter(Boolean).join("\n");
-
-    const payload: CreateSubmissionInput = {
-      name: form.name.trim(),
-      description: form.description.trim(),
-      members: form.members.trim(),
-      leaderName: form.leaderName.trim(),
-      leaderPhone: formattedLeaderPhone,
-      needs: form.needs,
-      paymentProof: form.paymentProof,
-      paymentConfirmed: true,
-      repoUrl: form.repoUrl.trim() || undefined,
-      websiteUrl: form.websiteUrl.trim() || undefined,
-      observations: observations || undefined,
-      agreeRules: true,
-      type: tipo === "projeto" ? "PROJECT" : tipo === "negocio" ? "BUSINESS" : "PRODUCT",
-      area: form.area,
-      course: tipo === "projeto" ? form.course : undefined,
-      stage: tipo === "negocio" ? form.stage : undefined,
-      category: tipo === "produto" ? form.category : undefined,
-      productType: tipo === "produto" ? form.productType : undefined,
-    };
+    if (editingLocked) {
+      toast.error("Esta submissão já não pode ser editada.");
+      return;
+    }
 
     try {
-      setLoading(true);
-      const result = await api.submissions.create(payload);
-      setReferenceCode(result.referenceCode);
-      setSubmittedMeta({
-        id: result.id,
-        communityUrl: result.communityUrl,
-        boardingPassPath: result.boardingPassPath,
-        paymentProofPath: result.paymentProofPath
+      setSaving(true);
+      const normalizedCourse = getOfficialCourseFieldValue(form.academicCourse);
+
+      const syncedStudent = await syncStudentProfileIfNeeded(student, {
+        name: form.leaderName,
+        course: normalizedCourse || undefined,
+        phone: formatSubmissionPhone(form.phoneDigits),
       });
-      setSubmitted(true);
-      toast.success("Candidatura submetida com sucesso.");
+      setStudent(syncedStudent ?? student);
+
+      const observations = [
+        form.observations.trim(),
+        kind === "projeto" && form.advisor.trim() ? `Docente orientador: ${form.advisor.trim()}` : "",
+        kind !== "projeto" && form.organizationName.trim() ? `Entidade: ${form.organizationName.trim()}` : "",
+        kind === "produto" && form.priceAverage.trim() ? `Média de preço estimado: ${form.priceAverage.trim()}` : "",
+      ].filter(Boolean).join("\n");
+
+      const payload: CreateSubmissionInput = {
+        name: form.name.trim(),
+        description: form.description.trim() || undefined,
+        members: form.members,
+        leaderName: form.leaderName.trim(),
+        leaderPhone: formatSubmissionPhone(form.phoneDigits),
+        needs: form.needs,
+        paymentProof: form.paymentProof,
+        paymentConfirmed: true,
+        repoUrl: form.repoUrl.trim() || undefined,
+        websiteUrl: form.websiteUrl.trim() || undefined,
+        observations: observations || undefined,
+        agreeRules: true,
+        type: submissionTypeToApi(kind),
+        area: form.area,
+        course: kind === "projeto" ? normalizedCourse : undefined,
+        stage: kind === "negocio" ? form.stage : undefined,
+        category: kind === "produto" ? form.category : undefined,
+        productType: kind === "produto" ? form.productType : undefined,
+      };
+
+      if (isEditMode) {
+        const updated = await api.submissions.updateOwn(editId, payload);
+        toast.success("Submissão atualizada com sucesso.");
+        navigate(updated.receiptPath);
+        return;
+      }
+
+      const created = await api.submissions.create(payload);
+      toast.success("Submissão registada com sucesso.");
+      navigate(created.receiptPath);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Erro ao submeter. Tenta novamente.");
+      if (isAuthError(error)) {
+        setToken(null);
+        redirectToStudentLogin(
+          navigate,
+          buildRoutePath(location.pathname, location.search, location.hash),
+          { replace: true, state: { from: location } }
+        );
+        return;
+      }
+
+      toast.error(error instanceof Error ? error.message : "Não foi possível guardar a submissão.");
     } finally {
-      setLoading(false);
+      setSaving(false);
     }
   };
 
-  const handleReset = () => {
-    setSubmitted(false);
-    setTipo(null);
-    setErrors({});
-    setForm(defaultFormState);
-    setMemberInput("");
-    setPaymentProofName("");
-    setSubmittedMeta(null);
-  };
-
-  if (submitted) {
-    const shareLegend = buildShareLegend();
-    const whatsappShareUrl = `https://wa.me/?text=${encodeURIComponent(shareLegend)}`;
+  if (loading) {
     return (
-      <div className="relative min-h-screen overflow-hidden px-4 py-12">
-        <div className="absolute inset-0 opacity-90" style={{ background: submissionTheme.surface }} />
-        <div className="absolute -left-20 top-10 h-64 w-64 rounded-full blur-3xl" style={{ backgroundColor: `${submissionTheme.primary}30` }} />
-        <div className="absolute -right-24 bottom-10 h-72 w-72 rounded-full blur-3xl" style={{ backgroundColor: `${submissionTheme.secondary}28` }} />
-
-        <div className="relative mx-auto max-w-6xl">
-          <motion.div
-            initial={{ opacity: 0, y: 24 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="overflow-hidden rounded-[32px] border border-white/50 bg-white/92 shadow-[0_30px_120px_rgba(15,23,42,0.18)] backdrop-blur"
-          >
-            <div className="grid xl:grid-cols-[minmax(0,1.18fr)_minmax(320px,0.82fr)]">
-              <div className="relative min-w-0 overflow-hidden p-6 md:p-8 xl:p-10" style={{ background: `linear-gradient(160deg, ${submissionTheme.primary}18, ${submissionTheme.secondary}10)` }}>
-                <div className="absolute inset-x-0 top-0 h-2" style={{ background: `linear-gradient(90deg, ${submissionTheme.primary}, ${submissionTheme.secondary})` }} />
-                <div className="flex flex-wrap items-start justify-between gap-4">
-                  <div className="flex min-w-0 items-center gap-3">
-                    <img src="/logo.svg" alt="UOR Connect" className="h-12 w-auto rounded-2xl border border-white/60 bg-white/80 p-2 shadow-sm" />
-                    <div className="min-w-0">
-                      <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-slate-500">UOR Connect</p>
-                      <p className="truncate text-sm font-medium text-slate-700">Feira do Dia das Telecomunicações</p>
-                    </div>
-                  </div>
-                  <div className="rounded-full px-4 py-2 text-[11px] font-bold uppercase tracking-[0.18em]" style={{ backgroundColor: `${submissionTheme.primary}16`, color: submissionTheme.secondary }}>
-                    {submissionTheme.badge}
-                  </div>
-                </div>
-
-                <div className="mt-8 flex flex-col gap-4 sm:flex-row sm:items-center">
-                  <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl text-white shadow-lg" style={{ background: `linear-gradient(135deg, ${submissionTheme.primary}, ${submissionTheme.secondary})` }}>
-                    <CheckCircle className="h-7 w-7" />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-500">Check-in concluído</p>
-                    <h2 className="font-heading text-3xl font-bold leading-tight text-slate-900 md:text-4xl">Candidatura embarcada com sucesso</h2>
-                  </div>
-                </div>
-
-                <p className="mt-5 max-w-2xl text-sm leading-7 text-slate-600 md:text-base">
-                  A tua inscrição foi registada como se tivesses acabado de fazer check-in para a área de exposição. Guarda o número de inscrição e acompanha as próximas chamadas da organização.
-                </p>
-
-                <div className="mt-8 grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,0.8fr)]">
-                  <div className="rounded-[28px] border border-slate-200 bg-white/95 p-5 shadow-sm md:p-6">
-                    <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">
-                      <Ticket className="h-4 w-4" />
-                      Número de inscrição
-                    </div>
-                    <p className="mt-3 break-all font-mono text-xl font-bold leading-tight md:text-2xl" style={{ color: submissionTheme.secondary }}>{referenceCode}</p>
-                    <div className="mt-5 grid gap-3 sm:grid-cols-2">
-                      <div className="rounded-2xl border border-slate-200 bg-slate-50/90 p-4">
-                        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Embarque</p>
-                        <p className="mt-2 text-sm font-semibold text-slate-900">{form.name}</p>
-                        <p className="mt-1 text-xs text-slate-500">{tipoAtual?.label}</p>
-                      </div>
-                      <div className="rounded-2xl border border-slate-200 bg-slate-50/90 p-4">
-                        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-slate-500">Legenda</p>
-                        <p className="mt-2 text-sm leading-6 text-slate-600">Baixa o talão em PDF e partilha-o com o comprovativo do pagamento no grupo da comunidade correspondente.</p>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="rounded-[28px] border border-slate-200 bg-slate-950 p-5 text-white shadow-sm md:p-6">
-                    <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.18em] text-white/60">
-                      <Plane className="h-4 w-4" />
-                      Gate de saída
-                    </div>
-                    <div className="mt-4 space-y-3">
-                      <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/50">Responsável</p>
-                        <p className="mt-2 text-sm font-semibold text-white">{form.leaderName}</p>
-                      </div>
-                      <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/50">Contacto</p>
-                        <p className="mt-2 break-all text-sm font-semibold text-white">{formattedLeaderPhone}</p>
-                      </div>
-                      <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
-                        <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/50">Área</p>
-                        <p className="mt-2 text-sm font-semibold text-white">{form.area}</p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="relative min-w-0 border-t border-dashed border-slate-200 bg-slate-950 p-6 text-white md:p-8 xl:border-l xl:border-t-0">
-
-                <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.24em] text-white/60">
-                  <Sparkles className="h-4 w-4" />
-                  Próximos passos
-                </div>
-
-                <div className="mt-6 space-y-4">
-                  {[
-                    "Guarda o número de inscrição para a validação e triagem da candidatura.",
-                    "A organização vai usar o contacto submetido para atualizações rápidas e confirmação.",
-                    "Se fores aprovado, a candidatura entra em exposição pública e, no caso de projeto, em votação."
-                  ].map((step, index) => (
-                    <div key={step} className="flex gap-3 rounded-2xl border border-white/10 bg-white/5 p-4">
-                      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-white/10 text-sm font-bold">{index + 1}</div>
-                      <p className="text-sm leading-6 text-white/80">{step}</p>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="mt-8 rounded-3xl border border-white/10 bg-white/5 p-5">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-white/50">Legenda de partilha</p>
-                  <p className="mt-2 text-sm leading-6 text-white/75">
-                    Usa esta legenda quando fores enviar o talão e o comprovativo no WhatsApp ou no grupo da comunidade.
-                  </p>
-                  <div className="mt-4 rounded-2xl border border-white/10 bg-black/20 p-4">
-                    <pre className="whitespace-pre-wrap break-words font-mono text-xs leading-6 text-white/80">{shareLegend}</pre>
-                  </div>
-                </div>
-
-                <div className="mt-6 grid gap-3 sm:grid-cols-2">
-                  <Button variant="outline" className="rounded-2xl border-white/15 bg-transparent text-white hover:bg-white/10" onClick={() => void handleDownloadBoardingPass()}>
-                    <Download className="mr-2 h-4 w-4" />
-                    Baixar talão em PDF
-                  </Button>
-                  <Button variant="outline" className="rounded-2xl border-white/15 bg-transparent text-white hover:bg-white/10" onClick={() => void handleCopyLegend()}>
-                    <Copy className="mr-2 h-4 w-4" />
-                    Copiar legenda
-                  </Button>
-                  <Button variant="outline" className="rounded-2xl border-white/15 bg-transparent text-white hover:bg-white/10" asChild>
-                    <a href={whatsappShareUrl} target="_blank" rel="noopener noreferrer">
-                      <MessageSquareMore className="mr-2 h-4 w-4" />
-                      Partilhar no WhatsApp
-                    </a>
-                  </Button>
-                  {submittedMeta?.communityUrl ? (
-                    <Button variant="outline" className="rounded-2xl border-white/15 bg-transparent text-white hover:bg-white/10" asChild>
-                      <a href={submittedMeta.communityUrl} target="_blank" rel="noopener noreferrer">
-                        <ExternalLink className="mr-2 h-4 w-4" />
-                        Entrar na comunidade
-                      </a>
-                    </Button>
-                  ) : (
-                    <div className="rounded-2xl border border-dashed border-white/10 px-4 py-3 text-sm text-white/55">
-                      A comunidade deste tipo ainda não foi configurada no admin.
-                    </div>
-                  )}
-                </div>
-
-                <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-                  <Button variant="outline" className="flex-1 rounded-2xl border-white/15 bg-transparent text-white hover:bg-white/10" onClick={() => navigate("/")}>
-                    Voltar ao início
-                  </Button>
-                  <Button className="flex-1 rounded-2xl font-semibold" style={{ backgroundColor: submissionTheme.primary, color: "#fff" }} onClick={handleReset}>
-                    Nova candidatura
-                    <ArrowRight className="ml-2 h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-            </div>
-          </motion.div>
+      <div className="page-section">
+        <div className="page-shell flex min-h-[60vh] items-center justify-center">
+          <div className="surface-card flex items-center gap-3 px-6 py-5">
+            <Loader2 className="h-6 w-6 animate-spin text-primary" />
+            <span className="text-sm font-medium text-muted-foreground">A preparar o formulário de submissão...</span>
+          </div>
         </div>
       </div>
     );
   }
 
-  if (!tipo) {
+  if (!kind) {
     return (
       <div className="min-h-screen py-12 md:py-20">
         <div className="container mx-auto max-w-4xl px-4">
-          <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="text-center mb-10">
-            <h1 className="text-3xl md:text-4xl font-heading font-bold mb-2">Submeter Exposição</h1>
-            <p className="text-muted-foreground text-sm md:text-base">Escolhe o tipo de candidatura e confirma o estado atual antes de avançar.</p>
-          </motion.div>
+          <motion.section
+            initial={{ opacity: 0, y: 14 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.28, ease: "easeOut" }}
+            className="mb-10 text-center"
+          >
+            <h1 className="mb-2 text-3xl font-bold sm:text-4xl">Submeter Exposição</h1>
+            <p className="text-sm text-muted-foreground sm:text-base">
+              Escolhe o tipo de candidatura e confirma o estado atual antes de avançar.
+            </p>
+          </motion.section>
 
           <div className="mb-8 grid gap-4 md:grid-cols-[1.2fr_0.8fr]">
-            <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+            <section className="rounded-2xl border border-border bg-card p-5 shadow-sm">
               <div className="flex items-center gap-3">
                 <div className={`flex h-12 w-12 items-center justify-center rounded-2xl ${config.isOpen ? "bg-primary/10 text-primary" : "bg-destructive/10 text-destructive"}`}>
                   {config.isOpen ? <ShieldCheck className="h-6 w-6" /> : <ShieldX className="h-6 w-6" />}
@@ -592,46 +678,46 @@ export default function Submeter() {
                 </div>
               </div>
               <p className="mt-3 text-sm leading-6 text-muted-foreground">
-                {config.isOpen ? "As submissões estão disponíveis neste momento. Podes avançar com a tua candidatura." : "As submissões estão temporariamente desativadas. Volta mais tarde ou consulta a organização."}
+                {config.isOpen
+                  ? "As submissões estão disponíveis neste momento. Podes avançar com a tua candidatura."
+                  : "As submissões estão temporariamente desativadas. Volta mais tarde ou consulta a organização."}
               </p>
-            </div>
+            </section>
 
-            <div className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+            <section className="rounded-2xl border border-border bg-card p-5 shadow-sm">
               <div className="flex items-start gap-3">
                 <Info className="mt-1 h-5 w-5 text-primary" />
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Pagamento</p>
-                  {loadingConfig ? (
-                    <div className="mt-3 flex items-center gap-2 text-sm text-muted-foreground"><Loader2 className="h-4 w-4 animate-spin" /> A carregar configuração...</div>
-                  ) : (
-                    <>
-                      <p className="mt-2 font-mono text-sm font-semibold">{config.iban}</p>
-                      <p className="mt-2 text-sm text-foreground">{config.accountName}</p>
-                      <p className="text-sm font-semibold text-primary">{config.paymentAmount}</p>
-                    </>
-                  )}
+                  <p className="mt-2 font-mono text-sm font-semibold">{config.iban}</p>
+                  <p className="mt-2 text-sm text-foreground">{config.accountName}</p>
+                  <p className="text-sm font-semibold text-primary">{config.paymentAmount}</p>
                 </div>
               </div>
-            </div>
+            </section>
           </div>
 
-          <div className="grid md:grid-cols-3 gap-4">
-            {tiposSubmissao.map((item, index) => (
-              <motion.button
-                key={item.id}
-                initial={{ opacity: 0, y: 16 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: index * 0.08 }}
-                onClick={() => setTipo(item.id)}
-                className={`overflow-hidden rounded-2xl border border-border bg-gradient-to-br ${item.color} p-6 text-left shadow-sm transition-all hover:-translate-y-1 hover:border-primary/40 hover:shadow-lg`}
-              >
-                <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-white/80">
-                  <item.icon className="h-6 w-6 text-primary" />
-                </div>
-                <h3 className="font-heading text-lg font-bold text-foreground">{item.label}</h3>
-                <p className="mt-2 text-sm leading-6 text-muted-foreground">{item.desc}</p>
-              </motion.button>
-            ))}
+          <div className="grid gap-4 md:grid-cols-3">
+            {submissionKinds.map((entry, index) => {
+              const Icon = entry.icon;
+              return (
+                <motion.button
+                  key={entry.id}
+                  type="button"
+                  initial={{ opacity: 0, y: 16 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: index * 0.06, duration: 0.24, ease: "easeOut" }}
+                  onClick={() => handlePickKind(entry.id)}
+                  className={`overflow-hidden rounded-2xl border border-border bg-gradient-to-br ${entry.gradient} p-6 text-left shadow-sm transition-all hover:-translate-y-1 hover:border-primary/40 hover:shadow-lg`}
+                >
+                  <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-white/80">
+                    <Icon className="h-6 w-6 text-primary" />
+                  </div>
+                  <h2 className="font-heading text-lg font-bold text-foreground">{entry.label}</h2>
+                  <p className="mt-2 text-sm leading-7 text-muted-foreground">{entry.description}</p>
+                </motion.button>
+              );
+            })}
           </div>
         </div>
       </div>
@@ -639,301 +725,495 @@ export default function Submeter() {
   }
 
   return (
-    <div className="min-h-screen py-12 md:py-20">
-      <div className="container mx-auto max-w-5xl px-4">
+    <div className="uor-page-bg min-h-screen py-12 md:py-20">
+      <div className="page-shell-narrow">
         <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="mb-8">
-          <button onClick={() => setTipo(null)} className="mb-4 flex items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-primary">
-            ← Voltar à seleção
+          <button type="button" onClick={() => !isEditMode && setKind(null)} className="mb-4 flex items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-primary">
+            <ArrowLeft className="h-4 w-4" />
+            {isEditMode ? "Ajustar submissão atual" : "Voltar à seleção"}
           </button>
           <div className="flex flex-wrap items-center gap-3">
             <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10">
-              {tipoAtual && <tipoAtual.icon className="h-5 w-5 text-primary" />}
+              {selectedKind ? <selectedKind.icon className="h-5 w-5 text-primary" /> : null}
             </div>
-            <h1 className="text-3xl md:text-4xl font-heading font-bold">{tipoAtual?.label}</h1>
+            <h1 className="text-3xl font-bold md:text-4xl">{selectedKind?.label}</h1>
           </div>
-          <p className="mt-2 text-sm md:text-base text-muted-foreground">{tipoAtual?.desc} com validação completa antes do envio.</p>
+          <p className="mt-2 max-w-3xl text-sm leading-7 text-muted-foreground md:text-base">
+            {selectedKind?.description} com validação completa, sincronização com a tua sessão e recibo reabrível depois do envio.
+          </p>
         </motion.div>
 
-        <div className="mb-6 rounded-2xl border border-border bg-card p-5 shadow-sm">
-          <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+        <div className="surface-card mb-6 overflow-hidden border-border/70 bg-[linear-gradient(135deg,rgba(255,255,255,0.94),rgba(248,250,252,0.92),rgba(255,94,0,0.08))] p-5 sm:p-6">
+          <div className="grid gap-4 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,0.7fr)]">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Status</p>
-              <p className={`mt-1 font-heading text-xl font-bold ${config.isOpen ? "text-primary" : "text-destructive"}`}>
+              <p className="premium-kicker">Estado operacional</p>
+              <p className={`mt-2 font-heading text-2xl font-bold ${config.isOpen ? "text-primary" : "text-destructive"}`}>
                 {config.isOpen ? "Submissões ativas" : "Submissões desativadas"}
               </p>
-              <p className="mt-2 text-sm leading-6 text-muted-foreground">
-                {tipo === "projeto"
+              <p className="mt-3 max-w-2xl text-sm leading-7 text-muted-foreground">
+                {kind === "projeto"
                   ? "Projetos académicos aprovados entram na votação pública e podem receber o prémio oficial."
-                  : "Negócios e produtos aprovados ficam em categoria de exposição e concorrem a vaga gratuita na próxima feira."}
+                  : "Negócios e produtos aprovados ficam em categoria de exposição e seguem o fluxo de validação e gestão interna."}
               </p>
             </div>
-            <span className={`inline-flex w-fit rounded-full px-3 py-1 text-xs font-bold ${config.isOpen ? "bg-primary/10 text-primary" : "bg-destructive/10 text-destructive"}`}>
-              {config.isOpen ? "Podes candidatar-te agora" : "Indisponível de momento"}
-            </span>
+
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
+              <div className="premium-stat-card">
+                <p className="premium-kicker">Conta protegida</p>
+                <p className="mt-2 text-base font-semibold text-slate-900">{student?.studentNumber || "Sessão ativa"}</p>
+                <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                  {isEditMode ? editingReceipt?.statusLabel || "Edição em curso" : "O envio fica associado à tua conta académica."}
+                </p>
+              </div>
+              <div className="premium-stat-card premium-stat-card--accent">
+                <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-white/70">Auto-preenchimento</p>
+                <p className="mt-2 text-2xl font-semibold">{autofilledFieldsCount}/3</p>
+                <p className="mt-1 text-xs leading-5 text-white/70">
+                  Nome, contacto e curso são comparados com a tua sessão e destacados quando coincidem.
+                </p>
+              </div>
+            </div>
           </div>
         </div>
 
-        <motion.form initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }} onSubmit={handleSubmit} className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
-          <div className="space-y-6">
-            <div className="rounded-2xl border border-border bg-card p-6 space-y-5 shadow-sm">
-              <h2 className="text-sm font-heading font-bold text-primary">Dados do Participante</h2>
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold">Nome completo *</Label>
-                  <Input value={form.leaderName} onChange={(e) => updateField("leaderName", e.target.value)} placeholder="Nome completo" className="h-10 text-sm" />
-                  {fieldError(errors, "leaderName")}
+        {editingLocked ? (
+          <div className="surface-card border-rose-500/20 bg-rose-500/[0.05] p-5 text-sm leading-7 text-rose-700">
+            Esta submissão já não pode ser editada porque saiu do estado pendente. O recibo continua acessível em <Link to={`/submissoes/${editingReceipt?.id}`} className="font-semibold underline">/submissoes/{editingReceipt?.id}</Link>.
+          </div>
+        ) : null}
+
+        <form onSubmit={handleSubmit} className="responsive-two-col items-start">
+          <section className="space-y-6">
+            <div className="surface-card space-y-5 p-6">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Dados do estudante</p>
+                <h2 className="mt-2 text-xl font-semibold">Auto-preenchimento ligado à tua sessão</h2>
+                <p className="mt-2 text-sm leading-7 text-muted-foreground">
+                  Estes campos são alimentados a partir da tua conta autenticada. Podes corrigir algo antes de enviar, mas o sistema mostra-te quando o valor continua alinhado com o perfil.
+                </p>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div className="premium-stat-card">
+                  <p className="premium-kicker">Perfil</p>
+                  <p className="mt-2 safe-break text-sm font-semibold text-slate-900">{student?.name || "Nome indisponível"}</p>
                 </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold">Telefone *</Label>
-                  <Input
-                    value={phoneInputValue}
-                    onChange={(e) => updateField("phone", extractPhoneDigitsFromInput(e.target.value))}
-                    placeholder={`${ANGOLA_PHONE_PREFIX}XX XXX XXX`}
-                    className="h-10 text-sm"
-                    inputMode="numeric"
-                  />
-                  <p className="text-[11px] text-muted-foreground">Formato final: {formattedLeaderPhone}</p>
-                  {fieldError(errors, "phone")}
+                <div className="premium-stat-card">
+                  <p className="premium-kicker">Curso</p>
+                  <p className="mt-2 safe-break text-sm font-semibold text-slate-900">{student?.course || "Curso não informado"}</p>
+                </div>
+                <div className="premium-stat-card">
+                  <p className="premium-kicker">Contacto</p>
+                  <p className="mt-2 safe-break text-sm font-semibold text-slate-900">{student?.phone || "Sem telefone sincronizado"}</p>
                 </div>
               </div>
-              <div className="grid gap-4 md:grid-cols-2">
-                {tipo === "projeto" ? (
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold">Curso *</Label>
-                    <Select value={form.course} onValueChange={(value) => updateField("course", value)}>
-                      <SelectTrigger className="h-10 text-sm"><SelectValue placeholder="Selecionar curso" /></SelectTrigger>
-                      <SelectContent>{cursosUniversidade.map((curso) => <SelectItem key={curso} value={curso}>{curso}</SelectItem>)}</SelectContent>
-                    </Select>
-                    {fieldError(errors, "course")}
+
+              <div className="responsive-two-col">
+                <div className={studentFieldCardClassName(matchesStudentField("leaderName"))}>
+                  <p className="field-shell__kicker">Nome oficial</p>
+                  <p className="field-shell__title">Nome completo do responsável</p>
+                  <Label htmlFor="leaderName">Nome completo</Label>
+                  <Input
+                    id="leaderName"
+                    value={form.leaderName}
+                    onChange={(event) => updateField("leaderName", event.target.value)}
+                    aria-required="true"
+                    aria-invalid={Boolean(errors.leaderName)}
+                    aria-describedby={errors.leaderName ? errorId("leaderName") : undefined}
+                    className={inputCls(errors, "leaderName", form.leaderName, undefined, isTouched("leaderName"))}
+                  />
+                  <AutoFillBadge visible={matchesStudentField("leaderName")} />
+                  {fieldError(errors, "leaderName", isTouched("leaderName"), errorId("leaderName"))}
+                </div>
+
+                <div className={studentFieldCardClassName(matchesStudentField("phoneDigits"))}>
+                  <p className="field-shell__kicker">Canal de contacto</p>
+                  <p className="field-shell__title">Número principal para retorno</p>
+                  <Label htmlFor="phoneDigits">Contacto</Label>
+                  <Input
+                    id="phoneDigits"
+                    value={formatSubmissionPhone(form.phoneDigits)}
+                    onChange={(event) => updateField("phoneDigits", extractSubmissionPhoneDigits(event.target.value))}
+                    aria-required="true"
+                    aria-invalid={Boolean(errors.phoneDigits)}
+                    aria-describedby={errors.phoneDigits ? errorId("phoneDigits") : undefined}
+                    className={inputCls(errors, "phoneDigits", form.phoneDigits, undefined, isTouched("phoneDigits"))}
+                  />
+                  <AutoFillBadge visible={matchesStudentField("phoneDigits")} />
+                  {fieldError(errors, "phoneDigits", isTouched("phoneDigits"), errorId("phoneDigits"))}
+                </div>
+              </div>
+
+              <div className={studentFieldCardClassName(matchesStudentField("academicCourse"))}>
+                <p className="field-shell__kicker">Curso académico</p>
+                <p className="field-shell__title">Ligação institucional da candidatura</p>
+                <Label htmlFor="academicCourse">Curso académico</Label>
+                  <Select value={form.academicCourse} onValueChange={(value) => updateField("academicCourse", value)}>
+                    <SelectTrigger
+                      id="academicCourse"
+                      aria-required="true"
+                      aria-invalid={Boolean(errors.academicCourse)}
+                      aria-describedby={errors.academicCourse ? errorId("academicCourse") : undefined}
+                      className="h-11 rounded-xl px-4 text-base md:text-sm"
+                    >
+                    <SelectValue placeholder="Seleciona o curso" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {academicCourseOptions.map((option) => (
+                      <SelectItem key={option} value={option}>{option}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <AutoFillBadge visible={matchesStudentField("academicCourse")} />
+                {fieldError(errors, "academicCourse", isTouched("academicCourse"), errorId("academicCourse"))}
+              </div>
+            </div>
+
+            <div className="surface-card space-y-5 p-6">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Detalhes da candidatura</p>
+                <h2 className="mt-2 text-xl font-semibold">Tudo dentro de limites consistentes</h2>
+              </div>
+
+            <div className="space-y-2">
+                <Label htmlFor="submissionName">Nome da candidatura</Label>
+                <Input id="submissionName" value={form.name} onChange={(event) => updateField("name", event.target.value)} className={inputCls(errors, "name", form.name)} />
+                {fieldError(errors, "name")}
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="description">Descrição</Label>
+                <Textarea id="description" value={form.description} onChange={(event) => updateField("description", event.target.value.slice(0, 500))} className={`min-h-[140px] rounded-xl px-4 py-3 text-base md:text-sm ${errors.description ? 'input-invalid' : form.description.length >= 20 ? 'input-valid' : ''}`} />
+                <div className="field-note flex items-center justify-between">
+                  <span>Máximo de 500 caracteres.</span>
+                  <span className={form.description.length > 450 ? 'text-[hsl(var(--warning))]' : ''}>{form.description.length}/500</span>
+                </div>
+                {fieldError(errors, "description")}
+              </div>
+
+              <div className="responsive-two-col">
+                <div className="space-y-2">
+                  <Label htmlFor="area">Área principal</Label>
+                  <Select value={form.area} onValueChange={(value) => updateField("area", value)}>
+                    <SelectTrigger
+                      id="area"
+                      aria-required="true"
+                      aria-invalid={Boolean(errors.area)}
+                      aria-describedby={errors.area ? errorId("area") : undefined}
+                      className="h-11 rounded-xl px-4 text-base md:text-sm"
+                    >
+                      <SelectValue placeholder="Seleciona a área" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {availableAreas.map((option) => (
+                        <SelectItem key={option} value={option}>{option}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {fieldError(errors, "area", isTouched("area"), errorId("area"))}
+                </div>
+
+                {kind === "projeto" ? (
+                  <div className="space-y-2">
+                    <Label htmlFor="advisor">Docente orientador</Label>
+                    <Input id="advisor" value={form.advisor} onChange={(event) => updateField("advisor", event.target.value)} className={inputCls(errors, "advisor", form.advisor)} />
+                    {fieldError(errors, "advisor")}
                   </div>
                 ) : (
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold">{tipo === "negocio" ? "Empresa / Organização *" : "Marca / Fabricante *"}</Label>
-                    <Input value={form.organizationName} onChange={(e) => updateField("organizationName", e.target.value)} placeholder={tipo === "negocio" ? "Nome da empresa" : "Nome da marca"} className="h-10 text-sm" />
+                  <div className="space-y-2">
+                    <Label htmlFor="organizationName">Entidade responsável</Label>
+                    <Input id="organizationName" value={form.organizationName} onChange={(event) => updateField("organizationName", event.target.value)} className={inputCls(errors, "organizationName", form.organizationName)} />
                     {fieldError(errors, "organizationName")}
                   </div>
                 )}
               </div>
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-1.5 md:col-span-2">
-                  <Label className="text-xs font-semibold">Membros da equipa *</Label>
-                  <div className="relative">
-                    <Input
-                      value={memberInput}
-                      onChange={(e) => setMemberInput(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          e.preventDefault();
-                          handleAddMember();
-                        }
-                      }}
-                      placeholder={memberList.length > 0 ? "Adicione o próximo nome" : "Adicione o primeiro nome"}
-                      className="h-10 pr-12 text-sm"
-                    />
-                    <button
-                      type="button"
-                      onClick={handleAddMember}
-                      className="absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-md border border-primary/20 bg-primary/10 text-primary transition-colors hover:bg-primary/15"
-                      aria-label="Adicionar membro"
-                    >
-                      <Plus className="h-4 w-4" />
-                    </button>
+
+              {kind === "negocio" ? (
+                <div className="space-y-2">
+                  <Label htmlFor="stage">Estágio do negócio</Label>
+                  <Select value={form.stage} onValueChange={(value) => updateField("stage", value)}>
+                      <SelectTrigger
+                        id="stage"
+                        aria-required="true"
+                        aria-invalid={Boolean(errors.stage)}
+                        aria-describedby={errors.stage ? errorId("stage") : undefined}
+                        className="h-11 rounded-xl px-4 text-base md:text-sm"
+                      >
+                        <SelectValue placeholder="Seleciona o estágio" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {availableBusinessStages.map((option) => (
+                          <SelectItem key={option} value={option}>{option}</SelectItem>
+                        ))}
+                      </SelectContent>
+                  </Select>
+                  {fieldError(errors, "stage", isTouched("stage"), errorId("stage"))}
+                </div>
+              ) : null}
+
+              {kind === "produto" ? (
+                <div className="responsive-two-col">
+                  <div className="space-y-2">
+                    <Label htmlFor="category">Categoria do produto</Label>
+                    <Select value={form.category} onValueChange={(value) => updateField("category", value)}>
+                      <SelectTrigger
+                        id="category"
+                        aria-required="true"
+                        aria-invalid={Boolean(errors.category)}
+                        aria-describedby={errors.category ? errorId("category") : undefined}
+                        className="h-11 rounded-xl px-4 text-base md:text-sm"
+                      >
+                        <SelectValue placeholder="Seleciona a categoria" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {availableProductAreas.map((option) => (
+                          <SelectItem key={option} value={option}>{option}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {fieldError(errors, "category", isTouched("category"), errorId("category"))}
                   </div>
-                  <div className="flex flex-wrap gap-2">
-                    {memberList.map((member) => (
-                      <div key={member} className="inline-flex items-center gap-1 rounded-full border border-border/70 bg-muted/30 px-2.5 py-1 text-[11px] text-muted-foreground">
-                        <span>{member}</span>
-                        <button
-                          type="button"
-                          onClick={() => handleRemoveMember(member)}
-                          className="text-muted-foreground transition-colors hover:text-foreground"
-                          aria-label={`Remover ${member}`}
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="productType">Tipo do produto</Label>
+                    <Select value={form.productType} onValueChange={(value) => updateField("productType", value)}>
+                      <SelectTrigger
+                        id="productType"
+                        aria-required="true"
+                        aria-invalid={Boolean(errors.productType)}
+                        aria-describedby={errors.productType ? errorId("productType") : undefined}
+                        className="h-11 rounded-xl px-4 text-base md:text-sm"
+                      >
+                        <SelectValue placeholder="Seleciona o formato" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {availableProductTypes.map((option) => (
+                          <SelectItem key={option} value={option}>{option}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    {fieldError(errors, "productType", isTouched("productType"), errorId("productType"))}
+                  </div>
+                </div>
+              ) : null}
+
+              {kind === "produto" ? (
+                <div className="space-y-2">
+                  <Label htmlFor="priceAverage">Média de preço estimado</Label>
+                  <Input
+                    id="priceAverage"
+                    value={form.priceAverage}
+                    onChange={(event) => updateField("priceAverage", event.target.value)}
+                    aria-invalid={Boolean(errors.priceAverage)}
+                    aria-describedby={errors.priceAverage ? errorId("priceAverage") : undefined}
+                    className={inputCls(errors, "priceAverage", form.priceAverage, undefined, isTouched("priceAverage"))}
+                  />
+                  {fieldError(errors, "priceAverage", isTouched("priceAverage"), errorId("priceAverage"))}
+                </div>
+              ) : null}
+
+              <div className="responsive-two-col">
+                <div className="space-y-2">
+                  <Label htmlFor="repoUrl">Repositório (opcional)</Label>
+                  <Input id="repoUrl" value={form.repoUrl} onChange={(event) => updateField("repoUrl", event.target.value)} placeholder="https://github.com/..." className={inputCls(errors, "repoUrl", form.repoUrl)} />
+                  {fieldError(errors, "repoUrl")}
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="websiteUrl">Website / Link (opcional)</Label>
+                  <Input id="websiteUrl" value={form.websiteUrl} onChange={(event) => updateField("websiteUrl", event.target.value)} placeholder="https://..." className={inputCls(errors, "websiteUrl", form.websiteUrl)} />
+                  {fieldError(errors, "websiteUrl")}
+                </div>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="observations">Observações adicionais</Label>
+                <Textarea id="observations" value={form.observations} onChange={(event) => updateField("observations", event.target.value.slice(0, 500))} className="min-h-[120px] rounded-xl px-4 py-3 text-base md:text-sm" />
+                {fieldError(errors, "observations")}
+              </div>
+            </div>
+
+            <div className="surface-card space-y-5 p-6">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Equipa</p>
+                  <h2 className="mt-2 text-xl font-semibold">Membros visíveis só no detalhe</h2>
+                </div>
+                <span className="rounded-full border border-primary/20 bg-primary/5 px-3 py-1 text-xs font-semibold text-primary">
+                  {form.members.length} membro(s)
+                </span>
+              </div>
+
+              <div className="flex flex-col gap-3 sm:flex-row">
+                <Input value={memberInput} onChange={(event) => setMemberInput(event.target.value)} placeholder="Adicionar membro" className="h-11 flex-1 rounded-xl px-4 text-base md:text-sm" />
+                <Button type="button" onClick={handleAddMember} className="h-11 rounded-xl">
+                  <Plus className="mr-2 h-4 w-4" />
+                  Adicionar
+                </Button>
+              </div>
+              {fieldError(errors, "members")}
+
+              <div className="surface-scroll-y max-h-[32dvh] rounded-3xl border border-border/60 bg-background/80 p-4">
+                {form.members.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">Ainda não adicionaste nenhum membro.</p>
+                ) : (
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    {form.members.map((member, index) => (
+                      <div key={`${member}-${index}`} className="flex items-center justify-between gap-3 rounded-2xl border border-border/60 bg-muted/20 p-4">
+                        <span className="min-w-0 break-words text-sm font-medium">{member}</span>
+                        <Button type="button" variant="ghost" size="icon" className="h-9 w-9 shrink-0 rounded-xl" onClick={() => handleRemoveMember(member)}>
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
                       </div>
                     ))}
                   </div>
-                  {fieldError(errors, "members")}
-                </div>
+                )}
               </div>
             </div>
 
-            <div className="rounded-2xl border border-border bg-card p-6 space-y-5 shadow-sm">
-              <h2 className="text-sm font-heading font-bold text-primary">
-                {tipo === "projeto" ? "Informações do Projeto" : tipo === "negocio" ? "Informações do Negócio" : "Informações do Produto"}
-              </h2>
-              <div className="space-y-1.5">
-                <Label className="text-xs font-semibold">Nome da candidatura *</Label>
-                <Input value={form.name} onChange={(e) => updateField("name", e.target.value)} placeholder={tipo === "projeto" ? "Ex: SmartCampus" : tipo === "negocio" ? "Ex: TechStart Angola" : "Ex: Carregador Solar Portátil"} className="h-10 text-sm" />
-                {fieldError(errors, "name")}
+            <div className="surface-card space-y-5 p-6">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Pagamento e necessidades</p>
               </div>
-              <div className="space-y-1.5">
-                <Label className="text-xs font-semibold">Descrição *</Label>
-                <Textarea
-                  value={form.description}
-                  onChange={(e) => updateField("description", e.target.value.slice(0, 500))}
-                  rows={5}
-                  maxLength={500}
-                  className="text-sm"
-                  placeholder="Descreve o objetivo, valor e diferencial da candidatura..."
+
+              <label
+                className={`grid cursor-pointer gap-4 rounded-[28px] border border-dashed p-5 transition-all ${
+                  isDragging ? "border-primary bg-primary/10 shadow-[0_18px_36px_rgba(255,94,0,0.14)]" : "border-primary/30 bg-[linear-gradient(135deg,rgba(255,94,0,0.05),rgba(0,184,148,0.06))] hover:border-primary/50 hover:bg-primary/5"
+                }`}
+                onDragOver={handleDragOver}
+                onDragLeave={handleDragLeave}
+                onDrop={handleProofDrop}
+              >
+                <div className="min-w-0">
+                  <p className="text-sm font-semibold">{form.paymentProofName || "Selecionar PDF ou imagem do comprovativo"}</p>
+                  <p className="mt-1 text-xs leading-6 text-muted-foreground">PDF, PNG, JPG ou WEBP. O preview fica dentro de um viewport limitado com scroll interno.</p>
+                </div>
+                <div className="inline-flex h-11 w-fit items-center justify-center rounded-xl bg-primary/10 px-4 text-sm font-semibold text-primary">
+                  <Paperclip className="mr-2 h-4 w-4" />
+                  Escolher ficheiro
+                </div>
+                <input
+                  type="file"
+                  accept="application/pdf,image/png,image/jpeg,image/webp"
+                  className="hidden"
+                  onChange={(event) => void handleProofSelected(event.target.files?.[0])}
                 />
+              </label>
+              {fieldError(errors, "paymentProof")}
+
+              {form.paymentProof ? (
                 <div className="flex justify-end">
-                  <p className="text-[11px] text-muted-foreground">{form.description.length}/500 caracteres</p>
+                  <Button type="button" variant="ghost" size="sm" onClick={() => void handleProofSelected(null)}>
+                    Remover ficheiro
+                  </Button>
                 </div>
-                {fieldError(errors, "description")}
+              ) : null}
+
+              <ResponsiveDocumentViewer
+                title="Comprovativo anexado"
+                description="PDFs e imagens usam um container com altura máxima e scroll interno, sem rebentar mobile nem tablet."
+                source={previewDocumentSource}
+                fileName={form.paymentProofName || (editingReceipt?.paymentProofPath ? "Comprovativo atual" : null)}
+              />
+
+              <div className="responsive-grid">
+                {needsOptions.map((option) => (
+                  <label key={option} className="premium-check-card">
+                    <Checkbox checked={form.needs.includes(option)} onCheckedChange={() => toggleNeed(option)} className="mt-1" />
+                    <span className="text-sm leading-6">{option}</span>
+                  </label>
+                ))}
               </div>
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold">Área *</Label>
-                  <Select value={form.area} onValueChange={(value) => updateField("area", value)}>
-                    <SelectTrigger className="h-10 text-sm"><SelectValue placeholder="Selecionar área" /></SelectTrigger>
-                    <SelectContent>{areas.map((area) => <SelectItem key={area} value={area}>{area}</SelectItem>)}</SelectContent>
-                  </Select>
-                  {fieldError(errors, "area")}
+
+              <label className="premium-check-card">
+                <Checkbox checked={form.paymentConfirmed} onCheckedChange={(value) => updateField("paymentConfirmed", Boolean(value) as true)} className="mt-1" />
+                <span className="text-sm leading-6">Confirmo que já fiz a transferência e anexei o respetivo comprovativo.</span>
+              </label>
+              {fieldError(errors, "paymentConfirmed")}
+
+              <label className="premium-check-card">
+                <Checkbox checked={form.agreeRules} onCheckedChange={(value) => updateField("agreeRules", Boolean(value) as true)} className="mt-1" />
+                <span className="text-sm leading-6">Li as regras da exposição e aceito que a submissão fique associada à minha conta de estudante.</span>
+              </label>
+              {fieldError(errors, "agreeRules")}
+            </div>
+          </section>
+
+          <aside className="space-y-6">
+            <div className="surface-card space-y-4 p-6">
+              <div className="flex items-center gap-3">
+                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                  <FileBadge2 className="h-6 w-6" />
                 </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold">
-                    {tipo === "projeto" ? "Docente orientador *" : tipo === "negocio" ? "Estágio do negócio *" : "Média de preço estimado *"}
-                  </Label>
-                  {tipo === "negocio" ? (
-                    <Select value={form.stage} onValueChange={(value) => updateField("stage", value)}>
-                      <SelectTrigger className="h-10 text-sm"><SelectValue placeholder="Selecionar estágio" /></SelectTrigger>
-                      <SelectContent>
-                        {["Ideia", "Protótipo", "MVP", "Funcionando", "Já no Mercado"].map((stage) => <SelectItem key={stage} value={stage}>{stage}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
-                  ) : (
-                    <Input
-                      value={tipo === "projeto" ? form.advisor : form.priceAverage}
-                      onChange={(e) => updateField(tipo === "projeto" ? "advisor" : "priceAverage", e.target.value)}
-                      placeholder={tipo === "projeto" ? "Nome do orientador" : "Ex: 15.000 Kz a 25.000 Kz"}
-                      className="h-10 text-sm"
-                    />
-                  )}
-                  {tipo === "projeto" ? fieldError(errors, "advisor") : tipo === "negocio" ? fieldError(errors, "stage") : fieldError(errors, "priceAverage")}
+                <div>
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Resumo</p>
+                  <p className="text-lg font-semibold">{isEditMode ? "Atualização da submissão" : "Nova submissão"}</p>
                 </div>
               </div>
 
-              {tipo === "produto" && (
-                <div className="grid gap-4 md:grid-cols-2">
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold">Categoria do produto *</Label>
-                    <Select value={form.category} onValueChange={(value) => updateField("category", value)}>
-                      <SelectTrigger className="h-10 text-sm"><SelectValue placeholder="Selecionar categoria" /></SelectTrigger>
-                      <SelectContent>{areasProduto.map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}</SelectContent>
-                    </Select>
-                    {fieldError(errors, "category")}
+              <div className="space-y-3">
+                <div className="rounded-2xl border border-border/60 bg-muted/20 p-4">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Tipo</p>
+                  <p className="mt-2 text-sm font-semibold">{selectedKind?.label}</p>
+                </div>
+                <div className="rounded-2xl border border-border/60 bg-muted/20 p-4">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">IBAN</p>
+                  <p className="mt-2 break-words text-sm font-semibold">{config.iban}</p>
+                </div>
+                <div className="rounded-2xl border border-border/60 bg-muted/20 p-4">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Montante</p>
+                  <p className="mt-2 text-sm font-semibold">{config.paymentAmount}</p>
+                  <p className="mt-1 text-xs leading-6 text-muted-foreground">{config.paymentInstructions || "Confirma o pagamento antes de submeter."}</p>
+                </div>
+                <div className="rounded-2xl border border-border/60 bg-muted/20 p-4">
+                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Experiência</p>
+                  <p className="mt-2 text-sm font-semibold">Mobile-first e orientada a sessão</p>
+                  <p className="mt-1 text-xs leading-6 text-muted-foreground">O formulário foi pensado para uso recorrente, toque confortável e reabertura posterior no recibo.</p>
+                </div>
+                {editingReceipt ? (
+                  <div className="rounded-2xl border border-border/60 bg-muted/20 p-4">
+                    <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Estado atual</p>
+                    <p className="mt-2 text-sm font-semibold">{editingReceipt.statusLabel}</p>
+                    <Button asChild variant="link" className="mt-2 h-auto p-0">
+                      <Link to={editingReceipt.receiptPath}>
+                        Abrir recibo atual
+                        <ExternalLink className="ml-2 h-4 w-4" />
+                      </Link>
+                    </Button>
                   </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold">Tipo de produto *</Label>
-                    <Select value={form.productType} onValueChange={(value) => updateField("productType", value)}>
-                      <SelectTrigger className="h-10 text-sm"><SelectValue placeholder="Selecionar tipo" /></SelectTrigger>
-                      <SelectContent>
-                        {["Físico", "Digital", "Híbrido"].map((item) => <SelectItem key={item} value={item}>{item}</SelectItem>)}
-                      </SelectContent>
-                    </Select>
-                    {fieldError(errors, "productType")}
-                  </div>
-                </div>
-              )}
-
-              <div className="grid gap-4 md:grid-cols-2">
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold">{tipo === "projeto" ? "Link do projeto" : "Link do negócio / produto"} (opcional)</Label>
-                  <Input value={tipo === "projeto" ? form.repoUrl : form.websiteUrl} onChange={(e) => updateField(tipo === "projeto" ? "repoUrl" : "websiteUrl", e.target.value)} placeholder="https://..." className="h-10 text-sm" />
-                  {tipo === "projeto" ? fieldError(errors, "repoUrl") : fieldError(errors, "websiteUrl")}
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-xs font-semibold">Observações (opcional)</Label>
-                  <Textarea value={form.observations} onChange={(e) => updateField("observations", e.target.value)} rows={3} className="text-sm" placeholder="Informações adicionais relevantes para a organização." />
-                  {fieldError(errors, "observations")}
-                </div>
+                ) : null}
               </div>
             </div>
-          </div>
 
-          <div className="space-y-6">
-            <div className="rounded-2xl border border-border bg-card p-6 space-y-4 shadow-sm">
-              <h2 className="text-sm font-heading font-bold text-primary">Necessidades Técnicas</h2>
+            <div className="surface-card space-y-4 p-6">
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Próximos passos</p>
               <div className="space-y-3">
-                {necessidades.map((need) => (
-                  <label key={need} className="flex items-center gap-3 cursor-pointer">
-                    <Checkbox checked={form.needs.includes(need)} onCheckedChange={() => toggleNeed(need)} />
-                    <span className="text-sm text-foreground">{need}</span>
-                  </label>
+                {[
+                  "Os teus dados são sincronizados primeiro com a conta autenticada.",
+                  "Depois do envio, és redirecionado para um recibo canónico reabrível.",
+                  "O histórico completo fica disponível em Minha Área com estado atualizado.",
+                ].map((item, index) => (
+                  <div key={item} className="flex gap-3 rounded-2xl border border-border/60 bg-muted/20 p-4">
+                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-bold text-primary">{index + 1}</div>
+                    <p className="text-sm leading-6 text-muted-foreground">{item}</p>
+                  </div>
                 ))}
               </div>
             </div>
 
-            <div className="rounded-2xl border border-border bg-card p-6 space-y-4 shadow-sm">
-              <h2 className="text-sm font-heading font-bold text-primary">Pagamento</h2>
-              <div className="rounded-xl border border-border bg-muted/40 p-4">
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">IBAN</p>
-                <p className="mt-2 font-mono text-sm font-semibold">{config.iban}</p>
-                <p className="mt-3 text-sm text-foreground">{config.accountName}</p>
-                <p className="text-sm font-semibold text-primary">{config.paymentAmount}</p>
-                {config.paymentInstructions && <p className="mt-3 text-sm leading-6 text-muted-foreground">{config.paymentInstructions}</p>}
+            <div className="surface-card p-6">
+              <div className="flex flex-col gap-3">
+                <Button type="submit" disabled={saving || editingLocked} className="h-11 rounded-xl">
+                  {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
+                  {isEditMode ? "Atualizar e voltar ao recibo" : "Submeter e abrir recibo"}
+                </Button>
+                <Button asChild variant="outline" className="h-11 rounded-xl">
+                  <Link to="/minha-area">Ir para Minha Área</Link>
+                </Button>
               </div>
-
-              <label className="flex items-start gap-3 rounded-xl border border-border/80 bg-background/70 p-4">
-                <Checkbox checked={form.paymentConfirmed} onCheckedChange={(checked) => updateField("paymentConfirmed", Boolean(checked))} />
-                <div>
-                  <p className="text-sm font-semibold">Já fiz a transferência</p>
-                  <p className="text-xs text-muted-foreground">Marca esta opção depois de concluir o pagamento.</p>
-                </div>
-              </label>
-              {fieldError(errors, "paymentConfirmed")}
-
-              <div className="rounded-xl border border-border/80 bg-background/70 p-4">
-                <Label className="text-sm font-semibold">Comprovativo do pagamento *</Label>
-                <label className="mt-3 flex cursor-pointer items-center gap-3 rounded-xl border border-dashed border-border px-4 py-4 transition-colors hover:border-primary/40 hover:bg-primary/5">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                    <Paperclip className="h-4 w-4" />
-                  </div>
-                  <div className="min-w-0">
-                    <p className="truncate text-sm font-medium">{paymentProofName || "Selecionar PDF ou imagem do comprovativo"}</p>
-                    <p className="text-xs text-muted-foreground">Formatos: PDF, PNG, JPG ou WEBP até 5 MB.</p>
-                  </div>
-                  <input
-                    type="file"
-                    accept="application/pdf,image/png,image/jpeg,image/webp"
-                    className="hidden"
-                    onChange={(event) => void handlePaymentProofSelected(event.target.files?.[0] ?? null)}
-                  />
-                </label>
-                <p className="mt-2 text-[11px] text-muted-foreground">O comprovativo será anexado ao fluxo de partilha com a comunidade.</p>
-                {fieldError(errors, "paymentProof")}
-              </div>
-
-              <label className="flex items-start gap-3 rounded-xl border border-border/80 bg-background/70 p-4">
-                <Checkbox checked={form.agreeRules} onCheckedChange={(checked) => updateField("agreeRules", Boolean(checked))} />
-                <div>
-                  <p className="text-sm font-semibold">Li e aceito as regras</p>
-                  <p className="text-xs text-muted-foreground">Ao submeter, confirmas que os dados enviados são válidos.</p>
-                </div>
-              </label>
-              {fieldError(errors, "agreeRules")}
             </div>
-
-            <div className="rounded-2xl border border-border bg-card p-6 shadow-sm">
-              <Button type="submit" className="h-11 w-full rounded-xl font-semibold" disabled={loading || !config.isOpen}>
-                {loading ? (
-                  <span className="flex items-center gap-2">
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    A enviar...
-                  </span>
-                ) : (
-                  <>
-                    <Send className="mr-2 h-4 w-4" />
-                    Submeter candidatura
-                  </>
-                )}
-              </Button>
-              {!config.isOpen && <p className="mt-3 text-center text-xs font-medium text-destructive">As candidaturas estão fechadas na configuração atual.</p>}
-            </div>
-          </div>
-        </motion.form>
+          </aside>
+        </form>
       </div>
     </div>
   );

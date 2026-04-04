@@ -241,13 +241,13 @@ export async function authRoutes(app: FastifyInstance, opts: { env?: Env } = {})
         }
         return reply.status(401).send({
           success: false,
-          error: result.error || "Invalid credentials"
+          error: result.error || "Número de estudante ou palavra-passe inválidos."
         });
       } catch (err) {
         request.log.error({ err }, "login failed unexpectedly");
         return reply.status(500).send({
           success: false,
-          error: "Internal error while validating login"
+          error: "Não foi possível validar a tua sessão académica agora. Tenta novamente dentro de instantes."
         });
       }
     }

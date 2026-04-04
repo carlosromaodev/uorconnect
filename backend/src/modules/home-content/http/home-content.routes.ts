@@ -67,6 +67,23 @@ const panelInputSchema = z.object({
   isPublished: z.boolean().optional()
 });
 
+const floatingIconSchema = z.object({
+  id: z.string(),
+  icon: z.string(),
+  top: z.number(),
+  left: z.number(),
+  size: z.number(),
+  rotate: z.number(),
+  opacity: z.number(),
+});
+
+const sponsorSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  imageUrl: z.string(),
+  label: z.string().nullable(),
+});
+
 const socialConfigSchema = z.object({
   key: z.string(),
   instagramUrl: z.string().url().nullable(),
@@ -74,6 +91,28 @@ const socialConfigSchema = z.object({
   linkedinUrl: z.string().url().nullable(),
   courseEnrollmentEnabled: z.boolean(),
   firstYearContestEnabled: z.boolean(),
+  primaryColor: z.string(),
+  primaryGradient: z.string(),
+  titleColor: z.string(),
+  accentColor: z.string(),
+  dashedColor: z.string(),
+  dashedOpacity: z.number(),
+  heroIconsOpacity: z.number(),
+  heroBlobsIntensity: z.number(),
+  heroMeshEnabled: z.boolean(),
+  heroBadgeText: z.string(),
+  heroTitlePrefix: z.string(),
+  heroTitleHighlight: z.string(),
+  heroSubtitleText: z.string(),
+  heroSubtitleColor: z.string(),
+  heroTitleMobileSize: z.string(),
+  heroTitleTabletSize: z.string(),
+  heroTitleDesktopSize: z.string(),
+  heroSubtitleMobileSize: z.string(),
+  heroSubtitleTabletSize: z.string(),
+  heroSubtitleDesktopSize: z.string(),
+  heroFloatingIcons: z.array(floatingIconSchema),
+  sponsors: z.array(sponsorSchema),
   createdAt: z.coerce.date(),
   updatedAt: z.coerce.date()
 });
@@ -83,7 +122,29 @@ const socialConfigInputSchema = z.object({
   facebookUrl: z.string().url().nullable().optional(),
   linkedinUrl: z.string().url().nullable().optional(),
   courseEnrollmentEnabled: z.boolean().optional(),
-  firstYearContestEnabled: z.boolean().optional()
+  firstYearContestEnabled: z.boolean().optional(),
+  primaryColor: z.string().optional(),
+  primaryGradient: z.string().optional(),
+  titleColor: z.string().optional(),
+  accentColor: z.string().optional(),
+  dashedColor: z.string().optional(),
+  dashedOpacity: z.number().min(0).max(100).optional(),
+  heroIconsOpacity: z.number().min(0).max(100).optional(),
+  heroBlobsIntensity: z.number().min(0).max(100).optional(),
+  heroMeshEnabled: z.boolean().optional(),
+  heroBadgeText: z.string().optional(),
+  heroTitlePrefix: z.string().optional(),
+  heroTitleHighlight: z.string().optional(),
+  heroSubtitleText: z.string().optional(),
+  heroSubtitleColor: z.string().optional(),
+  heroTitleMobileSize: z.string().optional(),
+  heroTitleTabletSize: z.string().optional(),
+  heroTitleDesktopSize: z.string().optional(),
+  heroSubtitleMobileSize: z.string().optional(),
+  heroSubtitleTabletSize: z.string().optional(),
+  heroSubtitleDesktopSize: z.string().optional(),
+  heroFloatingIcons: z.array(floatingIconSchema).optional(),
+  sponsors: z.array(sponsorSchema).optional(),
 });
 
 export async function homeContentRoutes(app: FastifyInstance, opts: { env: Env }) {

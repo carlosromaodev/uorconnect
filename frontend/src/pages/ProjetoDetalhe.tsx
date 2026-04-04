@@ -25,7 +25,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { StudentLoginForm } from "@/components/auth/StudentLoginForm";
 import { api, type ProjectPublicComment, type ProjectPublicFeedItem, getToken, isAuthError, setToken } from "@/lib/api";
 import { canVoteSubmission, getSubmissionAreaLabel, getSubmissionAudienceCopy } from "@/lib/submission-meta";
-import { toast } from "sonner";
+import { toast } from "@/components/ui/sonner";
 
 function withAlpha(hexColor: string, alpha = "22") {
   return `${hexColor}${alpha}`;
@@ -520,7 +520,7 @@ export default function ProjetoDetalhe() {
                     <Button asChild variant="outline" className="justify-start rounded-2xl">
                       <a href={project.websiteUrl} target="_blank" rel="noreferrer">
                         <Globe className="mr-2 h-4 w-4" />
-                        Abrir website/demo
+                        Visitar Website
                         <ExternalLink className="ml-auto h-4 w-4" />
                       </a>
                     </Button>

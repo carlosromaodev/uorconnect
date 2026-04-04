@@ -7,7 +7,7 @@ import {
   MessageSquare, Clock, MapPin, User, Presentation, BookOpen,
   Target, Award, TrendingUp, HelpCircle, ChevronRight,
   Sparkles, ThumbsUp, Star, ChevronLeft, Briefcase, Package, GraduationCap,
-  Settings, Vote, Rocket, Play, Heart, Loader2, Binary,
+  Settings, Vote, Rocket, Play, Heart, Loader2,
   Building2, Instagram, Lock
 } from "lucide-react";
 import { ProjectQrDialog, type ProjectCardItem } from "@/components/projects/ProjectQrDialog";
@@ -21,6 +21,7 @@ import {
 } from "@/components/ui/accordion";
 import { toast } from "@/components/ui/sonner";
 import { api, type ActivityFeedItem, type AgendaItem, type AgendaLiveState, type CoursesContent, type FaqItem, type HomeContent, type LiveChatMessage, type ProjectPublicFeedItem, type Speaker, type Stats, getToken, isAuthError, setToken } from "@/lib/api";
+import { getContestAbsoluteUrl } from "@/lib/contest-lab";
 import { defaultHeroSponsors, defaultHomeSocialConfig } from "@/lib/home-content";
 import { getHeroIconByName } from "@/lib/phosphor-icons";
 import { canVoteSubmission, getSubmissionAreaLabel, getSubmissionAudienceCopy, normalizeSubmissionType } from "@/lib/submission-meta";
@@ -130,20 +131,29 @@ const projectTypes = [
 ];
 
 const AGENDAR_EVENTO_URL = "https://agendar.uorconnect.space/";
-const DESAFIOS_URL = "https://laboratorio.uorconnect.space/";
+const HIDDEN_EXPOSURE_SECTION_VIEWS_KEY = "uor_home_exposure_types_views";
 
-/* ─── Quick Actions for Students ─── */
-const quickActions = [
-  { label: "Votar Projetos", icon: Vote, path: "/projetos", color: "bg-primary hover:bg-primary/90 text-primary-foreground", desc: "Vota nos teus favoritos" },
-  { label: "Submeter Projeto", icon: Send, path: "/submeter", color: "bg-[hsl(var(--area-ia))] hover:bg-[hsl(var(--area-ia))]/90 text-primary-foreground", desc: "Inscreve o teu trabalho" },
-  { label: "Agendar Evento", icon: CalendarDays, href: AGENDAR_EVENTO_URL, external: true, color: "bg-emerald-600 hover:bg-emerald-500 text-white", desc: "Leva a plataforma para o teu evento" },
-  { label: "Desafios", icon: Binary, href: DESAFIOS_URL, external: true, color: "cta-hacker", desc: "Entrar no ambiente de desafios" },
-  { label: "Ao Vivo", icon: Play, path: "/ao-vivo", color: "bg-destructive hover:bg-destructive/90 text-destructive-foreground", desc: "Acompanha em direto" },
-  { label: "Ver Agenda", icon: CalendarDays, path: "/agenda", color: "bg-[hsl(var(--area-web))] hover:bg-[hsl(var(--area-web))]/90 text-primary-foreground", desc: "Horários e sessões" },
-  { label: "Palestrantes", icon: Mic, path: "/palestrantes", color: "bg-[hsl(var(--area-negocio))] hover:bg-[hsl(var(--area-negocio))]/90 text-primary-foreground", desc: "Quem vai falar" },
-  { label: "Cursos", icon: GraduationCap, path: "/cursos", color: "bg-[hsl(var(--area-iot))] hover:bg-[hsl(var(--area-iot))]/90 text-primary-foreground", desc: "Lista completa de cursos" },
-  { label: "Guia do Evento", icon: BookOpen, path: "/guia", color: "bg-[hsl(var(--area-produto))] hover:bg-[hsl(var(--area-produto))]/90 text-primary-foreground", desc: "Tudo o que precisas" },
-];
+function readExposureSectionViewCount() {
+  if (typeof window === "undefined") return 0;
+
+  try {
+    const raw = window.localStorage.getItem(HIDDEN_EXPOSURE_SECTION_VIEWS_KEY);
+    const parsed = raw ? Number(raw) : 0;
+    return Number.isFinite(parsed) ? parsed : 0;
+  } catch {
+    return 0;
+  }
+}
+
+function writeExposureSectionViewCount(nextValue: number) {
+  if (typeof window === "undefined") return;
+
+  try {
+    window.localStorage.setItem(HIDDEN_EXPOSURE_SECTION_VIEWS_KEY, String(nextValue));
+  } catch {
+    // noop
+  }
+}
 
 function formatAgendaTypeLabel(type?: string) {
   return {
@@ -718,7 +728,9 @@ function SponsorsMarquee({
   dashedOpacity: number;
 }) {
   const safeItems = items.length ? items : defaultHeroSponsors;
-  const marqueeItems = [...safeItems, ...safeItems];
+  const neicOnlyItems = safeItems.filter((item) => /neic|núcleo|nucleo/i.test(`${item.id} ${item.name} ${item.label ?? ""}`));
+  const visibleItems = (neicOnlyItems.length ? neicOnlyItems : safeItems.slice(0, 1)).slice(0, 1);
+  const marqueeItems = [...visibleItems, ...visibleItems];
 
   return (
     <div className="mb-6">
@@ -726,15 +738,14 @@ function SponsorsMarquee({
         <span className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Patrocinadores</span>
         <div className="h-px flex-1 border-t border-dashed" style={{ borderColor: dashedColor, opacity: dashedOpacity / 100 }} />
       </div>
-      <div className="sponsor-marquee overflow-hidden rounded-2xl border border-border/45 bg-white/40 px-3 py-3 shadow-sm backdrop-blur-2xl supports-[backdrop-filter]:bg-white/30">
+      <div className="sponsor-marquee overflow-hidden rounded-2xl border border-white/45 bg-white/22 px-3 py-3 shadow-sm backdrop-blur-2xl supports-[backdrop-filter]:bg-white/14">
         <div className="sponsor-marquee-track flex min-w-max items-center gap-4">
           {marqueeItems.map((item, index) => (
             <div
               key={`${item.id}-${index}`}
-              className="flex shrink-0 items-center gap-3 rounded-xl border border-border/50 bg-white/55 px-4 py-3 shadow-sm backdrop-blur-md supports-[backdrop-filter]:bg-white/38"
+              className="flex shrink-0 items-center justify-center rounded-xl border border-white/55 bg-white/30 px-5 py-3 shadow-sm backdrop-blur-md supports-[backdrop-filter]:bg-white/18"
             >
-              <img src={item.imageUrl} alt={item.name} className="h-12 w-12 object-contain" />
-              {item.label ? <span className="whitespace-nowrap text-xs font-semibold text-foreground">{item.label}</span> : null}
+              <img src={item.imageUrl} alt={item.name} className="h-12 w-auto object-contain sm:h-14" />
             </div>
           ))}
         </div>
@@ -762,6 +773,9 @@ export default function Index() {
   const [likedCourseIds, setLikedCourseIds] = useState<Set<number>>(new Set());
   const [enrolledCourseIds, setEnrolledCourseIds] = useState<Set<number>>(new Set());
   const [chatInput, setChatInput] = useState("");
+  const [hideExposureSection] = useState(() => readExposureSectionViewCount() >= 2);
+  const exposureSectionRef = useRef<HTMLElement | null>(null);
+  const exposureSectionTrackedRef = useRef(false);
 
   const redirectToCourseLogin = (message: string) => {
     toast.warning(message);
@@ -848,6 +862,17 @@ export default function Index() {
   const homepageCourses = coursesContent.preview.length ? coursesContent.preview : defaultCourses;
   const topCourses = coursesContent.topCourses.length ? coursesContent.topCourses : defaultCourses;
   const recentActivity = activityFeed.slice(0, 3);
+  const laboratorioHref = useMemo(() => getContestAbsoluteUrl("/"), []);
+  const quickActions = useMemo(() => ([
+    { label: "Votar Projetos", icon: Vote, path: "/projetos", color: "bg-primary hover:bg-primary/90 text-primary-foreground", desc: "Vota nos teus favoritos" },
+    { label: "Submeter Projeto", icon: Send, path: "/submeter", color: "bg-[hsl(var(--area-ia))] hover:bg-[hsl(var(--area-ia))]/90 text-primary-foreground", desc: "Inscreve o teu trabalho" },
+    { label: "Entrar no Laboratório", icon: Rocket, href: laboratorioHref, external: true, color: "bg-[linear-gradient(135deg,#041013,#0b1c23,#00b894)] hover:opacity-95 text-white", desc: "Acede à app dedicada do laboratório" },
+    { label: "Agendar Evento", icon: CalendarDays, href: AGENDAR_EVENTO_URL, external: true, color: "bg-emerald-600 hover:bg-emerald-500 text-white", desc: "Leva a plataforma para o teu evento" },
+    { label: "Ver Agenda", icon: CalendarDays, path: "/agenda", color: "bg-[hsl(var(--area-web))] hover:bg-[hsl(var(--area-web))]/90 text-primary-foreground", desc: "Horários e sessões" },
+    { label: "Palestrantes", icon: Mic, path: "/palestrantes", color: "bg-[hsl(var(--area-negocio))] hover:bg-[hsl(var(--area-negocio))]/90 text-primary-foreground", desc: "Quem vai falar" },
+    { label: "Cursos", icon: GraduationCap, path: "/cursos", color: "bg-[hsl(var(--area-iot))] hover:bg-[hsl(var(--area-iot))]/90 text-primary-foreground", desc: "Lista completa de cursos" },
+    { label: "Guia do Evento", icon: BookOpen, path: "/guia", color: "bg-[hsl(var(--area-produto))] hover:bg-[hsl(var(--area-produto))]/90 text-primary-foreground", desc: "Tudo o que precisas" },
+  ]), [laboratorioHref]);
   const heroConfig = useMemo(() => ({
     ...defaultHomeSocialConfig,
     ...homeContent.socialConfig,
@@ -902,6 +927,36 @@ export default function Index() {
         desc: item.description,
         type: formatAgendaTypeLabel(item.type),
       }));
+
+  useEffect(() => {
+    if (hideExposureSection || exposureSectionTrackedRef.current || typeof window === "undefined" || !exposureSectionRef.current) {
+      return;
+    }
+
+    if (typeof IntersectionObserver === "undefined") {
+      return;
+    }
+
+    const observer = new IntersectionObserver((entries) => {
+      const entry = entries[0];
+      if (!entry?.isIntersecting || exposureSectionTrackedRef.current) {
+        return;
+      }
+
+      exposureSectionTrackedRef.current = true;
+      const currentViews = readExposureSectionViewCount();
+      writeExposureSectionViewCount(Math.min(currentViews + 1, 2));
+      observer.disconnect();
+    }, {
+      threshold: 0.45,
+    });
+
+    observer.observe(exposureSectionRef.current);
+
+    return () => {
+      observer.disconnect();
+    };
+  }, [hideExposureSection]);
 
   const handleLiveChatSend = async () => {
     if (!chatInput.trim()) return;
@@ -989,7 +1044,7 @@ export default function Index() {
                 transition={{ duration: 0.5 }}
                 className="mb-6 flex min-w-0 flex-col items-start justify-start gap-2 sm:flex-row sm:gap-3"
               >
-                <img src="/logo-gestor.png" alt="UOR" className="h-10 shrink-0 drop-shadow-sm sm:h-12" />
+                <img src="/logoworconnect.png" alt="UOR Connect" className="h-10 shrink-0 drop-shadow-sm sm:h-12" />
                 <div className="hidden h-6 w-px bg-border sm:block" />
                 <span className="max-w-[17rem] text-left text-[11px] font-semibold uppercase leading-4 tracking-[0.16em] text-muted-foreground sm:max-w-none sm:text-sm sm:leading-normal sm:tracking-wider">
                   NEIC · Universidade Óscar Ribas
@@ -1052,47 +1107,21 @@ export default function Index() {
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.68 }}
-                className="mb-12 grid w-full max-w-4xl grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-5"
+                className="mb-12 grid w-full max-w-4xl grid-cols-2 gap-3 md:grid-cols-3"
               >
                 <motion.div whileHover={{ scale: 1.015 }} whileTap={{ scale: 0.985 }} className="w-full min-w-0">
                   <Button
                     asChild
                     size="lg"
-                    className="h-11 w-full justify-center gap-2 rounded-xl px-3 text-sm font-bold text-white shadow-lg transition-all hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2"
+                    className="h-11 w-full min-w-0 justify-center gap-2 overflow-hidden rounded-xl px-2.5 text-[13px] font-bold text-white shadow-lg transition-all hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 sm:px-3 sm:text-sm"
                     style={{
                       backgroundColor: heroConfig.primaryColor,
                       boxShadow: `0 22px 40px ${withAlpha(heroConfig.primaryColor, "26")}`,
                     }}
                   >
-                    <Link to="/projetos"><Vote className="h-4 w-4" />Votar Projetos</Link>
-                  </Button>
-                </motion.div>
-
-                <motion.div whileHover={{ scale: 1.015 }} whileTap={{ scale: 0.985 }} className="w-full min-w-0">
-                  <Button
-                    asChild
-                    size="lg"
-                    variant="outline"
-                    className="h-11 w-full justify-center gap-2 rounded-xl bg-card px-3 text-sm font-semibold transition-colors hover:bg-secondary focus-visible:outline-none focus-visible:ring-2"
-                    style={{ borderColor: withAlpha(heroConfig.titleColor, "26"), color: heroConfig.titleColor }}
-                  >
-                    <Link to="/submeter"><Send className="h-4 w-4" />Submeter Projeto</Link>
-                  </Button>
-                </motion.div>
-
-                <motion.div whileHover={{ scale: 1.015 }} whileTap={{ scale: 0.985 }} className="w-full min-w-0">
-                  <Button
-                    asChild
-                    size="lg"
-                    className="h-11 w-full justify-center rounded-xl border border-destructive/30 bg-destructive/8 px-3 text-sm font-semibold text-destructive shadow-none transition-all hover:border-destructive/50 hover:bg-destructive/15 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive active:scale-[0.98]"
-                    style={{ backdropFilter: "blur(4px)" }}
-                  >
-                    <Link to="/ao-vivo" className="flex items-center gap-2">
-                      <span className="relative flex h-2.5 w-2.5 shrink-0">
-                        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-destructive opacity-70" />
-                        <span className="relative inline-flex h-2.5 w-2.5 rounded-full bg-destructive" />
-                      </span>
-                      Ao Vivo
+                    <Link to="/projetos" className="flex w-full min-w-0 items-center justify-center gap-2">
+                      <Vote className="h-4 w-4 shrink-0" />
+                      <span className="truncate">Votar Projetos</span>
                     </Link>
                   </Button>
                 </motion.div>
@@ -1101,11 +1130,27 @@ export default function Index() {
                   <Button
                     asChild
                     size="lg"
-                    className="h-11 w-full justify-center gap-2 rounded-xl bg-emerald-600 px-3 text-sm font-semibold text-white shadow-lg shadow-emerald-700/20 transition-all hover:bg-emerald-500"
+                    variant="outline"
+                    className="hero-primary-action h-11 w-full min-w-0 justify-center gap-2 overflow-hidden rounded-xl bg-card px-2.5 text-[13px] font-semibold transition-colors hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 sm:px-3 sm:text-sm"
+                    style={{ borderColor: withAlpha(heroConfig.titleColor, "26"), color: heroConfig.titleColor }}
                   >
-                    <a href={AGENDAR_EVENTO_URL} target="_blank" rel="noopener noreferrer">
-                      <CalendarDays className="h-4 w-4" />
-                      Agendar evento
+                    <Link to="/submeter" className="flex w-full min-w-0 items-center justify-center gap-2">
+                      <Send className="h-4 w-4 shrink-0" />
+                      <span className="truncate">Submeter candidatura</span>
+                    </Link>
+                  </Button>
+                </motion.div>
+
+                <motion.div whileHover={{ scale: 1.015 }} whileTap={{ scale: 0.985 }} className="w-full min-w-0">
+                  <Button
+                    asChild
+                    size="lg"
+                    className="h-11 w-full min-w-0 justify-center overflow-hidden rounded-xl border border-destructive/30 bg-destructive/8 px-2.5 text-[13px] font-semibold text-destructive shadow-none transition-all hover:border-destructive/50 hover:bg-destructive/15 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive active:scale-[0.98] sm:px-3 sm:text-sm"
+                    style={{ backdropFilter: "blur(4px)" }}
+                  >
+                    <a href={laboratorioHref} className="flex w-full min-w-0 items-center justify-center gap-2">
+                      <Rocket className="h-4 w-4 shrink-0" />
+                      <span className="truncate">Entrar no Laboratório</span>
                     </a>
                   </Button>
                 </motion.div>
@@ -1114,12 +1159,25 @@ export default function Index() {
                   <Button
                     asChild
                     size="lg"
-                    className="cta-hacker h-11 w-full justify-center gap-2 rounded-xl px-3 text-sm font-semibold uppercase"
+                    className="h-11 w-full min-w-0 justify-center gap-2 overflow-hidden rounded-xl bg-emerald-600 px-2.5 text-[13px] font-semibold text-white shadow-lg shadow-emerald-700/20 transition-all hover:bg-emerald-500 sm:px-3 sm:text-sm"
                   >
-                    <a href={DESAFIOS_URL} target="_blank" rel="noopener noreferrer">
-                      <Binary className="h-4 w-4" />
-                      Desafios
+                    <a href={AGENDAR_EVENTO_URL} target="_blank" rel="noopener noreferrer" className="flex w-full min-w-0 items-center justify-center gap-2">
+                      <CalendarDays className="h-4 w-4 shrink-0" />
+                      <span className="truncate">Agendar evento</span>
                     </a>
+                  </Button>
+                </motion.div>
+
+                <motion.div whileHover={{ scale: 1.015 }} whileTap={{ scale: 0.985 }} className="w-full min-w-0">
+                  <Button
+                    asChild
+                    size="lg"
+                    className="h-11 w-full min-w-0 justify-center gap-2 overflow-hidden rounded-xl border border-[hsl(var(--area-iot))]/20 bg-[linear-gradient(135deg,rgba(3,105,161,0.96),rgba(14,116,144,0.92),rgba(34,197,94,0.84))] px-2.5 text-[13px] font-semibold text-white shadow-[0_18px_38px_rgba(3,105,161,0.24)] sm:px-3 sm:text-sm"
+                  >
+                    <Link to="/cursos" className="flex w-full min-w-0 items-center justify-center gap-2">
+                      <GraduationCap className="h-4 w-4 shrink-0" />
+                      <span className="truncate">Ver Cursos</span>
+                    </Link>
                   </Button>
                 </motion.div>
               </motion.div>
@@ -1281,6 +1339,101 @@ export default function Index() {
         </div>
       </section>
 
+      <SectionDivider />
+
+      <section className="py-16 md:py-24 bg-muted/20">
+        <div className="container mx-auto px-4">
+          <motion.div initial={{ opacity: 0, y: 12 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}>
+            <h2 className="text-2xl md:text-4xl font-heading font-bold mb-3">Cursos em Destaque</h2>
+            <p className="text-muted-foreground mb-10 text-base">Prévia dos cursos oficiais. A lista completa está na página de cursos.</p>
+          </motion.div>
+
+          <div className="mb-8 grid gap-3 md:grid-cols-3">
+            {topCourses.slice(0, 3).map((course, index) => (
+              <div
+                key={`${course.id}-${index}`}
+                className="rounded-xl border p-4"
+                style={{
+                  borderColor: withAlpha(course.courseColor, "44"),
+                  background: `linear-gradient(135deg, ${withAlpha(course.accentColor)}, ${withAlpha(course.accentColorSecondary)})`
+                }}
+              >
+                <p className="text-xs font-bold mb-1" style={{ color: course.courseColor }}>Top #{index + 1}</p>
+                <p className="font-heading font-semibold text-base">{course.name}</p>
+                <p className="text-sm text-muted-foreground mt-1">{course.studentCount} inscritos</p>
+              </div>
+            ))}
+          </div>
+
+          <div className="flex gap-5 overflow-x-auto scrollbar-hide pb-2">
+            {homepageCourses.map((course, i) => (
+              <motion.div
+                key={course.id ?? i}
+                initial={{ opacity: 0, scale: 0.9, y: 20 }}
+                whileInView={{ opacity: 1, scale: 1, y: 0 }}
+                viewport={{ once: true }}
+                transition={{ delay: i * 0.07, type: "spring", stiffness: 200 }}
+                whileHover={{ y: -6, transition: { duration: 0.2 } }}
+                className="min-w-[300px] max-w-[360px] snap-start"
+              >
+                <article
+                  className="relative h-full overflow-hidden rounded-2xl border bg-card p-5 md:p-6 transition-all duration-300 hover:-translate-y-1.5 hover:shadow-xl"
+                  style={{
+                    borderColor: withAlpha(course.courseColor, "44"),
+                    background: `linear-gradient(140deg, ${withAlpha(course.accentColor)}, ${withAlpha(course.accentColorSecondary)})`
+                  }}
+                >
+                  <IconPattern density={6} />
+                  <div className="relative z-10">
+                    <div className="mb-5 flex items-start justify-between gap-3">
+                      <div className="flex min-w-0 items-center gap-3.5">
+                        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-white/80 shadow-sm ring-1 ring-white/60">
+                          {course.companyLogoUrl ? (
+                            <img src={course.companyLogoUrl} alt={course.companyName} className="h-8 w-8 object-contain" />
+                          ) : (
+                            <GraduationCap className="h-6 w-6" style={{ color: course.courseColor }} />
+                          )}
+                        </div>
+                        <div className="min-w-0">
+                          <p className="truncate text-xs font-semibold uppercase tracking-[0.15em]" style={{ color: course.courseColor }}>{course.companyName}</p>
+                          <h3 className="mt-1 font-heading text-lg font-bold">{course.name}</h3>
+                        </div>
+                      </div>
+                      <span className="rounded-full border border-white/50 bg-white/75 px-3 py-1 text-[11px] font-semibold text-slate-700 shadow-sm">
+                        {course.isPaid ? course.priceLabel || "Pago" : "Gratuito"}
+                      </span>
+                    </div>
+
+                    <p className="text-sm leading-6 text-muted-foreground">{course.preview || course.description}</p>
+
+                    <div className="mt-5 flex flex-wrap gap-2">
+                      <span className="rounded-full bg-white/70 px-3 py-1 text-xs font-medium text-slate-700 shadow-sm">
+                        {course.studentCount} inscritos
+                      </span>
+                      <span className="rounded-full bg-white/70 px-3 py-1 text-xs font-medium text-slate-700 shadow-sm">
+                        {course.likesCount} gostos
+                      </span>
+                      <span className="rounded-full bg-white/70 px-3 py-1 text-xs font-medium text-slate-700 shadow-sm">
+                        {course.companyCategory}
+                      </span>
+                    </div>
+
+                    <div className="mt-6 flex flex-wrap gap-2">
+                      <Button asChild className="rounded-xl">
+                        <Link to={`/cursos/${course.id}/inscricao`}>Inscrever</Link>
+                      </Button>
+                      <Button asChild variant="outline" className="rounded-xl bg-white/70">
+                        <Link to="/cursos">Ver lista completa</Link>
+                      </Button>
+                    </div>
+                  </div>
+                </article>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      </section>
+
       {/* ─── AO VIVO — TOP ─── */}
       <section className="py-14 md:py-20 bg-muted/30">
         <div className="container mx-auto px-4">
@@ -1408,57 +1561,61 @@ export default function Index() {
         </div>
       </section>
 
-      <SectionDivider />
+      {!hideExposureSection ? (
+        <>
+          <SectionDivider />
 
-      {/* ─── TIPOS DE EXPOSIÇÃO ─── */}
-      <section className="py-14 md:py-20">
-        <div className="container mx-auto px-4">
-          <div className="relative overflow-hidden rounded-[30px] border border-border/70 bg-card/90 p-5 shadow-xl shadow-black/5 md:p-10">
-            <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(2,132,199,0.15),transparent_42%),radial-gradient(circle_at_bottom_right,rgba(217,119,6,0.12),transparent_46%)]" />
-            <IconPattern density={8} />
-            <motion.div initial={{ opacity: 0, y: 12 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="relative z-10 mb-8 md:mb-10">
-              <div className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-white/80 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-primary shadow-sm sm:text-xs">
-                <Sparkles className="h-3.5 w-3.5" />
-                Exposição na 3ª edição da Feira do Dia das Telecomunicações
-              </div>
-              <h2 className="mt-3 text-xl font-heading font-bold leading-snug sm:text-2xl md:text-[1.9rem]">Tipos de Exposição</h2>
-              <p className="mt-2 max-w-2xl text-sm text-muted-foreground sm:text-[15px]">Três formas de participar e mostrar o teu trabalho.</p>
-            </motion.div>
-
-            <div className="relative z-10 flex gap-5 overflow-x-auto scrollbar-hide pb-2 md:grid md:grid-cols-3 md:overflow-visible">
-              {projectTypes.map((t, i) => (
-                <motion.div
-                  key={t.key}
-                  initial={{ opacity: 0, y: 20, rotate: -2 }}
-                  whileInView={{ opacity: 1, y: 0, rotate: 0 }}
-                  viewport={{ once: true }}
-                  transition={{ delay: i * 0.1, type: "spring", stiffness: 200 }}
-                  whileHover={{ y: -8, transition: { duration: 0.2 } }}
-                  className="min-w-[285px] md:min-w-0"
-                >
-                  <Link to="/submeter" className="group relative block overflow-hidden rounded-2xl border border-border/70 bg-white/85 p-8 text-center shadow-sm transition-all duration-300 hover:-translate-y-1.5 hover:shadow-xl md:p-9">
-                    <div className={`absolute inset-0 bg-gradient-to-br ${t.surface}`} />
-                    <div className="relative z-10">
-                      <motion.div
-                        whileHover={{ rotate: [0, -10, 10, 0], scale: 1.12 }}
-                        transition={{ duration: 0.5 }}
-                        className={`mx-auto mb-5 flex h-20 w-20 items-center justify-center rounded-2xl shadow-lg ${t.color}`}
-                      >
-                        <t.icon className="h-10 w-10" />
-                      </motion.div>
-                      <h3 className="mb-2 font-heading text-lg font-bold md:text-xl">{t.label}</h3>
-                      <p className="mb-4 text-sm text-muted-foreground md:text-base">{t.desc}</p>
-                      <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-primary opacity-0 transition-opacity group-hover:opacity-100">
-                        Submeter <ArrowRight className="h-4 w-4" />
-                      </span>
-                    </div>
-                  </Link>
+          {/* ─── TIPOS DE EXPOSIÇÃO ─── */}
+          <section ref={exposureSectionRef} className="py-14 md:py-20">
+            <div className="container mx-auto px-4">
+              <div className="relative overflow-hidden rounded-[30px] border border-border/70 bg-card/90 p-5 shadow-xl shadow-black/5 md:p-10">
+                <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(2,132,199,0.15),transparent_42%),radial-gradient(circle_at_bottom_right,rgba(217,119,6,0.12),transparent_46%)]" />
+                <IconPattern density={8} />
+                <motion.div initial={{ opacity: 0, y: 12 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="relative z-10 mb-8 md:mb-10">
+                  <div className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-white/80 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-primary shadow-sm sm:text-xs">
+                    <Sparkles className="h-3.5 w-3.5" />
+                    Exposição na 3ª edição da Feira do Dia das Telecomunicações
+                  </div>
+                  <h2 className="mt-3 text-xl font-heading font-bold leading-snug sm:text-2xl md:text-[1.9rem]">Tipos de Exposição</h2>
+                  <p className="mt-2 max-w-2xl text-sm text-muted-foreground sm:text-[15px]">Três formas de participar e mostrar o teu trabalho.</p>
                 </motion.div>
-              ))}
+
+                <div className="relative z-10 flex gap-5 overflow-x-auto scrollbar-hide pb-2 md:grid md:grid-cols-3 md:overflow-visible">
+                  {projectTypes.map((t, i) => (
+                    <motion.div
+                      key={t.key}
+                      initial={{ opacity: 0, y: 20, rotate: -2 }}
+                      whileInView={{ opacity: 1, y: 0, rotate: 0 }}
+                      viewport={{ once: true }}
+                      transition={{ delay: i * 0.1, type: "spring", stiffness: 200 }}
+                      whileHover={{ y: -8, transition: { duration: 0.2 } }}
+                      className="min-w-[285px] md:min-w-0"
+                    >
+                      <Link to="/submeter" className="group relative block overflow-hidden rounded-2xl border border-border/70 bg-white/85 p-8 text-center shadow-sm transition-all duration-300 hover:-translate-y-1.5 hover:shadow-xl md:p-9">
+                        <div className={`absolute inset-0 bg-gradient-to-br ${t.surface}`} />
+                        <div className="relative z-10">
+                          <motion.div
+                            whileHover={{ rotate: [0, -10, 10, 0], scale: 1.12 }}
+                            transition={{ duration: 0.5 }}
+                            className={`mx-auto mb-5 flex h-20 w-20 items-center justify-center rounded-2xl shadow-lg ${t.color}`}
+                          >
+                            <t.icon className="h-10 w-10" />
+                          </motion.div>
+                          <h3 className="mb-2 font-heading text-lg font-bold md:text-xl">{t.label}</h3>
+                          <p className="mb-4 text-sm text-muted-foreground md:text-base">{t.desc}</p>
+                          <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-primary opacity-0 transition-opacity group-hover:opacity-100">
+                            Submeter <ArrowRight className="h-4 w-4" />
+                          </span>
+                        </div>
+                      </Link>
+                    </motion.div>
+                  ))}
+                </div>
+              </div>
             </div>
-          </div>
-        </div>
-      </section>
+          </section>
+        </>
+      ) : null}
 
       <SectionDivider />
 
@@ -1484,140 +1641,6 @@ export default function Index() {
               </Button>
             </motion.div>
           </motion.div>
-        </div>
-      </section>
-
-      <SectionDivider />
-
-      <section className="py-16 md:py-24 bg-muted/20">
-        <div className="container mx-auto px-4">
-          <motion.div initial={{ opacity: 0, y: 12 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}>
-            <h2 className="text-2xl md:text-4xl font-heading font-bold mb-3">Cursos em Destaque</h2>
-            <p className="text-muted-foreground mb-10 text-base">Prévia dos cursos oficiais. A lista completa está na página de cursos.</p>
-          </motion.div>
-
-          <div className="mb-8 grid gap-3 md:grid-cols-3">
-            {topCourses.slice(0, 3).map((course, index) => (
-              <div
-                key={`${course.id}-${index}`}
-                className="rounded-xl border p-4"
-                style={{
-                  borderColor: withAlpha(course.courseColor, "44"),
-                  background: `linear-gradient(135deg, ${withAlpha(course.accentColor)}, ${withAlpha(course.accentColorSecondary)})`
-                }}
-              >
-                <p className="text-xs font-bold mb-1" style={{ color: course.courseColor }}>Top #{index + 1}</p>
-                <p className="font-heading font-semibold text-base">{course.name}</p>
-                <p className="text-sm text-muted-foreground mt-1">{course.studentCount} inscritos</p>
-              </div>
-            ))}
-          </div>
-
-          <div className="flex gap-5 overflow-x-auto scrollbar-hide pb-2">
-            {homepageCourses.map((course, i) => (
-              <motion.div
-                key={course.id ?? i}
-                initial={{ opacity: 0, scale: 0.9, y: 20 }}
-                whileInView={{ opacity: 1, scale: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: i * 0.07, type: "spring", stiffness: 200 }}
-                whileHover={{ y: -6, transition: { duration: 0.2 } }}
-                className="min-w-[300px] max-w-[360px] snap-start"
-              >
-                <article
-                  className="relative h-full overflow-hidden rounded-2xl border bg-card p-5 md:p-6 transition-all duration-300 hover:-translate-y-1.5 hover:shadow-xl"
-                  style={{
-                    borderColor: withAlpha(course.courseColor, "44"),
-                    background: `linear-gradient(140deg, ${withAlpha(course.accentColor)}, ${withAlpha(course.accentColorSecondary)})`
-                  }}
-                >
-                  <IconPattern density={6} />
-                  <div className="relative z-10">
-                    <div className="mb-5 flex items-start justify-between gap-3">
-                      <div className="flex min-w-0 items-center gap-3.5">
-                        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-white/80 shadow-sm ring-1 ring-white/60">
-                          {course.companyLogoUrl ? (
-                            <img src={course.companyLogoUrl} alt={course.companyName} className="h-9 w-9 rounded-lg object-cover" />
-                          ) : (
-                            <BookOpen className="h-6 w-6" style={{ color: course.courseColor }} />
-                          )}
-                        </div>
-                        <div className="min-w-0">
-                          <p className="text-[11px] font-bold uppercase tracking-[0.18em]" style={{ color: course.courseColor }}>
-                            {course.isPaid ? course.priceLabel || "Pago" : "Gratuito"}
-                          </p>
-                          <h3 className="font-heading text-lg font-bold leading-tight md:text-[1.42rem]">{course.name}</h3>
-                          <p className="mt-1 truncate text-sm font-medium text-foreground/80">{course.companyName}</p>
-                        </div>
-                      </div>
-                      <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-white/85 px-2.5 py-1 text-xs font-semibold shadow-sm" style={{ color: course.courseColor }}>
-                        <Heart className="h-3.5 w-3.5 fill-current" />
-                        {course.likesCount}
-                      </span>
-                    </div>
-                    <p className="mb-4 text-[15px] leading-6 text-foreground/85">{course.description}</p>
-                    {course.preview && <p className="mb-4 text-sm leading-6 text-muted-foreground line-clamp-2">{course.preview}</p>}
-                    <div className="mb-4 rounded-xl border border-white/60 bg-white/72 p-3.5">
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-10 w-10 items-center justify-center rounded-lg" style={{ backgroundColor: withAlpha(course.courseColor, "22") }}>
-                          <Building2 className="h-4.5 w-4.5" style={{ color: course.courseColor }} />
-                        </div>
-                        <div>
-                          <p className="text-sm font-semibold text-foreground">{course.companyName}</p>
-                          <p className="text-xs font-medium text-muted-foreground">{course.companyCategory}</p>
-                        </div>
-                      </div>
-                      <div className="mt-3 flex flex-wrap gap-3 text-xs font-medium text-muted-foreground">
-                        {course.companyWebsite && <button onClick={() => openExternal(course.companyWebsite)} className="inline-flex items-center gap-1.5"><Globe className="h-3.5 w-3.5" /> Website</button>}
-                        {course.companyInstagram && <button onClick={() => openExternal(course.companyInstagram)} className="inline-flex items-center gap-1.5"><Instagram className="h-3.5 w-3.5" /> Instagram</button>}
-                      </div>
-                    </div>
-                    <p className="mb-4 text-sm font-semibold" style={{ color: course.courseColor }}>{course.studentCount} inscritos</p>
-                    <div className="grid gap-2 sm:grid-cols-2">
-                      <Button
-                        size="sm"
-                        className="h-auto min-h-10 w-full min-w-0 rounded-xl px-3 py-2 text-center text-sm font-semibold leading-tight shadow-sm whitespace-normal"
-                        onClick={() => void handleCourseEnroll(course.id)}
-                        disabled={enrolledCourseIds.has(course.id)}
-                      >
-                        {enrolledCourseIds.has(course.id) ? "Inscrito" : "Inscrever"}
-                      </Button>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="h-auto min-h-10 w-full min-w-0 rounded-xl bg-white/70 px-3 py-2 text-center text-sm font-semibold leading-tight whitespace-normal"
-                        disabled={!enrolledCourseIds.has(course.id)}
-                        onClick={() => {
-                          if (!enrolledCourseIds.has(course.id)) {
-                            toast.warning("Precisas estar inscrito para entrar na comunidade.");
-                            return;
-                          }
-                          openExternal(course.communityUrl, "A comunidade deste curso ainda não foi configurada.");
-                        }}
-                      >
-                        {enrolledCourseIds.has(course.id) ? "Entrar na comunidade" : "Comunidade bloqueada"}
-                      </Button>
-                      <Button size="sm" variant={likedCourseIds.has(course.id) ? "default" : "outline"} className="h-auto min-h-10 rounded-xl px-3 py-2 text-sm font-semibold leading-tight sm:col-span-2" onClick={() => void handleCourseLike(course.id)}>
-                        <Heart className="mr-1.5 h-4 w-4" />
-                        {likedCourseIds.has(course.id) ? "Curtido" : "Curtir"}
-                      </Button>
-                    </div>
-                    {!enrolledCourseIds.has(course.id) && (
-                      <p className="mt-3 flex items-center gap-1.5 text-[11px] text-muted-foreground">
-                        <Lock className="h-3.5 w-3.5" />
-                        A comunidade abre depois da inscrição.
-                      </p>
-                    )}
-                  </div>
-                </article>
-              </motion.div>
-            ))}
-          </div>
-          <div className="mt-8 text-center">
-            <Button asChild variant="outline" className="rounded-xl">
-              <Link to="/cursos">Explorar todos os cursos <ArrowRight className="ml-2 h-4 w-4" /></Link>
-            </Button>
-          </div>
         </div>
       </section>
 

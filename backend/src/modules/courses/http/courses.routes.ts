@@ -78,11 +78,14 @@ const courseEnrollmentSchema = z.object({
   phone: z.string().nullable(),
   paymentPhone: z.string().nullable(),
   paymentStatus: z.string(),
+  statusLabel: z.string(),
   paymentSubmittedAt: z.string().nullable(),
   paymentProofPath: z.string().nullable(),
   whatsAppUrl: z.string().nullable(),
   enrolledAt: z.string()
 });
+
+const courseEnrollmentStatusSchema = z.enum(["PENDING", "CONFIRMED", "REJECTED", "CANCELED"]);
 
 const paidCourseEnrollmentSchema = z.object({
   paymentProof: z.string().regex(/^(data:|https?:\/\/)/, "Anexa o comprovativo do pagamento."),
@@ -223,6 +226,9 @@ export async function coursesRoutes(app: FastifyInstance, opts: { env: Env }) {
           const fullName = normalizeFreeText(entry.studentName ?? entry.student?.name) ?? `Estudante ${entry.studentNumber}`;
           const studentCourse = normalizeFreeText(entry.studentCourse ?? entry.student?.course);
           const phone = normalizeFreeText(entry.student?.phone);
+          const paymentProofPath = entry.paymentProof
+            ? `${publicApiBaseUrl ?? ""}/courses/enrollments/${entry.id}/payment-proof`
+            : null;
 
           return {
             id: entry.id,
@@ -232,10 +238,9 @@ export async function coursesRoutes(app: FastifyInstance, opts: { env: Env }) {
             phone,
             paymentPhone: normalizeFreeText(entry.paymentPhone),
             paymentStatus: entry.paymentStatus,
+            statusLabel: getEnrollmentStatusLabel(entry.paymentStatus, paymentProofPath),
             paymentSubmittedAt: entry.paymentSubmittedAt?.toISOString() ?? null,
-            paymentProofPath: entry.paymentProof
-              ? `${publicApiBaseUrl ?? ""}/courses/enrollments/${entry.id}/payment-proof`
-              : null,
+            paymentProofPath,
             whatsAppUrl: buildWhatsAppUrl(phone, { courseName: course.name, fullName }),
             enrolledAt: entry.createdAt.toISOString()
           };
@@ -351,6 +356,72 @@ export async function coursesRoutes(app: FastifyInstance, opts: { env: Env }) {
             message: "Falha ao gerar o relatório PDF localmente. Verifica se o Chromium do Playwright está instalado neste ambiente.",
           });
         }
+      });
+
+      adminApp.patch("/enrollments/:enrollmentId/status", {
+        schema: {
+          params: z.object({ enrollmentId: z.coerce.number().int().positive() }),
+          body: z.object({ status: courseEnrollmentStatusSchema }),
+          response: {
+            200: z.object({ enrollment: courseEnrollmentSchema }),
+            401: z.object({ message: z.string() }),
+            403: z.object({ message: z.string() }),
+            404: z.object({ message: z.string() }),
+          }
+        }
+      }, async (request, reply) => {
+        const { enrollmentId } = request.params as { enrollmentId: number };
+        const { status } = request.body as { status: z.infer<typeof courseEnrollmentStatusSchema> };
+
+        const existing = await prisma.courseEnrollment.findUnique({
+          where: { id: enrollmentId },
+          include: {
+            student: true,
+            course: true,
+          }
+        });
+
+        if (!existing) {
+          return reply.code(404).send({ message: "Enrollment not found" });
+        }
+
+        const updated = await prisma.courseEnrollment.update({
+          where: { id: enrollmentId },
+          data: {
+            paymentStatus: status,
+            paymentSubmittedAt: status === "PENDING"
+              ? existing.paymentSubmittedAt ?? new Date()
+              : existing.paymentSubmittedAt,
+          },
+          include: {
+            student: true,
+            course: true,
+          }
+        });
+
+        const fullName = normalizeFreeText(updated.studentName ?? updated.student?.name) ?? `Estudante ${updated.studentNumber}`;
+        const studentCourse = normalizeFreeText(updated.studentCourse ?? updated.student?.course);
+        const phone = normalizeFreeText(updated.student?.phone);
+        const paymentProofPath = updated.paymentProof
+          ? `${publicApiBaseUrl ?? ""}/courses/enrollments/${updated.id}/payment-proof`
+          : null;
+
+        return reply.send({
+          enrollment: {
+            id: updated.id,
+            studentNumber: updated.studentNumber,
+            fullName,
+            course: studentCourse,
+            phone,
+            paymentPhone: normalizeFreeText(updated.paymentPhone),
+            paymentStatus: updated.paymentStatus,
+            statusLabel: getEnrollmentStatusLabel(updated.paymentStatus, paymentProofPath),
+            paymentSubmittedAt: updated.paymentSubmittedAt?.toISOString() ?? null,
+            paymentProofPath,
+            whatsAppUrl: buildWhatsAppUrl(phone, { courseName: updated.course.name, fullName }),
+            enrolledAt: updated.createdAt.toISOString(),
+          }
+        });
       });
 
       adminApp.patch("/:id", {

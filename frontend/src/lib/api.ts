@@ -1,5 +1,7 @@
-const API_BASE = (import.meta.env.VITE_API_BASE_URL as string | undefined)?.replace(/\/$/, "") || "/api";
+import { resolveApiRequestUrl } from "@/lib/runtime-config";
+
 const TOKEN_KEY = "uor_token";
+const CSRF_COOKIE = "uor_csrf";
 
 export class ApiError extends Error {
   status: number;
@@ -58,7 +60,19 @@ export interface StudentOwnedSubmissionListItem {
   type: string;
   typeLabel: string;
   createdAt: string;
+  detailPath: string;
+  bannerUrl: string | null;
   receiptPath: string;
+}
+
+export interface SubmissionPresentationUpdateResult {
+  id: number;
+  slug: string;
+  detailPath: string;
+  primaryColor: string;
+  secondaryColor: string;
+  bannerUrl: string | null;
+  status?: string;
 }
 
 export interface StudentSubmissionReceipt {
@@ -206,6 +220,11 @@ export interface CourseEnrollment {
   fullName: string;
   course: string | null;
   phone: string | null;
+  paymentPhone: string | null;
+  paymentStatus: string;
+  statusLabel: string;
+  paymentSubmittedAt: string | null;
+  paymentProofPath: string | null;
   whatsAppUrl: string | null;
   enrolledAt: string;
 }
@@ -308,11 +327,52 @@ export interface HomeContent {
   socialConfig: HomeSocialConfig;
 }
 
+export interface HeroFloatingIcon {
+  id: string;
+  icon: string;
+  top: number;
+  left: number;
+  size: number;
+  rotate: number;
+  opacity: number;
+}
+
+export interface HomeSponsor {
+  id: string;
+  name: string;
+  imageUrl: string;
+  label: string | null;
+}
+
 export interface HomeSocialConfig {
   key: string;
   instagramUrl: string | null;
   facebookUrl: string | null;
   linkedinUrl: string | null;
+  courseEnrollmentEnabled: boolean;
+  firstYearContestEnabled: boolean;
+  primaryColor: string;
+  primaryGradient: string;
+  titleColor: string;
+  accentColor: string;
+  dashedColor: string;
+  dashedOpacity: number;
+  heroIconsOpacity: number;
+  heroBlobsIntensity: number;
+  heroMeshEnabled: boolean;
+  heroBadgeText: string;
+  heroTitlePrefix: string;
+  heroTitleHighlight: string;
+  heroSubtitleText: string;
+  heroSubtitleColor: string;
+  heroTitleMobileSize: string;
+  heroTitleTabletSize: string;
+  heroTitleDesktopSize: string;
+  heroSubtitleMobileSize: string;
+  heroSubtitleTabletSize: string;
+  heroSubtitleDesktopSize: string;
+  heroFloatingIcons: HeroFloatingIcon[];
+  sponsors: HomeSponsor[];
   createdAt: string;
   updatedAt: string;
 }
@@ -383,6 +443,145 @@ export interface AdminModerationLiveChatMessage extends LiveChatMessage {
   studentNumber: string;
 }
 
+export interface AnalyticsConsentState {
+  essential: true;
+  analytics: boolean;
+  functional: boolean;
+  marketing: boolean;
+  version: string;
+}
+
+export interface AnalyticsTrackEvent {
+  type: string;
+  category: "NAVIGATION" | "ENGAGEMENT" | "CONVERSION" | "LIVE" | "AUTH" | "MARKETING" | "FUNCTIONAL" | "CONSENT" | "SECURITY";
+  pageUrl?: string | null;
+  routeName?: string | null;
+  referrer?: string | null;
+  elementId?: string | null;
+  elementLabel?: string | null;
+  duration?: number | null;
+  scrollDepth?: number | null;
+  metadata?: Record<string, unknown> | null;
+}
+
+export interface AnalyticsConsentPayload {
+  visitorId?: string | null;
+  sessionId?: string | null;
+  source?: string;
+  lastVisitedPage?: string | null;
+  lastCampaign?: string | null;
+  consent: AnalyticsConsentState;
+}
+
+export interface AnalyticsTrackPayload {
+  visitorId: string;
+  sessionId: string;
+  deviceId?: string | null;
+  pageUrl?: string | null;
+  referrer?: string | null;
+  utmSource?: string | null;
+  utmMedium?: string | null;
+  utmCampaign?: string | null;
+  utmContent?: string | null;
+  utmTerm?: string | null;
+  consent: AnalyticsConsentState;
+  events: AnalyticsTrackEvent[];
+}
+
+export interface AnalyticsFilterInput {
+  from?: string;
+  to?: string;
+  course?: string;
+  audience?: "all" | "anonymous" | "authenticated";
+  source?: string;
+  consent?: "all" | "analytics" | "functional" | "marketing" | "essential-only";
+  search?: string;
+  limit?: number;
+  page?: number;
+}
+
+export interface AnalyticsDashboard {
+  filters: {
+    from: string;
+    to: string;
+    course: string;
+    audience: "all" | "anonymous" | "authenticated";
+    source: string;
+    consent: "all" | "analytics" | "functional" | "marketing" | "essential-only";
+  };
+  kpis: {
+    visitorsToday: number;
+    uniqueVisitors: number;
+    uniqueSessions: number;
+    authenticatedUsers: number;
+    averageSessionDurationSeconds: number;
+    conversionRate: number;
+    liveEngagementRate: number;
+    ticketShares: number;
+    coursePageViews: number;
+    projectPageViews: number;
+  };
+  charts: {
+    visitorsByDay: Array<{ date: string; visitors: number; sessions: number; conversions: number }>;
+    conversionFunnel: Array<{ step: string; value: number }>;
+    topPages: Array<{ label: string; value: number }>;
+    topEvents: Array<{ label: string; value: number }>;
+    audienceSplit: Array<{ label: string; value: number }>;
+    topCourses: Array<{ label: string; value: number }>;
+  };
+  logistics: {
+    expectedOccupancySignal: number;
+    ticketInfluenceVisits: number;
+    whatsappClicks: number;
+  };
+  marketing: Array<{
+    campaign: string;
+    sessions: number;
+    conversions: number;
+    conversionRate: number;
+  }>;
+  consent: {
+    analytics: number;
+    functional: number;
+    marketing: number;
+    essentialOnly: number;
+  };
+  recentEvents: Array<{
+    id: number;
+    createdAt: string;
+    eventType: string;
+    eventCategory: AnalyticsTrackEvent["category"];
+    pageUrl: string | null;
+    audience: string;
+    studentName: string | null;
+    studentCourse: string | null;
+    elementLabel: string | null;
+    referrer: string | null;
+  }>;
+  courseOptions: string[];
+}
+
+export interface AnalyticsEventsPayload {
+  items: Array<{
+    id: number;
+    createdAt: string;
+    eventType: string;
+    eventCategory: AnalyticsTrackEvent["category"];
+    pageUrl: string | null;
+    audience: string;
+    studentName: string | null;
+    studentCourse: string | null;
+    userRole: string | null;
+    referrer: string | null;
+    elementLabel: string | null;
+    duration: number | null;
+    scrollDepth: number | null;
+  }>;
+  total: number;
+  page: number;
+  totalPages: number;
+}
+
 const STUDENT_SESSION_KEY = "uor_student";
 
 function readSessionStudent() {
@@ -401,6 +600,12 @@ function readSessionStudent() {
     sessionStorage.removeItem(STUDENT_SESSION_KEY);
     return null;
   }
+}
+
+function getCookieValue(name: string) {
+  if (typeof document === "undefined") return null;
+  const match = document.cookie.match(new RegExp(`(?:^|; )${name}=([^;]*)`));
+  return match ? decodeURIComponent(match[1]) : null;
 }
 
 export function setSessionStudent(student: StudentProfile | null) {
@@ -467,7 +672,12 @@ async function requestRaw(path: string, options?: RequestInit) {
 
   headers.set("ngrok-skip-browser-warning", "true");
 
-  if (token) {
+  const csrf = getCookieValue(CSRF_COOKIE);
+  if (csrf && !headers.has("x-csrf-token")) {
+    headers.set("x-csrf-token", csrf);
+  }
+
+  if (token && !headers.has("Authorization")) {
     headers.set("Authorization", `Bearer ${token}`);
   }
 
@@ -475,7 +685,8 @@ async function requestRaw(path: string, options?: RequestInit) {
     headers.set("Content-Type", "application/json");
   }
 
-  const res = await fetch(`${API_BASE}${path}`, {
+  const res = await fetch(resolveApiRequestUrl(path), {
+    credentials: "include",
     ...options,
     headers,
   });
@@ -500,6 +711,18 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
 async function requestBlob(path: string, options?: RequestInit): Promise<Blob> {
   const res = await requestRaw(path, options);
   return res.blob();
+}
+
+function toQueryString(input?: Record<string, string | number | boolean | undefined | null>) {
+  const params = new URLSearchParams();
+
+  for (const [key, value] of Object.entries(input ?? {})) {
+    if (value === undefined || value === null || value === "") continue;
+    params.set(key, String(value));
+  }
+
+  const query = params.toString();
+  return query ? `?${query}` : "";
 }
 
 export const api = {
@@ -601,6 +824,22 @@ export const api = {
         method: "PATCH",
         body: JSON.stringify({ status }),
       }),
+    updatePresentation: (
+      id: number,
+      data: { primaryColor?: string; secondaryColor?: string; bannerUrl?: string | null }
+    ) =>
+      request<SubmissionPresentationUpdateResult>(`/submissions/${id}/presentation`, {
+        method: "PATCH",
+        body: JSON.stringify(data),
+      }),
+    updateOwnPresentation: (
+      id: number,
+      data: { primaryColor?: string; secondaryColor?: string; bannerUrl?: string | null }
+    ) =>
+      request<SubmissionPresentationUpdateResult>(`/submissions/${id}/presentation/mine`, {
+        method: "PATCH",
+        body: JSON.stringify(data),
+      }),
     listDetailed: (params?: { status?: string; type?: string }) => {
       const qs = new URLSearchParams(params as Record<string, string>).toString();
       return request<Array<{
@@ -654,6 +893,11 @@ export const api = {
         paymentProofPath: string | null;
       }>("/submissions", {
         method: "POST",
+        body: JSON.stringify(data),
+      }),
+    updateOwn: (id: number, data: CreateSubmissionInput) =>
+      request<StudentSubmissionReceipt>(`/submissions/${id}`, {
+        method: "PATCH",
         body: JSON.stringify(data),
       }),
     boardingPassPdf: (id: number) =>
@@ -763,6 +1007,14 @@ export const api = {
       request<{ success: boolean }>(`/courses/${id}`, { method: "DELETE" }),
     enrollments: (id: number) =>
       request<CourseEnrollmentsPayload>(`/courses/${id}/enrollments`),
+    updateEnrollmentStatus: (
+      enrollmentId: number,
+      status: "PENDING" | "CONFIRMED" | "REJECTED" | "CANCELED"
+    ) =>
+      request<{ enrollment: CourseEnrollment }>(`/courses/enrollments/${enrollmentId}/status`, {
+        method: "PATCH",
+        body: JSON.stringify({ status }),
+      }),
     exportEnrollmentsPdf: (id: number) =>
       requestBlob(`/courses/${id}/enrollments/pdf`),
     syncStudentCounts: () =>
@@ -778,7 +1030,17 @@ export const api = {
     enrollmentTicketPdf: (id: number) =>
       requestBlob(`/courses/enrollments/${id}/ticket.pdf`),
     enroll: (id: number) =>
-      request<{ enrolled: boolean; communityUrl: string | null; studentCount: number }>(`/courses/${id}/enroll`, { method: "POST" }),
+      request<{
+        enrolled: boolean;
+        enrollmentId: number | null;
+        communityUrl: string | null;
+        studentCount: number;
+        paymentStatus: string | null;
+        paymentProofPath: string | null;
+        ticketPath: string | null;
+        whatsAppRedirectUrl: string | null;
+        receiptPath: string | null;
+      }>(`/courses/${id}/enroll`, { method: "POST" }),
     like: (id: number) =>
       request<{ liked: boolean; likesCount: number }>(`/courses/${id}/like`, { method: "POST" }),
   },
@@ -786,6 +1048,25 @@ export const api = {
   stats: {
     get: () =>
       request<Stats>(`/stats`),
+  },
+
+  analytics: {
+    consent: (data: AnalyticsConsentPayload) =>
+      request<{ success: boolean }>("/analytics/consent", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+    track: (data: AnalyticsTrackPayload) =>
+      request<{ success: boolean; storedEvents: number }>("/analytics/track", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+    dashboard: (filters?: AnalyticsFilterInput) =>
+      request<AnalyticsDashboard>(`/analytics/dashboard${toQueryString(filters)}`),
+    events: (filters?: AnalyticsFilterInput) =>
+      request<AnalyticsEventsPayload>(`/analytics/events${toQueryString(filters)}`),
+    exportCsv: (filters?: AnalyticsFilterInput) =>
+      requestBlob(`/analytics/events/export.csv${toQueryString(filters)}`),
   },
 
   interactions: {
@@ -855,6 +1136,7 @@ export interface CreateSubmissionInput {
   members: string[] | string;
   leaderName: string;
   leaderPhone: string;
+  leaderEmail?: string;
   needs: string[];
   paymentProof: string;
   paymentConfirmed: true;
@@ -1055,6 +1337,30 @@ export interface HomeSocialConfigInput {
   instagramUrl?: string | null;
   facebookUrl?: string | null;
   linkedinUrl?: string | null;
+  courseEnrollmentEnabled?: boolean;
+  firstYearContestEnabled?: boolean;
+  primaryColor?: string;
+  primaryGradient?: string;
+  titleColor?: string;
+  accentColor?: string;
+  dashedColor?: string;
+  dashedOpacity?: number;
+  heroIconsOpacity?: number;
+  heroBlobsIntensity?: number;
+  heroMeshEnabled?: boolean;
+  heroBadgeText?: string;
+  heroTitlePrefix?: string;
+  heroTitleHighlight?: string;
+  heroSubtitleText?: string;
+  heroSubtitleColor?: string;
+  heroTitleMobileSize?: string;
+  heroTitleTabletSize?: string;
+  heroTitleDesktopSize?: string;
+  heroSubtitleMobileSize?: string;
+  heroSubtitleTabletSize?: string;
+  heroSubtitleDesktopSize?: string;
+  heroFloatingIcons?: HeroFloatingIcon[];
+  sponsors?: HomeSponsor[];
 }
 
 export interface Stats {

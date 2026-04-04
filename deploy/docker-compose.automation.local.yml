@@ -1,0 +1,17 @@
+services:
+  n8n:
+    environment:
+      N8N_PROTOCOL: http
+      N8N_EDITOR_BASE_URL: http://localhost:5678
+      WEBHOOK_URL: http://localhost:5678
+      N8N_SECURE_COOKIE: false
+      DB_TYPE: sqlite
+    depends_on: []
+
+  waha:
+    environment:
+      WHATSAPP_DEFAULT_ENGINE: WEBJS
+      WHATSAPP_HOOK_URL: ""
+      WHATSAPP_HOOK_EVENTS: ""
+      WAHA_PRINT_QR: true
+      WAHA_LOG_LEVEL: debug

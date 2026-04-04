@@ -1,0 +1,18 @@
+ALTER TABLE "HomeSocialConfig" ADD COLUMN "primaryColor" TEXT NOT NULL DEFAULT '#f97316';
+ALTER TABLE "HomeSocialConfig" ADD COLUMN "primaryGradient" TEXT NOT NULL DEFAULT 'linear-gradient(135deg, rgba(249,115,22,0.16) 0%, rgba(251,146,60,0.28) 100%)';
+ALTER TABLE "HomeSocialConfig" ADD COLUMN "titleColor" TEXT NOT NULL DEFAULT '#111827';
+ALTER TABLE "HomeSocialConfig" ADD COLUMN "accentColor" TEXT NOT NULL DEFAULT '#f97316';
+ALTER TABLE "HomeSocialConfig" ADD COLUMN "dashedColor" TEXT NOT NULL DEFAULT '#f97316';
+ALTER TABLE "HomeSocialConfig" ADD COLUMN "dashedOpacity" INTEGER NOT NULL DEFAULT 35;
+ALTER TABLE "HomeSocialConfig" ADD COLUMN "heroIconsOpacity" INTEGER NOT NULL DEFAULT 18;
+ALTER TABLE "HomeSocialConfig" ADD COLUMN "heroBlobsIntensity" INTEGER NOT NULL DEFAULT 68;
+ALTER TABLE "HomeSocialConfig" ADD COLUMN "heroMeshEnabled" BOOLEAN NOT NULL DEFAULT true;
+ALTER TABLE "HomeSocialConfig" ADD COLUMN "heroBadgeText" TEXT NOT NULL DEFAULT 'Plataforma Académica Digital · Chave-na-Mão';
+ALTER TABLE "HomeSocialConfig" ADD COLUMN "heroTitlePrefix" TEXT NOT NULL DEFAULT '3ª edição da';
+ALTER TABLE "HomeSocialConfig" ADD COLUMN "heroTitleHighlight" TEXT NOT NULL DEFAULT 'Feira do Dia das Telecomunicações';
+ALTER TABLE "HomeSocialConfig" ADD COLUMN "heroSubtitleText" TEXT NOT NULL DEFAULT 'Conectando o Conhecimento Académico ao Mercado Tecnológico com Energia e Empreendedorismo.';
+ALTER TABLE "HomeSocialConfig" ADD COLUMN "heroTitleMobileSize" TEXT NOT NULL DEFAULT '2.8rem';
+ALTER TABLE "HomeSocialConfig" ADD COLUMN "heroTitleTabletSize" TEXT NOT NULL DEFAULT '4.2rem';
+ALTER TABLE "HomeSocialConfig" ADD COLUMN "heroTitleDesktopSize" TEXT NOT NULL DEFAULT '5.4rem';
+ALTER TABLE "HomeSocialConfig" ADD COLUMN "heroFloatingIconsJson" TEXT NOT NULL DEFAULT '[]';
+ALTER TABLE "HomeSocialConfig" ADD COLUMN "sponsorsJson" TEXT NOT NULL DEFAULT '[]';
