@@ -6,6 +6,7 @@ COPY laboratorio/package*.json ./
 RUN npm ci
 
 WORKDIR /app
+RUN ln -s /app/laboratorio/node_modules /app/node_modules
 
 COPY frontend/ ./frontend/
 COPY laboratorio/ ./laboratorio/
