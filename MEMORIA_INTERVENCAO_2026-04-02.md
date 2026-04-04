@@ -900,3 +900,18 @@ O painel "Evento" na Admin tinha responsividade quebrada com:
    - build concluida com sucesso;
    - chunk `Index` ficou em `55.31 kB`, preservando a reorganizacao da home;
    - PWA continuou a ser gerado com `manifest.webmanifest`, `sw.js` e assets de Workbox.
+
+## Sessao 2026-04-04 (deploy path-based do Laboratorio na VPS)
+
+- Deploy ajustado para o cenário real da infraestrutura:
+  - o Laboratorio deixou de depender de `laboratorio.uorconnect.space`;
+  - `deploy/Caddyfile` passou a servir o runtime tecnico por caminho com `handle_path /desafios*`, mantendo o portal no mesmo dominio principal;
+  - `deploy/docker-compose.prod.yml` ganhou um serviço dedicado `laboratorio` para build e runtime separados do portal.
+- Build dedicado do Laboratorio no deploy:
+  - foi criado `deploy/laboratorio.Dockerfile` para compilar a app `laboratorio/` com `VITE_LAB_BASE_PATH=/desafios`;
+  - `deploy/.env.example` passou a documentar `LAB_BASE_PATH=/desafios`.
+- Performance operacional de build:
+  - foi criado `.dockerignore` na raiz para impedir envio de `node_modules`, `dist`, backups e artefactos locais para os builds Docker do portal e do Laboratorio.
+- Links absolutos corrigidos no frontend:
+  - `frontend/src/lib/contest-lab.ts` passou a resolver `getContestAbsoluteUrl()` para `https://uorconnect.space/desafios...` quando o utilizador estiver no dominio principal;
+  - a home e os redirects deixam de depender de um subdominio inexistente para abrir o Laboratorio.

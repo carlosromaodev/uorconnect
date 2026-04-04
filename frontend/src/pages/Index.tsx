@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import { ProjectQrDialog, type ProjectCardItem } from "@/components/projects/ProjectQrDialog";
 import { ProjectShowcaseCard } from "@/components/projects/ProjectShowcaseCard";
+import { FeaturedCourseCard } from "@/components/courses/FeaturedCourseCard";
 import { Button } from "@/components/ui/button";
 import {
   Accordion,
@@ -20,7 +21,7 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 import { toast } from "@/components/ui/sonner";
-import { api, type ActivityFeedItem, type AgendaItem, type AgendaLiveState, type CoursesContent, type FaqItem, type HomeContent, type LiveChatMessage, type ProjectPublicFeedItem, type Speaker, type Stats, getToken, isAuthError, setToken } from "@/lib/api";
+import { api, type ActivityFeedItem, type AgendaItem, type AgendaLiveState, type CoursesContent, type FaqItem, type HomeContent, type LiveChatMessage, type ProjectPublicFeedItem, type Speaker, type Stats, type StudentEnrollmentListItem, getToken, isAuthError, setToken } from "@/lib/api";
 import { getContestAbsoluteUrl } from "@/lib/contest-lab";
 import { defaultHeroSponsors, defaultHomeSocialConfig } from "@/lib/home-content";
 import { getHeroIconByName } from "@/lib/phosphor-icons";
@@ -772,6 +773,7 @@ export default function Index() {
   const [faqs, setFaqs] = useState<FaqItem[]>([]);
   const [likedCourseIds, setLikedCourseIds] = useState<Set<number>>(new Set());
   const [enrolledCourseIds, setEnrolledCourseIds] = useState<Set<number>>(new Set());
+  const [courseEnrollmentsByCourse, setCourseEnrollmentsByCourse] = useState<Record<number, StudentEnrollmentListItem>>({});
   const [chatInput, setChatInput] = useState("");
   const [hideExposureSection] = useState(() => readExposureSectionViewCount() >= 2);
   const exposureSectionRef = useRef<HTMLElement | null>(null);
@@ -791,6 +793,23 @@ export default function Index() {
 
     toast.error(error instanceof Error ? error.message : fallbackMessage);
     return false;
+  };
+
+  const refreshHomeCourseEnrollments = async () => {
+    if (!getToken()) {
+      setCourseEnrollmentsByCourse({});
+      setEnrolledCourseIds(new Set());
+      return;
+    }
+
+    const enrollmentItems = await api.courses.enrollmentsMine();
+    setCourseEnrollmentsByCourse(
+      enrollmentItems.reduce<Record<number, StudentEnrollmentListItem>>((acc, item) => {
+        acc[item.courseId] = item;
+        return acc;
+      }, {})
+    );
+    setEnrolledCourseIds(new Set(enrollmentItems.map((item) => item.courseId)));
   };
 
   const handleLogout = () => {
@@ -846,9 +865,7 @@ export default function Index() {
       api.courses.myLikes()
         .then((res) => setLikedCourseIds(new Set(res.likedCourseIds)))
         .catch(() => undefined);
-      api.courses.myEnrollments()
-        .then((res) => setEnrolledCourseIds(new Set(res.enrolledCourseIds)))
-        .catch(() => undefined);
+      void refreshHomeCourseEnrollments().catch(() => undefined);
     }
   }, []);
 
@@ -1007,13 +1024,13 @@ export default function Index() {
 
     try {
       const result = await api.courses.enroll(courseId);
-      setEnrolledCourseIds((current) => new Set(current).add(courseId));
       setCoursesContent((current) => ({
         ...current,
         courses: current.courses.map((course) => course.id === courseId ? { ...course, studentCount: result.studentCount } : course),
         topCourses: current.topCourses.map((course) => course.id === courseId ? { ...course, studentCount: result.studentCount } : course),
         preview: current.preview.map((course) => course.id === courseId ? { ...course, studentCount: result.studentCount } : course),
       }));
+      await refreshHomeCourseEnrollments();
       toast.success("Inscrição registada. A comunidade do curso foi desbloqueada.");
     } catch (error) {
       handleCourseAccessError(error, "Falha ao inscrever no curso");
@@ -1374,60 +1391,34 @@ export default function Index() {
                 viewport={{ once: true }}
                 transition={{ delay: i * 0.07, type: "spring", stiffness: 200 }}
                 whileHover={{ y: -6, transition: { duration: 0.2 } }}
-                className="min-w-[300px] max-w-[360px] snap-start"
+                className="snap-start min-w-[340px] max-w-[340px] md:min-w-[390px] md:max-w-[390px]"
               >
-                <article
-                  className="relative h-full overflow-hidden rounded-2xl border bg-card p-5 md:p-6 transition-all duration-300 hover:-translate-y-1.5 hover:shadow-xl"
-                  style={{
-                    borderColor: withAlpha(course.courseColor, "44"),
-                    background: `linear-gradient(140deg, ${withAlpha(course.accentColor)}, ${withAlpha(course.accentColorSecondary)})`
+                <FeaturedCourseCard
+                  course={course}
+                  liked={likedCourseIds.has(course.id)}
+                  enrolled={enrolledCourseIds.has(course.id)}
+                  enrollmentStatusLabel={courseEnrollmentsByCourse[course.id]?.statusLabel}
+                  className="h-full shadow-sm"
+                  onEnroll={() => {
+                    const enrollment = courseEnrollmentsByCourse[course.id];
+                    if (enrollment?.receiptPath) {
+                      navigate(enrollment.receiptPath);
+                      return;
+                    }
+
+                    void handleCourseEnroll(course.id);
                   }}
-                >
-                  <IconPattern density={6} />
-                  <div className="relative z-10">
-                    <div className="mb-5 flex items-start justify-between gap-3">
-                      <div className="flex min-w-0 items-center gap-3.5">
-                        <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-white/80 shadow-sm ring-1 ring-white/60">
-                          {course.companyLogoUrl ? (
-                            <img src={course.companyLogoUrl} alt={course.companyName} className="h-8 w-8 object-contain" />
-                          ) : (
-                            <GraduationCap className="h-6 w-6" style={{ color: course.courseColor }} />
-                          )}
-                        </div>
-                        <div className="min-w-0">
-                          <p className="truncate text-xs font-semibold uppercase tracking-[0.15em]" style={{ color: course.courseColor }}>{course.companyName}</p>
-                          <h3 className="mt-1 font-heading text-lg font-bold">{course.name}</h3>
-                        </div>
-                      </div>
-                      <span className="rounded-full border border-white/50 bg-white/75 px-3 py-1 text-[11px] font-semibold text-slate-700 shadow-sm">
-                        {course.isPaid ? course.priceLabel || "Pago" : "Gratuito"}
-                      </span>
-                    </div>
+                  onCommunity={() => {
+                    if (!enrolledCourseIds.has(course.id)) {
+                      toast.warning("Precisas estar inscrito no curso antes de entrar na comunidade.");
+                      return;
+                    }
 
-                    <p className="text-sm leading-6 text-muted-foreground">{course.preview || course.description}</p>
-
-                    <div className="mt-5 flex flex-wrap gap-2">
-                      <span className="rounded-full bg-white/70 px-3 py-1 text-xs font-medium text-slate-700 shadow-sm">
-                        {course.studentCount} inscritos
-                      </span>
-                      <span className="rounded-full bg-white/70 px-3 py-1 text-xs font-medium text-slate-700 shadow-sm">
-                        {course.likesCount} gostos
-                      </span>
-                      <span className="rounded-full bg-white/70 px-3 py-1 text-xs font-medium text-slate-700 shadow-sm">
-                        {course.companyCategory}
-                      </span>
-                    </div>
-
-                    <div className="mt-6 flex flex-wrap gap-2">
-                      <Button asChild className="rounded-xl">
-                        <Link to={`/cursos/${course.id}/inscricao`}>Inscrever</Link>
-                      </Button>
-                      <Button asChild variant="outline" className="rounded-xl bg-white/70">
-                        <Link to="/cursos">Ver lista completa</Link>
-                      </Button>
-                    </div>
-                  </div>
-                </article>
+                    openExternal(course.communityUrl, "A comunidade deste curso ainda não foi configurada.");
+                  }}
+                  onLike={() => void handleCourseLike(course.id)}
+                  onOpenExternal={openExternal}
+                />
               </motion.div>
             ))}
           </div>

@@ -61,7 +61,7 @@ export function FeaturedCourseCard({
   return (
     <article
       className={cn(
-        "relative h-full overflow-hidden rounded-2xl border bg-card p-5 transition-all duration-300 hover:-translate-y-1.5 hover:shadow-xl md:p-6",
+        "relative h-full overflow-hidden rounded-2xl border bg-card p-5 transition-all duration-300 hover:-translate-y-1.5 hover:shadow-xl md:p-7",
         className
       )}
       style={{
@@ -71,25 +71,25 @@ export function FeaturedCourseCard({
     >
       <IconPattern density={6} />
       <div className="relative z-10 flex h-full min-w-0 flex-col">
-        <div className="mb-5 flex items-start justify-between gap-3">
-          <div className="flex min-w-0 items-center gap-3.5">
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-white/80 shadow-sm ring-1 ring-white/60">
+        <div className="mb-6 flex items-start justify-between gap-4">
+          <div className="flex min-w-0 items-center gap-4">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white/80 shadow-sm ring-1 ring-white/60">
               {course.companyLogoUrl ? (
-                <img src={course.companyLogoUrl} alt={course.companyName} className="h-9 w-9 rounded-lg object-cover" />
+                <img src={course.companyLogoUrl} alt={course.companyName} className="h-9 w-9 rounded-xl object-cover" />
               ) : (
                 <BookOpen className="h-6 w-6" style={{ color: course.courseColor }} />
               )}
             </div>
             <div className="min-w-0">
-              <p className="text-[11px] font-bold uppercase tracking-[0.18em]" style={{ color: course.courseColor }}>
+              <p className="text-xs font-bold uppercase tracking-[0.16em] md:text-sm" style={{ color: course.courseColor }}>
                 {course.isPaid ? course.priceLabel || "Pago" : "Gratuito"}
               </p>
-              <h3 className="font-heading text-lg font-bold leading-tight md:text-[1.42rem]">{course.name}</h3>
-              <p className="mt-1 truncate text-sm font-medium text-foreground/80">{course.companyName}</p>
+              <h3 className="font-heading text-xl font-bold leading-tight md:text-[1.8rem]">{course.name}</h3>
+              <p className="mt-1 truncate text-sm font-medium text-foreground/80 md:text-base">{course.companyName}</p>
             </div>
           </div>
           <span
-            className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-white/85 px-2.5 py-1 text-xs font-semibold shadow-sm"
+            className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-white/85 px-3 py-1 text-xs font-semibold shadow-sm md:text-sm"
             style={{ color: course.courseColor }}
           >
             <Heart className="h-3.5 w-3.5 fill-current" />
@@ -97,25 +97,25 @@ export function FeaturedCourseCard({
           </span>
         </div>
 
-        <p className="mb-4 break-words text-[15px] leading-6 text-foreground/85">{course.description}</p>
+        <p className="break-words text-base leading-7 text-foreground/90 md:text-[1.05rem]">{course.description}</p>
         {course.preview ? (
-          <p className="mb-4 line-clamp-2 break-words text-sm leading-6 text-muted-foreground">{course.preview}</p>
+          <p className="mt-3 break-words text-sm leading-7 text-muted-foreground md:text-base">{course.preview}</p>
         ) : null}
 
-        <div className="mb-4 rounded-xl border border-white/60 bg-white/72 p-3.5">
+        <div className="mt-5 rounded-2xl border border-white/60 bg-white/72 p-4">
           <div className="flex min-w-0 items-center gap-3">
             <div
-              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg"
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl"
               style={{ backgroundColor: withAlpha(course.courseColor, "22") }}
             >
-              <Building2 className="h-4.5 w-4.5" style={{ color: course.courseColor }} />
+              <Building2 className="h-5 w-5" style={{ color: course.courseColor }} />
             </div>
             <div className="min-w-0">
-              <p className="truncate text-sm font-semibold text-foreground">{course.companyName}</p>
-              <p className="truncate text-xs font-medium text-muted-foreground">{course.companyCategory}</p>
+              <p className="truncate text-base font-semibold text-foreground md:text-lg">{course.companyName}</p>
+              <p className="truncate text-sm font-medium text-muted-foreground md:text-base">{course.companyCategory}</p>
             </div>
           </div>
-          <div className="mt-3 flex flex-wrap gap-3 text-xs font-medium text-muted-foreground">
+          <div className="mt-4 flex flex-wrap gap-3 text-sm font-medium text-muted-foreground md:text-base">
             {course.companyWebsite ? (
               <button
                 type="button"
@@ -149,13 +149,13 @@ export function FeaturedCourseCard({
           </div>
         </div>
 
-        <div className="mb-4 flex flex-wrap items-center gap-3">
-          <p className="text-sm font-semibold" style={{ color: course.courseColor }}>
+        <div className="mt-5 flex flex-wrap items-center gap-3 text-sm md:text-base">
+          <p className="font-semibold" style={{ color: course.courseColor }}>
             {course.studentCount} inscritos
           </p>
           {enrollmentStatusLabel ? (
             <span
-              className="rounded-full px-3 py-1 text-[11px] font-semibold"
+              className="rounded-full px-3 py-1.5 text-[11px] font-semibold md:text-sm"
               style={{ backgroundColor: withAlpha(course.courseColor, "1c"), color: course.courseColor }}
             >
               {enrollmentStatusLabel}
@@ -163,10 +163,10 @@ export function FeaturedCourseCard({
           ) : null}
         </div>
 
-        <div className="mt-auto grid gap-2 sm:grid-cols-2">
+        <div className="mt-5 grid gap-2.5 sm:mt-auto sm:grid-cols-2">
           <Button
             size="sm"
-            className="h-auto min-h-10 w-full min-w-0 rounded-xl px-3 py-2 text-center text-sm font-semibold leading-tight shadow-sm whitespace-normal"
+            className="h-auto min-h-10 w-full min-w-0 rounded-xl px-3 py-2 text-center text-sm font-semibold leading-tight shadow-sm whitespace-normal md:text-base"
             onClick={onEnroll}
             disabled={enrollBlocked}
           >
@@ -175,7 +175,7 @@ export function FeaturedCourseCard({
           <Button
             size="sm"
             variant="outline"
-            className="h-auto min-h-10 w-full min-w-0 rounded-xl bg-white/70 px-3 py-2 text-center text-sm font-semibold leading-tight whitespace-normal"
+            className="h-auto min-h-10 w-full min-w-0 rounded-xl bg-white/70 px-3 py-2 text-center text-sm font-semibold leading-tight whitespace-normal md:text-base"
             disabled={!enrolled}
             onClick={onCommunity}
           >
@@ -184,7 +184,7 @@ export function FeaturedCourseCard({
           <Button
             size="sm"
             variant={liked ? "default" : "outline"}
-            className="h-auto min-h-10 rounded-xl px-3 py-2 text-sm font-semibold leading-tight sm:col-span-2"
+            className="h-auto min-h-10 rounded-xl px-3 py-2 text-sm font-semibold leading-tight sm:col-span-2 md:text-base"
             onClick={onLike}
           >
             <Heart className="mr-1.5 h-4 w-4" />
@@ -193,8 +193,8 @@ export function FeaturedCourseCard({
         </div>
 
         {!enrolled ? (
-          <p className="mt-3 flex items-center gap-1.5 text-[11px] text-muted-foreground">
-            <Lock className="h-3.5 w-3.5" />
+          <p className="mt-3 flex items-center gap-2 text-xs text-muted-foreground md:text-sm">
+            <Lock className="h-4 w-4" />
             {helperMessage}
           </p>
         ) : null}

@@ -41,6 +41,11 @@ describe("contest-lab routing helpers", () => {
   it("resolve a app dedicada do laboratório para localhost no desenvolvimento", () => {
     expect(getContestAbsoluteUrl("/desafios/login", new URL("http://localhost:8080/desafios/login"))).toBe("http://localhost:8081/login");
   });
+
+  it("resolve a rota do laboratório no domínio principal sem subdomínio dedicado", () => {
+    expect(getContestAbsoluteUrl("/login", new URL("https://uorconnect.space/login"))).toBe("https://uorconnect.space/desafios/login");
+    expect(getContestAbsoluteUrl("/desafios/lobby", new URL("https://uorconnect.space/desafios/lobby"))).toBe("https://uorconnect.space/desafios/lobby");
+  });
 });
 
 afterEach(() => {

@@ -1,9 +1,9 @@
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
-import { BookOpen, Building2, Globe, GraduationCap, Heart, Instagram, Loader2, Lock, Users } from "lucide-react";
+import { GraduationCap, Loader2, Users } from "lucide-react";
 import { useNavigate } from "react-router-dom";
-import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/sonner";
+import { FeaturedCourseCard } from "@/components/courses/FeaturedCourseCard";
 import { api, type Course, type StudentEnrollmentListItem, getToken, isAuthError, setToken } from "@/lib/api";
 
 function withAlpha(color: string, alpha = "22") {
@@ -184,116 +184,34 @@ export default function Cursos() {
                       const enrolled = Boolean(enrollment);
 
                       return (
-                    <motion.article
+                    <motion.div
                       key={course.id}
                       initial={{ opacity: 0, scale: 0.9, y: 20 }}
                       whileInView={{ opacity: 1, scale: 1, y: 0 }}
                       viewport={{ once: true }}
                       transition={{ delay: index * 0.06, type: "spring", stiffness: 200 }}
                       whileHover={{ y: -8, transition: { duration: 0.2 } }}
-                      className="relative overflow-hidden rounded-2xl border bg-card p-5 md:p-7 shadow-sm transition-all duration-300 hover:-translate-y-1.5 hover:shadow-xl"
-                      style={{
-                        borderColor: withAlpha(course.courseColor, "44"),
-                        background: `linear-gradient(140deg, ${withAlpha(course.accentColor)}, ${withAlpha(course.accentColorSecondary)})`
-                      }}
+                      className="h-full"
                     >
-                      <div className="relative z-10">
-                        <div className="mb-6 flex items-start justify-between gap-4">
-                          <div className="flex min-w-0 items-center gap-4">
-                            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white/72 shadow-sm ring-1 ring-white/60">
-                              {course.companyLogoUrl ? (
-                                <img src={course.companyLogoUrl} alt={course.companyName} className="h-9 w-9 rounded-xl object-cover" />
-                              ) : (
-                                <BookOpen className="h-6 w-6" style={{ color: course.courseColor }} />
-                              )}
-                            </div>
-                            <div className="min-w-0">
-                              <p className="text-xs md:text-sm font-bold uppercase tracking-[0.16em]" style={{ color: course.courseColor }}>
-                                {course.isPaid ? course.priceLabel || "Pago" : "Gratuito"}
-                              </p>
-                              <h3 className="font-heading text-xl md:text-[1.8rem] font-bold leading-tight">{course.name}</h3>
-                              <p className="mt-1 truncate text-sm md:text-base font-medium text-foreground/80">{course.companyName}</p>
-                            </div>
-                          </div>
-                          <span className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-white/80 px-3 py-1 text-xs md:text-sm font-semibold shadow-sm" style={{ color: course.courseColor }}>
-                            <Heart className="h-3.5 w-3.5 fill-current" />
-                            {course.likesCount}
-                          </span>
-                        </div>
+                      <FeaturedCourseCard
+                        course={course}
+                        liked={likedCourseIds.has(course.id)}
+                        enrolled={enrolled}
+                        enrollmentStatusLabel={enrollment?.statusLabel}
+                        className="h-full shadow-sm"
+                        onEnroll={() => {
+                          if (enrollment?.receiptPath) {
+                            navigate(enrollment.receiptPath);
+                            return;
+                          }
 
-                        <p className="text-base md:text-[1.05rem] leading-7 text-foreground/90">{course.description}</p>
-                        {course.preview && <p className="mt-3 text-sm md:text-base leading-7 text-muted-foreground">{course.preview}</p>}
-
-                        <div className="mt-5 rounded-2xl border border-white/60 bg-white/72 p-4.5">
-                          <div className="flex items-center gap-3">
-                            <div className="flex h-11 w-11 items-center justify-center rounded-xl" style={{ backgroundColor: withAlpha(course.courseColor, "22") }}>
-                              <Building2 className="h-5 w-5" style={{ color: course.courseColor }} />
-                            </div>
-                            <div>
-                              <p className="text-base md:text-lg font-semibold">{course.companyName}</p>
-                              <p className="text-sm md:text-base text-muted-foreground">{course.companyCategory}</p>
-                            </div>
-                          </div>
-
-                          <div className="mt-4 flex flex-wrap gap-3 text-sm md:text-base">
-                            {course.companyWebsite && (
-                              <button className="inline-flex items-center gap-1.5 font-medium text-muted-foreground hover:text-foreground" onClick={() => openExternal(course.companyWebsite)}>
-                                <Globe className="h-4 w-4" /> Website
-                              </button>
-                            )}
-                            {course.companyInstagram && (
-                              <button className="inline-flex items-center gap-1.5 font-medium text-muted-foreground hover:text-foreground" onClick={() => openExternal(course.companyInstagram)}>
-                                <Instagram className="h-4 w-4" /> Instagram
-                              </button>
-                            )}
-                            {course.companyLinkedin && (
-                              <button className="inline-flex items-center gap-1.5 font-medium text-muted-foreground hover:text-foreground" onClick={() => openExternal(course.companyLinkedin)}>
-                                <Globe className="h-4 w-4" /> LinkedIn
-                              </button>
-                            )}
-                          </div>
-                        </div>
-
-                        <div className="mt-5 flex flex-wrap items-center gap-3 text-sm md:text-base">
-                          <span className="rounded-full bg-white/80 px-3 py-1.5 font-semibold shadow-sm">{course.studentCount} inscritos</span>
-                          {enrollment && (
-                            <span className="rounded-full px-3 py-1.5 font-semibold" style={{ backgroundColor: withAlpha(course.courseColor, "1c"), color: course.courseColor }}>
-                              {enrollment.statusLabel}
-                            </span>
-                          )}
-                        </div>
-
-                        <div className="mt-5 grid gap-2.5 sm:grid-cols-2">
-                          <Button
-                            size="sm"
-                            className="h-auto min-h-10 w-full min-w-0 rounded-xl px-3 py-2 text-center text-sm font-semibold leading-tight shadow-sm whitespace-normal md:text-base"
-                            onClick={() => {
-                              if (enrollment?.receiptPath) {
-                                navigate(enrollment.receiptPath);
-                                return;
-                              }
-                              void handleEnroll(course);
-                            }}
-                          >
-                            {enrolled ? "Ver inscrição" : "Inscrever"}
-                          </Button>
-                          <Button size="sm" variant="outline" className="h-auto min-h-10 w-full min-w-0 rounded-xl bg-white/70 px-3 py-2 text-center text-sm font-semibold leading-tight whitespace-normal md:text-base" onClick={() => handleCommunity(course)} disabled={!enrolled}>
-                            {enrolled ? "Entrar na comunidade" : "Comunidade bloqueada"}
-                          </Button>
-                          <Button size="sm" variant={likedCourseIds.has(course.id) ? "default" : "outline"} className="h-auto min-h-10 rounded-xl px-3 py-2 text-sm font-semibold leading-tight sm:col-span-2 md:text-base" onClick={() => void handleLike(course.id)}>
-                            <Heart className="mr-1.5 h-4 w-4" />
-                            {likedCourseIds.has(course.id) ? "Curtido" : "Curtir"}
-                          </Button>
-                        </div>
-
-                        {!enrolled && (
-                          <p className="mt-3 flex items-center gap-2 text-xs md:text-sm text-muted-foreground">
-                            <Lock className="h-4 w-4" />
-                            A comunidade do curso só abre depois da inscrição.
-                          </p>
-                        )}
-                      </div>
-                    </motion.article>
+                          void handleEnroll(course);
+                        }}
+                        onCommunity={() => handleCommunity(course)}
+                        onLike={() => void handleLike(course.id)}
+                        onOpenExternal={openExternal}
+                      />
+                    </motion.div>
                       );
                     })()
                   ))}
