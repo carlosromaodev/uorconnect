@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { BrowserRouter, Navigate, Route, Routes, useLocation, useParams } from "react-router-dom";
 import { Toaster } from "@/components/ui/sonner";
 import { ProtectedRoute } from "@/components/auth/ProtectedRoute";
+import { LaboratorioPwaBanner } from "@/components/features/LaboratorioPwaBanner";
 import { ArenaStateProvider, useArenaClock, useArenaState } from "@app/lib/arena-state";
 import { LaboratorioAdminShell } from "@app/components/LaboratorioAdminShell";
 import LaboratorioArenaChallengePage from "@app/pages/LaboratorioArenaChallengePage";
@@ -9,6 +10,8 @@ import LaboratorioArenaPage from "@app/pages/LaboratorioArenaPage";
 import LaboratorioHomePage from "@app/pages/LaboratorioHomePage";
 import LaboratorioLobbyPage from "@app/pages/LaboratorioLobbyPage";
 import LaboratorioLoginPage from "@app/pages/LaboratorioLoginPage";
+import LaboratorioModuleDetailPage from "@app/pages/LaboratorioModuleDetailPage";
+import LaboratorioProgramsPage from "@app/pages/LaboratorioProgramsPage";
 import LaboratorioRankingPage from "@app/pages/LaboratorioRankingPage";
 import LaboratorioRulesPage from "@app/pages/LaboratorioRulesPage";
 import LaboratorioAdminArenaPage from "@app/pages/admin/LaboratorioAdminArenaPage";
@@ -65,6 +68,8 @@ function AppRoutes() {
     <Routes>
       <Route path="/" element={<LaboratorioHomePage />} />
       <Route path="/login" element={<LaboratorioLoginRoute />} />
+      <Route path="/programas" element={<LaboratorioProgramsPage />} />
+      <Route path="/programas/:slug" element={<LaboratorioModuleDetailPage />} />
       <Route path="/lobby" element={protect(<LaboratorioLobbyPage />)} />
       <Route path="/arena" element={<LaboratorioArenaPage />} />
       <Route path="/arena/:slug" element={protect(<LaboratorioArenaChallengePage />)} />
@@ -91,6 +96,7 @@ const App = () => (
   <BrowserRouter basename={routerBasename} future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
     <ArenaStateProvider>
       <Toaster />
+      <LaboratorioPwaBanner />
       <AppRoutes />
     </ArenaStateProvider>
   </BrowserRouter>

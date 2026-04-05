@@ -47,7 +47,7 @@ services:
       dockerfile: deploy/laboratorio.Dockerfile
       args:
         VITE_API_BASE_URL: ${PUBLIC_API_URL}
-        VITE_LAB_BASE_PATH: ${LAB_BASE_PATH:-/}
+        VITE_LAB_BASE_PATH: /
     restart: unless-stopped
     expose:
       - "80"

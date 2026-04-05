@@ -1,11 +1,12 @@
-import type { ReactNode } from "react";
-import { ArrowRight, Radio, ShieldCheck, Sparkles, Trophy } from "lucide-react";
+import { ArrowRight } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { ContestBadge, ContestCard } from "@/components/challenges/contest-theme";
 import { contestButtonClassNames } from "@/components/challenges/contest-theme.tokens";
 import { getToken } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import { featuredLaboratorioModules, laboratorioModules } from "@/data/laboratorio-modules";
+import { LaboratorioModuleCard } from "@/components/LaboratorioModuleCard";
 import {
   LaboratorioPageSection,
   LaboratorioPublicLayout,
@@ -18,11 +19,13 @@ export default function LaboratorioHomePage() {
   const clock = useArenaClock(contestConfig);
   const hasSession = Boolean(getToken());
   const featuredChallenges = challenges.filter((challenge) => challenge.item.featured).slice(0, 3);
+  const arenaModule = laboratorioModules.find((module) => module.slug === "arena");
+  const supportingModules = featuredLaboratorioModules.filter((module) => module.slug !== "arena").slice(0, 3);
 
   return (
     <LaboratorioPublicLayout
       title="Laboratório UOR Connect"
-      subtitle="Espaço digital do Laboratório para arena, apoio operativo, acompanhamento da sessão e controlo académico da competição."
+      subtitle="Home institucional do Laboratório, com identidade própria, acesso à Arena e visão clara dos programas práticos que complementam a experiência técnica."
       contestConfig={contestConfig}
       clock={clock}
       actions={
@@ -40,7 +43,7 @@ export default function LaboratorioHomePage() {
       }
     >
       <section className="grid gap-5 xl:grid-cols-[1.08fr_0.92fr]">
-        <LaboratorioPageSection kicker="laboratorio.home" title="Uma experiência própria do Laboratório">
+        <LaboratorioPageSection kicker="laboratorio.home" title="Entrada principal do Laboratório">
           <div className="flex flex-col gap-5">
             <div className="flex flex-col gap-4 rounded-[28px] border border-[#00e5c8]/14 bg-[linear-gradient(135deg,rgba(7,17,23,0.98),rgba(5,12,16,0.98))] p-5 md:flex-row md:items-center md:justify-between">
               <div className="min-w-0">
@@ -50,7 +53,7 @@ export default function LaboratorioHomePage() {
                   className="h-12 w-auto md:h-14"
                 />
                 <p className="mt-4 max-w-2xl text-sm leading-7 text-[#8ea1b8]">
-                  O Laboratório é a frente técnica dedicada da UOR Connect para sessões de programação, arena competitiva, controlo da prova e leitura do ranking.
+                  O Laboratório é o ambiente dedicado da UOR Connect para prática técnica, programas colaborativos, prototipagem, mentoria e experiências orientadas a execução.
                 </p>
               </div>
               <ContestCard tone="terminal" className="w-full max-w-sm shrink-0 shadow-none">
@@ -68,42 +71,50 @@ export default function LaboratorioHomePage() {
           </div>
         </LaboratorioPageSection>
 
-        <LaboratorioPageSection kicker="acesso.rapido" title="Áreas principais">
-          <div className="grid gap-3">
-            <ActionCard
-              to="/arena"
-              label="Arena"
-              description="Abre o catálogo de exercícios e entra diretamente no editor da prova."
-              buttonLabel="Ir para a arena"
-              icon={<Sparkles className="h-5 w-5" />}
-              highlighted
-            />
-            <div className="grid gap-3 sm:grid-cols-2">
-              <QuickAccessCard
-                to={hasSession ? "/lobby" : "/login?redirect=%2Flobby"}
-                label="Sala de espera"
-                description="Entrada autenticada antes do início oficial."
-                icon={<Radio className="h-5 w-5" />}
-              />
-              <QuickAccessCard
-                to="/ranking"
-                label="Ranking"
-                description="Consulta a classificação consolidada."
-                icon={<Trophy className="h-5 w-5" />}
-              />
-              <QuickAccessCard
-                to={hasSession ? "/admin" : "/login?redirect=%2Fadmin"}
-                label="Admin"
-                description="Painel de controlo e operação da sessão."
-                icon={<ShieldCheck className="h-5 w-5" />}
-              />
-            </div>
+        <LaboratorioPageSection kicker="arena.entry" title="Arena em destaque">
+          {arenaModule ? <LaboratorioModuleCard module={arenaModule} /> : null}
+        </LaboratorioPageSection>
+      </section>
+
+      <section className="mt-8 grid gap-5 xl:grid-cols-[1.05fr_0.95fr]">
+        <LaboratorioPageSection kicker="programas" title="Outros programas do Laboratório">
+          <div className="grid gap-4">
+            {supportingModules.map((module) => (
+              <LaboratorioModuleCard key={module.slug} module={module} compact />
+            ))}
+          </div>
+          <div className="mt-5">
+            <Button asChild variant="outline" className={cn("h-11 px-5", contestButtonClassNames.secondary)}>
+              <Link to="/programas">
+                Ver todos os programas
+                <ArrowRight className="ml-2 h-4 w-4" />
+              </Link>
+            </Button>
+          </div>
+        </LaboratorioPageSection>
+
+        <LaboratorioPageSection kicker="operacao" title="Como o produto está organizado">
+          <div className="space-y-3 text-sm leading-7 text-[#8ea1b8]">
+            <p>A home funciona como porta de entrada do produto, separando claramente Arena, programas e operação.</p>
+            <p>A Arena mantém o foco técnico, enquanto os outros módulos ampliam aprendizagem, inovação aplicada e impacto.</p>
+            <p>O backend de autenticação continua o mesmo, mas o design, o branding e a navegação do Laboratório já são independentes.</p>
+          </div>
+
+          <div className="mt-5 grid gap-3 sm:grid-cols-2">
+            <ContestCard tone="subtle" className="shadow-none">
+              <p className="text-sm font-semibold text-white">Sessão e operação</p>
+              <p className="mt-2 text-sm text-[#8ea1b8]">Sala de espera, ranking e admin continuam próprios do Laboratório.</p>
+            </ContestCard>
+            <ContestCard tone="subtle" className="shadow-none">
+              <p className="text-sm font-semibold text-white">Pseudocódigo e execução</p>
+              <p className="mt-2 text-sm text-[#8ea1b8]">A Arena continua a usar o executor VisuAlg como base de prova prática.</p>
+            </ContestCard>
           </div>
         </LaboratorioPageSection>
       </section>
 
       <section className="mt-8 grid gap-5 xl:grid-cols-[1.05fr_0.95fr]">
-        <LaboratorioPageSection kicker="featured.challenges" title="Desafios em destaque">
+        <LaboratorioPageSection kicker="featured.challenges" title="Desafios em destaque da Arena">
           <div className="grid gap-4">
             {featuredChallenges.map((challenge) => (
               <Link
@@ -126,83 +137,15 @@ export default function LaboratorioHomePage() {
           </div>
         </LaboratorioPageSection>
 
-        <LaboratorioPageSection kicker="sobre.o.laboratorio" title="Como o Laboratório está organizado">
-          <div className="space-y-3 text-sm leading-7 text-[#8ea1b8]">
-            <p>A home funciona como entrada principal do Laboratório, com identidade própria, informação da sessão e acesso rápido às áreas essenciais.</p>
-            <p>A arena continua a ser o núcleo técnico da competição, mas o produto também inclui sala de espera, ranking e painel administrativo próprios.</p>
-            <p>O backend de autenticação foi mantido, mas a experiência visual e a navegação do Laboratório já não dependem do portal público.</p>
-          </div>
-
-          <div className="mt-5 grid gap-3 sm:grid-cols-2">
-            <ContestCard tone="subtle" className="shadow-none">
-              <p className="text-sm font-semibold text-white">Login académico</p>
-              <p className="mt-2 text-sm text-[#8ea1b8]">Acesso limpo e próprio do Laboratório, sem misturar o design do portal.</p>
-            </ContestCard>
-            <ContestCard tone="subtle" className="shadow-none">
-              <p className="text-sm font-semibold text-white">Executor VisuAlg</p>
-              <p className="mt-2 text-sm text-[#8ea1b8]">Base real para pseudocódigo e Portugol dentro da arena.</p>
-            </ContestCard>
+        <LaboratorioPageSection kicker="next.release" title="Próximas frentes a consolidar">
+          <div className="grid gap-3">
+            <RoadmapPoint title="Aprendizagem em grupo" description="Blocos guiados por tema, solução partilhada e revisão em equipa." />
+            <RoadmapPoint title="Hackathons e prototipagem" description="Execução rápida com entrega, pitch e teste de solução." />
+            <RoadmapPoint title="Mentorias e soft skills" description="Carreira, comunicação, liderança e preparação para apresentação." />
           </div>
         </LaboratorioPageSection>
       </section>
     </LaboratorioPublicLayout>
-  );
-}
-
-function QuickAccessCard({
-  to,
-  label,
-  description,
-  icon,
-}: {
-  to: string;
-  label: string;
-  description: string;
-  icon: ReactNode;
-}) {
-  return (
-    <Link
-      to={to}
-      className="rounded-[24px] border border-white/8 bg-white/[0.03] p-4 transition-colors hover:border-[#00e5c8]/18 hover:bg-[#00e5c8]/[0.04]"
-    >
-      <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-[#00e5c8]/16 bg-[#00e5c8]/10 text-[#00e5c8]">
-        {icon}
-      </div>
-      <p className="mt-4 text-base font-semibold text-white">{label}</p>
-      <p className="mt-2 text-sm leading-6 text-[#8ea1b8]">{description}</p>
-    </Link>
-  );
-}
-
-function ActionCard({
-  to,
-  label,
-  description,
-  buttonLabel,
-  icon,
-  highlighted = false,
-}: {
-  to: string;
-  label: string;
-  description: string;
-  buttonLabel: string;
-  icon: ReactNode;
-  highlighted?: boolean;
-}) {
-  return (
-    <ContestCard tone={highlighted ? "accent" : "subtle"} className="shadow-none">
-      <div className="flex h-10 w-10 items-center justify-center rounded-2xl border border-[#00e5c8]/16 bg-[#00e5c8]/10 text-[#00e5c8]">
-        {icon}
-      </div>
-      <p className="mt-4 text-lg font-semibold text-white">{label}</p>
-      <p className="mt-2 text-sm leading-6 text-[#8ea1b8]">{description}</p>
-      <Button asChild className={cn("mt-5 h-11 px-5", contestButtonClassNames.primary)}>
-        <Link to={to}>
-          {buttonLabel}
-          <ArrowRight className="ml-2 h-4 w-4" />
-        </Link>
-      </Button>
-    </ContestCard>
   );
 }
 
@@ -212,5 +155,14 @@ function InfoCard({ label, value }: { label: string; value: string }) {
       <p className="font-tech-mono text-[10px] uppercase tracking-[0.18em] text-[#7b8ca3]">{label}</p>
       <p className="mt-3 text-lg font-semibold text-white">{value}</p>
     </ContestCard>
+  );
+}
+
+function RoadmapPoint({ title, description }: { title: string; description: string }) {
+  return (
+    <div className="rounded-[24px] border border-white/8 bg-white/[0.03] p-4">
+      <p className="text-base font-semibold text-white">{title}</p>
+      <p className="mt-2 text-sm leading-7 text-[#8ea1b8]">{description}</p>
+    </div>
   );
 }

@@ -36,7 +36,7 @@ export default function LaboratorioLoginPage({ redirectTo = "/lobby" }: { redire
                 Entrar no Laboratório
               </h1>
               <p className="mt-5 max-w-xl text-sm leading-7 text-slate-300">
-                Usa a tua conta académica para entrar no Laboratório e continuar para a área que escolheste.
+                Usa a tua conta académica para entrar na sessão, nos programas do Laboratório e na Arena.
               </p>
             </div>
 
@@ -49,6 +49,9 @@ export default function LaboratorioLoginPage({ redirectTo = "/lobby" }: { redire
               </Button>
               <Button asChild variant="outline" className={cn("h-11 px-5", contestButtonClassNames.secondary)}>
                 <Link to="/arena">Ir para a arena</Link>
+              </Button>
+              <Button asChild variant="outline" className={cn("h-11 px-5", contestButtonClassNames.secondary)}>
+                <Link to="/programas">Ver programas</Link>
               </Button>
             </div>
           </ContestCard>

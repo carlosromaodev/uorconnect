@@ -1072,3 +1072,55 @@ O painel "Evento" na Admin tinha responsividade quebrada com:
 - Efeito esperado:
   - o subdominio `laboratorio.uorconnect.space` deixa de depender de recreacoes manuais por causa de um `Caddyfile` stale;
   - futuras alteracoes do `Caddyfile` feitas por `git pull` e redeploy passam a ficar visiveis ao `caddy` de forma consistente.
+
+## Sessao 2026-04-05 (correcao do base path do Laboratorio, PWA no iPhone e expansao dos modulos)
+
+- Problema encontrado no Laboratorio em producao:
+  - o HTML publico do subdominio `laboratorio.uorconnect.space` ainda referenciava assets em `/desafios/...`;
+  - isso fazia o subdominio dedicado carregar o `index.html`, mas falhar no arranque real da app e no PWA, porque os caminhos estavam errados para um host proprio.
+- Correcao aplicada:
+  - `deploy/docker-compose.prod.yml` passou a compilar o Laboratorio com `VITE_LAB_BASE_PATH=/` fixo em producao;
+  - `deploy/laboratorio.Dockerfile` deixou de assumir `/desafios` como default;
+  - o Laboratorio deixou de depender de um `LAB_BASE_PATH` path-based para o seu build de producao.
+- PWA / iPhone:
+  - `laboratorio/index.html` recebeu meta tags especificas de iOS:
+    - `apple-mobile-web-app-capable`
+    - `apple-mobile-web-app-status-bar-style`
+    - `apple-mobile-web-app-title`
+    - `apple-touch-icon`
+  - foi criado no Laboratorio o runtime proprio de PWA:
+    - `laboratorio/src/lib/pwa-register.ts`
+    - `laboratorio/src/hooks/use-pwa-install.tsx`
+    - `laboratorio/src/components/features/LaboratorioPwaBanner.tsx`
+  - a app do Laboratorio passou a mostrar instrucoes proprias no iPhone para:
+    - abrir no Safari quando necessario;
+    - usar `Partilhar -> Adicionar ao ecra principal`.
+  - o portal principal tambem passou a suportar essa mesma instrucao manual para iPhone em:
+    - `frontend/src/hooks/use-pwa-install.tsx`
+    - `frontend/src/components/features/PwaSystemBanner.tsx`
+- Expansao do produto do Laboratorio:
+  - a home deixou de representar o Laboratorio como se fosse apenas a Arena;
+  - foi criado um catalogo de modulos em `laboratorio/src/data/laboratorio-modules.ts` com frentes como:
+    - Arena
+    - Aprendizagem em Grupo
+    - Simulacao Empresarial
+    - Hackathons Tematicos
+    - Mentorias com Profissionais
+    - Desafios de Impacto Social
+    - Prototipagem Rapida
+    - Workshops de Soft Skills
+    - Resolucao Interdisciplinar
+  - foi criado `laboratorio/src/components/LaboratorioModuleCard.tsx` para o design consistente desses modulos;
+  - foram adicionadas paginas dedicadas:
+    - `laboratorio/src/pages/LaboratorioProgramsPage.tsx`
+    - `laboratorio/src/pages/LaboratorioModuleDetailPage.tsx`
+  - `laboratorio/src/App.tsx` passou a servir rotas novas:
+    - `/programas`
+    - `/programas/:slug`
+  - `laboratorio/src/components/LaboratorioPublicLayout.tsx` ganhou item de navegacao `Programas`;
+  - `laboratorio/src/pages/LaboratorioHomePage.tsx` foi reorganizada para:
+    - home institucional do Laboratorio;
+    - card principal da Arena;
+    - programas de apoio em destaque;
+    - leitura clara da estrutura do produto;
+    - desafios da Arena como secao propria, e nao como definicao total do Laboratorio.

@@ -19,6 +19,7 @@ import type { ArenaClockState } from "@app/lib/arena-state";
 
 const navItems = [
   { to: "/", label: "Home", end: true },
+  { to: "/programas", label: "Programas" },
   { to: "/lobby", label: "Sala de Espera" },
   { to: "/arena", label: "Arena" },
   { to: "/ranking", label: "Ranking" },

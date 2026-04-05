@@ -9,13 +9,6 @@ declare global {
   }
 }
 
-function isStandaloneDisplayMode() {
-  if (typeof window === "undefined") return false;
-
-  const iosStandalone = Boolean((window.navigator as Navigator & { standalone?: boolean }).standalone);
-  return window.matchMedia("(display-mode: standalone)").matches || iosStandalone;
-}
-
 function getPlatformState() {
   if (typeof window === "undefined") {
     return { isIos: false, isSafari: false };
@@ -26,6 +19,13 @@ function getPlatformState() {
   const isSafari = /safari/.test(userAgent) && !/crios|fxios|edgios|opr\//.test(userAgent);
 
   return { isIos, isSafari };
+}
+
+function isStandaloneDisplayMode() {
+  if (typeof window === "undefined") return false;
+
+  const iosStandalone = Boolean((window.navigator as Navigator & { standalone?: boolean }).standalone);
+  return window.matchMedia("(display-mode: standalone)").matches || iosStandalone;
 }
 
 export function usePwaInstall() {
@@ -43,11 +43,8 @@ export function usePwaInstall() {
     updateServiceWorker,
   } = useRegisterSW({
     immediate: true,
-    onRegisteredSW(swScriptUrl) {
+    onRegisteredSW() {
       setRegistrationError(null);
-      if (import.meta.env.DEV) {
-        console.info("[PWA] Service worker registado em desenvolvimento:", swScriptUrl);
-      }
     },
     onRegisterError(error) {
       setRegistrationError(error instanceof Error ? error.message : "Falha ao registar o PWA.");
@@ -103,11 +100,7 @@ export function usePwaInstall() {
   }, [deferredPrompt]);
 
   const applyUpdate = useCallback(async () => {
-    if (!isSupported) {
-      return false;
-    }
-
-    if (!updateAvailable) {
+    if (!isSupported || !updateAvailable) {
       return false;
     }
 
