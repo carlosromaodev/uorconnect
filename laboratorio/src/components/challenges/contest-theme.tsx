@@ -10,11 +10,11 @@ const contestCardVariants = cva(
     variants: {
       tone: {
         default: `${contestTheme.border} ${contestTheme.surface} ${contestTheme.accentHover}`,
-        accent: `${contestTheme.accentBorder} ${contestTheme.surfaceRaised} hover:border-[#00e5c8]/38`,
-        subtle: "border-white/8 bg-[rgba(255,255,255,0.03)] hover:border-[#00e5c8]/32",
+        accent: `${contestTheme.accentBorder} ${contestTheme.surfaceRaised} hover:border-[#7bd3c6]/34`,
+        subtle: "border-white/8 bg-[rgba(255,255,255,0.03)] hover:border-[#7bd3c6]/26",
         muted: "border-[#182028] bg-[rgba(11,16,21,0.88)] hover:border-[#24313d]",
-        terminal: "border-white/8 bg-[rgba(3,8,12,0.76)] hover:border-[#00e5c8]/28",
-        transparent: "border-white/6 bg-black/20 hover:border-[#00e5c8]/24",
+        terminal: "border-white/8 bg-[rgba(15,23,35,0.76)] hover:border-[#7bd3c6]/24",
+        transparent: "border-white/6 bg-black/20 hover:border-[#7bd3c6]/20",
       },
       padding: {
         default: "p-5 md:p-6",
@@ -47,13 +47,13 @@ const contestBadgeVariants = cva(
   {
     variants: {
       tone: {
-        accent: "border-[#00e5c8]/18 bg-[#00e5c8]/10 text-[#00e5c8]",
+        accent: "border-[#7bd3c6]/18 bg-[#7bd3c6]/10 text-[#7bd3c6]",
         neutral: "border-white/10 bg-white/[0.04] text-slate-300",
         muted: "border-[#25303c] bg-[#0f151b] text-[#7b8ca3]",
         success: "border-emerald-500/20 bg-emerald-500/10 text-emerald-300",
         warning: "border-amber-500/20 bg-amber-500/10 text-amber-200",
         danger: "border-red-500/20 bg-red-500/10 text-red-200",
-        accentStrong: "border-[#00e5c8]/24 bg-[#00e5c8] text-[#041013]",
+        accentStrong: "border-[#7bd3c6]/24 bg-[#7bd3c6] text-[#0f1720]",
       },
       size: {
         default: "",
@@ -96,7 +96,7 @@ export function ContestProgressBar({
     >
       <ProgressPrimitive.Indicator
         className={cn(
-          "h-full w-full flex-1 rounded-full bg-[linear-gradient(90deg,#00e5c8,#16F9FE)] transition-transform duration-500 ease-out",
+          "h-full w-full flex-1 rounded-full bg-[linear-gradient(90deg,#7bd3c6,#ffbe5c)] transition-transform duration-500 ease-out",
           indicatorClassName,
         )}
         style={{ transform: `translateX(-${100 - safeValue}%)` }}

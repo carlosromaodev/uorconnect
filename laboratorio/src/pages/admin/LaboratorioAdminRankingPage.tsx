@@ -29,10 +29,10 @@ export default function LaboratorioAdminRankingPage() {
         <ContestCard className="shadow-none">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <p className="font-tech-mono text-[10px] uppercase tracking-[0.18em] text-[#00e5c8]">ranking.table</p>
+              <p className="font-tech-mono text-[10px] uppercase tracking-[0.18em] text-[#7bd3c6]">ranking.table</p>
               <h3 className="mt-3 text-2xl font-semibold text-white">Classificação da arena</h3>
             </div>
-            <BarChart3 className="h-5 w-5 text-[#00e5c8]" />
+            <BarChart3 className="h-5 w-5 text-[#7bd3c6]" />
           </div>
 
           <div className="mt-5 overflow-x-auto">
@@ -51,7 +51,7 @@ export default function LaboratorioAdminRankingPage() {
               <tbody>
                 {challengeRanking.map((entry) => (
                   <tr key={entry.studentNumber} className="border-b border-white/8">
-                    <td className="px-4 py-4 font-semibold text-[#00e5c8]">#{entry.position}</td>
+                    <td className="px-4 py-4 font-semibold text-[#7bd3c6]">#{entry.position}</td>
                     <td className="px-4 py-4">
                       <p className="font-semibold text-white">{entry.name}</p>
                       <p className="text-xs text-[#7b8ca3]">{entry.studentNumber} · {entry.course}</p>
@@ -75,7 +75,7 @@ export default function LaboratorioAdminRankingPage() {
                 <p className="font-tech-mono text-[10px] uppercase tracking-[0.18em] text-[#7b8ca3]">ranking.podium</p>
                 <h3 className="mt-3 text-2xl font-semibold text-white">Pódio</h3>
               </div>
-              <Trophy className="h-5 w-5 text-[#00e5c8]" />
+              <Trophy className="h-5 w-5 text-[#7bd3c6]" />
             </div>
 
             <div className="mt-5 space-y-3">

@@ -1124,3 +1124,98 @@ O painel "Evento" na Admin tinha responsividade quebrada com:
     - programas de apoio em destaque;
     - leitura clara da estrutura do produto;
     - desafios da Arena como secao propria, e nao como definicao total do Laboratorio.
+
+## Sessao 2026-04-05 (reestruturacao institucional do Laboratorio e infraestrutura funcional dos modulos)
+
+- Reorganizacao do shell publico:
+  - `laboratorio/src/components/LaboratorioPublicLayout.tsx` deixou de expor `Sala de Espera`, `Arena`, `Ranking` e `Regras` na navbar principal;
+  - a navegacao publica passou a ser:
+    - `Home`
+    - `Programas`
+    - `Agenda`
+    - `Funcionamento`
+    - `Recursos`
+    - `Admin`
+  - a Arena passou a existir como modulo especifico dentro do ecossistema do Laboratorio, sem dominar a estrutura total do produto.
+- Nova camada de operacao do Laboratorio:
+  - criado `laboratorio/src/data/laboratorio-hub.ts` com a base funcional de:
+    - agenda do Laboratorio;
+    - clusters de cursos;
+    - passos operacionais;
+    - espacos do Laboratorio;
+    - recursos e roster de mentoria.
+  - criado `laboratorio/src/lib/laboratorio-hub-state.tsx` com persistencia local e gestao funcional de:
+    - agenda;
+    - modulos em destaque;
+    - overrides de estado/cadencia/acesso dos modulos.
+- Novas paginas publicas do Laboratorio:
+  - `laboratorio/src/pages/LaboratorioAgendaPage.tsx`
+  - `laboratorio/src/pages/LaboratorioFunctioningPage.tsx`
+  - `laboratorio/src/pages/LaboratorioResourcesPage.tsx`
+  - `laboratorio/src/App.tsx` passou a servir:
+    - `/agenda`
+    - `/funcionamento`
+    - `/recursos`
+- Refactor das paginas principais:
+  - `laboratorio/src/pages/LaboratorioHomePage.tsx`
+    - passou a ser uma home institucional mista, orientada a todos os cursos;
+    - a Arena ficou reduzida a um card proprio com entrada dedicada, em vez de eixo total da pagina.
+  - `laboratorio/src/pages/LaboratorioProgramsPage.tsx`
+    - passou a organizar os programas por objetivo e valor institucional.
+  - `laboratorio/src/pages/LaboratorioModuleDetailPage.tsx`
+    - passou a mostrar formato, cadencia, acesso, publicos, clusters, operacao e KPIs de cada modulo;
+    - a `Arena` deixou de ser tratada como excecao fora da logica geral do catalogo.
+  - `laboratorio/src/components/LaboratorioModuleCard.tsx`
+    - passou a encaminhar para a leitura estrutural do modulo, e nao diretamente para uma unica superficie tecnica.
+- Refactor do login e da linguagem:
+  - `laboratorio/src/pages/LaboratorioLoginPage.tsx`
+    - texto simplificado;
+    - linguagem menos centrada em competicao;
+    - redirect default passou a ser `/`.
+  - `laboratorio/src/components/auth/StudentLoginForm.tsx`
+    - copy ajustada para programas e experiencias do Laboratorio, sem prender o produto apenas a Arena.
+- Refactor do admin:
+  - `laboratorio/src/components/LaboratorioAdminShell.tsx`
+    - passou a estruturar o painel por:
+      - Visao geral
+      - Programas
+      - Agenda
+      - Arena
+      - Seguranca
+      - Ranking Arena
+  - criadas paginas novas:
+    - `laboratorio/src/pages/admin/LaboratorioAdminProgramsPage.tsx`
+    - `laboratorio/src/pages/admin/LaboratorioAdminAgendaPage.tsx`
+  - `laboratorio/src/pages/admin/LaboratorioAdminOverviewPage.tsx`
+    - passou a ler modulos, agenda, autorizacoes e Arena numa visao consolidada.
+- Refactor visual do Laboratorio:
+  - `laboratorio/src/components/challenges/contest-theme.tokens.ts`
+  - `laboratorio/src/components/challenges/contest-theme.tsx`
+  - `laboratorio/src/index.css`
+  - o tema base saiu do registo excessivamente “cyber/programacao” para um registo mais academico, misto e institucional.
+- PWA / UX:
+  - `laboratorio/src/hooks/use-pwa-install.tsx`
+    - passou a normalizar erros do PWA para mensagens logicas;
+    - erros ruidosos de preview/headless deixaram de aparecer ao utilizador.
+  - `laboratorio/src/components/features/LaboratorioPwaBanner.tsx`
+    - deixou de mostrar string tecnica crua de erro;
+    - passou a usar a nova identidade visual.
+  - `laboratorio/index.html` e `laboratorio/vite.config.ts`
+    - meta/theme/manifest/shortcuts foram atualizados para um Laboratorio mais amplo:
+      - `Programas`
+      - `Agenda`
+      - `Arena`
+
+### Validacao desta ronda 2026-04-05
+
+1. `cd laboratorio && npm run build`
+   - build concluida com sucesso;
+   - novas rotas publicas e admin geradas corretamente;
+   - PWA gerado com `dist/sw.js` e `dist/workbox-*.js`.
+2. `cd laboratorio && npm run preview -- --host 127.0.0.1 --port 4174`
+   - preview local respondeu corretamente.
+3. Verificacao browser headless do preview local
+   - a nova navbar apareceu com `Home`, `Programas`, `Agenda`, `Funcionamento`, `Recursos` e `Admin`;
+   - a home passou a renderizar a Arena como card proprio dentro de um ecossistema mais amplo;
+   - a pagina `Agenda` passou a renderizar o calendario funcional;
+   - o erro tecnico cru do PWA deixou de aparecer no preview headless.

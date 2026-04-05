@@ -36,17 +36,20 @@ export default function LaboratorioArenaPage() {
 
   return (
     <LaboratorioPublicLayout
-      title="Arena"
-      subtitle="Catálogo oficial da prova, com filtros por dificuldade e acesso direto ao editor de cada exercício."
+      title="Arena de lógica e pseudocódigo"
+      subtitle="Módulo técnico do Laboratório dedicado a treino, prova controlada e leitura objetiva de desempenho."
       contestConfig={contestConfig}
       clock={clock}
       actions={
         <div className="flex flex-wrap gap-2">
           <Button asChild className={cn("h-11 px-5", contestButtonClassNames.primary)}>
-            <Link to={hasSession ? "/lobby" : "/login?redirect=%2Flobby"}>{hasSession ? "Voltar ao lobby" : "Entrar no laboratório"}</Link>
+            <Link to={hasSession ? "/lobby" : "/login?redirect=%2Flobby"}>{hasSession ? "Abrir sala de espera" : "Entrar para a Arena"}</Link>
           </Button>
           <Button asChild variant="outline" className={cn("h-11 px-5", contestButtonClassNames.secondary)}>
-            <Link to="/ranking">Ver ranking</Link>
+            <Link to="/ranking">Ver ranking Arena</Link>
+          </Button>
+          <Button asChild variant="outline" className={cn("h-11 px-5", contestButtonClassNames.secondary)}>
+            <Link to="/regras">Ler regras</Link>
           </Button>
         </div>
       }

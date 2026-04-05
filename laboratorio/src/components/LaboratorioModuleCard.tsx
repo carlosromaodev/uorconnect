@@ -59,6 +59,21 @@ function getStatusTone(status: LaboratorioModuleStatus) {
   }
 }
 
+function getAccessModeLabel(value: LaboratorioModule["accessMode"]) {
+  switch (value) {
+    case "aberto":
+      return "Entrada aberta";
+    case "curado":
+      return "Entrada com curadoria";
+    case "por-selecao":
+      return "Entrada por seleção";
+    case "competitivo":
+      return "Entrada competitiva";
+    default:
+      return value;
+  }
+}
+
 export function LaboratorioModuleCard({
   module,
   compact = false,
@@ -69,7 +84,7 @@ export function LaboratorioModuleCard({
   return (
     <ContestCard tone={module.status === "operacional" ? "accent" : "subtle"} className="h-full shadow-none">
       <div className="flex items-start justify-between gap-4">
-        <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-[#00e5c8]/16 bg-[#00e5c8]/10 text-[#00e5c8]">
+        <div className="flex h-11 w-11 items-center justify-center rounded-2xl border border-[#7bd3c6]/16 bg-[#7bd3c6]/10 text-[#7bd3c6]">
           {getModuleIcon(module.icon)}
         </div>
         <ContestBadge tone={getStatusTone(module.status)} size="compact">
@@ -80,13 +95,15 @@ export function LaboratorioModuleCard({
       <h3 className="mt-5 text-xl font-semibold text-white">{module.title}</h3>
       <p className="mt-3 text-sm leading-7 text-[#8ea1b8]">{module.summary}</p>
 
-      {!compact ? (
-        <p className="mt-4 text-sm leading-7 text-[#64748b]">{module.format}</p>
-      ) : null}
+      <div className="mt-4 space-y-2 text-sm text-[#9fb0c3]">
+        <p>{module.format}</p>
+        {!compact ? <p>Cadência: {module.cadence}</p> : null}
+        <p>Acesso: {getAccessModeLabel(module.accessMode)}</p>
+      </div>
 
       <div className="mt-5">
         <Button asChild className={cn("h-11 px-5", contestButtonClassNames.primary)}>
-          <Link to={module.primaryPath}>{module.primaryLabel}</Link>
+          <Link to={`/programas/${module.slug}`}>Explorar módulo</Link>
         </Button>
       </div>
     </ContestCard>

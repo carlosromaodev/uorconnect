@@ -1,3 +1,7 @@
+import { Link } from "react-router-dom";
+import { Button } from "@/components/ui/button";
+import { contestButtonClassNames } from "@/components/challenges/contest-theme.tokens";
+import { cn } from "@/lib/utils";
 import { challengeRanking } from "@/data/challenges";
 import {
   LaboratorioPageSection,
@@ -11,10 +15,20 @@ export default function LaboratorioRankingPage() {
 
   return (
     <LaboratorioPublicLayout
-      title="Ranking"
-      subtitle="Tabela direta, sem ruído visual, com a classificação consolidada da arena."
+      title="Ranking da Arena"
+      subtitle="Tabela consolidada do módulo competitivo do Laboratório, com leitura direta da classificação."
       contestConfig={contestConfig}
       clock={clock}
+      actions={
+        <div className="flex flex-wrap gap-2">
+          <Button asChild className={cn("h-11 px-5", contestButtonClassNames.primary)}>
+            <Link to="/arena">Voltar à Arena</Link>
+          </Button>
+          <Button asChild variant="outline" className={cn("h-11 px-5", contestButtonClassNames.secondary)}>
+            <Link to="/regras">Ler regras</Link>
+          </Button>
+        </div>
+      }
     >
       <LaboratorioPageSection kicker="leaderboard" title="Classificação">
         <div className="overflow-x-auto">
@@ -32,7 +46,7 @@ export default function LaboratorioRankingPage() {
             <tbody>
               {challengeRanking.map((entry) => (
                 <tr key={entry.studentNumber} className="border-b border-white/8">
-                  <td className="px-4 py-4 font-semibold text-[#00e5c8]">#{entry.position}</td>
+                  <td className="px-4 py-4 font-semibold text-[#7bd3c6]">#{entry.position}</td>
                   <td className="px-4 py-4">
                     <p className="font-semibold text-white">{entry.name}</p>
                     <p className="text-xs text-[#7b8ca3]">{entry.studentNumber}</p>

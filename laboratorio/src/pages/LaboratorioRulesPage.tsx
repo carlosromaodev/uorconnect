@@ -1,4 +1,8 @@
+import { Link } from "react-router-dom";
+import { Button } from "@/components/ui/button";
 import { ContestCard } from "@/components/challenges/contest-theme";
+import { contestButtonClassNames } from "@/components/challenges/contest-theme.tokens";
+import { cn } from "@/lib/utils";
 import {
   LaboratorioPageSection,
   LaboratorioPublicLayout,
@@ -11,10 +15,20 @@ export default function LaboratorioRulesPage() {
 
   return (
     <LaboratorioPublicLayout
-      title="Regras"
-      subtitle="Regras oficiais, modelo de avaliação e condições de participação da arena."
+      title="Regras da Arena"
+      subtitle="Regras oficiais, modelo de avaliação e condições de participação do módulo competitivo do Laboratório."
       contestConfig={contestConfig}
       clock={clock}
+      actions={
+        <div className="flex flex-wrap gap-2">
+          <Button asChild className={cn("h-11 px-5", contestButtonClassNames.primary)}>
+            <Link to="/arena">Voltar à Arena</Link>
+          </Button>
+          <Button asChild variant="outline" className={cn("h-11 px-5", contestButtonClassNames.secondary)}>
+            <Link to="/ranking">Ver ranking</Link>
+          </Button>
+        </div>
+      }
     >
       <section className="grid gap-5 xl:grid-cols-[1fr_1fr]">
         <LaboratorioPageSection kicker="official.rules" title="Regras oficiais">

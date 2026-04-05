@@ -103,7 +103,7 @@ export function LaboratorioPwaBanner() {
   return (
     <div className={bannerPositionClassName}>
       {showUpdateBanner ? (
-        <div className="rounded-2xl border border-[#00e5c8]/28 bg-[linear-gradient(135deg,rgba(4,16,20,0.96),rgba(0,229,200,0.18))] p-4 text-white shadow-2xl backdrop-blur-xl">
+        <div className="rounded-2xl border border-[#7bd3c6]/24 bg-[linear-gradient(135deg,rgba(16,24,36,0.96),rgba(123,211,198,0.16))] p-4 text-white shadow-2xl backdrop-blur-xl">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <p className="text-sm font-semibold">Atualização disponível</p>
@@ -123,7 +123,7 @@ export function LaboratorioPwaBanner() {
           <div className="mt-3 flex gap-2">
             <Button
               type="button"
-              className="h-10 flex-1 rounded-xl bg-[#00e5c8] text-[#041013] hover:bg-[#58f0db]"
+              className="h-10 flex-1 rounded-xl bg-[#7bd3c6] text-[#0f1720] hover:bg-[#95dfd4]"
               onClick={() => void handleUpdate()}
               disabled={updating}
             >
@@ -135,7 +135,7 @@ export function LaboratorioPwaBanner() {
       ) : null}
 
       {showInstallBanner ? (
-        <div className="rounded-2xl border border-[#00e5c8]/30 bg-[linear-gradient(135deg,rgba(4,16,20,0.96),rgba(6,28,35,0.96),rgba(0,229,200,0.22))] p-4 text-white shadow-2xl backdrop-blur-xl">
+        <div className="rounded-2xl border border-[#7bd3c6]/24 bg-[linear-gradient(135deg,rgba(16,24,36,0.96),rgba(18,35,47,0.96),rgba(123,211,198,0.18))] p-4 text-white shadow-2xl backdrop-blur-xl">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <p className="text-sm font-semibold">Instala o Laboratório</p>
@@ -155,7 +155,7 @@ export function LaboratorioPwaBanner() {
           <div className="mt-3 flex gap-2">
             <Button
               type="button"
-              className="h-10 flex-1 rounded-xl bg-[#00e5c8] text-[#041013] hover:bg-[#58f0db]"
+              className="h-10 flex-1 rounded-xl bg-[#7bd3c6] text-[#0f1720] hover:bg-[#95dfd4]"
               onClick={() => void handleInstall()}
               disabled={installing}
             >
@@ -167,7 +167,7 @@ export function LaboratorioPwaBanner() {
       ) : null}
 
       {showIosBanner ? (
-        <div className="rounded-2xl border border-[#00e5c8]/24 bg-[linear-gradient(135deg,rgba(7,17,23,0.98),rgba(6,24,31,0.98))] p-4 text-white shadow-2xl backdrop-blur-xl">
+        <div className="rounded-2xl border border-[#7bd3c6]/24 bg-[linear-gradient(135deg,rgba(16,24,36,0.98),rgba(18,30,42,0.98))] p-4 text-white shadow-2xl backdrop-blur-xl">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
               <p className="text-sm font-semibold">Adicionar ao ecrã principal</p>
@@ -186,7 +186,7 @@ export function LaboratorioPwaBanner() {
               <X className="h-4 w-4" />
             </button>
           </div>
-          <div className="mt-3 flex items-center gap-2 text-[#00e5c8]">
+          <div className="mt-3 flex items-center gap-2 text-[#7bd3c6]">
             <Smartphone className="h-4 w-4" />
             <span className="text-xs font-medium uppercase tracking-[0.18em]">iPhone / iPad</span>
           </div>
@@ -195,7 +195,7 @@ export function LaboratorioPwaBanner() {
 
       {registrationError ? (
         <div className="rounded-xl border border-red-500/35 bg-red-500/10 px-3 py-2 text-xs text-red-200">
-          PWA indisponível neste ambiente: {registrationError}
+          {registrationError}
         </div>
       ) : null}
     </div>

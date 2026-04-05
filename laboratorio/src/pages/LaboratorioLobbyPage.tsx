@@ -18,8 +18,8 @@ export default function LaboratorioLobbyPage() {
 
   return (
     <LaboratorioPublicLayout
-      title="Sala de espera da arena"
-      subtitle="Antes da prova, o estudante entra aqui para confirmar presença, acompanhar o relógio e avançar para o catálogo da arena no momento certo."
+      title="Sala de espera da Arena"
+      subtitle="Antes da prova técnica, o estudante confirma presença, acompanha o relógio e entra na Arena no momento certo."
       contestConfig={contestConfig}
       clock={clock}
       actions={
@@ -46,13 +46,13 @@ export default function LaboratorioLobbyPage() {
         <LaboratorioPageSection kicker="arena.presence" title="Presença confirmada">
           <div className="grid gap-4 md:grid-cols-2">
             <ContestCard tone="subtle" className="shadow-none">
-              <Users className="h-5 w-5 text-[#00e5c8]" />
+              <Users className="h-5 w-5 text-[#7bd3c6]" />
               <p className="mt-4 text-3xl font-semibold text-white">{contestConfig.onlineParticipants}</p>
               <p className="mt-2 text-sm text-[#8ea1b8]">participantes online</p>
             </ContestCard>
 
             <ContestCard tone="subtle" className="shadow-none">
-              <Radio className="h-5 w-5 text-[#00e5c8]" />
+              <Radio className="h-5 w-5 text-[#7bd3c6]" />
               <div className="mt-4">
                 <RuntimePhaseBadge runtimePhase={clock.runtimePhase} />
               </div>
@@ -67,7 +67,7 @@ export default function LaboratorioLobbyPage() {
           </div>
 
           <ContestCard tone="accent" className="mt-5 shadow-none">
-            <p className="font-tech-mono text-[10px] uppercase tracking-[0.18em] text-[#00e5c8]">{clock.label}</p>
+            <p className="font-tech-mono text-[10px] uppercase tracking-[0.18em] text-[#7bd3c6]">{clock.label}</p>
             <p className="mt-3 text-4xl font-semibold tracking-[0.18em] text-white">{clock.display}</p>
             <ContestProgressBar className="mt-4" value={clock.progress} />
           </ContestCard>

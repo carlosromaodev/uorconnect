@@ -28,6 +28,33 @@ function isStandaloneDisplayMode() {
   return window.matchMedia("(display-mode: standalone)").matches || iosStandalone;
 }
 
+function normalizeRegistrationError(rawError: unknown) {
+  if (typeof window === "undefined") {
+    return "O PWA não pôde ser preparado neste ambiente.";
+  }
+
+  const message = rawError instanceof Error ? rawError.message : String(rawError ?? "");
+  const hostname = window.location.hostname;
+  const userAgent = window.navigator.userAgent.toLowerCase();
+  const isLocalHost = hostname === "localhost" || hostname === "127.0.0.1";
+  const isHeadless = userAgent.includes("headlesschrome");
+  const isWorkboxChunkFailure = /workbox-window|dynamically imported module/i.test(message);
+
+  if (isWorkboxChunkFailure && (isLocalHost || isHeadless)) {
+    return null;
+  }
+
+  if (!window.isSecureContext && hostname !== "localhost" && hostname !== "127.0.0.1") {
+    return "O PWA precisa de HTTPS para funcionar corretamente.";
+  }
+
+  if (/unsupported mime type|service worker/i.test(message)) {
+    return "O PWA não pôde ser registado neste ambiente.";
+  }
+
+  return "O PWA não pôde ser preparado agora. Atualiza a página e tenta novamente.";
+}
+
 export function usePwaInstall() {
   const [deferredPrompt, setDeferredPrompt] = useState<BeforeInstallPromptEvent | null>(null);
   const [isInstalled, setIsInstalled] = useState(() => isStandaloneDisplayMode());
@@ -47,7 +74,7 @@ export function usePwaInstall() {
       setRegistrationError(null);
     },
     onRegisterError(error) {
-      setRegistrationError(error instanceof Error ? error.message : "Falha ao registar o PWA.");
+      setRegistrationError(normalizeRegistrationError(error));
     },
   });
 

@@ -49,10 +49,10 @@ export default function LaboratorioAdminSecurityPage() {
     <div className="grid gap-6">
       <section className="grid gap-6 xl:grid-cols-[0.8fr_1.2fr]">
         <ContestCard className="shadow-none">
-          <p className="font-tech-mono text-[10px] uppercase tracking-[0.18em] text-[#00e5c8]">security.access</p>
+          <p className="font-tech-mono text-[10px] uppercase tracking-[0.18em] text-[#7bd3c6]">security.access</p>
           <h3 className="mt-3 text-2xl font-semibold text-white">Autorizações do painel</h3>
           <p className="mt-3 text-sm leading-7 text-[#8ea1b8]">
-            Só números autorizados conseguem operar o admin do Laboratório. O backend continua responsável por validar a sessão académica.
+            Só números autorizados conseguem operar o painel do Laboratório. O backend continua responsável por validar a sessão académica e a autorização administrativa.
           </p>
 
           <div className="mt-5 grid gap-4">
@@ -96,7 +96,7 @@ export default function LaboratorioAdminSecurityPage() {
               <p className="font-tech-mono text-[10px] uppercase tracking-[0.18em] text-[#7b8ca3]">security.summary</p>
               <h3 className="mt-3 text-2xl font-semibold text-white">Resumo</h3>
             </div>
-            <ShieldCheck className="h-5 w-5 text-[#00e5c8]" />
+            <ShieldCheck className="h-5 w-5 text-[#7bd3c6]" />
           </div>
 
           <div className="mt-5 grid gap-4 md:grid-cols-2">
@@ -118,7 +118,7 @@ export default function LaboratorioAdminSecurityPage() {
         <ContestCard className="shadow-none">
           <div className="flex items-center justify-between gap-3">
             <div>
-              <p className="font-tech-mono text-[10px] uppercase tracking-[0.18em] text-[#00e5c8]">security.authorized_list</p>
+              <p className="font-tech-mono text-[10px] uppercase tracking-[0.18em] text-[#7bd3c6]">security.authorized_list</p>
               <h3 className="mt-3 text-2xl font-semibold text-white">Contas autorizadas</h3>
             </div>
             <ContestBadge tone="neutral">{authorizedStudents.length}</ContestBadge>

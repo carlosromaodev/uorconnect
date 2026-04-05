@@ -44,13 +44,13 @@ export default defineConfig(({ mode }) => {
         manifest: {
           name: "UOR Connect Laboratorio",
           short_name: "Laboratorio",
-          description: "Arena técnica do Laboratório UOR Connect",
+          description: "Programas práticos, agenda, recursos e Arena do Laboratório UOR Connect",
           start_url: labBaseHref,
           scope: labBaseHref,
           display: "standalone",
           orientation: "portrait-primary",
-          background_color: "#071117",
-          theme_color: "#00e5c8",
+          background_color: "#101824",
+          theme_color: "#7bd3c6",
           lang: "pt-BR",
           categories: ["education", "productivity"],
           prefer_related_applications: false,
@@ -60,17 +60,24 @@ export default defineConfig(({ mode }) => {
           ],
           shortcuts: [
             {
-              name: "Arena",
-              short_name: "Arena",
-              description: "Abrir ambiente competitivo",
-              url: `${labBaseHref}arena`,
+              name: "Programas",
+              short_name: "Programas",
+              description: "Abrir catálogo de experiências do Laboratório",
+              url: `${labBaseHref}programas`,
               icons: [{ src: iconPath(192), sizes: "192x192" }]
             },
             {
-              name: "Ranking",
-              short_name: "Ranking",
-              description: "Ver classificação do concurso",
-              url: `${labBaseHref}ranking`,
+              name: "Agenda",
+              short_name: "Agenda",
+              description: "Ver agenda operacional do Laboratório",
+              url: `${labBaseHref}agenda`,
+              icons: [{ src: iconPath(192), sizes: "192x192" }]
+            },
+            {
+              name: "Arena",
+              short_name: "Arena",
+              description: "Abrir módulo competitivo de pseudocódigo",
+              url: `${labBaseHref}arena`,
               icons: [{ src: iconPath(192), sizes: "192x192" }]
             }
           ]

@@ -70,15 +70,15 @@ export function StudentLoginForm({
 
   return (
     <form onSubmit={handleLogin} className={compact ? "space-y-4" : "space-y-5"}>
-      <div className="rounded-[24px] border border-[#00e5c8]/16 bg-[linear-gradient(180deg,rgba(5,12,16,0.94),rgba(8,16,22,0.98))] p-4 shadow-[0_18px_42px_rgba(0,0,0,0.24)]">
+      <div className="rounded-[24px] border border-[#7bd3c6]/16 bg-[linear-gradient(180deg,rgba(17,25,37,0.94),rgba(13,21,33,0.98))] p-4 shadow-[0_18px_42px_rgba(0,0,0,0.24)]">
         <div className="flex items-start gap-3">
-          <div className="rounded-2xl border border-[#00e5c8]/16 bg-[#00e5c8]/10 p-2 text-[#00e5c8]">
+          <div className="rounded-2xl border border-[#7bd3c6]/16 bg-[#7bd3c6]/10 p-2 text-[#7bd3c6]">
             <Shield className="h-4 w-4" />
           </div>
           <div>
-            <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#00e5c8]">Sessão académica</p>
+            <p className="text-xs font-bold uppercase tracking-[0.16em] text-[#7bd3c6]">Sessão académica</p>
             <p className="mt-1 text-sm leading-6 text-[#7b8ca3]">
-              Usa a tua conta de estudante para entrar no Laboratório e libertar o acesso à arena.
+              Usa a tua conta de estudante para entrar nos programas e experiências do Laboratório.
             </p>
           </div>
         </div>

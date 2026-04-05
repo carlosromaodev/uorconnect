@@ -8,7 +8,6 @@ import { cn } from "@/lib/utils";
 import {
   ContestBadge,
   ContestCard,
-  ContestProgressBar,
 } from "@/components/challenges/contest-theme";
 import {
   contestButtonClassNames,
@@ -20,10 +19,9 @@ import type { ArenaClockState } from "@app/lib/arena-state";
 const navItems = [
   { to: "/", label: "Home", end: true },
   { to: "/programas", label: "Programas" },
-  { to: "/lobby", label: "Sala de Espera" },
-  { to: "/arena", label: "Arena" },
-  { to: "/ranking", label: "Ranking" },
-  { to: "/regras", label: "Regras" },
+  { to: "/agenda", label: "Agenda" },
+  { to: "/funcionamento", label: "Funcionamento" },
+  { to: "/recursos", label: "Recursos" },
   { to: "/admin", label: "Admin" },
 ] as const;
 
@@ -47,11 +45,11 @@ export function LaboratorioPublicLayout({
 
   return (
     <div className={cn("min-h-screen", contestTheme.shell)}>
-      <div className="contest-graph-paper pointer-events-none fixed inset-0 opacity-70" />
-      <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_top_left,rgba(0,229,200,0.14),transparent_22%),radial-gradient(circle_at_88%_10%,rgba(22,249,254,0.14),transparent_18%)]" />
+      <div className="contest-graph-paper pointer-events-none fixed inset-0 opacity-50" />
+      <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_top_left,rgba(123,211,198,0.14),transparent_24%),radial-gradient(circle_at_88%_12%,rgba(255,190,92,0.1),transparent_20%)]" />
 
       <div className="relative z-10">
-        <header className="sticky top-0 z-40 border-b border-white/8 bg-[rgba(6,10,14,0.88)] backdrop-blur-xl">
+        <header className="sticky top-0 z-40 border-b border-white/8 bg-[rgba(15,22,35,0.86)] backdrop-blur-xl">
           <div className="mx-auto flex max-w-7xl flex-col gap-4 px-4 py-4 md:px-6">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
               <div className="min-w-0">
@@ -62,31 +60,25 @@ export function LaboratorioPublicLayout({
                     className="h-11 w-auto shrink-0 md:h-12"
                   />
                   <div className="min-w-0">
-                    <p className="font-tech-mono text-[10px] uppercase tracking-[0.22em] text-[#00e5c8]">
-                      {contestConfig.contestName}
+                    <p className="font-tech-mono text-[10px] uppercase tracking-[0.22em] text-[#7bd3c6]">
+                      laboratorio.uorconnect
                     </p>
                     <h1 className="mt-1 text-xl font-semibold text-white md:text-2xl">
                       Laboratório UOR Connect
                     </h1>
+                    <p className="mt-2 max-w-2xl text-sm text-[#98a7ba]">
+                      Ecossistema prático para todos os cursos, com aprendizagem aplicada, inovação, mentoria e Arena técnica.
+                    </p>
+                    {clock.runtimePhase !== "scheduled" ? (
+                      <div className="mt-3">
+                        <RuntimePhaseBadge runtimePhase={clock.runtimePhase} />
+                      </div>
+                    ) : null}
                   </div>
                 </div>
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
-                <ContestCard padding="compact" className="px-3 py-2 shadow-none">
-                  <div className="flex items-center gap-3">
-                    <div>
-                      <p className="font-tech-mono text-[10px] uppercase tracking-[0.18em] text-[#7b8ca3]">
-                        {clock.label}
-                      </p>
-                      <p className="mt-1 text-sm font-semibold text-white">{clock.display}</p>
-                    </div>
-                    <div className="w-24">
-                      <ContestProgressBar value={clock.progress} />
-                    </div>
-                  </div>
-                </ContestCard>
-
                 {hasSession ? (
                   <ContestCard padding="compact" className="px-3 py-2 shadow-none">
                     <p className="text-sm text-slate-200">
@@ -121,8 +113,8 @@ export function LaboratorioPublicLayout({
                   className={({ isActive }) => cn(
                     "inline-flex min-h-10 items-center rounded-full border px-4 text-sm transition-colors",
                     isActive
-                      ? "border-[#00e5c8]/28 bg-[#00e5c8]/10 text-[#00e5c8]"
-                      : "border-white/8 bg-white/[0.03] text-[#9fb0c3] hover:border-[#00e5c8]/18 hover:text-white",
+                      ? "border-[#7bd3c6]/28 bg-[#7bd3c6]/10 text-[#7bd3c6]"
+                      : "border-white/8 bg-white/[0.03] text-[#9fb0c3] hover:border-[#7bd3c6]/18 hover:text-white",
                   )}
                 >
                   {item.label}
@@ -166,7 +158,7 @@ export function LaboratorioPageSection({
   return (
     <section className={className}>
       <ContestCard>
-        {kicker ? <p className="font-tech-mono text-[10px] uppercase tracking-[0.18em] text-[#00e5c8]">{kicker}</p> : null}
+        {kicker ? <p className="font-tech-mono text-[10px] uppercase tracking-[0.18em] text-[#7bd3c6]">{kicker}</p> : null}
         {title ? <h3 className="mt-3 text-2xl font-semibold text-white">{title}</h3> : null}
         <div className={cn((kicker || title) && "mt-5")}>{children}</div>
       </ContestCard>
