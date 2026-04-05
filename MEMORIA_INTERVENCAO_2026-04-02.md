@@ -997,3 +997,63 @@ O painel "Evento" na Admin tinha responsividade quebrada com:
    - `Admin` passou a mostrar gate de autenticacao coerente quando nao existe sessao;
    - `Arena` renderizada com catalogo;
    - `Arena/:slug` passou a redirecionar corretamente para login quando protegido.
+
+## Sessao 2026-04-05 (correcao do modelo do Laboratorio para subdominio proprio e separacao real)
+
+- Correcao de arquitetura:
+  - a decisao path-based em `/desafios` foi revertida;
+  - o Laboratorio voltou ao modelo correto com subdominio proprio: `laboratorio.uorconnect.space`;
+  - o portal principal passou a tratar `/desafios` apenas como legado/redirecionamento.
+- Separacao real entre os dois frontends:
+  - `laboratorio/` deixou de importar codigo de `frontend/src`;
+  - o alias `@` de `laboratorio/vite.config.ts` passou a apontar para `laboratorio/src`;
+  - foram criados no Laboratorio os seus proprios modulos de:
+    - `api`
+    - `runtime-config`
+    - `auth-routing`
+    - `utils`
+    - `StudentLoginForm`
+    - `ProtectedRoute`
+    - componentes `ui`
+    - dataset `data/challenges`
+    - theme kit dos cards/badges da arena
+  - isto removeu o acoplamento de build entre a app do portal e a app do Laboratorio.
+- Assets e branding proprios do Laboratorio:
+  - foi criado `laboratorio/public/` com assets proprios do Laboratorio;
+  - o logo do Laboratorio passou a ser servido pela propria app, sem reutilizar `publicDir` do portal;
+  - `laboratorio/src/components/LaboratorioPublicLayout.tsx` e `laboratorio/src/pages/LaboratorioHomePage.tsx` passaram a expor o logo do Laboratorio no header e na home.
+- Home e login redesenhados com a logica correta do produto:
+  - `laboratorio/src/pages/LaboratorioHomePage.tsx` deixou de parecer uma pagina tecnica unica;
+  - a home passou a assumir um papel institucional do Laboratorio, com:
+    - identidade visual propria;
+    - informacao da sessao;
+    - areas principais;
+    - card proprio da `Arena` com botao `Ir para a arena`;
+  - `laboratorio/src/pages/LaboratorioLoginPage.tsx` foi simplificada para um login limpo, com menos texto e branding proprio.
+- Portal principal limpo do legado do Laboratorio:
+  - `frontend/src/pages/Login.tsx` deixou de montar internamente a experiencia de login do Laboratorio;
+  - quando o destino e do Laboratorio, o portal redireciona para a app dedicada do subdominio;
+  - `frontend/src/lib/contest-lab.ts` passou a gerar URLs absolutas do Laboratorio no subdominio dedicado;
+  - foram removidos do `frontend/` os ficheiros antigos e nao utilizados da experiencia path-based do Laboratorio (`Desafios*`, `LaboratorioAdmin`, `ContestLayout`, login legado do Laboratorio e `AdminContestTab`).
+- Deploy e roteamento:
+  - `deploy/Caddyfile` passou a publicar:
+    - `uorconnect.space` para o portal;
+    - `laboratorio.uorconnect.space` para o Laboratorio;
+  - `/desafios` no dominio principal passou a redirecionar para o subdominio do Laboratorio;
+  - `deploy/docker-compose.prod.yml` passou a compilar o Laboratorio com `VITE_LAB_BASE_PATH=/`.
+- Configuracao ambiental do Laboratorio:
+  - `laboratorio/.env.example` e `laboratorio/.env.production` passaram a usar `VITE_LAB_BASE_PATH=/`;
+  - `deploy/.env.example` passou a documentar `LAB_BASE_PATH=/`.
+
+### Validacao final desta correcao 2026-04-05
+
+1. `cd laboratorio && npm run build`
+   - build concluida com sucesso;
+   - app do Laboratorio passou a construir sem qualquer import de `frontend/src`;
+   - PWA gerado com `dist/sw.js` e `dist/workbox-*.js`.
+2. `cd frontend && npm run build`
+   - build concluida com sucesso apos a remocao do legado do Laboratorio do portal.
+3. Verificacao browser headless do Laboratorio em preview local
+   - a `Home` apareceu com logo proprio do Laboratorio no header;
+   - o card principal da `Arena` apareceu com o botao `Ir para a arena`;
+   - a navegacao passou a refletir a experiencia separada do Laboratorio.

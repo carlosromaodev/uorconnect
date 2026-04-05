@@ -54,12 +54,21 @@ export function LaboratorioPublicLayout({
           <div className="mx-auto flex max-w-7xl flex-col gap-4 px-4 py-4 md:px-6">
             <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
               <div className="min-w-0">
-                <p className="font-tech-mono text-[10px] uppercase tracking-[0.22em] text-[#00e5c8]">
-                  {contestConfig.contestName}
-                </p>
-                <h1 className="mt-2 text-xl font-semibold text-white md:text-2xl">
-                  Laboratório UOR Connect
-                </h1>
+                <div className="flex items-center gap-3">
+                  <img
+                    src="/logouorconnectLaboratorio.svg"
+                    alt="Laboratório UOR Connect"
+                    className="h-11 w-auto shrink-0 md:h-12"
+                  />
+                  <div className="min-w-0">
+                    <p className="font-tech-mono text-[10px] uppercase tracking-[0.22em] text-[#00e5c8]">
+                      {contestConfig.contestName}
+                    </p>
+                    <h1 className="mt-1 text-xl font-semibold text-white md:text-2xl">
+                      Laboratório UOR Connect
+                    </h1>
+                  </div>
+                </div>
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
@@ -95,7 +104,7 @@ export function LaboratorioPublicLayout({
 
                 <Button asChild variant="outline" className={cn("h-10 px-4", contestButtonClassNames.secondary)}>
                   <a href={getPrimaryPortalHref("/")}>
-                    Portal
+                    UOR Connect
                     <ArrowUpRight className="ml-2 h-4 w-4" />
                   </a>
                 </Button>

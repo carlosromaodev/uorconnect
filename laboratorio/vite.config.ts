@@ -20,14 +20,11 @@ export default defineConfig(({ mode }) => {
 
   return {
     base: labBaseHref,
-    publicDir: path.resolve(__dirname, "../frontend/public"),
+    publicDir: path.resolve(__dirname, "./public"),
     server: {
       host: "0.0.0.0",
       port: 8081,
       allowedHosts: true,
-      fs: {
-        allow: [path.resolve(__dirname, "..")],
-      },
       proxy: {
         "/api": {
           target: "http://localhost:3333",
@@ -43,7 +40,7 @@ export default defineConfig(({ mode }) => {
       react(),
       VitePWA({
         registerType: "autoUpdate",
-        includeAssets: ["favicon.jpeg", "robots.txt", "logouorlabratoriowite.png"],
+        includeAssets: ["favicon.jpeg", "robots.txt", "logouorlabratoriowite.png", "logouorconnectLaboratorio.svg"],
         manifest: {
           name: "UOR Connect Laboratorio",
           short_name: "Laboratorio",
@@ -114,7 +111,7 @@ export default defineConfig(({ mode }) => {
         react: path.resolve(__dirname, "./node_modules/react"),
         "react-dom": path.resolve(__dirname, "./node_modules/react-dom"),
         "react/jsx-runtime": path.resolve(__dirname, "./node_modules/react/jsx-runtime.js"),
-        "@": path.resolve(__dirname, "../frontend/src"),
+        "@": path.resolve(__dirname, "./src"),
         "@app": path.resolve(__dirname, "./src"),
         assert: path.resolve(__dirname, "./src/shims/assert.ts"),
         util: path.resolve(__dirname, "./src/shims/util.ts"),

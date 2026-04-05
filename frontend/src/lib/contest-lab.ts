@@ -214,7 +214,7 @@ export function getContestAbsoluteUrl(path: string, location = getBrowserLocatio
   const canonicalPath = toContestLabPath(path);
 
   if (!location) {
-    return `https://${PRIMARY_PORTAL_HOST}${toPrimaryContestPath(path)}`;
+    return `https://${CONTEST_LAB_HOST}${canonicalPath}`;
   }
 
   if (DEDICATED_CONTEST_RUNTIME) {
@@ -229,7 +229,7 @@ export function getContestAbsoluteUrl(path: string, location = getBrowserLocatio
   }
 
   if (hostname === PRIMARY_PORTAL_HOST || hostname === `www.${PRIMARY_PORTAL_HOST}`) {
-    return `${location.origin}${toPrimaryContestPath(path)}`;
+    return `https://${CONTEST_LAB_HOST}${canonicalPath}`;
   }
 
   if (hostname === CONTEST_LAB_HOST) {

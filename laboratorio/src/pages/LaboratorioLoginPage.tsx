@@ -26,12 +26,17 @@ export default function LaboratorioLoginPage({ redirectTo = "/lobby" }: { redire
         <div className="grid w-full gap-6 xl:grid-cols-[0.92fr_1.08fr]">
           <ContestCard tone="accent" className="flex flex-col justify-between">
             <div>
-              <ContestBadge tone="accentStrong">login.runtime</ContestBadge>
+              <img
+                src="/logouorconnectLaboratorio.svg"
+                alt="Laboratório UOR Connect"
+                className="h-12 w-auto md:h-14"
+              />
+              <ContestBadge tone="accentStrong" className="mt-5">login.runtime</ContestBadge>
               <h1 className="mt-5 text-4xl font-semibold leading-tight text-white md:text-5xl">
                 Entrar no Laboratório
               </h1>
               <p className="mt-5 max-w-xl text-sm leading-7 text-slate-300">
-                Usa a tua conta académica para aceder à sala de espera, à arena e ao painel administrativo autorizado.
+                Usa a tua conta académica para entrar no Laboratório e continuar para a área que escolheste.
               </p>
             </div>
 
@@ -43,7 +48,7 @@ export default function LaboratorioLoginPage({ redirectTo = "/lobby" }: { redire
                 </Link>
               </Button>
               <Button asChild variant="outline" className={cn("h-11 px-5", contestButtonClassNames.secondary)}>
-                <Link to="/arena">Ver desafios</Link>
+                <Link to="/arena">Ir para a arena</Link>
               </Button>
             </div>
           </ContestCard>

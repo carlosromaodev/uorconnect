@@ -7,11 +7,27 @@ uorconnect.space www.uorconnect.space {
     Referrer-Policy "strict-origin-when-cross-origin"
   }
 
-  handle_path /desafios* {
-    reverse_proxy laboratorio:80
+  handle /desafios {
+    redir https://laboratorio.uorconnect.space/ 308
+  }
+
+  handle_path /desafios/* {
+    redir https://laboratorio.uorconnect.space{uri} 308
   }
 
   reverse_proxy frontend:80
+}
+
+laboratorio.uorconnect.space {
+  encode gzip zstd
+
+  header {
+    X-Content-Type-Options "nosniff"
+    X-Frame-Options "SAMEORIGIN"
+    Referrer-Policy "strict-origin-when-cross-origin"
+  }
+
+  reverse_proxy laboratorio:80
 }
 
 api.uorconnect.space {
