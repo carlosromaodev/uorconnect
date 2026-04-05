@@ -915,3 +915,85 @@ O painel "Evento" na Admin tinha responsividade quebrada com:
 - Links absolutos corrigidos no frontend:
   - `frontend/src/lib/contest-lab.ts` passou a resolver `getContestAbsoluteUrl()` para `https://uorconnect.space/desafios...` quando o utilizador estiver no dominio principal;
   - a home e os redirects deixam de depender de um subdominio inexistente para abrir o Laboratorio.
+
+## Sessao 2026-04-05 (reestruturacao completa do Laboratorio e runtime Arena)
+
+- Arquitetura do Laboratorio separada por paginas reais:
+  - `laboratorio/src/App.tsx` deixou de montar a experiencia antiga como se tudo fosse uma unica pagina com estados internos;
+  - o Laboratorio passou a ter rotas claras e independentes para:
+    - `Home`
+    - `Login`
+    - `Lobby`
+    - `Arena`
+    - `Arena/:slug`
+    - `Ranking`
+    - `Regras`
+    - `Admin`
+  - mantivemos apenas redirects de compatibilidade para links antigos (`/:slug` e `/:slug/submeter`).
+- Home publica simplificada:
+  - `laboratorio/src/pages/LaboratorioHomePage.tsx` passou a apresentar apenas o que e util para a operacao:
+    - estado da arena;
+    - atalhos diretos;
+    - desafios em destaque;
+    - fluxo resumido da sessao;
+  - foram removidos blocos excessivos e o discurso passou a ser operacional.
+- Login proprio do Laboratorio:
+  - `laboratorio/src/pages/LaboratorioLoginPage.tsx` foi redesenhada com identidade visual do Laboratorio;
+  - a logica de autenticacao do backend foi preservada via `StudentLoginForm`, mas a experiencia visual deixou de partilhar a linguagem do portal principal.
+- Admin do Laboratorio com estrutura semelhante ao admin da UOR Connect:
+  - `laboratorio/src/components/LaboratorioAdminShell.tsx` passou a dividir o painel em:
+    - sidebar fixa no desktop;
+    - navegacao explicita por seccoes;
+    - header operacional;
+    - outlet para paginas separadas;
+  - o admin ficou organizado em:
+    - visao geral;
+    - arena;
+    - seguranca;
+    - ranking.
+- Arena com runtime proprio e estado local controlado:
+  - `laboratorio/src/lib/arena-state.tsx` passou a concentrar configuracao da prova, catalogo, geracao de exercicios, edicao manual e persistencia local;
+  - o estado operacional do Laboratorio passou a ser guardado em `localStorage` com chave propria (`uor_laboratorio_runtime_v2`);
+  - o admin ganhou:
+    - gerador rapido de desafio;
+    - editor manual completo;
+    - edicao de mensagens da sala de espera;
+    - reposicao do estado padrao da arena.
+- Execucao real de pseudocodigo:
+  - `laboratorio/src/lib/visualg-runtime.ts` integrou `@designliquido/visualg`;
+  - o editor de desafio (`laboratorio/src/pages/LaboratorioArenaChallengePage.tsx`) passou a executar codigo VisuAlg/Portugol no browser;
+  - erros passaram a surgir classificados por etapa:
+    - lexico;
+    - sintatico;
+    - semantico;
+    - execucao;
+  - o fluxo de `Executar`, `Validar exemplo` e `Submeter` passou a devolver diagnostico e veredito coerentes.
+- Compatibilidade do runtime no browser e PWA:
+  - `laboratorio/src/main.tsx` passou a carregar `App` de forma assincrona depois de aplicar shim de `process`;
+  - foram criados:
+    - `laboratorio/src/shims/process.ts`
+    - `laboratorio/src/shims/assert.ts`
+    - `laboratorio/src/shims/util.ts`
+  - `laboratorio/vite.config.ts` passou a:
+    - deduplicar `react`, `react-dom` e `react-router-dom`;
+    - resolver aliases para os shims;
+    - gerar `manifest`, `start_url`, `scope`, atalhos e icones respeitando `VITE_LAB_BASE_PATH=/desafios`;
+  - isso eliminou os erros de browser observados anteriormente (`process is not defined`, `module is not defined` e crash por duplicacao de React hooks).
+- Navegacao local entre Portal e Laboratorio:
+  - `frontend/src/lib/contest-lab.ts` passou a devolver o portal local em `http://<host>:8080/` quando o Laboratorio estiver a correr isolado em localhost;
+  - isto manteve o fluxo local coerente durante os testes paralelos do portal e do Laboratorio.
+
+### Validacao final desta ronda 2026-04-05
+
+1. `cd laboratorio && npm run build`
+   - build concluida com sucesso;
+   - PWA gerado com `dist/sw.js` e `dist/workbox-*.js`.
+2. `cd frontend && npm run build`
+   - build concluida com sucesso;
+   - portal principal preservado depois do ajuste partilhado de rotas do Laboratorio.
+3. Verificacao browser headless no preview do Laboratorio (`127.0.0.1:4184/desafios`)
+   - `Home` renderizada com atalhos e estado da arena;
+   - `Login` renderizado com layout proprio do Laboratorio;
+   - `Admin` passou a mostrar gate de autenticacao coerente quando nao existe sessao;
+   - `Arena` renderizada com catalogo;
+   - `Arena/:slug` passou a redirecionar corretamente para login quando protegido.

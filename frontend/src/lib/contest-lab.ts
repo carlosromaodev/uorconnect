@@ -258,6 +258,13 @@ export function getPrimaryPortalHref(path = "/", location = getBrowserLocation()
     return `https://${PRIMARY_PORTAL_HOST}${path}`;
   }
 
+  const hostname = location.hostname.trim().toLowerCase();
+  const localhost = hostname === "localhost" || hostname === "127.0.0.1";
+
+  if (localhost) {
+    return `${location.protocol}//${location.hostname}:8080${path}`;
+  }
+
   if (isContestLabHost(location.hostname) || isSaasShowcaseHost(location.hostname)) {
     return `${location.protocol}//${PRIMARY_PORTAL_HOST}${path}`;
   }

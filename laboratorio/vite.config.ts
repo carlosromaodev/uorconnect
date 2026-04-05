@@ -14,9 +14,12 @@ function normalizeBasePath(pathname?: string) {
 export default defineConfig(({ mode }) => {
   const env = loadEnv(mode, __dirname, "");
   const labBasePath = normalizeBasePath(env.VITE_LAB_BASE_PATH);
+  const labBaseHref = labBasePath === "/" ? "/" : `${labBasePath}/`;
+  const iconPath = (size: 192 | 512) =>
+    `${labBasePath === "/" ? "" : labBasePath}/icons/icon-${size}x${size}.png`;
 
   return {
-    base: labBasePath === "/" ? "/" : `${labBasePath}/`,
+    base: labBaseHref,
     publicDir: path.resolve(__dirname, "../frontend/public"),
     server: {
       host: "0.0.0.0",
@@ -45,8 +48,8 @@ export default defineConfig(({ mode }) => {
           name: "UOR Connect Laboratorio",
           short_name: "Laboratorio",
           description: "Arena técnica do Laboratório UOR Connect",
-          start_url: labBasePath === "/" ? "/" : labBasePath,
-          scope: labBasePath === "/" ? "/" : `${labBasePath}/`,
+          start_url: labBaseHref,
+          scope: labBaseHref,
           display: "standalone",
           orientation: "portrait-primary",
           background_color: "#071117",
@@ -55,23 +58,23 @@ export default defineConfig(({ mode }) => {
           categories: ["education", "productivity"],
           prefer_related_applications: false,
           icons: [
-            { src: "/icons/icon-192x192.png", sizes: "192x192", type: "image/png", purpose: "any maskable" },
-            { src: "/icons/icon-512x512.png", sizes: "512x512", type: "image/png", purpose: "any maskable" }
+            { src: iconPath(192), sizes: "192x192", type: "image/png", purpose: "any maskable" },
+            { src: iconPath(512), sizes: "512x512", type: "image/png", purpose: "any maskable" }
           ],
           shortcuts: [
             {
               name: "Arena",
               short_name: "Arena",
               description: "Abrir ambiente competitivo",
-              url: `${labBasePath === "/" ? "" : labBasePath}/arena`,
-              icons: [{ src: "/icons/icon-192x192.png", sizes: "192x192" }]
+              url: `${labBaseHref}arena`,
+              icons: [{ src: iconPath(192), sizes: "192x192" }]
             },
             {
               name: "Ranking",
               short_name: "Ranking",
               description: "Ver classificação do concurso",
-              url: `${labBasePath === "/" ? "" : labBasePath}/ranking`,
-              icons: [{ src: "/icons/icon-192x192.png", sizes: "192x192" }]
+              url: `${labBaseHref}ranking`,
+              icons: [{ src: iconPath(192), sizes: "192x192" }]
             }
           ]
         },
@@ -106,9 +109,15 @@ export default defineConfig(({ mode }) => {
       "import.meta.env.VITE_LAB_BASE_PATH": JSON.stringify(labBasePath),
     },
     resolve: {
+      dedupe: ["react", "react-dom", "react-router-dom"],
       alias: {
+        react: path.resolve(__dirname, "./node_modules/react"),
+        "react-dom": path.resolve(__dirname, "./node_modules/react-dom"),
+        "react/jsx-runtime": path.resolve(__dirname, "./node_modules/react/jsx-runtime.js"),
         "@": path.resolve(__dirname, "../frontend/src"),
         "@app": path.resolve(__dirname, "./src"),
+        assert: path.resolve(__dirname, "./src/shims/assert.ts"),
+        util: path.resolve(__dirname, "./src/shims/util.ts"),
       },
     },
   };
