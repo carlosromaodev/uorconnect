@@ -94,6 +94,7 @@ services:
 
   caddy:
     image: caddy:2-alpine
+    command: ["caddy", "run", "--config", "/opt/deploy/Caddyfile", "--adapter", "caddyfile"]
     restart: unless-stopped
     depends_on:
       - frontend
@@ -106,7 +107,7 @@ services:
       - "80:80"
       - "443:443"
     volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./:/opt/deploy:ro
       - caddy_data:/data
       - caddy_config:/config
     mem_limit: 128m

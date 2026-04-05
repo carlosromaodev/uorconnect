@@ -1057,3 +1057,18 @@ O painel "Evento" na Admin tinha responsividade quebrada com:
    - a `Home` apareceu com logo proprio do Laboratorio no header;
    - o card principal da `Arena` apareceu com o botao `Ir para a arena`;
    - a navegacao passou a refletir a experiencia separada do Laboratorio.
+
+## Sessao 2026-04-05 (correcao operacional do edge para o subdominio do Laboratorio)
+
+- Problema identificado na VPS:
+  - o `deploy-caddy-1` continuava a correr com um `Caddyfile` antigo;
+  - o host tinha o ficheiro novo em `/opt/uorconnect/deploy/Caddyfile`, mas o container ainda via a versao antiga;
+  - isso acontecia porque o compose montava apenas o ficheiro isolado `./Caddyfile:/etc/caddy/Caddyfile:ro`, e a substituicao do inode apos actualizacoes fazia o container manter a referencia antiga.
+- Correcao aplicada:
+  - `deploy/docker-compose.prod.yml` passou a montar a pasta inteira de deploy em modo read-only:
+    - `./:/opt/deploy:ro`
+  - o servico `caddy` passou a arrancar explicitamente com:
+    - `caddy run --config /opt/deploy/Caddyfile --adapter caddyfile`
+- Efeito esperado:
+  - o subdominio `laboratorio.uorconnect.space` deixa de depender de recreacoes manuais por causa de um `Caddyfile` stale;
+  - futuras alteracoes do `Caddyfile` feitas por `git pull` e redeploy passam a ficar visiveis ao `caddy` de forma consistente.
