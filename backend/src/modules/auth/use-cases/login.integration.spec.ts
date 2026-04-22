@@ -78,4 +78,25 @@ describe("LoginUseCase – integração com secretaria", () => {
     },
     30_000
   );
+
+  it(
+    "orienta inicialização da base local quando a tabela Student não existe",
+    async () => {
+      vi.mocked(loginSecretaria).mockResolvedValueOnce({
+        success: false,
+        reason: "P2021: The table `main.Student` does not exist in the current database.",
+      } as any);
+
+      const useCase = new LoginUseCase(repo);
+      const result = await useCase.execute({
+        studentNumber: STUDENT_NUMBER,
+        password: STUDENT_PASSWORD,
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("base de dados local");
+      expect(result.error).toContain("prisma -- db push");
+    },
+    30_000
+  );
 });

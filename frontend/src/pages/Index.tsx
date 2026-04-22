@@ -21,7 +21,7 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 import { toast } from "@/components/ui/sonner";
-import { api, type ActivityFeedItem, type AgendaItem, type AgendaLiveState, type CoursesContent, type FaqItem, type HomeContent, type LiveChatMessage, type ProjectPublicFeedItem, type Speaker, type Stats, type StudentEnrollmentListItem, getToken, isAuthError, setToken } from "@/lib/api";
+import { api, type ActivityFeedItem, type AgendaItem, type AgendaLiveState, type Course, type CoursesContent, type FaqItem, type HomeContent, type LiveChatMessage, type ProjectPublicFeedItem, type Speaker, type Stats, type StudentEnrollmentListItem, getToken, isAuthError, setToken } from "@/lib/api";
 import { getContestAbsoluteUrl } from "@/lib/contest-lab";
 import { defaultHeroSponsors, defaultHomeSocialConfig } from "@/lib/home-content";
 import { getHeroIconByName } from "@/lib/phosphor-icons";
@@ -1016,19 +1016,24 @@ export default function Index() {
     }
   };
 
-  const handleCourseEnroll = async (courseId: number) => {
+  const handleCourseEnroll = async (course: Course) => {
     if (!getToken()) {
       redirectToCourseLogin("Inicia sessão para te inscreveres num curso.");
       return;
     }
 
+    if (course.isPaid) {
+      navigate(`/cursos/${course.id}/inscricao`);
+      return;
+    }
+
     try {
-      const result = await api.courses.enroll(courseId);
+      const result = await api.courses.enroll(course.id);
       setCoursesContent((current) => ({
         ...current,
-        courses: current.courses.map((course) => course.id === courseId ? { ...course, studentCount: result.studentCount } : course),
-        topCourses: current.topCourses.map((course) => course.id === courseId ? { ...course, studentCount: result.studentCount } : course),
-        preview: current.preview.map((course) => course.id === courseId ? { ...course, studentCount: result.studentCount } : course),
+        courses: current.courses.map((item) => item.id === course.id ? { ...item, studentCount: result.studentCount } : item),
+        topCourses: current.topCourses.map((item) => item.id === course.id ? { ...item, studentCount: result.studentCount } : item),
+        preview: current.preview.map((item) => item.id === course.id ? { ...item, studentCount: result.studentCount } : item),
       }));
       await refreshHomeCourseEnrollments();
       toast.success("Inscrição registada. A comunidade do curso foi desbloqueada.");
@@ -1406,7 +1411,7 @@ export default function Index() {
                       return;
                     }
 
-                    void handleCourseEnroll(course.id);
+                    void handleCourseEnroll(course);
                   }}
                   onCommunity={() => {
                     if (!enrolledCourseIds.has(course.id)) {

@@ -408,6 +408,148 @@ export interface CoursesContent {
   preview: Course[];
 }
 
+export interface CourseEnrollmentPayload {
+  paymentProof?: string;
+  paymentConfirmed?: true;
+  paymentPhone?: string;
+}
+
+export type SmsAudienceType =
+  | "ALL_STUDENTS"
+  | "STUDENT_COURSE"
+  | "COURSE_ENROLLED"
+  | "SUBMISSION_ENROLLED"
+  | "COURSE_OR_SUBMISSION_ENROLLED"
+  | "EXHIBITORS"
+  | "COURSE_OR_EXHIBITORS"
+  | "WINNERS"
+  | "SELECTED_STUDENTS";
+
+export interface SmsAudienceInput {
+  type: SmsAudienceType;
+  studentCourses?: string[];
+  courseIds?: number[];
+  submissionStatuses?: Array<"PENDING" | "APPROVED" | "REJECTED">;
+  selectedStudentNumbers?: string[];
+  selectedPhones?: string[];
+  cookieMarketingOptIn?: boolean;
+  cookieAnalyticsOptIn?: boolean;
+  activeWithinDays?: number;
+}
+
+export interface SmsRecipientPreviewItem {
+  studentId: number | null;
+  studentNumber: string | null;
+  name: string | null;
+  course: string | null;
+  phone: string;
+  providerTo: string;
+  sources: string[];
+}
+
+export interface SmsRecipientPreviewPayload {
+  totalCandidates: number;
+  filteredCandidates: number;
+  totalRecipients: number;
+  skippedCount: number;
+  recipients: SmsRecipientPreviewItem[];
+  skipped: Array<{
+    studentId: number | null;
+    studentNumber: string | null;
+    name: string | null;
+    course: string | null;
+    phone: string | null;
+    source: string;
+    reason: string;
+  }>;
+}
+
+export interface SmsCampaignSummary {
+  id: number;
+  title: string | null;
+  sender: string;
+  audienceType: string;
+  status: string;
+  totalRecipients: number;
+  successCount: number;
+  failedCount: number;
+  createdByStudentNumber: string;
+  createdAt: string;
+  sentAt: string | null;
+  scheduleAt: string | null;
+}
+
+export interface SmsOverviewPayload {
+  integration: {
+    configured: boolean;
+    baseUrl: string;
+    defaultSender: string | null;
+    approvedSenders: string[];
+    credits: number | null;
+    providerStatus: string;
+    providerMessage: string | null;
+  };
+  audiences: {
+    allStudents: { total: number; sendable: number };
+    courseEnrolled: { total: number; sendable: number };
+    exhibitors: { total: number; sendable: number };
+    winners: { total: number; sendable: number };
+    marketingConsented: { total: number; sendable: number };
+    activeLast7Days: { total: number; sendable: number };
+  };
+  campaigns: SmsCampaignSummary[];
+}
+
+export interface SmsAudienceButton {
+  type: SmsAudienceType;
+  label: string;
+  total: number;
+  sendable: number;
+}
+
+export interface SmsStudentCourseButton {
+  course: string;
+  total: number;
+  sendable: number;
+}
+
+export interface SmsFilterOptionsPayload {
+  audienceButtons: SmsAudienceButton[];
+  studentCourseButtons: SmsStudentCourseButton[];
+  updatedAt: string;
+}
+
+export interface SmsProviderProxyResponse {
+  ok: boolean;
+  status: number;
+  payload: unknown;
+}
+
+export interface SmsSendPayload {
+  title?: string;
+  sender?: string;
+  message: string;
+  audience: SmsAudienceInput;
+  schedule?: string;
+}
+
+export interface SmsSendResult {
+  campaignId: number;
+  status: string;
+  totalCandidates: number;
+  totalRecipients: number;
+  skippedCount: number;
+  successCount: number;
+  failedCount: number;
+  sender: string;
+  scheduleAt: string | null;
+  failures: Array<{
+    phone: string;
+    providerTo: string;
+    reason: string;
+  }>;
+}
+
 export interface ActivityFeedItem {
   id: string;
   type: "vote" | "comment" | "submission";
@@ -1029,7 +1171,7 @@ export const api = {
       request<StudentEnrollmentReceipt>(`/courses/enrollments/${id}`),
     enrollmentTicketPdf: (id: number) =>
       requestBlob(`/courses/enrollments/${id}/ticket.pdf`),
-    enroll: (id: number) =>
+    enroll: (id: number, data?: CourseEnrollmentPayload) =>
       request<{
         enrolled: boolean;
         enrollmentId: number | null;
@@ -1040,9 +1182,62 @@ export const api = {
         ticketPath: string | null;
         whatsAppRedirectUrl: string | null;
         receiptPath: string | null;
-      }>(`/courses/${id}/enroll`, { method: "POST" }),
+      }>(`/courses/${id}/enroll`, {
+        method: "POST",
+        ...(data ? { body: JSON.stringify(data) } : {}),
+      }),
     like: (id: number) =>
       request<{ liked: boolean; likesCount: number }>(`/courses/${id}/like`, { method: "POST" }),
+  },
+
+  sms: {
+    filters: () =>
+      request<SmsFilterOptionsPayload>("/sms/admin/filters"),
+    overview: () =>
+      request<SmsOverviewPayload>("/sms/admin/overview"),
+    campaigns: (page = 0, pageSize = 20) =>
+      request<{ page: number; pageSize: number; total: number; campaigns: SmsCampaignSummary[] }>(`/sms/admin/campaigns${toQueryString({ page, pageSize })}`),
+    previewRecipients: (data: { audience: SmsAudienceInput; search?: string; limit?: number }) =>
+      request<SmsRecipientPreviewPayload>("/sms/admin/preview", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+    sendCampaign: (data: SmsSendPayload) =>
+      request<SmsSendResult>("/sms/admin/send", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+    providerCredits: () =>
+      request<SmsProviderProxyResponse>("/sms/admin/provider/credits"),
+    providerMessages: (page = 0) =>
+      request<SmsProviderProxyResponse>(`/sms/admin/provider/messages${toQueryString({ page })}`),
+    providerMessagesByDate: (start: string, end: string, page = 0) =>
+      request<SmsProviderProxyResponse>(`/sms/admin/provider/messages/date${toQueryString({ start, end, page })}`),
+    providerMessagesByRecipient: (phoneNumber: string, page = 0) =>
+      request<SmsProviderProxyResponse>(`/sms/admin/provider/messages/recipient${toQueryString({ phoneNumber, page })}`),
+    providerMessageOne: (params: { messageId?: string; id?: string }) =>
+      request<SmsProviderProxyResponse>(`/sms/admin/provider/messages/one${toQueryString(params)}`),
+    providerDeleteMessage: (messageId: string) =>
+      request<SmsProviderProxyResponse>(`/sms/admin/provider/messages/${encodeURIComponent(messageId)}`, {
+        method: "DELETE",
+      }),
+    providerRecipients: (page = 0) =>
+      request<SmsProviderProxyResponse>(`/sms/admin/provider/recipients${toQueryString({ page })}`),
+    providerSenders: () =>
+      request<SmsProviderProxyResponse>("/sms/admin/provider/senders"),
+    providerApprovedSenders: () =>
+      request<SmsProviderProxyResponse>("/sms/admin/provider/senders/approved"),
+    providerPendingSenders: () =>
+      request<SmsProviderProxyResponse>("/sms/admin/provider/senders/pending"),
+    providerCreateSender: (name: string) =>
+      request<SmsProviderProxyResponse>("/sms/admin/provider/senders", {
+        method: "POST",
+        body: JSON.stringify({ name }),
+      }),
+    providerDeleteSender: (senderId: string) =>
+      request<SmsProviderProxyResponse>(`/sms/admin/provider/senders/${encodeURIComponent(senderId)}`, {
+        method: "DELETE",
+      }),
   },
 
   stats: {

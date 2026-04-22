@@ -116,10 +116,14 @@ const EventoTab = lazy(() =>
 const AdminAnalyticsTab = lazy(() =>
   import("@/components/admin/AdminAnalyticsTab").then((module) => ({ default: module.AdminAnalyticsTab })),
 );
+const AdminSmsTab = lazy(() =>
+  import("@/components/admin/AdminSmsTab").then((module) => ({ default: module.AdminSmsTab })),
+);
 
 const tabs = [
   { id: "overview", label: "Visão Geral", icon: BarChart3 },
   { id: "analytics", label: "Cookies & Analytics", icon: Cookie },
+  { id: "sms", label: "SMS", icon: MessageSquare },
   { id: "submissions", label: "Candidaturas", icon: FolderOpen },
   { id: "speakers", label: "Palestrantes", icon: Mic },
   { id: "schedule", label: "Agenda", icon: CalendarDays },
@@ -2270,6 +2274,12 @@ const Admin = () => {
                     onRefresh={() => void loadAnalyticsData()}
                     onExport={() => void handleAnalyticsExport()}
                   />
+                </Suspense>
+              )}
+
+              {activeTab === "sms" && (
+                <Suspense fallback={<AdminPanelFallback label="SMS" />}>
+                  <AdminSmsTab courses={courses} />
                 </Suspense>
               )}
 

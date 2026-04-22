@@ -4,7 +4,7 @@ import { z } from "zod";
 import { prisma } from "../../../shared/prisma";
 import { type Env } from "../../../config/env";
 import { StudentRepository } from "../../auth/infra/student.repository";
-import { LoginUseCase } from "../../auth/use-cases/login";
+import { LoginUseCase, isInvalidCredentialsErrorMessage } from "../../auth/use-cases/login";
 import { authGuard } from "../../auth/http/auth.middleware";
 import { signStudentToken } from "../../auth/utils/jwt";
 import { normalizeStudentProfile } from "../../auth/domain/student-format";
@@ -129,9 +129,11 @@ export async function contestAuthRoutes(app: FastifyInstance, opts: { env?: Env 
         });
 
         if (!result.success || !result.student) {
-          return reply.status(401).send({
+          const errorMessage = result.error || "Número de estudante ou palavra-passe inválidos.";
+          const statusCode = isInvalidCredentialsErrorMessage(errorMessage) ? 401 : 500;
+          return reply.status(statusCode).send({
             success: false,
-            error: result.error || "Número de estudante ou palavra-passe inválidos."
+            error: errorMessage
           });
         }
 

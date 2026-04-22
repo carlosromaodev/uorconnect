@@ -107,6 +107,11 @@ export default function Cursos() {
       return;
     }
 
+    if (course.isPaid) {
+      navigate(`/cursos/${course.id}/inscricao`);
+      return;
+    }
+
     try {
       const result = await api.courses.enroll(course.id);
       setCourses((current) => current.map((item) => item.id === course.id ? { ...item, studentCount: result.studentCount } : item));
@@ -148,23 +153,37 @@ export default function Cursos() {
                 <Users className="h-6 w-6 text-primary" />
                 Top Cursos
               </h2>
-              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-                {topCourses.map((course, index) => (
-                  <div
-                    key={course.id}
-                    className="rounded-2xl border p-5"
-                    style={{
-                      borderColor: withAlpha(course.courseColor, "44"),
-                      background: `linear-gradient(135deg, ${withAlpha(course.accentColor)}, ${withAlpha(course.accentColorSecondary)})`
-                    }}
-                  >
-                    <p className="text-xs md:text-sm font-bold mb-2" style={{ color: course.courseColor }}>Top #{index + 1}</p>
-                    <p className="font-heading text-lg md:text-xl font-bold">{course.name}</p>
-                    <p className="text-sm md:text-base text-muted-foreground mt-2">{course.studentCount} inscritos</p>
-                    <p className="text-sm mt-2" style={{ color: course.courseColor }}>{course.likesCount} curtidas</p>
-                  </div>
-                ))}
-              </div>
+              {topCourses.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-primary/30 bg-primary/5 p-8 text-base text-muted-foreground">
+                  Ainda não existem cursos em destaque.
+                </div>
+              ) : (
+                <div className="flex gap-4 overflow-x-auto pb-2 scrollbar-hide snap-x snap-mandatory">
+                  {topCourses.map((course, index) => (
+                    <motion.div
+                      key={course.id}
+                      initial={{ opacity: 0, scale: 0.96, y: 10 }}
+                      whileInView={{ opacity: 1, scale: 1, y: 0 }}
+                      viewport={{ once: true }}
+                      transition={{ delay: index * 0.05, duration: 0.25 }}
+                      className="snap-start w-[82vw] max-w-[300px] sm:w-[300px] sm:max-w-[300px] lg:w-[330px] lg:max-w-[330px]"
+                    >
+                      <div
+                        className="h-full rounded-2xl border p-4 md:p-5"
+                        style={{
+                          borderColor: withAlpha(course.courseColor, "44"),
+                          background: `linear-gradient(135deg, ${withAlpha(course.accentColor)}, ${withAlpha(course.accentColorSecondary)})`
+                        }}
+                      >
+                        <p className="mb-2 text-xs font-bold md:text-sm" style={{ color: course.courseColor }}>Top #{index + 1}</p>
+                        <p className="safe-break line-clamp-2 font-heading text-base font-bold md:text-lg">{course.name}</p>
+                        <p className="mt-2 text-sm text-muted-foreground">{course.studentCount} inscritos</p>
+                        <p className="mt-1 text-sm" style={{ color: course.courseColor }}>{course.likesCount} curtidas</p>
+                      </div>
+                    </motion.div>
+                  ))}
+                </div>
+              )}
             </section>
 
             <section className="space-y-5">
@@ -177,7 +196,7 @@ export default function Cursos() {
                   Ainda não existem cursos publicados.
                 </div>
               ) : (
-                <div className="grid gap-5 md:grid-cols-2 xl:grid-cols-3">
+                <div className="flex gap-5 overflow-x-auto pb-2 scrollbar-hide snap-x snap-mandatory">
                   {courses.map((course, index) => (
                     (() => {
                       const enrollment = enrollmentsByCourse[course.id];
@@ -191,7 +210,7 @@ export default function Cursos() {
                       viewport={{ once: true }}
                       transition={{ delay: index * 0.06, type: "spring", stiffness: 200 }}
                       whileHover={{ y: -8, transition: { duration: 0.2 } }}
-                      className="h-full"
+                      className="h-full snap-start w-[88vw] max-w-[340px] sm:w-[350px] sm:max-w-[350px] lg:w-[380px] lg:max-w-[380px]"
                     >
                       <FeaturedCourseCard
                         course={course}

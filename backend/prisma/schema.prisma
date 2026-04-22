@@ -63,6 +63,7 @@ model Student {
   analyticsEvents   AnalyticsEvent[]
   consentRecords    ConsentRecord[]
   loginAudits       StudentLoginAudit[]
+  smsRecipients     SmsCampaignRecipient[]
 }
 
 enum StudentLoginOrigin {
@@ -396,6 +397,51 @@ model CourseEnrollment {
   createdAt     DateTime @default(now())
 
   @@unique([studentId, courseId])
+}
+
+model SmsCampaign {
+  id                    Int                    @id @default(autoincrement())
+  title                 String?
+  message               String
+  sender                String
+  audienceType          String
+  audienceFiltersJson   String?
+  totalRecipients       Int                    @default(0)
+  successCount          Int                    @default(0)
+  failedCount           Int                    @default(0)
+  status                String                 @default("PENDING")
+  scheduleAt            DateTime?
+  createdByStudentNumber String
+  createdAt             DateTime               @default(now())
+  sentAt                DateTime?
+  recipients            SmsCampaignRecipient[]
+
+  @@index([createdAt])
+  @@index([status, createdAt])
+}
+
+model SmsCampaignRecipient {
+  id                  Int         @id @default(autoincrement())
+  campaign            SmsCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  campaignId          Int
+  student             Student?    @relation(fields: [studentId], references: [id])
+  studentId           Int?
+  studentNumber       String?
+  recipientName       String?
+  recipientCourse     String?
+  phone               String
+  providerTo          String
+  status              String      @default("QUEUED")
+  providerMessageId   String?
+  providerResponseJson String?
+  errorMessage        String?
+  sentAt              DateTime?
+  createdAt           DateTime    @default(now())
+
+  @@unique([campaignId, phone])
+  @@index([campaignId])
+  @@index([studentId])
+  @@index([status, createdAt])
 }
 
 model PanelTopic {

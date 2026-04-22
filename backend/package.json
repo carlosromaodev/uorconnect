@@ -4,7 +4,7 @@
   "description": "Fastify + Zod API skeleton with Prisma and Vitest",
   "main": "dist/server.js",
   "scripts": {
-    "dev": "tsx watch src/server.ts",
+    "dev": "npm run db:push && tsx watch src/server.ts",
     "build": "tsc --project tsconfig.build.json",
     "start": "node dist/server.js",
     "test": "vitest",
@@ -12,6 +12,7 @@
     "test:watch": "vitest watch",
     "lint": "tsc --noEmit",
     "prisma": "prisma",
+    "db:push": "prisma db push",
     "prisma:prepare:postgres": "node scripts/prepare-prisma-schema.mjs postgresql prisma/schema.deploy.prisma",
     "prisma:generate:postgres": "npm run prisma:prepare:postgres && prisma generate --schema prisma/schema.deploy.prisma",
     "prisma:push:postgres": "npm run prisma:prepare:postgres && prisma db push --schema prisma/schema.deploy.prisma",

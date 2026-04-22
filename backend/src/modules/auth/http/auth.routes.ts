@@ -2,7 +2,7 @@ import { type FastifyInstance, type FastifyRequest, type FastifyReply } from "fa
 import { randomUUID } from "node:crypto";
 import { z } from "zod";
 import { prisma } from "../../../shared/prisma";
-import { LoginUseCase } from "../use-cases/login";
+import { LoginUseCase, isInvalidCredentialsErrorMessage } from "../use-cases/login";
 import { StudentRepository } from "../infra/student.repository";
 import { signStudentToken } from "../utils/jwt";
 import { type Env } from "../../../config/env";
@@ -239,9 +239,11 @@ export async function authRoutes(app: FastifyInstance, opts: { env?: Env } = {})
             token
           });
         }
-        return reply.status(401).send({
+        const errorMessage = result.error || "Número de estudante ou palavra-passe inválidos.";
+        const statusCode = isInvalidCredentialsErrorMessage(errorMessage) ? 401 : 500;
+        return reply.status(statusCode).send({
           success: false,
-          error: result.error || "Número de estudante ou palavra-passe inválidos."
+          error: errorMessage
         });
       } catch (err) {
         request.log.error({ err }, "login failed unexpectedly");

@@ -2,6 +2,13 @@ import { type LoginCredentials, type LoginResponse } from "../domain/student";
 import { StudentRepository } from "../infra/student.repository";
 import { loginSecretaria } from "../infra/secretaria-client";
 
+const INVALID_CREDENTIALS_MESSAGE = "Número de estudante ou palavra-passe inválidos.";
+
+export function isInvalidCredentialsErrorMessage(message?: string) {
+  if (!message) return false;
+  return message.trim().toLowerCase() === INVALID_CREDENTIALS_MESSAGE.toLowerCase();
+}
+
 function normalizeSecretariaError(reason?: string) {
   const normalized = reason?.trim().toLowerCase() ?? "";
 
@@ -17,7 +24,15 @@ function normalizeSecretariaError(reason?: string) {
     || normalized.includes("acesso negado")
     || normalized.includes("não tem acesso")
   ) {
-    return "Número de estudante ou palavra-passe inválidos.";
+    return INVALID_CREDENTIALS_MESSAGE;
+  }
+
+  if (
+    normalized.includes("p2021")
+    || normalized.includes("table `main.student` does not exist")
+    || normalized.includes("tabela `main.student` não existe")
+  ) {
+    return "A base de dados local não está inicializada. Executa `npm run prisma -- db push` na pasta backend e tenta novamente.";
   }
 
   if (

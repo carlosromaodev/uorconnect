@@ -28,7 +28,6 @@ import { syncStudentProfileIfNeeded } from "@/lib/student-profile";
 
 type EnrollmentFormState = {
   fullName: string;
-  email: string;
   studentCourse: string;
   phoneDigits: string;
   paymentPhoneDigits: string;
@@ -41,7 +40,6 @@ type EnrollmentFieldKey = keyof EnrollmentFormState;
 
 const emptyFormState: EnrollmentFormState = {
   fullName: "",
-  email: "",
   studentCourse: "",
   phoneDigits: "",
   paymentPhoneDigits: "",
@@ -83,7 +81,6 @@ function hydrateFromStudent(student: StudentProfile | null) {
 
   return {
     fullName: student.name || "",
-    email: student.email || "",
     studentCourse: getOfficialCourseFieldValue(student.course),
     phoneDigits,
     paymentPhoneDigits: phoneDigits,
@@ -116,7 +113,6 @@ function inputClsEnroll(
 function buildEnrollmentSchema(isPaid: boolean) {
   return z.object({
     fullName: z.string().trim().min(3, "Informa o teu nome completo."),
-    email: z.union([z.literal(""), z.string().trim().email("Usa um email válido.")]),
     studentCourse: z.string().trim().min(2, "Informa o teu curso académico."),
     phoneDigits: z.string().regex(/^\d{9}$/, "Indica um contacto válido com 9 dígitos."),
     paymentPhoneDigits: z.string().trim(),
@@ -217,7 +213,7 @@ export default function CursoInscricao() {
 
   const proofSource = form.paymentProof || toAbsoluteAssetUrl(existingEnrollment?.paymentProofPath);
 
-  const matchesStudentField = (field: "fullName" | "email" | "studentCourse" | "phoneDigits") => {
+  const matchesStudentField = (field: "fullName" | "studentCourse" | "phoneDigits") => {
     if (!student) return false;
 
     if (field === "phoneDigits") {
@@ -225,7 +221,6 @@ export default function CursoInscricao() {
     }
 
     if (field === "fullName") return normalizeText(student.name) === normalizeText(form.fullName) && Boolean(form.fullName);
-    if (field === "email") return normalizeText(student.email) === normalizeText(form.email) && Boolean(form.email);
     return normalizeText(getOfficialCourseFieldValue(student.course)) === normalizeText(getOfficialCourseFieldValue(form.studentCourse)) && Boolean(form.studentCourse);
   };
 
@@ -301,7 +296,6 @@ export default function CursoInscricao() {
 
       const syncedStudent = await syncStudentProfileIfNeeded(student, {
         name: form.fullName,
-        email: form.email || undefined,
         course: normalizedStudentCourse || undefined,
         phone: formatPhone(form.phoneDigits),
       });
@@ -398,7 +392,7 @@ export default function CursoInscricao() {
               <div>
                 <h1 className="font-heading text-3xl font-bold sm:text-4xl">{course.name}</h1>
                 <p className="mt-2 max-w-3xl text-sm leading-7 text-muted-foreground sm:text-base">
-                  O formulário usa auto-preenchimento da conta autenticada, preview controlado do comprovativo e redireciona sempre para o recibo canónico da inscrição.
+                  Confirma os teus dados e conclui a inscrição para abrir o recibo oficial do curso.
                 </p>
               </div>
             </div>
@@ -432,24 +426,15 @@ export default function CursoInscricao() {
           <section className="space-y-6">
             <div className="surface-card space-y-5 p-6">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Dados sincronizados</p>
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Dados do estudante</p>
                 <h2 className="mt-2 text-xl font-semibold">Perfil do estudante</h2>
               </div>
 
-              <div className="responsive-two-col">
-                <div className="space-y-2">
-                  <Label htmlFor="fullName">Nome completo</Label>
-                  <Input id="fullName" value={form.fullName} onChange={(event) => updateField("fullName", event.target.value)} className={inputClsEnroll(errors, "fullName", form.fullName)} />
-                  <AutoFillBadge visible={matchesStudentField("fullName")} />
-                  {errors.fullName ? <p className="field-error-msg"><span className="inline-block h-3 w-3 rounded-full bg-destructive/20">·</span>{errors.fullName}</p> : null}
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="email">Email</Label>
-                  <Input id="email" type="email" value={form.email} onChange={(event) => updateField("email", event.target.value)} className={inputClsEnroll(errors, "email", form.email)} />
-                  <AutoFillBadge visible={matchesStudentField("email")} />
-                  {errors.email ? <p className="field-error-msg"><span className="inline-block h-3 w-3 rounded-full bg-destructive/20">·</span>{errors.email}</p> : null}
-                </div>
+              <div className="space-y-2">
+                <Label htmlFor="fullName">Nome completo</Label>
+                <Input id="fullName" value={form.fullName} onChange={(event) => updateField("fullName", event.target.value)} className={inputClsEnroll(errors, "fullName", form.fullName)} />
+                <AutoFillBadge visible={matchesStudentField("fullName")} />
+                {errors.fullName ? <p className="field-error-msg"><span className="inline-block h-3 w-3 rounded-full bg-destructive/20">·</span>{errors.fullName}</p> : null}
               </div>
 
               <div className="responsive-two-col">
@@ -476,8 +461,8 @@ export default function CursoInscricao() {
 
             <div className="surface-card space-y-5 p-6">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Comprovativo e contacto de validação</p>
-                <h2 className="mt-2 text-xl font-semibold">PDFs e imagens em viewport controlado</h2>
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Pagamento e comprovativo</p>
+                <h2 className="mt-2 text-xl font-semibold">Comprovativo do pagamento</h2>
               </div>
 
               {course.isPaid ? (
@@ -491,7 +476,7 @@ export default function CursoInscricao() {
                   <label className="grid cursor-pointer gap-4 rounded-3xl border border-dashed border-primary/30 bg-primary/[0.03] p-5 transition-colors hover:border-primary/50">
                     <div className="min-w-0">
                       <p className="text-sm font-semibold">{form.paymentProofName || "Selecionar PDF ou imagem do comprovativo"}</p>
-                      <p className="mt-1 text-xs leading-6 text-muted-foreground">O preview é contido e não deixa o texto do PDF quebrar o layout da página.</p>
+                      <p className="mt-1 text-xs leading-6 text-muted-foreground">Aceitamos PDF, PNG, JPG e WEBP (até 5 MB).</p>
                     </div>
                     <div className="inline-flex h-11 w-fit items-center justify-center rounded-xl bg-primary/10 px-4 text-sm font-semibold text-primary">
                       <Paperclip className="mr-2 h-4 w-4" />
@@ -508,7 +493,7 @@ export default function CursoInscricao() {
 
                   <ResponsiveDocumentViewer
                     title="Comprovativo anexado"
-                    description="Preview com altura máxima e scroll interno para manter a composição estável em telas pequenas."
+                    description="Pré-visualização do comprovativo anexado."
                     source={proofSource}
                     fileName={form.paymentProofName || (existingEnrollment?.paymentProofPath ? "Comprovativo atual" : null)}
                   />

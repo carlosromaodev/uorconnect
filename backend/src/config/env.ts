@@ -11,7 +11,10 @@ const envSchema = z.object({
   PUBLIC_APP_URL: z.string().url().optional(),
   ANALYTICS_RETENTION_DAYS: z.coerce.number().int().min(7).max(730).default(180),
   INVOICE_GENERATOR_API_URL: z.string().url().default("https://invoice-generator.com"),
-  INVOICE_GENERATOR_API_KEY: z.string().min(1).optional()
+  INVOICE_GENERATOR_API_KEY: z.string().min(1).optional(),
+  OMBALA_API_BASE_URL: z.string().url().default("https://api.useombala.ao"),
+  OMBALA_API_TOKEN: z.string().min(1).optional(),
+  OMBALA_SMS_DEFAULT_SENDER: z.string().min(3).max(16).default("UOR CONNECT")
 });
 
 export type Env = z.infer<typeof envSchema>;
