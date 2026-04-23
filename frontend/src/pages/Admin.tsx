@@ -1,4 +1,4 @@
-import { type ReactNode, Suspense, lazy, useEffect, useMemo, useRef, useState } from "react";
+import { type ReactNode, Suspense, lazy, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import type { LucideIcon } from "lucide-react";
 import {
@@ -21,6 +21,7 @@ import {
   FolderOpen,
   GraduationCap,
   HelpCircle,
+  KeyRound,
   Palette,
   Loader2,
   MapPin,
@@ -86,7 +87,7 @@ import {
   type AgendaItem,
   type AgendaLiveState,
   type Course,
-  type CourseEnrollmentsPayload,
+  type CourseEnrollmentsPagedPayload,
   type CourseInput,
   type FaqInput,
   type FaqItem,
@@ -97,6 +98,7 @@ import {
   type GuideTipInput,
   type PanelTopic,
   type PanelTopicInput,
+  type PdfJobStatus,
   type Speaker,
   type SpeakerInput,
   type SubmissionConfig,
@@ -119,11 +121,15 @@ const AdminAnalyticsTab = lazy(() =>
 const AdminSmsTab = lazy(() =>
   import("@/components/admin/AdminSmsTab").then((module) => ({ default: module.AdminSmsTab })),
 );
+const AdminJuryTab = lazy(() =>
+  import("@/components/admin/AdminJuryTab").then((module) => ({ default: module.AdminJuryTab })),
+);
 
 const tabs = [
   { id: "overview", label: "Visão Geral", icon: BarChart3 },
   { id: "analytics", label: "Cookies & Analytics", icon: Cookie },
   { id: "sms", label: "SMS", icon: MessageSquare },
+  { id: "jury", label: "Júri", icon: KeyRound },
   { id: "submissions", label: "Candidaturas", icon: FolderOpen },
   { id: "speakers", label: "Palestrantes", icon: Mic },
   { id: "schedule", label: "Agenda", icon: CalendarDays },
@@ -140,6 +146,32 @@ const tabs = [
 ] as const;
 
 type TabId = typeof tabs[number]["id"];
+type AdminDataSection =
+  | "base"
+  | "students"
+  | "speakers"
+  | "agenda"
+  | "liveConfig"
+  | "moderation"
+  | "faq"
+  | "guide"
+  | "courses"
+  | "homeContent"
+  | "security";
+
+const defaultLoadedSections: Record<AdminDataSection, boolean> = {
+  base: false,
+  students: false,
+  speakers: false,
+  agenda: false,
+  liveConfig: false,
+  moderation: false,
+  faq: false,
+  guide: false,
+  courses: false,
+  homeContent: false,
+  security: false,
+};
 
 type AdminSubmission = {
   id: number;
@@ -205,6 +237,31 @@ function downloadBlob(blob: Blob, fileName: string) {
   anchor.click();
   anchor.remove();
   URL.revokeObjectURL(blobUrl);
+}
+
+async function waitForPdfJobReady(
+  fetchStatus: () => Promise<PdfJobStatus>,
+  options: { timeoutMs?: number; intervalMs?: number } = {}
+) {
+  const timeoutMs = options.timeoutMs ?? 120_000;
+  const intervalMs = options.intervalMs ?? 1_200;
+  const startedAt = Date.now();
+
+  while (Date.now() - startedAt < timeoutMs) {
+    const status = await fetchStatus();
+
+    if (status.status === "completed") {
+      return status;
+    }
+
+    if (status.status === "failed") {
+      throw new Error(status.error || "A geração do PDF falhou.");
+    }
+
+    await new Promise((resolve) => globalThis.setTimeout(resolve, intervalMs));
+  }
+
+  throw new Error("O servidor demorou demasiado a gerar o PDF.");
 }
 
 const defaultSpeakerForm: SpeakerInput = {
@@ -574,6 +631,8 @@ const Admin = () => {
   const tabsScrollRef = useRef<HTMLDivElement>(null);
   const [loading, setLoading] = useState(true);
   const [accessState, setAccessState] = useState<"checking" | "allowed" | "unauthenticated" | "forbidden">("checking");
+  const [loadedSections, setLoadedSections] = useState<Record<AdminDataSection, boolean>>(defaultLoadedSections);
+  const [loadingSections, setLoadingSections] = useState<Record<AdminDataSection, boolean>>(defaultLoadedSections);
   const [sessionStudentNumber, setSessionStudentNumber] = useState<string | null>(null);
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [exportingReport, setExportingReport] = useState(false);
@@ -583,11 +642,17 @@ const Admin = () => {
   const [submissionSortBy, setSubmissionSortBy] = useState<"recentes" | "nome" | "inscricao" | "curso">("recentes");
   const [submissionPageSize, setSubmissionPageSize] = useState(10);
   const [submissionPage, setSubmissionPage] = useState(1);
+  const [submissionsTotal, setSubmissionsTotal] = useState(0);
+  const [submissionsTotalPages, setSubmissionsTotalPages] = useState(1);
+  const [loadingSubmissionsList, setLoadingSubmissionsList] = useState(false);
   const [studentSearchTerm, setStudentSearchTerm] = useState("");
   const [studentCourseFilter, setStudentCourseFilter] = useState("todos");
   const [studentSortBy, setStudentSortBy] = useState<"interacoes" | "nome" | "numero" | "curso">("interacoes");
   const [studentPageSize, setStudentPageSize] = useState(10);
   const [studentPage, setStudentPage] = useState(1);
+  const [studentsTotal, setStudentsTotal] = useState(0);
+  const [studentsTotalPages, setStudentsTotalPages] = useState(1);
+  const [loadingStudentsList, setLoadingStudentsList] = useState(false);
   const [groupStudentsByCourse, setGroupStudentsByCourse] = useState(true);
   const [moderationSearchTerm, setModerationSearchTerm] = useState("");
   const [moderationPageSize, setModerationPageSize] = useState(10);
@@ -600,9 +665,11 @@ const Admin = () => {
   const [analyticsFilters, setAnalyticsFilters] = useState<AnalyticsFilterInput>(defaultAnalyticsFilters);
 
   const [submissions, setSubmissions] = useState<AdminSubmission[]>([]);
+  const [submissionListRows, setSubmissionListRows] = useState<AdminSubmission[]>([]);
   const [submissionBannerDrafts, setSubmissionBannerDrafts] = useState<Record<number, string | null | undefined>>({});
   const [submissionConfig, setSubmissionConfig] = useState<Omit<SubmissionConfig, "key" | "createdAt" | "updatedAt">>(defaultSubmissionConfigForm);
   const [students, setStudents] = useState<StudentWithStats[]>([]);
+  const [studentListRows, setStudentListRows] = useState<StudentWithStats[]>([]);
   const [authorizedAdminStudents, setAuthorizedAdminStudents] = useState<AdminAuthorizedStudent[]>([]);
   const [recentLogins, setRecentLogins] = useState<StudentProfile[]>([]);
   const [speakers, setSpeakers] = useState<Speaker[]>([]);
@@ -615,6 +682,14 @@ const Admin = () => {
   const [liveConfigForm, setLiveConfigForm] = useState<AgendaLiveConfigInput>(defaultLiveConfigForm);
   const [voteProjects, setVoteProjects] = useState<VoteProjectSummary[]>([]);
   const [voteEntries, setVoteEntries] = useState<VoteEntry[]>([]);
+  const [votesProjectsPage, setVotesProjectsPage] = useState(1);
+  const [votesProjectsPageSize] = useState(30);
+  const [votesProjectsTotal, setVotesProjectsTotal] = useState(0);
+  const [votesProjectsTotalPages, setVotesProjectsTotalPages] = useState(1);
+  const [votesEntriesPage, setVotesEntriesPage] = useState(1);
+  const [votesEntriesPageSize] = useState(80);
+  const [votesEntriesTotal, setVotesEntriesTotal] = useState(0);
+  const [votesEntriesTotalPages, setVotesEntriesTotalPages] = useState(1);
   const [votesUpdatedAt, setVotesUpdatedAt] = useState<string | null>(null);
   const [projectComments, setProjectComments] = useState<AdminModerationProjectComment[]>([]);
   const [liveChatMessages, setLiveChatMessages] = useState<AdminModerationLiveChatMessage[]>([]);
@@ -627,7 +702,7 @@ const Admin = () => {
   const [isRemovingStudent, setIsRemovingStudent] = useState(false);
   const [submissionPendingRemoval, setSubmissionPendingRemoval] = useState<AdminSubmission | null>(null);
   const [isRemovingSubmission, setIsRemovingSubmission] = useState(false);
-  const [courseEnrollments, setCourseEnrollments] = useState<Record<number, CourseEnrollmentsPayload>>({});
+  const [courseEnrollments, setCourseEnrollments] = useState<Record<number, CourseEnrollmentsPagedPayload>>({});
   const [expandedCourseId, setExpandedCourseId] = useState<number | null>(null);
   const [loadingCourseId, setLoadingCourseId] = useState<number | null>(null);
   const [exportingCourseId, setExportingCourseId] = useState<number | null>(null);
@@ -651,10 +726,87 @@ const Admin = () => {
   const [panelTopicForm, setPanelTopicForm] = useState<PanelTopicInput>(defaultPanelTopicForm);
   const [socialConfigForm, setSocialConfigForm] = useState<HomeSocialConfigInput>(defaultSocialConfigForm);
   const [authorizedStudentNumber, setAuthorizedStudentNumber] = useState("");
+  const deferredSubmissionSearch = useDeferredValue(searchTerm);
+  const deferredStudentSearch = useDeferredValue(studentSearchTerm);
+  const deferredModerationSearch = useDeferredValue(moderationSearchTerm);
+
+  const mapSubmissionToAdmin = (
+    submission: Awaited<ReturnType<typeof api.submissions.listDetailedPaged>>["items"][number]
+  ): AdminSubmission => ({
+    id: submission.id,
+    slug: submission.slug,
+    detailPath: submission.detailPath,
+    referenceCode: submission.referenceCode,
+    nome: submission.name,
+    descricao: submission.description,
+    tipo: mapSubmissionType(submission.type),
+    area: submission.area ?? "Geral",
+    curso: submission.course ?? "Sem curso",
+    equipa: submission.members ?? "",
+    responsavel: submission.leaderName ?? "Responsável não informado",
+    telefone: submission.leaderPhone ?? "",
+    necessidades: submission.needs ?? [],
+    observacoes: submission.observations ?? "",
+    status: mapSubmissionStatus(submission.status),
+    data: submission.createdAt ?? "",
+    primaryColor: submission.primaryColor,
+    secondaryColor: submission.secondaryColor,
+    bannerUrl: submission.bannerUrl ?? null,
+    isWinner: submission.isWinner,
+    canVote: submission.canVote,
+  });
+
+  const submissionStatusToApi = (value: string): "PENDING" | "APPROVED" | "REJECTED" | undefined => {
+    if (value === "pendente") return "PENDING";
+    if (value === "aprovado") return "APPROVED";
+    if (value === "recusado") return "REJECTED";
+    return undefined;
+  };
+
+  const submissionTypeToApi = (value: string): "PROJECT" | "BUSINESS" | "PRODUCT" | undefined => {
+    if (value === "projeto") return "PROJECT";
+    if (value === "negocio") return "BUSINESS";
+    if (value === "produto") return "PRODUCT";
+    return undefined;
+  };
+
+  const submissionSortToApi = (
+    value: typeof submissionSortBy
+  ): "created_desc" | "name_asc" | "reference_asc" | "course_asc" => {
+    if (value === "nome") return "name_asc";
+    if (value === "inscricao") return "reference_asc";
+    if (value === "curso") return "course_asc";
+    return "created_desc";
+  };
+
+  const studentSortToApi = (
+    value: typeof studentSortBy
+  ): "interactions_desc" | "name_asc" | "number_asc" | "course_asc" => {
+    if (value === "nome") return "name_asc";
+    if (value === "numero") return "number_asc";
+    if (value === "curso") return "course_asc";
+    return "interactions_desc";
+  };
 
   const applyVoteSnapshot = (
-    interactionData: Awaited<ReturnType<typeof api.interactions.adminVotes>>,
-    submissionList: AdminSubmission[]
+    interactionData: {
+      projects: Array<{ id: number; name: string; type: string; votes: number; comments: number; averageRating: number }>;
+      votes: Array<{
+        id: number;
+        studentId: number;
+        studentNumber: string;
+        studentName: string | null;
+        studentEmail: string | null;
+        submissionId: number;
+        submissionName: string;
+        createdAt: string;
+      }>;
+    },
+    submissionList: AdminSubmission[],
+    pagination?: {
+      projects: { page: number; total: number; totalPages: number };
+      votes: { page: number; total: number; totalPages: number };
+    }
   ) => {
     const submissionStatusMap = new Map(submissionList.map((item) => [item.id, item.status]));
     const submissionTeamMap = new Map(submissionList.map((item) => [item.id, item.equipa]));
@@ -683,7 +835,217 @@ const Admin = () => {
         data: vote.createdAt,
       }))
     );
+    if (pagination) {
+      setVotesProjectsPage(pagination.projects.page);
+      setVotesProjectsTotal(pagination.projects.total);
+      setVotesProjectsTotalPages(pagination.projects.totalPages);
+      setVotesEntriesPage(pagination.votes.page);
+      setVotesEntriesTotal(pagination.votes.total);
+      setVotesEntriesTotalPages(pagination.votes.totalPages);
+    }
     setVotesUpdatedAt(new Date().toISOString());
+  };
+
+  const markSectionLoaded = (section: AdminDataSection) => {
+    setLoadedSections((current) => ({ ...current, [section]: true }));
+  };
+
+  const setSectionLoading = (section: AdminDataSection, loadingState: boolean) => {
+    setLoadingSections((current) => ({ ...current, [section]: loadingState }));
+  };
+
+  const resetLoadedSections = () => {
+    setLoadedSections(defaultLoadedSections);
+    setLoadingSections(defaultLoadedSections);
+  };
+
+  const loadSection = async (section: AdminDataSection, options?: { force?: boolean }) => {
+    if (!options?.force && (loadedSections[section] || loadingSections[section])) {
+      return;
+    }
+
+    setSectionLoading(section, true);
+
+    try {
+      if (section === "security") {
+        const securityOverview = await api.students.securityOverview();
+        setAuthorizedAdminStudents(securityOverview.authorizedStudents);
+        setRecentLogins(securityOverview.recentLogins);
+        markSectionLoaded(section);
+        return;
+      }
+
+      if (section === "base") {
+        const results = await Promise.allSettled([
+          api.submissions.listDetailedPaged({ page: 1, limit: 180, sort: "created_desc" }),
+          api.submissions.config(),
+          api.interactions.adminVotesPaged({ projectsPage: 1, projectsLimit: votesProjectsPageSize, votesPage: 1, votesLimit: votesEntriesPageSize }),
+        ]);
+
+        const [submissionResult, submissionConfigResult, interactionResult] = results;
+        const submissionList = submissionResult.status === "fulfilled" ? submissionResult.value.items : [];
+        const config = submissionConfigResult.status === "fulfilled" ? submissionConfigResult.value : null;
+        const interactionData = interactionResult.status === "fulfilled"
+          ? interactionResult.value
+          : null;
+
+        if (submissionResult.status === "fulfilled" && submissionResult.value.total > submissionResult.value.items.length) {
+          toast.info(`A mostrar ${submissionResult.value.items.length} de ${submissionResult.value.total} candidaturas para manter o painel fluido.`);
+        }
+
+        if (interactionResult.status === "fulfilled" && interactionResult.value.votes.total > interactionResult.value.votes.items.length) {
+          toast.info(`A mostrar os ${interactionResult.value.votes.items.length} votos mais recentes para reduzir carga em picos.`);
+        }
+
+        if (results.some((result) => result.status === "rejected")) {
+          toast.warning("Alguns blocos da administração falharam ao carregar. O resto do painel foi mantido.");
+        }
+
+        const mappedSubmissions = submissionList.map((submission) => mapSubmissionToAdmin(submission));
+
+        setSubmissions(mappedSubmissions);
+        setSubmissionListRows(mappedSubmissions);
+        setSubmissionsTotal(
+          submissionResult.status === "fulfilled"
+            ? submissionResult.value.total
+            : mappedSubmissions.length
+        );
+        setSubmissionsTotalPages(
+          submissionResult.status === "fulfilled"
+            ? submissionResult.value.totalPages
+            : 1
+        );
+        setSubmissionBannerDrafts(
+          mappedSubmissions.reduce<Record<number, string | null>>((acc, item) => {
+            acc[item.id] = item.bannerUrl ?? null;
+            return acc;
+          }, {})
+        );
+
+        if (config) {
+          setSubmissionConfig({
+            isOpen: config.isOpen,
+            iban: config.iban,
+            accountName: config.accountName,
+            paymentAmount: config.paymentAmount,
+            paymentInstructions: config.paymentInstructions,
+            projectCommunityUrl: config.projectCommunityUrl,
+            businessCommunityUrl: config.businessCommunityUrl,
+            productCommunityUrl: config.productCommunityUrl,
+          });
+        }
+
+        applyVoteSnapshot(
+          {
+            projects: interactionData?.projects.items ?? [],
+            votes: interactionData?.votes.items ?? [],
+          },
+          mappedSubmissions,
+          interactionData
+            ? {
+              projects: {
+                page: interactionData.projects.page,
+                total: interactionData.projects.total,
+                totalPages: interactionData.projects.totalPages,
+              },
+              votes: {
+                page: interactionData.votes.page,
+                total: interactionData.votes.total,
+                totalPages: interactionData.votes.totalPages,
+              },
+            }
+            : undefined
+        );
+        const winner = submissionList.find((submission) => submission.isWinner);
+        setSelectedWinners((current) => ({ ...current, projectWinner: winner?.id ?? null }));
+        markSectionLoaded(section);
+        return;
+      }
+
+      if (section === "students") {
+        const payload = await api.students.listPaged({ page: 1, limit: 200, sort: "created_desc" });
+        setStudents(payload.items);
+        setStudentListRows(payload.items);
+        setStudentsTotal(payload.total);
+        setStudentsTotalPages(payload.totalPages);
+        if (payload.total > payload.items.length) {
+          toast.info(`A mostrar ${payload.items.length} de ${payload.total} estudantes para garantir rapidez no painel.`);
+        }
+        markSectionLoaded(section);
+        return;
+      }
+
+      if (section === "speakers") {
+        setSpeakers(await api.speakers.list());
+        markSectionLoaded(section);
+        return;
+      }
+
+      if (section === "agenda") {
+        const [agendaList, live] = await Promise.all([api.agenda.list(), api.agenda.live()]);
+        setSchedule(agendaList);
+        setLiveState(live);
+        markSectionLoaded(section);
+        return;
+      }
+
+      if (section === "liveConfig") {
+        const liveConfig = await api.agenda.liveConfig();
+        setLiveConfigForm({
+          mode: liveConfig.mode,
+          current: liveConfig.current ?? defaultLiveConfigForm.current
+        });
+        markSectionLoaded(section);
+        return;
+      }
+
+      if (section === "moderation") {
+        const moderationData = await api.interactions.adminModeration();
+        setProjectComments(moderationData.projectComments);
+        setLiveChatMessages(moderationData.liveChatMessages);
+        markSectionLoaded(section);
+        return;
+      }
+
+      if (section === "faq") {
+        setFaqItems(await api.faq.list(true));
+        markSectionLoaded(section);
+        return;
+      }
+
+      if (section === "guide") {
+        setGuideContent(await api.guide.content(true));
+        markSectionLoaded(section);
+        return;
+      }
+
+      if (section === "courses") {
+        const courseData = await api.courses.list(true);
+        setCourses(courseData.courses);
+        markSectionLoaded(section);
+        return;
+      }
+
+      if (section === "homeContent") {
+        const homepage = await api.homeContent.list(true);
+        setPanelTopics(homepage.panelTopics);
+        setSocialConfigForm(toSocialConfigForm(homepage.socialConfig));
+        markSectionLoaded(section);
+      }
+    } catch (error) {
+      if (isAuthError(error)) {
+        setToken(null);
+        setAccessState("unauthenticated");
+        toast.warning("Inicia sessão com a conta autorizada para abrir a área administrativa.");
+      } else if (isForbiddenError(error)) {
+        setAccessState("forbidden");
+        toast.error("Acesso negado à área administrativa.");
+      } else {
+        toast.error(error instanceof Error ? error.message : "Falha ao carregar dados da administração");
+      }
+    } finally {
+      setSectionLoading(section, false);
+    }
   };
 
   const loadAdminData = async () => {
@@ -695,149 +1057,29 @@ const Admin = () => {
 
     setAccessState("checking");
     setLoading(true);
+    resetLoadedSections();
     try {
       const session = await api.interactions.me();
       const student = session.student;
+      const jury = (session as any).jury as { id: number; name: string; phone: string } | null | undefined;
 
-      if (!student) {
+      if (!student && !jury) {
         setToken(null);
         setAccessState("unauthenticated");
         return;
       }
 
-      setSessionStudentNumber(student.studentNumber);
+      if (student) {
+        setSessionStudentNumber(student.studentNumber);
+      } else if (jury) {
+        setSessionStudentNumber(`Júri: ${jury.name}`);
+      }
 
-      const securityOverview = await api.students.securityOverview();
-      setAuthorizedAdminStudents(securityOverview.authorizedStudents);
-      setRecentLogins(securityOverview.recentLogins);
       setAccessState("allowed");
-
-      const results = await Promise.allSettled([
-        api.submissions.listDetailed(),
-        api.submissions.config(),
-        api.students.list(),
-        api.speakers.list(),
-        api.agenda.list(),
-        api.interactions.adminVotes(),
-        api.interactions.adminModeration(),
-        api.faq.list(true),
-        api.guide.content(true),
-        api.courses.list(true),
-        api.homeContent.list(true),
-        api.agenda.live(),
-        api.agenda.liveConfig(),
+      await Promise.all([
+        loadSection("security", { force: true }),
+        loadSection("base", { force: true }),
       ]);
-
-      const [
-        submissionResult,
-        submissionConfigResult,
-        studentResult,
-        speakerResult,
-        agendaResult,
-        interactionResult,
-        moderationResult,
-        faqResult,
-        guideResult,
-        courseResult,
-        homeContentResult,
-        liveResult,
-        liveConfigResult,
-      ] = results;
-
-      const submissionList = submissionResult.status === "fulfilled" ? submissionResult.value : [];
-      const config = submissionConfigResult.status === "fulfilled" ? submissionConfigResult.value : null;
-      const studentList = studentResult.status === "fulfilled" ? studentResult.value : [];
-      const speakerList = speakerResult.status === "fulfilled" ? speakerResult.value : [];
-      const agendaList = agendaResult.status === "fulfilled" ? agendaResult.value : [];
-      const interactionData = interactionResult.status === "fulfilled"
-        ? interactionResult.value
-        : { projects: [], votes: [] };
-      const moderationData = moderationResult.status === "fulfilled"
-        ? moderationResult.value
-        : { projectComments: [], liveChatMessages: [] };
-      const faqList = faqResult.status === "fulfilled" ? faqResult.value : [];
-      const guide = guideResult.status === "fulfilled"
-        ? guideResult.value
-        : { steps: [], tips: [], venues: [] };
-      const courseData = courseResult.status === "fulfilled"
-        ? courseResult.value
-        : { courses: [], topCourses: [], preview: [] };
-      const homepage = homeContentResult.status === "fulfilled"
-        ? homeContentResult.value
-        : { courses: [], panelTopics: [], socialConfig: defaultSocialConfigForm };
-      const live = liveResult.status === "fulfilled"
-        ? liveResult.value
-        : { current: null, next: null, mode: "AGENDA", source: "agenda" };
-      const liveConfig = liveConfigResult.status === "fulfilled"
-        ? liveConfigResult.value
-        : defaultLiveConfigForm;
-
-      if (results.some((result) => result.status === "rejected")) {
-        toast.warning("Alguns blocos da administração falharam ao carregar. O resto do painel foi mantido.");
-      }
-
-      const mappedSubmissions = submissionList.map((submission) => ({
-        id: submission.id,
-        slug: submission.slug,
-        detailPath: submission.detailPath,
-        referenceCode: submission.referenceCode,
-        nome: submission.name,
-        descricao: submission.description,
-        tipo: mapSubmissionType(submission.type),
-        area: submission.area ?? "Geral",
-        curso: submission.course ?? "Sem curso",
-        equipa: submission.members ?? "",
-        responsavel: submission.leaderName ?? "Responsável não informado",
-        telefone: submission.leaderPhone ?? "",
-        necessidades: submission.needs ?? [],
-        observacoes: submission.observations ?? "",
-        status: mapSubmissionStatus(submission.status),
-        data: submission.createdAt ?? "",
-        primaryColor: submission.primaryColor,
-        secondaryColor: submission.secondaryColor,
-        bannerUrl: submission.bannerUrl ?? null,
-        isWinner: submission.isWinner,
-        canVote: submission.canVote,
-      }));
-      setSubmissions(mappedSubmissions);
-      setSubmissionBannerDrafts(
-        mappedSubmissions.reduce<Record<number, string | null>>((acc, item) => {
-          acc[item.id] = item.bannerUrl ?? null;
-          return acc;
-        }, {})
-      );
-      if (config) {
-        setSubmissionConfig({
-          isOpen: config.isOpen,
-          iban: config.iban,
-          accountName: config.accountName,
-          paymentAmount: config.paymentAmount,
-          paymentInstructions: config.paymentInstructions,
-          projectCommunityUrl: config.projectCommunityUrl,
-          businessCommunityUrl: config.businessCommunityUrl,
-          productCommunityUrl: config.productCommunityUrl,
-        });
-      }
-      setStudents(studentList);
-      setSpeakers(speakerList);
-      setSchedule(agendaList);
-      setFaqItems(faqList);
-      setGuideContent(guide);
-      setCourses(courseData.courses);
-      setPanelTopics(homepage.panelTopics);
-      setSocialConfigForm(toSocialConfigForm(homepage.socialConfig));
-      setLiveState(live);
-      setLiveConfigForm({
-        mode: liveConfig.mode,
-        current: liveConfig.current ?? defaultLiveConfigForm.current
-      });
-      setProjectComments(moderationData.projectComments);
-      setLiveChatMessages(moderationData.liveChatMessages);
-
-      applyVoteSnapshot(interactionData, mappedSubmissions);
-
-      const winner = submissionList.find((submission) => submission.isWinner);
-      setSelectedWinners((current) => ({ ...current, projectWinner: winner?.id ?? null }));
     } catch (error) {
       if (isAuthError(error)) {
         setToken(null);
@@ -934,29 +1176,251 @@ const Admin = () => {
   useEffect(() => {
     if (accessState !== "allowed") return;
 
+    const sectionsByTab: Record<TabId, AdminDataSection[]> = {
+      overview: ["base"],
+      analytics: [],
+      sms: ["courses"],
+      jury: [],
+      submissions: ["base"],
+      speakers: ["speakers"],
+      schedule: ["agenda"],
+      guide: ["guide"],
+      courses: ["courses"],
+      panels: ["homeContent"],
+      evento: ["homeContent"],
+      faq: ["faq"],
+      live: ["agenda", "liveConfig"],
+      votes: ["base", "moderation"],
+      security: ["security"],
+      students: ["students"],
+      winners: ["base", "students"],
+    };
+
+    for (const section of sectionsByTab[activeTab] ?? []) {
+      void loadSection(section);
+    }
+  }, [accessState, activeTab, loadedSections, loadingSections]);
+
+  useEffect(() => {
+    if (accessState !== "allowed") return;
+
+    const shouldPollLive = activeTab === "overview" || activeTab === "schedule" || activeTab === "live";
+    const shouldPollVotes = activeTab === "overview" || activeTab === "votes" || activeTab === "winners";
+
+    if (!shouldPollLive && !shouldPollVotes) return;
+
+    const refresh = () => {
+      const jobs: Promise<unknown>[] = [];
+
+      if (shouldPollLive) {
+        jobs.push(
+          Promise.allSettled([api.agenda.live(), api.agenda.list()]).then(([liveResult, agendaResult]) => {
+            if (liveResult.status === "fulfilled") {
+              setLiveState(liveResult.value);
+            }
+
+            if (agendaResult.status === "fulfilled" && (activeTab === "schedule" || activeTab === "live")) {
+              setSchedule(agendaResult.value);
+            }
+          })
+        );
+      }
+
+      if (shouldPollVotes && loadedSections.base) {
+        const projectsPage = activeTab === "votes" ? votesProjectsPage : 1;
+        const votesPage = activeTab === "votes" ? votesEntriesPage : 1;
+        const projectsLimit = activeTab === "votes" ? votesProjectsPageSize : 12;
+        const votesLimit = activeTab === "votes" ? votesEntriesPageSize : 40;
+
+        jobs.push(
+          api.interactions.adminVotesPaged({ projectsPage, projectsLimit, votesPage, votesLimit }).then((snapshot) => {
+            applyVoteSnapshot(
+              {
+                projects: snapshot.projects.items,
+                votes: snapshot.votes.items,
+              },
+              submissions,
+              activeTab === "votes"
+                ? {
+                  projects: {
+                    page: snapshot.projects.page,
+                    total: snapshot.projects.total,
+                    totalPages: snapshot.projects.totalPages,
+                  },
+                  votes: {
+                    page: snapshot.votes.page,
+                    total: snapshot.votes.total,
+                    totalPages: snapshot.votes.totalPages,
+                  },
+                }
+                : undefined
+            );
+          }).catch(() => undefined)
+        );
+      }
+
+      if (activeTab === "votes" && loadedSections.moderation) {
+        jobs.push(
+          api.interactions.adminModeration().then((moderationData) => {
+            setProjectComments(moderationData.projectComments);
+            setLiveChatMessages(moderationData.liveChatMessages);
+          }).catch(() => undefined)
+        );
+      }
+
+      return Promise.all(jobs);
+    };
+
+    void refresh();
     const interval = window.setInterval(() => {
-      Promise.allSettled([api.agenda.live(), api.agenda.list(), api.interactions.adminVotes()]).then(([liveResult, agendaResult, votesResult]) => {
-        if (liveResult.status === "fulfilled") {
-          setLiveState(liveResult.value);
-        }
-
-        if (agendaResult.status === "fulfilled") {
-          setSchedule(agendaResult.value);
-        }
-
-        if (votesResult.status === "fulfilled") {
-          applyVoteSnapshot(votesResult.value, submissions);
-        }
-      });
+      void refresh();
     }, 30000);
 
     return () => window.clearInterval(interval);
-  }, [accessState, submissions]);
+  }, [
+    accessState,
+    activeTab,
+    loadedSections.base,
+    loadedSections.moderation,
+    submissions,
+    votesEntriesPage,
+    votesEntriesPageSize,
+    votesProjectsPage,
+    votesProjectsPageSize,
+  ]);
 
   useEffect(() => {
     if (accessState !== "allowed" || activeTab !== "analytics") return;
     void loadAnalyticsData();
   }, [accessState, activeTab, analyticsFilters]);
+
+  useEffect(() => {
+    if (accessState !== "allowed" || activeTab !== "submissions" || !loadedSections.base) return;
+
+    let cancelled = false;
+
+    const loadSubmissionsPage = async () => {
+      try {
+        setLoadingSubmissionsList(true);
+        const payload = await api.submissions.listDetailedPaged({
+          page: submissionPage,
+          limit: submissionPageSize,
+          search: deferredSubmissionSearch.trim() || undefined,
+          status: submissionStatusToApi(filterStatus),
+          type: submissionTypeToApi(filterTipo),
+          sort: submissionSortToApi(submissionSortBy),
+        });
+
+        if (cancelled) return;
+
+        const mapped = payload.items.map((item) => mapSubmissionToAdmin(item));
+        setSubmissionListRows(mapped);
+        setSubmissionsTotal(payload.total);
+        setSubmissionsTotalPages(payload.totalPages);
+        setSubmissionPage(payload.page);
+        setSubmissionBannerDrafts((current) => {
+          const next = { ...current };
+          for (const item of mapped) {
+            if (next[item.id] === undefined) {
+              next[item.id] = item.bannerUrl ?? null;
+            }
+          }
+          return next;
+        });
+      } catch (error) {
+        if (cancelled) return;
+        if (isAuthError(error)) {
+          setToken(null);
+          setAccessState("unauthenticated");
+          toast.warning("Inicia sessão com a conta autorizada para abrir a área administrativa.");
+          return;
+        }
+        if (isForbiddenError(error)) {
+          setAccessState("forbidden");
+          toast.error("Acesso negado à área administrativa.");
+          return;
+        }
+        toast.error(error instanceof Error ? error.message : "Falha ao carregar candidaturas.");
+      } finally {
+        if (!cancelled) {
+          setLoadingSubmissionsList(false);
+        }
+      }
+    };
+
+    void loadSubmissionsPage();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    accessState,
+    activeTab,
+    deferredSubmissionSearch,
+    filterStatus,
+    filterTipo,
+    loadedSections.base,
+    submissionPage,
+    submissionPageSize,
+    submissionSortBy,
+  ]);
+
+  useEffect(() => {
+    if (accessState !== "allowed" || activeTab !== "students" || !loadedSections.students) return;
+
+    let cancelled = false;
+
+    const loadStudentsPage = async () => {
+      try {
+        setLoadingStudentsList(true);
+        const payload = await api.students.listPaged({
+          page: studentPage,
+          limit: studentPageSize,
+          search: deferredStudentSearch.trim() || undefined,
+          course: studentCourseFilter === "todos" ? undefined : studentCourseFilter,
+          sort: studentSortToApi(studentSortBy),
+        });
+
+        if (cancelled) return;
+
+        setStudentListRows(payload.items);
+        setStudentsTotal(payload.total);
+        setStudentsTotalPages(payload.totalPages);
+        setStudentPage(payload.page);
+      } catch (error) {
+        if (cancelled) return;
+        if (isAuthError(error)) {
+          setToken(null);
+          setAccessState("unauthenticated");
+          toast.warning("Inicia sessão com a conta autorizada para abrir a área administrativa.");
+          return;
+        }
+        if (isForbiddenError(error)) {
+          setAccessState("forbidden");
+          toast.error("Acesso negado à área administrativa.");
+          return;
+        }
+        toast.error(error instanceof Error ? error.message : "Falha ao carregar estudantes.");
+      } finally {
+        if (!cancelled) {
+          setLoadingStudentsList(false);
+        }
+      }
+    };
+
+    void loadStudentsPage();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    accessState,
+    activeTab,
+    deferredStudentSearch,
+    loadedSections.students,
+    studentCourseFilter,
+    studentPage,
+    studentPageSize,
+    studentSortBy,
+  ]);
 
 
   const rankedStudents = useMemo(
@@ -974,90 +1438,35 @@ const Admin = () => {
     [voteProjects]
   );
 
-  const approvedProjects = rankedProjects.filter((project) => project.status === "aprovado" && project.tipo === "projeto");
-
-  const filteredSubmissions = submissions.filter((submission) => {
-    const search = searchTerm.toLowerCase();
-    const matchSearch =
-      submission.nome.toLowerCase().includes(search) ||
-      submission.equipa.toLowerCase().includes(search) ||
-      submission.referenceCode.toLowerCase().includes(search) ||
-      submission.curso.toLowerCase().includes(search) ||
-      submission.responsavel.toLowerCase().includes(search) ||
-      submission.telefone.toLowerCase().includes(search) ||
-      submission.necessidades.join(" ").toLowerCase().includes(search) ||
-      submission.observacoes.toLowerCase().includes(search);
-    const matchStatus = filterStatus === "todos" || submission.status === filterStatus;
-    const matchTipo = filterTipo === "todos" || submission.tipo === filterTipo;
-    return matchSearch && matchStatus && matchTipo;
-  });
-
-  const sortedSubmissions = useMemo(() => {
-    const next = [...filteredSubmissions];
-
-    next.sort((left, right) => {
-      if (submissionSortBy === "nome") return left.nome.localeCompare(right.nome, "pt");
-      if (submissionSortBy === "inscricao") return left.referenceCode.localeCompare(right.referenceCode, "pt");
-      if (submissionSortBy === "curso") return left.curso.localeCompare(right.curso, "pt");
-      return right.data.localeCompare(left.data);
-    });
-
-    return next;
-  }, [filteredSubmissions, submissionSortBy]);
-
-  const paginatedSubmissions = useMemo(
-    () => paginateItems(sortedSubmissions, submissionPage, submissionPageSize),
-    [sortedSubmissions, submissionPage, submissionPageSize]
+  const approvedProjects = useMemo(
+    () => rankedProjects.filter((project) => project.status === "aprovado" && project.tipo === "projeto"),
+    [rankedProjects]
   );
 
-  const filteredStudents = useMemo(() => {
-    const search = studentSearchTerm.toLowerCase();
-
-    return students.filter((student) => {
-      const studentCourse = (student.course ?? "Sem curso").toLowerCase();
-      const matchSearch =
-        (student.name ?? "").toLowerCase().includes(search) ||
-        student.studentNumber.toLowerCase().includes(search) ||
-        studentCourse.includes(search);
-      const matchCourse = studentCourseFilter === "todos" || student.course === studentCourseFilter;
-
-      return matchSearch && matchCourse;
-    });
-  }, [studentCourseFilter, studentSearchTerm, students]);
-
-  const sortedStudents = useMemo(() => {
-    const next = [...filteredStudents];
-
-    next.sort((left, right) => {
-      if (studentSortBy === "nome") return (left.name ?? "").localeCompare(right.name ?? "", "pt");
-      if (studentSortBy === "numero") return left.studentNumber.localeCompare(right.studentNumber, "pt");
-      if (studentSortBy === "curso") return (left.course ?? "Sem curso").localeCompare(right.course ?? "Sem curso", "pt");
-      return studentInteractions(right) - studentInteractions(left);
-    });
-
-    return next;
-  }, [filteredStudents, studentSortBy]);
-
-  const paginatedStudents = useMemo(
-    () => paginateItems(sortedStudents, studentPage, studentPageSize),
-    [sortedStudents, studentPage, studentPageSize]
+  const paginatedSubmissions = useMemo(
+    () => ({
+      currentPage: submissionPage,
+      totalPages: submissionsTotalPages,
+      items: submissionListRows,
+    }),
+    [submissionListRows, submissionPage, submissionsTotalPages]
   );
 
   const groupedStudents = useMemo(() => {
-    return paginatedStudents.items.reduce<Record<string, StudentWithStats[]>>((acc, student) => {
+    return studentListRows.reduce<Record<string, StudentWithStats[]>>((acc, student) => {
       const key = student.course || "Sem curso";
       acc[key] = acc[key] ? [...acc[key], student] : [student];
       return acc;
     }, {});
-  }, [paginatedStudents.items]);
+  }, [studentListRows]);
 
   const availableStudentCourses = useMemo(
-    () => Array.from(new Set(students.map((student) => student.course).filter(Boolean) as string[])).sort((left, right) => left.localeCompare(right, "pt")),
-    [students]
+    () => Array.from(new Set([...students, ...studentListRows].map((student) => student.course).filter(Boolean) as string[])).sort((left, right) => left.localeCompare(right, "pt")),
+    [students, studentListRows]
   );
 
   const filteredProjectComments = useMemo(() => {
-    const search = moderationSearchTerm.toLowerCase();
+    const search = deferredModerationSearch.toLowerCase();
 
     return projectComments.filter((comment) => (
       comment.content.toLowerCase().includes(search) ||
@@ -1066,10 +1475,10 @@ const Admin = () => {
       comment.submissionName.toLowerCase().includes(search) ||
       (comment.course ?? "").toLowerCase().includes(search)
     ));
-  }, [moderationSearchTerm, projectComments]);
+  }, [deferredModerationSearch, projectComments]);
 
   const filteredLiveChatMessages = useMemo(() => {
-    const search = moderationSearchTerm.toLowerCase();
+    const search = deferredModerationSearch.toLowerCase();
 
     return liveChatMessages.filter((message) => (
       message.content.toLowerCase().includes(search) ||
@@ -1077,7 +1486,7 @@ const Admin = () => {
       message.studentNumber.toLowerCase().includes(search) ||
       (message.course ?? "").toLowerCase().includes(search)
     ));
-  }, [liveChatMessages, moderationSearchTerm]);
+  }, [liveChatMessages, deferredModerationSearch]);
 
   const paginatedProjectComments = useMemo(
     () => paginateItems(filteredProjectComments, moderationCommentPage, moderationPageSize),
@@ -1103,12 +1512,12 @@ const Admin = () => {
   }, [moderationPageSize, moderationSearchTerm]);
 
   const stats = {
-    total: submissions.length,
+    total: submissionsTotal || submissions.length,
     pendentes: submissions.filter((item) => item.status === "pendente").length,
     aprovados: submissions.filter((item) => item.status === "aprovado").length,
     recusados: submissions.filter((item) => item.status === "recusado").length,
-    totalVotos: voteEntries.length,
-    totalEstudantes: students.length,
+    totalVotos: votesEntriesTotal || voteEntries.length,
+    totalEstudantes: studentsTotal || students.length,
   };
 
   const economicSummary = useMemo(() => {
@@ -1134,7 +1543,9 @@ const Admin = () => {
   const handleExportOverviewReport = async () => {
     try {
       setExportingReport(true);
-      const pdf = await api.reports.exportOverviewPdf();
+      const job = await api.reports.createOverviewPdfJob();
+      await waitForPdfJobReady(() => api.reports.getOverviewPdfJob(job.id), { timeoutMs: 180_000, intervalMs: 1_500 });
+      const pdf = await api.reports.downloadOverviewPdfJobFile(job.id);
       const blobUrl = URL.createObjectURL(pdf);
       const anchor = document.createElement("a");
       anchor.href = blobUrl;
@@ -1172,11 +1583,11 @@ const Admin = () => {
                 {accessState === "forbidden" ? <AlertTriangle className="h-6 w-6" /> : <Shield className="h-6 w-6" />}
               </div>
               <div>
-                <h1 className="font-heading text-2xl font-bold">Acesso administrativo protegido</h1>
+                <h1 className="font-heading text-2xl font-bold">Acesso restrito</h1>
                 <p className="mt-2 text-sm leading-6 text-muted-foreground">
                   {accessState === "forbidden"
-                    ? `O estudante ${sessionStudentNumber ?? "atual"} não está autorizado a abrir esta área.`
-                    : "Inicia sessão com a conta autorizada antes de abrir o painel administrativo."}
+                    ? "A tua conta não tem permissão para aceder a esta área."
+                    : "Inicia sessão com uma conta autorizada."}
                 </p>
               </div>
               <div className="flex justify-center">
@@ -1333,6 +1744,7 @@ const Admin = () => {
     try {
       await api.submissions.updateStatus(id, toBackendStatus(status));
       setSubmissions((current) => current.map((item) => (item.id === id ? { ...item, status } : item)));
+      setSubmissionListRows((current) => current.map((item) => (item.id === id ? { ...item, status } : item)));
       setVoteProjects((current) => current.map((item) => (item.id === id ? { ...item, status } : item)));
       toast.success(status === "aprovado" ? "Candidatura aprovada." : "Candidatura recusada.");
     } catch (error) {
@@ -1396,6 +1808,16 @@ const Admin = () => {
           }
           : item
       )));
+      setSubmissionListRows((current) => current.map((item) => (
+        item.id === submission.id
+          ? {
+            ...item,
+            bannerUrl: updated.bannerUrl ?? null,
+            primaryColor: updated.primaryColor,
+            secondaryColor: updated.secondaryColor,
+          }
+          : item
+      )));
       setSubmissionBannerDrafts((current) => ({ ...current, [submission.id]: updated.bannerUrl ?? null }));
       toast.success("Capa do expositor atualizada.");
     } catch (error) {
@@ -1419,6 +1841,16 @@ const Admin = () => {
       setBusyKey(busyId);
       const updated = await api.submissions.updatePresentation(submission.id, { bannerUrl: null });
       setSubmissions((current) => current.map((item) => (
+        item.id === submission.id
+          ? {
+            ...item,
+            bannerUrl: null,
+            primaryColor: updated.primaryColor,
+            secondaryColor: updated.secondaryColor,
+          }
+          : item
+      )));
+      setSubmissionListRows((current) => current.map((item) => (
         item.id === submission.id
           ? {
             ...item,
@@ -1477,6 +1909,8 @@ const Admin = () => {
       setIsRemovingStudent(true);
       await api.students.remove(student.id);
       setStudents((current) => current.filter((item) => item.id !== student.id));
+      setStudentListRows((current) => current.filter((item) => item.id !== student.id));
+      setStudentsTotal((current) => Math.max(0, current - 1));
       setVoteEntries((current) => current.filter((item) => item.studentId !== student.id));
       setStudentPendingRemoval(null);
       toast.success("Estudante removido da base de dados");
@@ -1492,6 +1926,8 @@ const Admin = () => {
       setIsRemovingSubmission(true);
       await api.submissions.remove(submission.id);
       setSubmissions((current) => current.filter((item) => item.id !== submission.id));
+      setSubmissionListRows((current) => current.filter((item) => item.id !== submission.id));
+      setSubmissionsTotal((current) => Math.max(0, current - 1));
       setVoteProjects((current) => current.filter((item) => item.id !== submission.id));
       setSelectedWinners((current) => ({
         ...current,
@@ -1513,6 +1949,7 @@ const Admin = () => {
       await api.submissions.selectWinner(projectId);
       setSelectedWinners((current) => ({ ...current, projectWinner: projectId }));
       setSubmissions((current) => current.map((item) => ({ ...item, isWinner: item.id === projectId })));
+      setSubmissionListRows((current) => current.map((item) => ({ ...item, isWinner: item.id === projectId })));
       setVoteProjects((current) => current.map((item) => ({ ...item, isWinner: item.id === projectId })));
       toast.success("Projeto académico vencedor atualizado.");
     } catch (error) {
@@ -1525,10 +1962,25 @@ const Admin = () => {
       await api.submissions.clearWinner();
       setSelectedWinners((current) => ({ ...current, projectWinner: null }));
       setSubmissions((current) => current.map((item) => ({ ...item, isWinner: false })));
+      setSubmissionListRows((current) => current.map((item) => ({ ...item, isWinner: false })));
       setVoteProjects((current) => current.map((item) => ({ ...item, isWinner: false })));
       toast.success("Projeto académico vencedor removido.");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Falha ao desclassificar vencedor");
+    }
+  };
+
+  const loadCourseEnrollmentsPage = async (courseId: number, page: number) => {
+    try {
+      setLoadingCourseId(courseId);
+      const payload = await api.courses.enrollmentsPaged(courseId, { page, limit: 30 });
+      setCourseEnrollments((current) => ({ ...current, [courseId]: payload }));
+    } catch (error) {
+      if (!handleAdminAuthFailure(error)) {
+        toast.error(error instanceof Error ? error.message : "Falha ao carregar inscritos do curso");
+      }
+    } finally {
+      setLoadingCourseId(null);
     }
   };
 
@@ -1543,24 +1995,18 @@ const Admin = () => {
     setExpandedCourseId(course.id);
 
     if (courseEnrollments[course.id]) return;
-
-    try {
-      setLoadingCourseId(course.id);
-      const payload = await api.courses.enrollments(course.id);
-      setCourseEnrollments((current) => ({ ...current, [course.id]: payload }));
-    } catch (error) {
-      if (!handleAdminAuthFailure(error)) {
-        toast.error(error instanceof Error ? error.message : "Falha ao carregar inscritos do curso");
-      }
-    } finally {
-      setLoadingCourseId(null);
-    }
+    await loadCourseEnrollmentsPage(course.id, 1);
   };
 
   const handleExportCourseEnrollments = async (course: Course) => {
     try {
       setExportingCourseId(course.id);
-      const pdf = await api.courses.exportEnrollmentsPdf(course.id);
+      const job = await api.courses.createEnrollmentsPdfJob(course.id);
+      await waitForPdfJobReady(
+        () => api.courses.getEnrollmentsPdfJob(course.id, job.id),
+        { timeoutMs: 180_000, intervalMs: 1_500 }
+      );
+      const pdf = await api.courses.downloadEnrollmentsPdfJobFile(course.id, job.id);
       downloadBlob(pdf, `uor-connect-${course.name.toLowerCase().replace(/\s+/g, "-")}-inscritos-${new Date().toISOString().slice(0, 10)}.pdf`);
       toast.success("Relatório do curso exportado com sucesso.");
     } catch (error) {
@@ -2034,8 +2480,31 @@ const Admin = () => {
   const handleRefreshVotes = async () => {
     try {
       setBusyKey("votes-refresh");
-      const snapshot = await api.interactions.adminVotes();
-      applyVoteSnapshot(snapshot, submissions);
+      const snapshot = await api.interactions.adminVotesPaged({
+        projectsPage: votesProjectsPage,
+        projectsLimit: votesProjectsPageSize,
+        votesPage: votesEntriesPage,
+        votesLimit: votesEntriesPageSize,
+      });
+      applyVoteSnapshot(
+        {
+          projects: snapshot.projects.items,
+          votes: snapshot.votes.items,
+        },
+        submissions,
+        {
+          projects: {
+            page: snapshot.projects.page,
+            total: snapshot.projects.total,
+            totalPages: snapshot.projects.totalPages,
+          },
+          votes: {
+            page: snapshot.votes.page,
+            total: snapshot.votes.total,
+            totalPages: snapshot.votes.totalPages,
+          },
+        }
+      );
       toast.success("Votação sincronizada com o banco de dados.");
     } catch (error) {
       if (!handleAdminAuthFailure(error)) {
@@ -2125,7 +2594,7 @@ const Admin = () => {
               </div>
               <div>
                 <h1 className="font-heading text-xl font-bold">Painel Administrativo</h1>
-                <p className="text-xs text-muted-foreground">Gestão completa ligada ao banco de dados</p>
+                <p className="text-xs text-muted-foreground">Gestão e configuração do evento</p>
               </div>
             </div>
             <div className="flex flex-wrap gap-2">
@@ -2247,15 +2716,21 @@ const Admin = () => {
                         </CardTitle>
                       </CardHeader>
                       <CardContent className="space-y-2">
-                        {rankedStudents.slice(0, 5).map((student, index) => (
-                          <div key={student.id} className="flex items-center gap-3 rounded-lg p-2 hover:bg-muted/50">
-                            <span className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold ${index < 3 ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>
-                              {index + 1}
-                            </span>
-                            <span className="flex-1 text-sm font-medium">{student.name || `Estudante ${student.studentNumber}`}</span>
-                            <span className="text-xs text-muted-foreground">{studentInteractions(student)} interações</span>
+                        {rankedStudents.length === 0 ? (
+                          <div className="rounded-lg border border-dashed border-border/70 bg-muted/20 p-3 text-xs text-muted-foreground">
+                            Dados de estudantes ainda não carregados. Abre a aba "Estudantes" para sincronizar.
                           </div>
-                        ))}
+                        ) : (
+                          rankedStudents.slice(0, 5).map((student, index) => (
+                            <div key={student.id} className="flex items-center gap-3 rounded-lg p-2 hover:bg-muted/50">
+                              <span className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold ${index < 3 ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>
+                                {index + 1}
+                              </span>
+                              <span className="flex-1 text-sm font-medium">{student.name || `Estudante ${student.studentNumber}`}</span>
+                              <span className="text-xs text-muted-foreground">{studentInteractions(student)} interações</span>
+                            </div>
+                          ))
+                        )}
                       </CardContent>
                     </Card>
                   </div>
@@ -2280,6 +2755,12 @@ const Admin = () => {
               {activeTab === "sms" && (
                 <Suspense fallback={<AdminPanelFallback label="SMS" />}>
                   <AdminSmsTab courses={courses} />
+                </Suspense>
+              )}
+
+              {activeTab === "jury" && (
+                <Suspense fallback={<AdminPanelFallback label="Júri" />}>
+                  <AdminJuryTab />
                 </Suspense>
               )}
 
@@ -2405,7 +2886,11 @@ const Admin = () => {
                   </div>
 
                   <div className="rounded-xl border border-border/70 bg-muted/20 px-4 py-3 text-sm text-muted-foreground">
-                    {sortedSubmissions.length === 0 ? "Nenhuma candidatura encontrada." : `${sortedSubmissions.length} candidatura(s) encontrada(s).`}
+                    {loadingSubmissionsList
+                      ? "A carregar candidaturas..."
+                      : submissionsTotal === 0
+                        ? "Nenhuma candidatura encontrada."
+                        : `${submissionsTotal} candidatura(s) encontrada(s).`}
                   </div>
 
                   <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -2661,11 +3146,11 @@ const Admin = () => {
                       Página {paginatedSubmissions.currentPage} de {paginatedSubmissions.totalPages}
                     </p>
                     <div className="flex gap-2">
-                      <Button size="sm" variant="outline" onClick={() => setSubmissionPage((current) => Math.max(1, current - 1))} disabled={paginatedSubmissions.currentPage <= 1}>
+                      <Button size="sm" variant="outline" onClick={() => setSubmissionPage((current) => Math.max(1, current - 1))} disabled={loadingSubmissionsList || paginatedSubmissions.currentPage <= 1}>
                         <ChevronLeft className="mr-1 h-3.5 w-3.5" />
                         Anterior
                       </Button>
-                      <Button size="sm" variant="outline" onClick={() => setSubmissionPage((current) => Math.min(paginatedSubmissions.totalPages, current + 1))} disabled={paginatedSubmissions.currentPage >= paginatedSubmissions.totalPages}>
+                      <Button size="sm" variant="outline" onClick={() => setSubmissionPage((current) => Math.min(paginatedSubmissions.totalPages, current + 1))} disabled={loadingSubmissionsList || paginatedSubmissions.currentPage >= paginatedSubmissions.totalPages}>
                         Próximo
                         <ChevronRight className="ml-1 h-3.5 w-3.5" />
                       </Button>
@@ -3262,7 +3747,7 @@ const Admin = () => {
                                   </p>
                                 </div>
                                 <Badge variant="outline">
-                                  {(courseEnrollments[course.id]?.enrollments.length ?? course.studentCount)} inscritos
+                                  {(courseEnrollments[course.id]?.total ?? course.studentCount)} inscritos
                                 </Badge>
                               </div>
 
@@ -3357,6 +3842,33 @@ const Admin = () => {
                                   })
                                 )}
                               </div>
+                              {courseEnrollments[course.id] ? (
+                                <div className="mt-4 flex flex-col items-center justify-between gap-3 rounded-xl border border-border/70 bg-muted/20 px-4 py-3 text-sm md:flex-row">
+                                  <p className="text-muted-foreground">
+                                    Página {courseEnrollments[course.id].page} de {courseEnrollments[course.id].totalPages}
+                                  </p>
+                                  <div className="flex gap-2">
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() => void loadCourseEnrollmentsPage(course.id, Math.max(1, courseEnrollments[course.id].page - 1))}
+                                      disabled={loadingCourseId === course.id || courseEnrollments[course.id].page <= 1}
+                                    >
+                                      <ChevronLeft className="mr-1 h-3.5 w-3.5" />
+                                      Anterior
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={() => void loadCourseEnrollmentsPage(course.id, Math.min(courseEnrollments[course.id].totalPages, courseEnrollments[course.id].page + 1))}
+                                      disabled={loadingCourseId === course.id || courseEnrollments[course.id].page >= courseEnrollments[course.id].totalPages}
+                                    >
+                                      Próximo
+                                      <ChevronRight className="ml-1 h-3.5 w-3.5" />
+                                    </Button>
+                                  </div>
+                                </div>
+                              ) : null}
                             </div>
                           )}
                         </CardContent>
@@ -3915,8 +4427,8 @@ const Admin = () => {
                   </div>
 
                   <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                    <StatCard icon={PhTrophy} label="Total de votos" value={rankedProjects.reduce((s, p) => s + p.votos, 0)} color="bg-primary/10 text-primary" />
-                    <StatCard icon={PhTrendUp} label="Projetos ativos" value={rankedProjects.length} color="bg-[hsl(var(--area-negocio))]/10 text-[hsl(var(--area-negocio))]" />
+                    <StatCard icon={PhTrophy} label="Total de votos" value={votesEntriesTotal} color="bg-primary/10 text-primary" />
+                    <StatCard icon={PhTrendUp} label="Projetos ativos" value={votesProjectsTotal} color="bg-[hsl(var(--area-negocio))]/10 text-[hsl(var(--area-negocio))]" />
                     <StatCard icon={PhHeart} label="Likes totais" value={rankedProjects.reduce((s, p) => s + p.rating, 0)} color="bg-[hsl(var(--area-ia))]/10 text-[hsl(var(--area-ia))]" />
                     <StatCard icon={PhChatTeardrop} label="Comentários" value={rankedProjects.reduce((s, p) => s + p.comentarios, 0)} color="bg-[hsl(var(--area-web))]/10 text-[hsl(var(--area-web))]" />
                   </div>
@@ -3985,6 +4497,31 @@ const Admin = () => {
                               </motion.div>
                             );
                           })}
+                        <div className="flex flex-col items-center justify-between gap-3 rounded-xl border border-border/70 bg-muted/20 px-4 py-3 text-sm md:flex-row">
+                          <p className="text-muted-foreground">
+                            Página {votesProjectsPage} de {votesProjectsTotalPages}
+                          </p>
+                          <div className="flex gap-2">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => setVotesProjectsPage((current) => Math.max(1, current - 1))}
+                              disabled={votesProjectsPage <= 1}
+                            >
+                              <ChevronLeft className="mr-1 h-3.5 w-3.5" />
+                              Anterior
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => setVotesProjectsPage((current) => Math.min(votesProjectsTotalPages, current + 1))}
+                              disabled={votesProjectsPage >= votesProjectsTotalPages}
+                            >
+                              Próximo
+                              <ChevronRight className="ml-1 h-3.5 w-3.5" />
+                            </Button>
+                          </div>
+                        </div>
                       </CardContent>
                     </Card>
 
@@ -3998,7 +4535,7 @@ const Admin = () => {
                       <CardContent className="space-y-3">
                         <div className="flex items-center justify-between text-xs text-muted-foreground">
                           <span>Feed ao vivo</span>
-                          <span>{voteEntries.length} registos</span>
+                          <span>{votesEntriesTotal} registos</span>
                         </div>
                         <div className="space-y-2">
                           {voteEntries.map((vote) => (
@@ -4018,6 +4555,31 @@ const Admin = () => {
                               <div className="text-[11px] text-muted-foreground">{vote.data.slice(11, 16)}</div>
                             </motion.div>
                           ))}
+                        </div>
+                        <div className="flex flex-col items-center justify-between gap-3 rounded-xl border border-border/70 bg-muted/20 px-4 py-3 text-sm md:flex-row">
+                          <p className="text-muted-foreground">
+                            Página {votesEntriesPage} de {votesEntriesTotalPages}
+                          </p>
+                          <div className="flex gap-2">
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => setVotesEntriesPage((current) => Math.max(1, current - 1))}
+                              disabled={votesEntriesPage <= 1}
+                            >
+                              <ChevronLeft className="mr-1 h-3.5 w-3.5" />
+                              Anterior
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => setVotesEntriesPage((current) => Math.min(votesEntriesTotalPages, current + 1))}
+                              disabled={votesEntriesPage >= votesEntriesTotalPages}
+                            >
+                              Próximo
+                              <ChevronRight className="ml-1 h-3.5 w-3.5" />
+                            </Button>
+                          </div>
                         </div>
                       </CardContent>
                     </Card>
@@ -4155,10 +4717,14 @@ const Admin = () => {
                   </div>
 
                   <div className="rounded-xl border border-border/70 bg-muted/20 px-4 py-3 text-sm text-muted-foreground">
-                    {filteredStudents.length === 0 ? "Nenhum estudante encontrado." : `${filteredStudents.length} estudante(s) encontrado(s).`}
+                    {loadingStudentsList
+                      ? "A carregar estudantes..."
+                      : studentsTotal === 0
+                        ? "Nenhum estudante encontrado."
+                        : `${studentsTotal} estudante(s) encontrado(s).`}
                   </div>
 
-                  {paginatedStudents.items.length === 0 ? (
+                  {studentListRows.length === 0 ? (
                     <div className="rounded-xl border border-dashed border-border/70 bg-muted/20 p-6 text-sm text-muted-foreground">
                       Nenhum estudante encontrado.
                     </div>
@@ -4197,7 +4763,7 @@ const Admin = () => {
                       </div>
                     ))
                   ) : (
-                    paginatedStudents.items.map((student) => (
+                    studentListRows.map((student) => (
                       <Card key={student.id} className="border-border/60">
                         <CardContent className="p-4">
                           <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
@@ -4226,14 +4792,14 @@ const Admin = () => {
 
                   <div className="flex flex-col items-center justify-between gap-3 rounded-xl border border-border/70 bg-muted/20 px-4 py-3 text-sm md:flex-row">
                     <p className="text-muted-foreground">
-                      Página {paginatedStudents.currentPage} de {paginatedStudents.totalPages}
+                      Página {studentPage} de {studentsTotalPages}
                     </p>
                     <div className="flex gap-2">
-                      <Button size="sm" variant="outline" onClick={() => setStudentPage((current) => Math.max(1, current - 1))} disabled={paginatedStudents.currentPage <= 1}>
+                      <Button size="sm" variant="outline" onClick={() => setStudentPage((current) => Math.max(1, current - 1))} disabled={loadingStudentsList || studentPage <= 1}>
                         <ChevronLeft className="mr-1 h-3.5 w-3.5" />
                         Anterior
                       </Button>
-                      <Button size="sm" variant="outline" onClick={() => setStudentPage((current) => Math.min(paginatedStudents.totalPages, current + 1))} disabled={paginatedStudents.currentPage >= paginatedStudents.totalPages}>
+                      <Button size="sm" variant="outline" onClick={() => setStudentPage((current) => Math.min(studentsTotalPages, current + 1))} disabled={loadingStudentsList || studentPage >= studentsTotalPages}>
                         Próximo
                         <ChevronRight className="ml-1 h-3.5 w-3.5" />
                       </Button>

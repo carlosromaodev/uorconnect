@@ -51,6 +51,13 @@ export interface StudentWithStats extends StudentProfile {
   };
 }
 
+export interface PagedResult<T> {
+  items: T[];
+  total: number;
+  page: number;
+  totalPages: number;
+}
+
 export interface StudentOwnedSubmissionListItem {
   id: number;
   referenceCode: string;
@@ -163,6 +170,32 @@ export interface AdminSecurityOverview {
   recentLogins: StudentProfile[];
 }
 
+export interface JuryMember {
+  id: number;
+  name: string;
+  phone: string;
+  isActive: boolean;
+  lastCodeSentAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface JurySendCodeResult {
+  success: boolean;
+  juryMemberId: number;
+  phone: string;
+  codeLast4: string;
+  expiresAt: string;
+  deliveryStatus: string;
+}
+
+export interface JuryLoginResponse {
+  success: boolean;
+  token?: string;
+  juryMember?: JuryMember;
+  error?: string;
+}
+
 export interface ProjectPublicComment {
   id: number;
   content: string;
@@ -241,6 +274,8 @@ export interface CourseEnrollmentsPayload {
   };
   enrollments: CourseEnrollment[];
 }
+
+export type CourseEnrollmentsPagedPayload = CourseEnrollmentsPayload & PagedResult<CourseEnrollment>;
 
 export interface FaqItem {
   id: number;
@@ -550,6 +585,28 @@ export interface SmsSendResult {
   }>;
 }
 
+export interface PdfJobQueued {
+  id: string;
+  kind: string;
+  status: "queued" | "processing" | "completed" | "failed";
+  createdAt: string;
+  updatedAt: string;
+  statusPath: string;
+  filePath: string;
+}
+
+export interface PdfJobStatus {
+  id: string;
+  kind: string;
+  status: "queued" | "processing" | "completed" | "failed";
+  error?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  hasFile?: boolean;
+  statusPath: string;
+  filePath: string;
+}
+
 export interface ActivityFeedItem {
   id: string;
   type: "vote" | "comment" | "submission";
@@ -809,8 +866,12 @@ export function isForbiddenError(error: unknown) {
 }
 
 async function requestRaw(path: string, options?: RequestInit) {
+  const { retry: retryInput, timeoutMs = 15_000, ...fetchOptions } = (options ?? {}) as RequestInit & {
+    retry?: number;
+    timeoutMs?: number;
+  };
   const token = getToken();
-  const headers = new Headers(options?.headers);
+  const headers = new Headers(fetchOptions.headers);
 
   headers.set("ngrok-skip-browser-warning", "true");
 
@@ -823,25 +884,81 @@ async function requestRaw(path: string, options?: RequestInit) {
     headers.set("Authorization", `Bearer ${token}`);
   }
 
-  if (options?.body !== undefined && !headers.has("Content-Type")) {
+  if (fetchOptions.body !== undefined && !headers.has("Content-Type")) {
     headers.set("Content-Type", "application/json");
   }
 
-  const res = await fetch(resolveApiRequestUrl(path), {
-    credentials: "include",
-    ...options,
-    headers,
-  });
+  const method = (fetchOptions.method ?? "GET").toUpperCase();
+  const canRetry = method === "GET" || method === "HEAD";
+  const maxRetries = canRetry ? Math.max(0, Math.min(retryInput ?? 2, 4)) : 0;
+  const maxAttempts = maxRetries + 1;
 
-  if (!res.ok) {
-    if (res.status === 401) {
-      setToken(null);
+  const wait = (ms: number) => new Promise((resolve) => globalThis.setTimeout(resolve, ms));
+  const retryableStatus = new Set([408, 425, 429, 500, 502, 503, 504]);
+
+  for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+    const controller = new AbortController();
+    const timeoutId = globalThis.setTimeout(() => controller.abort(new Error("timeout")), timeoutMs);
+    const externalSignal = fetchOptions.signal;
+    let cleanupExternal: (() => void) | null = null;
+
+    if (externalSignal) {
+      const onAbort = () => controller.abort(externalSignal.reason);
+      if (externalSignal.aborted) {
+        controller.abort(externalSignal.reason);
+      } else {
+        externalSignal.addEventListener("abort", onAbort, { once: true });
+        cleanupExternal = () => externalSignal.removeEventListener("abort", onAbort);
+      }
     }
-    const error = await res.json().catch(() => ({ message: res.statusText }));
-    throw new ApiError(res.status, error.message || error.error || "Request failed");
+
+    try {
+      const res = await fetch(resolveApiRequestUrl(path), {
+        credentials: "include",
+        ...fetchOptions,
+        headers,
+        signal: controller.signal,
+      });
+
+      if (res.ok) {
+        return res;
+      }
+
+      if (res.status === 401) {
+        setToken(null);
+      }
+
+      const errorPayload = await res.json().catch(() => ({ message: res.statusText }));
+      const error = new ApiError(res.status, errorPayload.message || errorPayload.error || "Request failed");
+
+      if (attempt < (maxAttempts - 1) && canRetry && retryableStatus.has(res.status)) {
+        const retryAfterHeader = res.headers.get("retry-after");
+        const retryAfterMs = retryAfterHeader
+          ? Number.parseInt(retryAfterHeader, 10) * 1000
+          : 0;
+        const backoffMs = retryAfterMs > 0 ? retryAfterMs : Math.min(800 * (2 ** attempt), 4_000);
+        await wait(backoffMs);
+        continue;
+      }
+
+      throw error;
+    } catch (error) {
+      const isAbortError = error instanceof Error && error.name === "AbortError";
+      const isNetworkError = error instanceof TypeError;
+
+      if (attempt < (maxAttempts - 1) && canRetry && (isAbortError || isNetworkError)) {
+        await wait(Math.min(800 * (2 ** attempt), 4_000));
+        continue;
+      }
+
+      throw error;
+    } finally {
+      globalThis.clearTimeout(timeoutId);
+      if (cleanupExternal) cleanupExternal();
+    }
   }
 
-  return res;
+  throw new ApiError(503, "Falha temporária de comunicação com o servidor.");
 }
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
@@ -876,6 +993,11 @@ export const api = {
         method: "POST",
         body: JSON.stringify({ studentNumber, password, origin }),
       }).then(storeLoginSession),
+    juryLogin: (phone: string, code: string) =>
+      request<JuryLoginResponse>("/auth/jury/login", {
+        method: "POST",
+        body: JSON.stringify({ phone, code }),
+      }),
     logout: async () => {
       try {
         await request<{ success: boolean }>("/auth/logout", {
@@ -927,10 +1049,32 @@ export const api = {
   reports: {
     exportOverviewPdf: () =>
       requestBlob("/reports/overview/pdf"),
+    createOverviewPdfJob: () =>
+      request<PdfJobQueued>("/reports/overview/pdf-jobs", { method: "POST" }),
+    getOverviewPdfJob: (jobId: string) =>
+      request<PdfJobStatus>(`/reports/overview/pdf-jobs/${jobId}`),
+    downloadOverviewPdfJobFile: (jobId: string) =>
+      requestBlob(`/reports/overview/pdf-jobs/${jobId}/file`),
   },
 
   students: {
     list: () => request<StudentWithStats[]>("/auth/students"),
+    listPaged: (params?: {
+      page?: number;
+      limit?: number;
+      search?: string;
+      course?: string;
+      sort?:
+        | "created_desc"
+        | "created_asc"
+        | "name_asc"
+        | "name_desc"
+        | "number_asc"
+        | "number_desc"
+        | "course_asc"
+        | "course_desc"
+        | "interactions_desc";
+    }) => request<PagedResult<StudentWithStats>>(`/auth/students/paged${toQueryString(params)}`),
     securityOverview: () => request<AdminSecurityOverview>("/auth/security"),
     authorizeAdmin: (studentNumber: string) =>
       request<AdminAuthorizedStudent>("/auth/security/authorized-students", {
@@ -944,6 +1088,28 @@ export const api = {
     remove: (id: number) =>
       request<{ success: boolean }>(`/auth/students/${id}`, {
         method: "DELETE",
+      }),
+  },
+
+  jury: {
+    list: () =>
+      request<{ juryMembers: JuryMember[] }>("/auth/security/jury-members")
+        .then((payload) => payload.juryMembers),
+    create: (data: { name: string; phone: string }) =>
+      request<JuryMember>("/auth/security/jury-members", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+    remove: (id: number) =>
+      request<{ success: boolean }>(`/auth/security/jury-members/${id}`, {
+        method: "DELETE",
+      }),
+    sendCode: (id: number, expiresInMinutes?: number) =>
+      request<JurySendCodeResult>(`/auth/security/jury-members/${id}/send-code`, {
+        method: "POST",
+        body: JSON.stringify(
+          expiresInMinutes ? { expiresInMinutes } : {}
+        ),
       }),
   },
 
@@ -1013,6 +1179,48 @@ export const api = {
         `/submissions${qs ? `?${qs}` : ""}`
       );
     },
+    listDetailedPaged: (params?: {
+      status?: "PENDING" | "APPROVED" | "REJECTED";
+      type?: "PROJECT" | "BUSINESS" | "PRODUCT";
+      page?: number;
+      limit?: number;
+      search?: string;
+      sort?:
+        | "created_desc"
+        | "created_asc"
+        | "name_asc"
+        | "name_desc"
+        | "reference_asc"
+        | "reference_desc"
+        | "course_asc"
+        | "course_desc";
+    }) =>
+      request<PagedResult<{
+        id: number;
+        slug: string;
+        detailPath: string;
+        referenceCode: string;
+        name: string;
+        description: string;
+        status: string;
+        type: string;
+        area: string | null;
+        createdAt: string | null;
+        course: string | null;
+        members: string | null;
+        membersList: string[];
+        teamSize: number;
+        leaderName: string | null;
+        leaderPhone: string | null;
+        needs: string[];
+        observations: string | null;
+        primaryColor: string;
+        secondaryColor: string;
+        bannerUrl: string | null;
+        isWinner: boolean;
+        canVote: boolean;
+        eligibleForAward: boolean;
+      }>>(`/submissions/paged${toQueryString(params)}`),
     remove: (id: number) =>
       request<{ success: boolean }>(`/submissions/${id}`, {
         method: "DELETE",
@@ -1149,6 +1357,16 @@ export const api = {
       request<{ success: boolean }>(`/courses/${id}`, { method: "DELETE" }),
     enrollments: (id: number) =>
       request<CourseEnrollmentsPayload>(`/courses/${id}/enrollments`),
+    enrollmentsPaged: (
+      id: number,
+      params?: {
+        page?: number;
+        limit?: number;
+        search?: string;
+        paymentStatus?: "PENDING" | "CONFIRMED" | "REJECTED" | "CANCELED";
+      }
+    ) =>
+      request<CourseEnrollmentsPagedPayload>(`/courses/${id}/enrollments/paged${toQueryString(params)}`),
     updateEnrollmentStatus: (
       enrollmentId: number,
       status: "PENDING" | "CONFIRMED" | "REJECTED" | "CANCELED"
@@ -1159,6 +1377,12 @@ export const api = {
       }),
     exportEnrollmentsPdf: (id: number) =>
       requestBlob(`/courses/${id}/enrollments/pdf`),
+    createEnrollmentsPdfJob: (id: number) =>
+      request<PdfJobQueued>(`/courses/${id}/enrollments/pdf-jobs`, { method: "POST" }),
+    getEnrollmentsPdfJob: (id: number, jobId: string) =>
+      request<PdfJobStatus>(`/courses/${id}/enrollments/pdf-jobs/${jobId}`),
+    downloadEnrollmentsPdfJobFile: (id: number, jobId: string) =>
+      requestBlob(`/courses/${id}/enrollments/pdf-jobs/${jobId}/file`),
     syncStudentCounts: () =>
       request<CoursesContent>("/courses/sync-student-counts", { method: "POST" }),
     myLikes: () =>
@@ -1281,7 +1505,7 @@ export const api = {
         body: JSON.stringify({ submissionId, content }),
       }),
     me: () =>
-      request<{ student: StudentProfile | null; stats: { likes: number; votes: number; comments: number } }>(`/interactions/me`),
+      request<{ student: StudentProfile | null; jury?: { id: number; name: string; phone: string; lastCodeSentAt: string | null } | null; stats: { likes: number; votes: number; comments: number } }>(`/interactions/me`),
     adminVotes: () =>
       request<{
         projects: Array<{ id: number; name: string; type: string; votes: number; comments: number; averageRating: number }>;
@@ -1296,6 +1520,25 @@ export const api = {
           createdAt: string;
         }>;
       }>(`/interactions/admin/votes`),
+    adminVotesPaged: (params?: {
+      projectsPage?: number;
+      projectsLimit?: number;
+      votesPage?: number;
+      votesLimit?: number;
+    }) =>
+      request<{
+        projects: PagedResult<{ id: number; name: string; type: string; votes: number; comments: number; averageRating: number }>;
+        votes: PagedResult<{
+          id: number;
+          studentId: number;
+          studentNumber: string;
+          studentName: string | null;
+          studentEmail: string | null;
+          submissionId: number;
+          submissionName: string;
+          createdAt: string;
+        }>;
+      }>(`/interactions/admin/votes/paged${toQueryString(params)}`),
     adminModeration: () =>
       request<{
         projectComments: AdminModerationProjectComment[];

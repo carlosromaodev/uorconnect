@@ -77,6 +77,12 @@ services:
       DATABASE_PROVIDER: postgresql
       DATABASE_URL: ${DATABASE_URL:-postgresql://${POSTGRES_USER:-uorconnect}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-uorconnect}?schema=public}
       NODE_OPTIONS: --max-old-space-size=512
+      RATE_LIMIT_MAX: ${RATE_LIMIT_MAX:-400}
+      RATE_LIMIT_WINDOW_MS: ${RATE_LIMIT_WINDOW_MS:-60000}
+      PGPOOL_MAX: ${PGPOOL_MAX:-20}
+      PGPOOL_MIN: ${PGPOOL_MIN:-2}
+      PGPOOL_IDLE_TIMEOUT_MS: ${PGPOOL_IDLE_TIMEOUT_MS:-30000}
+      PGPOOL_CONNECT_TIMEOUT_MS: ${PGPOOL_CONNECT_TIMEOUT_MS:-8000}
     expose:
       - "3333"
     healthcheck:
@@ -85,8 +91,8 @@ services:
       timeout: 10s
       retries: 5
       start_period: 40s
-    mem_limit: 650m
-    cpus: 0.75
+    mem_limit: 1024m
+    cpus: 1.50
     tmpfs:
       - /tmp:size=128m
     networks:

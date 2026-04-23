@@ -6,6 +6,7 @@ import { adminGuard } from "../../auth/http/admin.middleware";
 import { normalizeStudentProfile } from "../../auth/domain/student-format";
 import { formatTeamMembersLabel, normalizeTeamMembersInput } from "../../submission/domain/submission-format";
 import { escapeHtml, formatDateLabel, loadLogoDataUri, renderPdfFromHtml } from "./pdf-report.utils";
+import { enqueuePdfJob, getPdfJob, getPdfJobResult } from "../../../shared/pdf-job-queue";
 
 type ReportStudent = {
   id: number;
@@ -887,7 +888,7 @@ export async function reportsRoutes(app: FastifyInstance, opts: { env: Env }) {
     adminApp.register(authGuard, { env: opts.env });
     adminApp.register(adminGuard);
 
-    adminApp.get("/overview/pdf", async (request, reply) => {
+    const generateOverviewPdf = async () => {
       const generatedAt = new Date();
 
       const [submissions, submissionConfig, logo] = await Promise.all([
@@ -980,10 +981,71 @@ export async function reportsRoutes(app: FastifyInstance, opts: { env: Env }) {
         detailedSubmissions,
       });
 
+      const pdfBuffer = await renderPdfFromHtml(html);
+      const fileName = `uor-connect-relatorio-geral-${generatedAt.toISOString().slice(0, 10)}.pdf`;
+      return { pdfBuffer, fileName };
+    };
+
+    adminApp.post("/overview/pdf-jobs", async (_, reply) => {
+      const job = enqueuePdfJob({
+        kind: "reports.overview",
+        execute: async () => {
+          const result = await generateOverviewPdf();
+          return {
+            buffer: result.pdfBuffer,
+            fileName: result.fileName,
+            contentType: "application/pdf",
+          };
+        },
+      });
+
+      return reply.code(202).send({
+        ...job,
+        statusPath: `/reports/overview/pdf-jobs/${job.id}`,
+        filePath: `/reports/overview/pdf-jobs/${job.id}/file`,
+      });
+    });
+
+    adminApp.get("/overview/pdf-jobs/:id", async (request, reply) => {
+      const job = getPdfJob((request.params as { id: string }).id);
+      if (!job) {
+        return reply.code(404).send({ message: "Job not found" });
+      }
+
+      return reply.send({
+        ...job,
+        statusPath: `/reports/overview/pdf-jobs/${job.id}`,
+        filePath: `/reports/overview/pdf-jobs/${job.id}/file`,
+      });
+    });
+
+    adminApp.get("/overview/pdf-jobs/:id/file", async (request, reply) => {
+      const jobId = (request.params as { id: string }).id;
+      const job = getPdfJob(jobId);
+
+      if (!job) {
+        return reply.code(404).send({ message: "Job not found" });
+      }
+
+      if (job.status !== "completed") {
+        return reply.code(409).send({ message: "PDF not ready yet" });
+      }
+
+      const result = getPdfJobResult(jobId);
+      if (!result) {
+        return reply.code(404).send({ message: "Job result not found" });
+      }
+
+      reply.header("Content-Type", result.contentType ?? "application/pdf");
+      reply.header("Content-Disposition", `attachment; filename=\"${result.fileName}\"`);
+      return reply.send(result.buffer);
+    });
+
+    adminApp.get("/overview/pdf", async (request, reply) => {
       try {
-        const pdfBuffer = await renderPdfFromHtml(html);
+        const { pdfBuffer, fileName } = await generateOverviewPdf();
         reply.header("Content-Type", "application/pdf");
-        reply.header("Content-Disposition", `attachment; filename="uor-connect-relatorio-geral-${generatedAt.toISOString().slice(0, 10)}.pdf"`);
+        reply.header("Content-Disposition", `attachment; filename=\"${fileName}\"`);
         return reply.send(pdfBuffer);
       } catch (error) {
         request.log.error({ err: error }, "overview pdf render failed");

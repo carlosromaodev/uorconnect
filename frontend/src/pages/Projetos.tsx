@@ -127,7 +127,7 @@ function LoginModal({ open, onClose, onLogin }: { open: boolean; onClose: () => 
             Entrar
           </DialogTitle>
           <DialogDescription className="text-xs sm:text-sm text-muted-foreground leading-relaxed">
-            Entra com o teu acesso académico para votar, gostar e comentar publicamente.
+            Usa os teus dados académicos para votar, gostar e comentar.
           </DialogDescription>
         </DialogHeader>
 
@@ -617,9 +617,13 @@ export default function Projetos() {
     <div className="min-h-screen py-10 md:py-16 xl:py-20">
       <div className="container mx-auto px-4">
         <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
-          <h1 className="text-3xl md:text-4xl font-heading font-bold mb-1">Projetos e Exposições</h1>
+          <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/5 px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-primary">
+            <Award className="h-3.5 w-3.5" />
+            Galeria
+          </div>
+          <h1 className="text-3xl md:text-4xl font-heading font-bold mb-2">Projetos e Exposições</h1>
           <p className="text-muted-foreground text-sm mb-4">
-            Projetos académicos entram na votação pública. Negócios e produtos ficam em categoria de exposição com likes e comentários públicos.
+            Vota nos projetos académicos e interage com negócios e produtos em exposição.
           </p>
         </motion.div>
 
@@ -647,8 +651,8 @@ export default function Projetos() {
                   </>
                 ) : (
                   <>
-                    <p className="text-sm font-heading font-bold">Participação pública</p>
-                    <p className="text-xs text-muted-foreground">Quem comentar aparece com nome completo e curso no respetivo projeto.</p>
+                    <p className="text-sm font-heading font-bold">Modo visitante</p>
+                    <p className="text-xs text-muted-foreground">Entra para votar, gostar e comentar.</p>
                   </>
                 )}
               </div>
@@ -693,7 +697,7 @@ export default function Projetos() {
             {loadError ? (
               <div className="rounded-2xl border border-dashed border-primary/20 bg-primary/5 p-8 text-center">
                 <p className="text-sm font-semibold text-foreground">{loadError}</p>
-                <p className="mt-2 text-sm text-muted-foreground">Tenta novamente. A interface foi protegida para não quebrar em caso de erro.</p>
+                <p className="mt-2 text-sm text-muted-foreground">Verifica a tua conexão e tenta novamente.</p>
                 <Button className="mt-4 rounded-xl" variant="outline" onClick={() => void loadProjects()}>
                   Recarregar projetos
                 </Button>

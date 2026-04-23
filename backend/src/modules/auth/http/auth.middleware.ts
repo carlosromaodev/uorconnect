@@ -1,5 +1,5 @@
 import fp from "fastify-plugin";
-import { verifyStudentToken } from "../utils/jwt";
+import { verifyAuthToken } from "../utils/jwt";
 import { type Env } from "../../../config/env";
 import { getCookie } from "../../../shared/cookies";
 
@@ -9,6 +9,11 @@ declare module "fastify" {
       id: number;
       studentNumber: string;
     };
+    jury?: {
+      id: number;
+      phone: string;
+    };
+    authRole?: "student" | "jury";
     authSource?: "bearer" | "cookie";
   }
 }
@@ -31,8 +36,14 @@ export const authGuard = fp<AuthPluginOpts>(async (app, opts) => {
     }
 
     try {
-      const payload = verifyStudentToken(token, opts.env);
-      request.student = { id: payload.sub, studentNumber: payload.studentNumber };
+      const payload = verifyAuthToken(token, opts.env);
+      if (payload.role === "student") {
+        request.student = { id: payload.sub, studentNumber: payload.studentNumber };
+        request.authRole = "student";
+      } else {
+        request.jury = { id: payload.sub, phone: payload.juryPhone };
+        request.authRole = "jury";
+      }
       request.authSource = cookieToken ? "cookie" : "bearer";
 
       if (request.authSource === "cookie" && !["GET", "HEAD", "OPTIONS"].includes(request.method.toUpperCase())) {

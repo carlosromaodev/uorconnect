@@ -23,6 +23,8 @@ const analyticsCategoryValues = [
 
 const defaultConsentVersion = "2026.03";
 const cleanupWindowMs = 1000 * 60 * 60 * 6;
+const dashboardEventSampleLimit = 20_000;
+const dashboardSessionSampleLimit = 10_000;
 let lastCleanupAt = 0;
 
 const consentSchema = z.object({
@@ -447,7 +449,7 @@ export async function analyticsRoutes(app: FastifyInstance, opts: { env: Env }) 
       const dayFrom = new Date();
       dayFrom.setHours(0, 0, 0, 0);
 
-      const [events, sessions, recentConsents, recentEvents] = await Promise.all([
+      const [eventsSample, sessionsSample, totalSessionsCount, audienceSplitCounts, recentConsents, recentEvents] = await Promise.all([
         prisma.analyticsEvent.findMany({
           where: eventWhere,
           select: {
@@ -463,7 +465,8 @@ export async function analyticsRoutes(app: FastifyInstance, opts: { env: Env }) 
             duration: true,
             createdAt: true,
           },
-          orderBy: { createdAt: "asc" }
+          orderBy: { createdAt: "desc" },
+          take: dashboardEventSampleLimit,
         }),
         prisma.analyticsSession.findMany({
           where: sessionWhere,
@@ -478,7 +481,17 @@ export async function analyticsRoutes(app: FastifyInstance, opts: { env: Env }) 
             analyticsAllowed: true,
             functionalAllowed: true,
             marketingAllowed: true,
-          }
+          },
+          orderBy: { lastSeenAt: "desc" },
+          take: dashboardSessionSampleLimit,
+        }),
+        prisma.analyticsSession.count({
+          where: sessionWhere,
+        }),
+        prisma.analyticsSession.groupBy({
+          by: ["audience"],
+          where: sessionWhere,
+          _count: { _all: true },
         }),
         prisma.consentRecord.findMany({
           where: { createdAt: { gte: from, lte: to } },
@@ -504,7 +517,11 @@ export async function analyticsRoutes(app: FastifyInstance, opts: { env: Env }) 
         })
       ]);
 
-      const totalSessions = new Set([...events.map((event) => event.sessionId), ...sessions.map((session) => session.sessionId)]).size;
+      const events = [...eventsSample].reverse();
+      const sessions = sessionsSample;
+      const sampled = eventsSample.length >= dashboardEventSampleLimit || sessionsSample.length >= dashboardSessionSampleLimit;
+
+      const totalSessions = totalSessionsCount;
       const totalVisitors = new Set([...events.map((event) => event.visitorId), ...sessions.map((session) => session.visitorId)]).size;
       const visitorsToday = new Set(events.filter((event) => event.createdAt >= dayFrom).map((event) => event.visitorId)).size;
       const authenticatedUsers = new Set(events.filter((event) => event.studentId).map((event) => event.studentId)).size;
@@ -517,6 +534,11 @@ export async function analyticsRoutes(app: FastifyInstance, opts: { env: Env }) 
         "course_ticket_download",
         "submission_ticket_download",
       ].includes(event.eventType)).map((event) => event.sessionId)).size;
+      const conversionSessionIds = new Set(
+        events
+          .filter((event) => ["course_enrollment_submitted", "submission_created"].includes(event.eventType))
+          .map((event) => event.sessionId)
+      );
       const conversionRate = totalSessions > 0 ? Number(((conversionSessions / totalSessions) * 100).toFixed(1)) : 0;
       const liveEngagement = totalSessions > 0
         ? Number(((new Set(events.filter((event) => event.eventCategory === "LIVE").map((event) => event.sessionId)).size / totalSessions) * 100).toFixed(1))
@@ -569,7 +591,7 @@ export async function analyticsRoutes(app: FastifyInstance, opts: { env: Env }) 
         const label = session.utmCampaign || session.utmSource || "Orgânico";
         const entry = campaignMap.get(label) ?? { sessions: 0, conversions: 0 };
         entry.sessions += 1;
-        if (events.some((event) => event.sessionId === session.sessionId && ["course_enrollment_submitted", "submission_created"].includes(event.eventType))) {
+        if (conversionSessionIds.has(session.sessionId)) {
           entry.conversions += 1;
         }
         campaignMap.set(label, entry);
@@ -619,8 +641,8 @@ export async function analyticsRoutes(app: FastifyInstance, opts: { env: Env }) 
           topPages: Array.from(topPagesMap.entries()).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([label, value]) => ({ label, value })),
           topEvents: Array.from(topEventsMap.entries()).sort((a, b) => b[1] - a[1]).slice(0, 8).map(([label, value]) => ({ label, value })),
           audienceSplit: [
-            { label: "Anónimo", value: sessions.filter((session) => session.audience === "ANONYMOUS").length },
-            { label: "Autenticado", value: sessions.filter((session) => session.audience === "AUTHENTICATED").length },
+            { label: "Anónimo", value: audienceSplitCounts.find((entry) => entry.audience === "ANONYMOUS")?._count._all ?? 0 },
+            { label: "Autenticado", value: audienceSplitCounts.find((entry) => entry.audience === "AUTHENTICATED")?._count._all ?? 0 },
           ],
           topCourses: Array.from(topCourseMap.entries()).sort((a, b) => b[1] - a[1]).slice(0, 6).map(([label, value]) => ({ label, value })),
         },
@@ -643,6 +665,7 @@ export async function analyticsRoutes(app: FastifyInstance, opts: { env: Env }) 
         },
         recentEvents,
         courseOptions,
+        sampled,
       });
     });
 

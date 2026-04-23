@@ -292,18 +292,18 @@ function AnimatedCounter({ target, label, icon: Icon }: { target: string; label:
   return (
     <div
       ref={ref}
-      className="flex h-full min-h-[124px] flex-col items-center justify-center rounded-2xl border border-border/70 bg-card/75 px-4 py-5 text-center shadow-sm backdrop-blur-sm transition-transform duration-300 hover:-translate-y-1"
+      className="group flex h-full min-h-[130px] flex-col items-center justify-center rounded-2xl border border-border/60 bg-card/80 px-4 py-6 text-center shadow-sm backdrop-blur-sm transition-all duration-300 hover:-translate-y-1.5 hover:shadow-lg hover:border-primary/25"
     >
       <motion.div
-        whileHover={{ scale: 1.1, rotate: 5 }}
-        className="mb-4 flex h-14 w-14 items-center justify-center rounded-xl bg-primary/10 shadow-sm"
+        whileHover={{ scale: 1.12, rotate: 6 }}
+        className="mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 shadow-sm transition-colors group-hover:bg-primary/15"
       >
-        <Icon className="w-7 h-7 text-primary" />
+        <Icon className="w-6 h-6 text-primary" />
       </motion.div>
-      <div className="text-3xl md:text-4xl font-heading font-bold text-foreground leading-none">
+      <div className="text-3xl md:text-4xl font-heading font-extrabold text-foreground leading-none tracking-tight">
         {count}{suffix}
       </div>
-      <div className="mt-2 text-sm md:text-base text-muted-foreground font-medium">{label}</div>
+      <div className="mt-2 text-xs text-muted-foreground font-semibold uppercase tracking-wider">{label}</div>
     </div>
   );
 }
@@ -714,7 +714,7 @@ function TypeBadge({ type }: { type: string }) {
 function SectionDivider() {
   return (
     <div className="px-4 md:px-8">
-      <div className="h-px border-t border-dashed border-primary/35" />
+      <div className="h-px bg-gradient-to-r from-transparent via-border/80 to-transparent" />
     </div>
   );
 }
@@ -1124,82 +1124,55 @@ export default function Index() {
                 {heroConfig.heroSubtitleText}
               </motion.p>
 
-              {/* CTAs — estrutura inspirada no bloco de exemplo */}
+              {/* CTAs */}
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.68 }}
-                className="mb-12 grid w-full max-w-4xl grid-cols-2 gap-3 md:grid-cols-3"
+                className="mb-10 flex w-full max-w-xl flex-col gap-3 sm:flex-row"
               >
-                <motion.div whileHover={{ scale: 1.015 }} whileTap={{ scale: 0.985 }} className="w-full min-w-0">
+                <motion.div whileHover={{ scale: 1.02, y: -2 }} whileTap={{ scale: 0.98 }} className="w-full sm:flex-1">
                   <Button
                     asChild
                     size="lg"
-                    className="h-11 w-full min-w-0 justify-center gap-2 overflow-hidden rounded-xl px-2.5 text-[13px] font-bold text-white shadow-lg transition-all hover:-translate-y-0.5 focus-visible:outline-none focus-visible:ring-2 sm:px-3 sm:text-sm"
+                    className="h-13 w-full justify-center gap-2.5 rounded-2xl text-sm font-bold text-white shadow-xl transition-all sm:text-base"
                     style={{
                       backgroundColor: heroConfig.primaryColor,
-                      boxShadow: `0 22px 40px ${withAlpha(heroConfig.primaryColor, "26")}`,
+                      boxShadow: `0 20px 40px ${withAlpha(heroConfig.primaryColor, "30")}`,
                     }}
                   >
-                    <Link to="/projetos" className="flex w-full min-w-0 items-center justify-center gap-2">
-                      <Vote className="h-4 w-4 shrink-0" />
-                      <span className="truncate">Votar Projetos</span>
+                    <Link to="/projetos" className="flex w-full items-center justify-center gap-2.5">
+                      <Vote className="h-5 w-5 shrink-0" />
+                      Votar Projetos
                     </Link>
                   </Button>
                 </motion.div>
 
-                <motion.div whileHover={{ scale: 1.015 }} whileTap={{ scale: 0.985 }} className="w-full min-w-0">
+                <motion.div whileHover={{ scale: 1.02, y: -2 }} whileTap={{ scale: 0.98 }} className="w-full sm:flex-1">
                   <Button
                     asChild
                     size="lg"
                     variant="outline"
-                    className="hero-primary-action h-11 w-full min-w-0 justify-center gap-2 overflow-hidden rounded-xl bg-card px-2.5 text-[13px] font-semibold transition-colors hover:bg-secondary focus-visible:outline-none focus-visible:ring-2 sm:px-3 sm:text-sm"
-                    style={{ borderColor: withAlpha(heroConfig.titleColor, "26"), color: heroConfig.titleColor }}
+                    className="h-13 w-full justify-center gap-2.5 rounded-2xl bg-card/90 text-sm font-semibold shadow-md backdrop-blur-sm transition-all hover:bg-secondary sm:text-base"
+                    style={{ borderColor: withAlpha(heroConfig.titleColor, "22"), color: heroConfig.titleColor }}
                   >
-                    <Link to="/submeter" className="flex w-full min-w-0 items-center justify-center gap-2">
-                      <Send className="h-4 w-4 shrink-0" />
-                      <span className="truncate">Submeter candidatura</span>
+                    <Link to="/submeter" className="flex w-full items-center justify-center gap-2.5">
+                      <Send className="h-5 w-5 shrink-0" />
+                      Submeter
                     </Link>
                   </Button>
                 </motion.div>
 
-                <motion.div whileHover={{ scale: 1.015 }} whileTap={{ scale: 0.985 }} className="w-full min-w-0">
+                <motion.div whileHover={{ scale: 1.02, y: -2 }} whileTap={{ scale: 0.98 }} className="w-full sm:flex-[0.85]">
                   <Button
                     asChild
                     size="lg"
-                    className="h-11 w-full min-w-0 justify-center overflow-hidden rounded-xl border border-destructive/30 bg-destructive/8 px-2.5 text-[13px] font-semibold text-destructive shadow-none transition-all hover:border-destructive/50 hover:bg-destructive/15 hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-destructive active:scale-[0.98] sm:px-3 sm:text-sm"
-                    style={{ backdropFilter: "blur(4px)" }}
+                    className="h-13 w-full justify-center gap-2.5 overflow-hidden rounded-2xl border border-destructive/25 bg-destructive/8 text-sm font-semibold text-destructive shadow-none transition-all hover:border-destructive/45 hover:bg-destructive/14 sm:text-base"
                   >
-                    <a href={laboratorioHref} className="flex w-full min-w-0 items-center justify-center gap-2">
-                      <Rocket className="h-4 w-4 shrink-0" />
-                      <span className="truncate">Entrar no Laboratório</span>
+                    <a href={laboratorioHref} className="flex w-full items-center justify-center gap-2.5">
+                      <Rocket className="h-5 w-5 shrink-0" />
+                      Laboratório
                     </a>
-                  </Button>
-                </motion.div>
-
-                <motion.div whileHover={{ scale: 1.015 }} whileTap={{ scale: 0.985 }} className="w-full min-w-0">
-                  <Button
-                    asChild
-                    size="lg"
-                    className="h-11 w-full min-w-0 justify-center gap-2 overflow-hidden rounded-xl bg-emerald-600 px-2.5 text-[13px] font-semibold text-white shadow-lg shadow-emerald-700/20 transition-all hover:bg-emerald-500 sm:px-3 sm:text-sm"
-                  >
-                    <a href={AGENDAR_EVENTO_URL} target="_blank" rel="noopener noreferrer" className="flex w-full min-w-0 items-center justify-center gap-2">
-                      <CalendarDays className="h-4 w-4 shrink-0" />
-                      <span className="truncate">Agendar evento</span>
-                    </a>
-                  </Button>
-                </motion.div>
-
-                <motion.div whileHover={{ scale: 1.015 }} whileTap={{ scale: 0.985 }} className="w-full min-w-0">
-                  <Button
-                    asChild
-                    size="lg"
-                    className="h-11 w-full min-w-0 justify-center gap-2 overflow-hidden rounded-xl border border-[hsl(var(--area-iot))]/20 bg-[linear-gradient(135deg,rgba(3,105,161,0.96),rgba(14,116,144,0.92),rgba(34,197,94,0.84))] px-2.5 text-[13px] font-semibold text-white shadow-[0_18px_38px_rgba(3,105,161,0.24)] sm:px-3 sm:text-sm"
-                  >
-                    <Link to="/cursos" className="flex w-full min-w-0 items-center justify-center gap-2">
-                      <GraduationCap className="h-4 w-4 shrink-0" />
-                      <span className="truncate">Ver Cursos</span>
-                    </Link>
                   </Button>
                 </motion.div>
               </motion.div>
@@ -1210,23 +1183,21 @@ export default function Index() {
                   initial={{ opacity: 0, y: 8 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: 0.8 }}
-                  className="mx-auto mb-8 w-full max-w-md rounded-2xl border border-dashed bg-card/80 p-4 backdrop-blur-sm sm:mx-0 sm:max-w-2xl sm:p-5"
-                  style={{ borderColor: withAlpha(heroConfig.primaryColor, "40") }}
+                  className="mx-auto mb-8 w-full max-w-xl sm:mx-0"
                 >
-                  <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-                    <div className="flex min-w-0 items-start gap-3 text-left">
-                      <div className="shrink-0 rounded-2xl p-2.5" style={{ backgroundColor: withAlpha(heroConfig.primaryColor, "14"), color: heroConfig.primaryColor }}>
-                        <Lock className="h-5 w-5" />
-                      </div>
-                      <div className="min-w-0">
-                        <p className="text-sm font-heading font-bold" style={{ color: heroConfig.primaryColor }}>Faz login para desbloquear todos os recursos</p>
-                        <p className="text-xs leading-5 text-muted-foreground mt-1">Sem sessão ativa consegues ver projetos, mas votar, gostar e comentar exigem autenticação.</p>
-                      </div>
+                  <Link
+                    to="/login?redirect=/projetos"
+                    className="group flex items-center gap-3 rounded-2xl border border-dashed bg-card/80 px-4 py-3.5 backdrop-blur-sm transition-all hover:border-primary/40 hover:shadow-md"
+                    style={{ borderColor: withAlpha(heroConfig.primaryColor, "35") }}
+                  >
+                    <div className="shrink-0 rounded-xl p-2" style={{ backgroundColor: withAlpha(heroConfig.primaryColor, "12"), color: heroConfig.primaryColor }}>
+                      <Lock className="h-4 w-4" />
                     </div>
-                    <Button asChild className="w-full shrink-0 rounded-xl font-semibold sm:w-auto">
-                      <Link to="/login?redirect=/projetos">Entrar</Link>
-                    </Button>
-                  </div>
+                    <p className="min-w-0 flex-1 text-sm font-medium text-muted-foreground">
+                      <span className="font-semibold" style={{ color: heroConfig.primaryColor }}>Entra na tua conta</span> para votar e interagir
+                    </p>
+                    <ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-1" style={{ color: heroConfig.primaryColor }} />
+                  </Link>
                 </motion.div>
               )}
 
@@ -1308,7 +1279,7 @@ export default function Index() {
       </section>
 
       {/* ─── QUICK ACTIONS BAR ─── */}
-      <section className="border-y border-border bg-muted/30 py-10 md:py-14">
+      <section className="border-y border-border/60 bg-muted/25 py-10 md:py-14">
         <div className="container mx-auto px-4">
           <motion.div
             initial={{ opacity: 0, y: 8 }}
@@ -1322,10 +1293,9 @@ export default function Index() {
               </div>
               <span className="text-xl font-heading font-bold">Acesso Rápido</span>
             </div>
-            <div className="h-px flex-1 border-t border-dashed border-primary/20" />
-            <span className="text-xs font-medium text-muted-foreground">{quickActions.length} atalhos</span>
+            <div className="h-px flex-1 border-t border-dashed border-primary/15" />
           </motion.div>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-8">
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
             {quickActions.map((action, i) => (
               <motion.div
                 key={action.label}
@@ -1366,8 +1336,12 @@ export default function Index() {
       <section className="py-16 md:py-24 bg-muted/20">
         <div className="container mx-auto px-4">
           <motion.div initial={{ opacity: 0, y: 12 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}>
-            <h2 className="text-2xl md:text-4xl font-heading font-bold mb-3">Cursos em Destaque</h2>
-            <p className="text-muted-foreground mb-10 text-base">Prévia dos cursos oficiais. A lista completa está na página de cursos.</p>
+            <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/5 px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-primary">
+              <GraduationCap className="h-3.5 w-3.5" />
+              Formação
+            </div>
+            <h2 className="text-2xl md:text-4xl font-heading font-bold mb-2">Cursos em Destaque</h2>
+            <p className="text-muted-foreground mb-10 text-sm md:text-base">Os cursos mais populares desta edição.</p>
           </motion.div>
 
           <div className="mb-8 grid gap-3 md:grid-cols-3">
@@ -1434,18 +1408,18 @@ export default function Index() {
       <section className="py-14 md:py-20 bg-muted/30">
         <div className="container mx-auto px-4">
           <motion.div initial={{ opacity: 0, y: 12 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}>
-            <div className="flex items-center gap-3 mb-3">
+            <div className="flex items-center gap-3 mb-2">
               <h2 className="text-2xl md:text-4xl font-heading font-bold">Ao Vivo</h2>
               <motion.span
-                animate={{ scale: [1, 1.05, 1] }}
+                animate={{ scale: [1, 1.04, 1] }}
                 transition={{ repeat: Infinity, duration: 2 }}
-                className="inline-flex items-center gap-1.5 bg-destructive/10 text-destructive text-xs font-bold uppercase tracking-wider px-3 py-1.5 rounded-full"
+                className="inline-flex items-center gap-1.5 bg-destructive/10 text-destructive text-[11px] font-bold uppercase tracking-wider px-3 py-1.5 rounded-full"
               >
                 <span className="w-2 h-2 bg-destructive rounded-full animate-pulse" />
                 Em direto
               </motion.span>
             </div>
-            <p className="text-muted-foreground mb-8 text-base">Acompanha o que está a acontecer agora no evento.</p>
+            <p className="text-muted-foreground mb-8 text-sm md:text-base">Acompanha o que está a acontecer agora.</p>
           </motion.div>
 
           <LivePreview liveState={liveState} agendaItems={agendaItems} />
@@ -1619,13 +1593,13 @@ export default function Index() {
       <section className="py-14 md:py-20 bg-muted/20">
         <div className="container mx-auto px-4">
           <motion.div initial={{ opacity: 0, y: 12 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}>
-            <div className="flex items-center gap-3 mb-3">
+            <div className="flex items-center gap-3 mb-2">
               <motion.div animate={{ rotate: [0, 15, -15, 0] }} transition={{ repeat: Infinity, duration: 3, repeatDelay: 2 }}>
                 <Award className="w-7 h-7 text-primary" />
               </motion.div>
               <h2 className="text-2xl md:text-4xl font-heading font-bold">Top Projetos</h2>
             </div>
-            <p className="text-muted-foreground mb-10 text-base">Os projetos, negócios e produtos mais votados. Arrasta para ver todos!</p>
+            <p className="text-muted-foreground mb-10 text-sm md:text-base">Os mais votados pela comunidade. Arrasta para ver todos.</p>
           </motion.div>
 
           <TopProjectsCarousel />
@@ -1646,8 +1620,12 @@ export default function Index() {
       <section className="py-16 md:py-24">
         <div className="container mx-auto px-4">
           <motion.div initial={{ opacity: 0, y: 12 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}>
-            <h2 className="text-2xl md:text-4xl font-heading font-bold mb-3">Painéis</h2>
-            <p className="text-muted-foreground mb-12 text-base">As sessões que vão marcar esta semana académica.</p>
+            <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-[hsl(var(--area-web))]/20 bg-[hsl(var(--area-web))]/5 px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-[hsl(var(--area-web))]">
+              <Presentation className="h-3.5 w-3.5" />
+              Programação
+            </div>
+            <h2 className="text-2xl md:text-4xl font-heading font-bold mb-2">Painéis</h2>
+            <p className="text-muted-foreground mb-12 text-sm md:text-base">As sessões que vão marcar esta edição.</p>
           </motion.div>
 
           <div className="flex gap-5 overflow-x-auto scrollbar-hide pb-2 lg:grid lg:grid-cols-3 lg:overflow-visible">
@@ -1702,8 +1680,12 @@ export default function Index() {
       <section className="py-16 md:py-24">
         <div className="container mx-auto px-4">
           <motion.div initial={{ opacity: 0, y: 12 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}>
-            <h2 className="text-2xl md:text-4xl font-heading font-bold mb-3">Palestrantes</h2>
-            <p className="text-muted-foreground mb-12 text-base">Profissionais que vão partilhar conhecimento e experiência.</p>
+            <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-[hsl(var(--area-negocio))]/20 bg-[hsl(var(--area-negocio))]/5 px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-[hsl(var(--area-negocio))]">
+              <Mic className="h-3.5 w-3.5" />
+              Oradores
+            </div>
+            <h2 className="text-2xl md:text-4xl font-heading font-bold mb-2">Palestrantes</h2>
+            <p className="text-muted-foreground mb-12 text-sm md:text-base">Quem vai partilhar conhecimento e experiência.</p>
           </motion.div>
 
           <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-5">
@@ -1747,8 +1729,12 @@ export default function Index() {
       <section className="py-16 md:py-24">
         <div className="container mx-auto px-4">
           <motion.div initial={{ opacity: 0, y: 12 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}>
-            <h2 className="text-2xl md:text-4xl font-heading font-bold mb-3">Perguntas Frequentes</h2>
-            <p className="text-muted-foreground mb-10 text-base">Respostas rápidas às dúvidas mais comuns.</p>
+            <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-muted-foreground/20 bg-muted/50 px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              <HelpCircle className="h-3.5 w-3.5" />
+              Suporte
+            </div>
+            <h2 className="text-2xl md:text-4xl font-heading font-bold mb-2">Perguntas Frequentes</h2>
+            <p className="text-muted-foreground mb-10 text-sm md:text-base">Respostas rápidas às dúvidas mais comuns.</p>
           </motion.div>
 
           <motion.div
@@ -1797,7 +1783,7 @@ export default function Index() {
             initial={{ opacity: 0, scale: 0.97 }}
             whileInView={{ opacity: 1, scale: 1 }}
             viewport={{ once: true }}
-            className="relative bg-primary rounded-2xl p-10 md:p-14 flex flex-col md:flex-row items-start md:items-center justify-between gap-8 overflow-hidden"
+            className="relative bg-primary rounded-3xl p-10 md:p-14 flex flex-col md:flex-row items-start md:items-center justify-between gap-8 overflow-hidden shadow-xl shadow-primary/15"
           >
             <div className="absolute inset-0 overflow-hidden pointer-events-none">
               {patternIconNames.map((iconName, i) => {
@@ -1830,15 +1816,15 @@ export default function Index() {
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
-        transition={{ delay: 1.5 }}
+        transition={{ delay: 2 }}
         className="fixed bottom-4 right-4 z-40"
       >
-        <motion.div whileHover={{ scale: 1.1 }} whileTap={{ scale: 0.95 }}>
+        <motion.div whileHover={{ scale: 1.08 }} whileTap={{ scale: 0.95 }}>
           <Link
             to="/admin"
-            className="flex items-center gap-2 bg-card border border-border shadow-lg rounded-full px-5 py-3 text-sm font-semibold text-muted-foreground hover:text-foreground hover:border-primary/30 transition-all"
+            className="flex items-center gap-1.5 bg-card/90 border border-border/60 shadow-lg rounded-full px-4 py-2.5 text-xs font-semibold text-muted-foreground/70 hover:text-foreground hover:border-primary/25 hover:shadow-xl backdrop-blur-md transition-all"
           >
-            <Settings className="w-5 h-5" />
+            <Settings className="w-3.5 h-3.5" />
             Admin
           </Link>
         </motion.div>

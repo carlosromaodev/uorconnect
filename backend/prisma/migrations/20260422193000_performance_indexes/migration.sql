@@ -1,0 +1,11 @@
+CREATE INDEX IF NOT EXISTS "StudentLike_submissionId_createdAt_idx" ON "StudentLike"("submissionId", "createdAt");
+CREATE INDEX IF NOT EXISTS "StudentVote_submissionId_createdAt_idx" ON "StudentVote"("submissionId", "createdAt");
+CREATE INDEX IF NOT EXISTS "StudentComment_submissionId_createdAt_idx" ON "StudentComment"("submissionId", "createdAt");
+CREATE INDEX IF NOT EXISTS "StudentComment_studentId_createdAt_idx" ON "StudentComment"("studentId", "createdAt");
+CREATE INDEX IF NOT EXISTS "CourseEnrollment_courseId_createdAt_idx" ON "CourseEnrollment"("courseId", "createdAt");
+CREATE INDEX IF NOT EXISTS "CourseEnrollment_paymentStatus_createdAt_idx" ON "CourseEnrollment"("paymentStatus", "createdAt");
+CREATE INDEX IF NOT EXISTS "LiveChatMessage_createdAt_idx" ON "LiveChatMessage"("createdAt");
+CREATE INDEX IF NOT EXISTS "LiveChatMessage_studentId_createdAt_idx" ON "LiveChatMessage"("studentId", "createdAt");
+CREATE INDEX IF NOT EXISTS "AnalyticsSession_lastSeenAt_idx" ON "AnalyticsSession"("lastSeenAt");
+CREATE INDEX IF NOT EXISTS "AnalyticsSession_studentCourse_lastSeenAt_idx" ON "AnalyticsSession"("studentCourse", "lastSeenAt");
+CREATE INDEX IF NOT EXISTS "AnalyticsSession_utmSource_lastSeenAt_idx" ON "AnalyticsSession"("utmSource", "lastSeenAt");

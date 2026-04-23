@@ -1,6 +1,7 @@
 import fastify from "fastify";
 import cors from "@fastify/cors";
 import sensible from "@fastify/sensible";
+import rateLimit from "@fastify/rate-limit";
 import { serializerCompiler, validatorCompiler, type ZodTypeProvider } from "fastify-type-provider-zod";
 import { registerRoutes } from "./core/routes";
 import { type Env } from "./config/env";
@@ -65,6 +66,14 @@ export function buildApp(env: Env, deps?: AppDependencies) {
     maxAge: 86400
   });
   app.register(sensible);
+  app.register(rateLimit, {
+    global: true,
+    max: env.RATE_LIMIT_MAX,
+    timeWindow: env.RATE_LIMIT_WINDOW_MS,
+    cache: 10_000,
+    skipOnError: true,
+    keyGenerator: (request) => request.ip,
+  });
 
   registerRoutes(app, env, deps);
 

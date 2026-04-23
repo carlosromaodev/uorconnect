@@ -14,7 +14,29 @@ const envSchema = z.object({
   INVOICE_GENERATOR_API_KEY: z.string().min(1).optional(),
   OMBALA_API_BASE_URL: z.string().url().default("https://api.useombala.ao"),
   OMBALA_API_TOKEN: z.string().min(1).optional(),
-  OMBALA_SMS_DEFAULT_SENDER: z.string().min(3).max(16).default("UOR CONNECT")
+  OMBALA_SMS_DEFAULT_SENDER: z.string().min(3).max(16).default("UOR CONNECT"),
+  RATE_LIMIT_MAX: z.coerce.number().int().min(20).max(5000).default(400),
+  RATE_LIMIT_WINDOW_MS: z.coerce.number().int().min(10_000).max(3_600_000).default(60_000),
+}).superRefine((value, ctx) => {
+  if (value.NODE_ENV !== "production") {
+    return;
+  }
+
+  if (value.DATABASE_PROVIDER !== "postgresql") {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["DATABASE_PROVIDER"],
+      message: "Production must run with DATABASE_PROVIDER=postgresql",
+    });
+  }
+
+  if (!/^postgres(?:ql)?:\/\//i.test(value.DATABASE_URL)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ["DATABASE_URL"],
+      message: "Production must use a PostgreSQL DATABASE_URL",
+    });
+  }
 });
 
 export type Env = z.infer<typeof envSchema>;

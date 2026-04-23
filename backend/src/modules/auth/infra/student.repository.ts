@@ -75,6 +75,85 @@ export class StudentRepository {
     });
   }
 
+  async listAllWithStatsPaged(params: {
+    page: number;
+    limit: number;
+    search?: string;
+    course?: string;
+    sort?:
+      | "created_desc"
+      | "created_asc"
+      | "name_asc"
+      | "name_desc"
+      | "number_asc"
+      | "number_desc"
+      | "course_asc"
+      | "course_desc"
+      | "interactions_desc";
+  }) {
+    const page = Math.max(1, params.page);
+    const limit = Math.min(Math.max(10, params.limit), 200);
+    const search = params.search?.trim();
+    const course = params.course?.trim();
+    const where = {
+      ...(course && course !== "all" ? { course } : {}),
+      ...(search
+        ? {
+          OR: [
+            { studentNumber: { contains: search } },
+            { name: { contains: search } },
+            { course: { contains: search } },
+          ],
+        }
+        : {}),
+    };
+
+    const orderBy = (() => {
+      if (params.sort === "created_asc") return [{ createdAt: "asc" as const }];
+      if (params.sort === "name_asc") return [{ name: "asc" as const }, { createdAt: "desc" as const }];
+      if (params.sort === "name_desc") return [{ name: "desc" as const }, { createdAt: "desc" as const }];
+      if (params.sort === "number_asc") return [{ studentNumber: "asc" as const }];
+      if (params.sort === "number_desc") return [{ studentNumber: "desc" as const }];
+      if (params.sort === "course_asc") return [{ course: "asc" as const }, { createdAt: "desc" as const }];
+      if (params.sort === "course_desc") return [{ course: "desc" as const }, { createdAt: "desc" as const }];
+      if (params.sort === "interactions_desc") {
+        return [
+          { likes: { _count: "desc" as const } },
+          { votes: { _count: "desc" as const } },
+          { comments: { _count: "desc" as const } },
+          { createdAt: "desc" as const },
+        ];
+      }
+      return [{ createdAt: "desc" as const }];
+    })();
+
+    const [total, items] = await Promise.all([
+      this.prisma.student.count({ where }),
+      this.prisma.student.findMany({
+        where,
+        include: {
+          _count: {
+            select: {
+              likes: true,
+              votes: true,
+              comments: true,
+            },
+          },
+        },
+        orderBy,
+        skip: (page - 1) * limit,
+        take: limit,
+      }),
+    ]);
+
+    return {
+      items,
+      total,
+      page,
+      totalPages: Math.max(1, Math.ceil(total / limit)),
+    };
+  }
+
   async listRecentLogins(limit = 25): Promise<Student[]> {
     return this.prisma.student.findMany({
       where: {

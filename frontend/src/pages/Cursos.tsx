@@ -136,9 +136,13 @@ export default function Cursos() {
     <div className="min-h-screen py-12 md:py-20">
       <div className="container mx-auto px-4 space-y-12">
         <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}>
-          <h1 className="text-4xl md:text-5xl font-heading font-bold mb-3">Cursos</h1>
-          <p className="max-w-3xl text-base md:text-lg text-muted-foreground">
-            Cada curso é gerido por uma empresa parceira. A inscrição é feita aqui no site com os teus dados de estudante e, depois disso, podes entrar na comunidade do curso.
+          <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/5 px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-primary">
+            <GraduationCap className="h-3.5 w-3.5" />
+            Formação
+          </div>
+          <h1 className="text-4xl md:text-5xl font-heading font-bold mb-2">Cursos</h1>
+          <p className="max-w-2xl text-sm md:text-base text-muted-foreground">
+            Inscreve-te nos cursos geridos por empresas parceiras e acede à comunidade.
           </p>
         </motion.div>
 
@@ -149,8 +153,10 @@ export default function Cursos() {
         ) : (
           <>
             <section className="space-y-5">
-              <h2 className="text-2xl md:text-3xl font-heading font-bold flex items-center gap-3">
-                <Users className="h-6 w-6 text-primary" />
+              <h2 className="text-xl md:text-2xl font-heading font-bold flex items-center gap-2.5">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[hsl(var(--area-negocio))]/10">
+                  <Users className="h-4 w-4 text-[hsl(var(--area-negocio))]" />
+                </div>
                 Top Cursos
               </h2>
               {topCourses.length === 0 ? (
@@ -187,8 +193,10 @@ export default function Cursos() {
             </section>
 
             <section className="space-y-5">
-              <h2 className="text-2xl md:text-3xl font-heading font-bold flex items-center gap-3">
-                <GraduationCap className="h-6 w-6 text-primary" />
+              <h2 className="text-xl md:text-2xl font-heading font-bold flex items-center gap-2.5">
+                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
+                  <GraduationCap className="h-4 w-4 text-primary" />
+                </div>
                 Todos os Cursos
               </h2>
               {courses.length === 0 ? (

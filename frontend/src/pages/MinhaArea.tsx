@@ -229,9 +229,9 @@ export default function MinhaArea() {
                 Área do estudante
               </div>
               <div>
-                <h1 className="font-heading text-3xl font-bold sm:text-4xl">Meus Projetos e Minhas Inscrições</h1>
-                <p className="mt-2 max-w-3xl text-sm leading-7 text-muted-foreground sm:text-base">
-                  Tudo o que submeteste fica reaberto aqui com o respetivo estado, talão, comprovativo e links de continuação.
+                <h1 className="font-heading text-3xl font-bold sm:text-4xl">Minha Área</h1>
+                <p className="mt-2 max-w-2xl text-sm leading-7 text-muted-foreground sm:text-base">
+                  Acompanha o estado dos teus projetos e inscrições.
                 </p>
               </div>
             </div>
@@ -260,7 +260,7 @@ export default function MinhaArea() {
                 <FileText className="mx-auto h-10 w-10 text-primary" />
                 <div>
                   <p className="text-lg font-semibold">Ainda não tens projetos submetidos.</p>
-                  <p className="mt-2 text-sm leading-6 text-muted-foreground">Quando fizeres a tua primeira candidatura, o recibo vai aparecer aqui com estado e atalhos.</p>
+                <p className="mt-2 text-sm leading-6 text-muted-foreground">A tua primeira candidatura vai aparecer aqui.</p>
                 </div>
                 <Button asChild className="rounded-xl">
                   <Link to="/submeter">Submeter agora</Link>
@@ -399,7 +399,7 @@ export default function MinhaArea() {
                 <BookOpenCheck className="mx-auto h-10 w-10 text-primary" />
                 <div>
                   <p className="text-lg font-semibold">Ainda não tens inscrições em cursos.</p>
-                  <p className="mt-2 text-sm leading-6 text-muted-foreground">As tuas inscrições e os PDFs gerados ficam organizados nesta área.</p>
+                  <p className="mt-2 text-sm leading-6 text-muted-foreground">As tuas inscrições em cursos vão aparecer aqui.</p>
                 </div>
                 <Button asChild className="rounded-xl">
                   <Link to="/cursos">Ver cursos</Link>

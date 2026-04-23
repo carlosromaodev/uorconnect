@@ -26,6 +26,7 @@
   "type": "commonjs",
   "dependencies": {
     "@fastify/cors": "^11.2.0",
+    "@fastify/rate-limit": "^10.3.0",
     "@fastify/sensible": "^6.0.4",
     "@prisma/adapter-better-sqlite3": "^7.5.0",
     "@prisma/adapter-pg": "^7.5.0",

@@ -16,6 +16,9 @@ export default {
       screens: {
         xs: "480px",
       },
+      spacing: {
+        "13": "3.25rem",
+      },
       fontFamily: {
         heading: ['"Sora"', 'system-ui', 'sans-serif'],
         body: ['"DM Sans"', 'system-ui', 'sans-serif'],

@@ -24,6 +24,7 @@ import {
   normalizePhoneForWhatsApp,
   toAbsoluteUrl,
 } from "./course-enrollment-helpers";
+import { enqueuePdfJob, getPdfJob, getPdfJobResult } from "../../../shared/pdf-job-queue";
 
 const courseSchema = z.object({
   id: z.number(),
@@ -86,6 +87,12 @@ const courseEnrollmentSchema = z.object({
 });
 
 const courseEnrollmentStatusSchema = z.enum(["PENDING", "CONFIRMED", "REJECTED", "CANCELED"]);
+const enrollmentsPagedQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(10).max(200).default(50),
+  search: z.string().trim().max(120).optional(),
+  paymentStatus: courseEnrollmentStatusSchema.optional(),
+});
 
 const paidCourseEnrollmentSchema = z.object({
   paymentProof: z.string().regex(/^(data:|https?:\/\/)/, "Anexa o comprovativo do pagamento."),
@@ -260,6 +267,140 @@ export async function coursesRoutes(app: FastifyInstance, opts: { env: Env }) {
         };
       };
 
+      const loadCourseEnrollmentsPaged = async (
+        courseId: number,
+        options: z.infer<typeof enrollmentsPagedQuerySchema>
+      ) => {
+        const page = options.page;
+        const limit = options.limit;
+        const search = options.search?.trim();
+
+        const [course, total, enrollments] = await Promise.all([
+          prisma.course.findUnique({
+            where: { id: courseId },
+            select: {
+              id: true,
+              name: true,
+              description: true,
+              companyName: true,
+              companyCategory: true,
+              communityUrl: true,
+            }
+          }),
+          prisma.courseEnrollment.count({
+            where: {
+              courseId,
+              ...(options.paymentStatus ? { paymentStatus: options.paymentStatus } : {}),
+              ...(search
+                ? {
+                  OR: [
+                    { studentNumber: { contains: search } },
+                    { studentName: { contains: search } },
+                    { studentCourse: { contains: search } },
+                    { paymentPhone: { contains: search } },
+                  ]
+                }
+                : {}),
+            },
+          }),
+          prisma.courseEnrollment.findMany({
+            where: {
+              courseId,
+              ...(options.paymentStatus ? { paymentStatus: options.paymentStatus } : {}),
+              ...(search
+                ? {
+                  OR: [
+                    { studentNumber: { contains: search } },
+                    { studentName: { contains: search } },
+                    { studentCourse: { contains: search } },
+                    { paymentPhone: { contains: search } },
+                  ]
+                }
+                : {}),
+            },
+            include: {
+              student: true,
+            },
+            orderBy: [{ createdAt: "asc" }, { studentNumber: "asc" }],
+            skip: (page - 1) * limit,
+            take: limit,
+          }),
+        ]);
+
+        if (!course) return null;
+
+        const normalized = enrollments.map((entry) => {
+          const fullName = normalizeFreeText(entry.studentName ?? entry.student?.name) ?? `Estudante ${entry.studentNumber}`;
+          const studentCourse = normalizeFreeText(entry.studentCourse ?? entry.student?.course);
+          const phone = normalizeFreeText(entry.student?.phone);
+          const paymentProofPath = entry.paymentProof
+            ? `${publicApiBaseUrl ?? ""}/courses/enrollments/${entry.id}/payment-proof`
+            : null;
+
+          return {
+            id: entry.id,
+            studentNumber: entry.studentNumber,
+            fullName,
+            course: studentCourse,
+            phone,
+            paymentPhone: normalizeFreeText(entry.paymentPhone),
+            paymentStatus: entry.paymentStatus,
+            statusLabel: getEnrollmentStatusLabel(entry.paymentStatus, paymentProofPath),
+            paymentSubmittedAt: entry.paymentSubmittedAt?.toISOString() ?? null,
+            paymentProofPath,
+            whatsAppUrl: buildWhatsAppUrl(phone, { courseName: course.name, fullName }),
+            enrolledAt: entry.createdAt.toISOString()
+          };
+        });
+
+        return {
+          course: {
+            id: course.id,
+            name: course.name,
+            description: course.description,
+            companyName: course.companyName,
+            companyCategory: course.companyCategory,
+            communityUrl: course.communityUrl ?? null,
+            studentCount: total,
+          },
+          enrollments: normalized,
+          total,
+          page,
+          totalPages: Math.max(1, Math.ceil(total / limit)),
+        };
+      };
+
+      const generateCourseEnrollmentsPdf = async (courseId: number) => {
+        const payload = await loadCourseEnrollments(courseId);
+        if (!payload) {
+          throw new Error("Course not found");
+        }
+
+        const generatedAt = new Date();
+        const pdfBuffer = await renderCourseEnrollmentsPdf({
+          courseName: payload.course.name,
+          description: payload.course.description,
+          companyName: payload.course.companyName,
+          companyCategory: payload.course.companyCategory,
+          communityUrl: payload.course.communityUrl,
+          generatedAt,
+          reportNumber: `CURSO-${payload.course.id}-${generatedAt.toISOString().slice(0, 10)}`,
+          enrollments: payload.enrollments.map((entry) => ({
+            studentNumber: entry.studentNumber,
+            fullName: entry.fullName,
+            course: entry.course,
+            phone: entry.phone,
+            whatsAppUrl: entry.whatsAppUrl,
+            enrolledAt: new Date(entry.enrolledAt)
+          }))
+        });
+
+        return {
+          pdfBuffer,
+          fileName: `uor-connect-curso-${payload.course.id}-${generatedAt.toISOString().slice(0, 10)}.pdf`,
+        };
+      };
+
       adminApp.post("/sync-student-counts", {
         schema: {
           response: {
@@ -310,6 +451,132 @@ export async function coursesRoutes(app: FastifyInstance, opts: { env: Env }) {
         return reply.send(payload);
       });
 
+      adminApp.get("/:id/enrollments/paged", {
+        schema: {
+          params: z.object({ id: z.coerce.number().int().positive() }),
+          querystring: enrollmentsPagedQuerySchema,
+          response: {
+            200: z.object({
+              course: z.object({
+                id: z.number(),
+                name: z.string(),
+                description: z.string(),
+                companyName: z.string(),
+                companyCategory: z.string(),
+                communityUrl: z.string().nullable(),
+                studentCount: z.number()
+              }),
+              enrollments: z.array(courseEnrollmentSchema),
+              total: z.number(),
+              page: z.number(),
+              totalPages: z.number(),
+            }),
+            401: z.object({ message: z.string() }),
+            403: z.object({ message: z.string() }),
+            404: z.object({ message: z.string() })
+          }
+        }
+      }, async (request, reply) => {
+        const payload = await loadCourseEnrollmentsPaged(
+          (request.params as { id: number }).id,
+          enrollmentsPagedQuerySchema.parse(request.query)
+        );
+        if (!payload) {
+          return reply.code(404).send({ message: "Course not found" });
+        }
+
+        return reply.send(payload);
+      });
+
+      adminApp.post("/:id/enrollments/pdf-jobs", {
+        schema: {
+          params: z.object({ id: z.coerce.number().int().positive() }),
+          response: {
+            202: z.object({
+              id: z.string(),
+              kind: z.string(),
+              status: z.enum(["queued", "processing", "completed", "failed"]),
+              createdAt: z.string(),
+              updatedAt: z.string(),
+              statusPath: z.string(),
+              filePath: z.string(),
+            }),
+            401: z.object({ message: z.string() }),
+            403: z.object({ message: z.string() }),
+            404: z.object({ message: z.string() }),
+          }
+        }
+      }, async (request, reply) => {
+        const courseId = (request.params as { id: number }).id;
+        const payload = await loadCourseEnrollments(courseId);
+        if (!payload) {
+          return reply.code(404).send({ message: "Course not found" });
+        }
+
+        const job = enqueuePdfJob({
+          kind: `courses.enrollments.${courseId}`,
+          execute: async () => {
+            const { pdfBuffer, fileName } = await generateCourseEnrollmentsPdf(courseId);
+            return { buffer: pdfBuffer, fileName, contentType: "application/pdf" };
+          },
+        });
+
+        return reply.code(202).send({
+          ...job,
+          statusPath: `/courses/${courseId}/enrollments/pdf-jobs/${job.id}`,
+          filePath: `/courses/${courseId}/enrollments/pdf-jobs/${job.id}/file`,
+        });
+      });
+
+      adminApp.get("/:id/enrollments/pdf-jobs/:jobId", {
+        schema: {
+          params: z.object({ id: z.coerce.number().int().positive(), jobId: z.string() }),
+        }
+      }, async (request, reply) => {
+        const { id, jobId } = request.params as { id: number; jobId: string };
+        const job = getPdfJob(jobId);
+
+        if (!job) {
+          return reply.code(404).send({ message: "Job not found" });
+        }
+
+        return reply.send({
+          ...job,
+          statusPath: `/courses/${id}/enrollments/pdf-jobs/${job.id}`,
+          filePath: `/courses/${id}/enrollments/pdf-jobs/${job.id}/file`,
+        });
+      });
+
+      adminApp.get("/:id/enrollments/pdf-jobs/:jobId/file", {
+        schema: {
+          params: z.object({ id: z.coerce.number().int().positive(), jobId: z.string() }),
+          response: {
+            404: z.object({ message: z.string() }),
+            409: z.object({ message: z.string() }),
+          }
+        }
+      }, async (request, reply) => {
+        const { jobId } = request.params as { id: number; jobId: string };
+        const job = getPdfJob(jobId);
+
+        if (!job) {
+          return reply.code(404).send({ message: "Job not found" });
+        }
+
+        if (job.status !== "completed") {
+          return reply.code(409).send({ message: "PDF not ready yet" });
+        }
+
+        const result = getPdfJobResult(jobId);
+        if (!result) {
+          return reply.code(404).send({ message: "Job result not found" });
+        }
+
+        reply.header("Content-Type", result.contentType ?? "application/pdf");
+        reply.header("Content-Disposition", `attachment; filename=\"${result.fileName}\"`);
+        return reply.send(result.buffer);
+      });
+
       adminApp.get("/:id/enrollments/pdf", {
         schema: {
           params: z.object({ id: z.coerce.number().int().positive() }),
@@ -321,36 +588,18 @@ export async function coursesRoutes(app: FastifyInstance, opts: { env: Env }) {
           }
         }
       }, async (request, reply) => {
-        const payload = await loadCourseEnrollments((request.params as { id: number }).id);
-        if (!payload) {
-          return reply.code(404).send({ message: "Course not found" });
-        }
-
-        const generatedAt = new Date();
+        const courseId = (request.params as { id: number }).id;
 
         try {
-          const pdfBuffer = await renderCourseEnrollmentsPdf({
-            courseName: payload.course.name,
-            description: payload.course.description,
-            companyName: payload.course.companyName,
-            companyCategory: payload.course.companyCategory,
-            communityUrl: payload.course.communityUrl,
-            generatedAt,
-            reportNumber: `CURSO-${payload.course.id}-${generatedAt.toISOString().slice(0, 10)}`,
-            enrollments: payload.enrollments.map((entry) => ({
-              studentNumber: entry.studentNumber,
-              fullName: entry.fullName,
-              course: entry.course,
-              phone: entry.phone,
-              whatsAppUrl: entry.whatsAppUrl,
-              enrolledAt: new Date(entry.enrolledAt)
-            }))
-          });
+          const { pdfBuffer, fileName } = await generateCourseEnrollmentsPdf(courseId);
 
           reply.header("Content-Type", "application/pdf");
-          reply.header("Content-Disposition", `attachment; filename="uor-connect-curso-${payload.course.id}-${generatedAt.toISOString().slice(0, 10)}.pdf"`);
+          reply.header("Content-Disposition", `attachment; filename=\"${fileName}\"`);
           return reply.send(pdfBuffer);
         } catch (error) {
+          if (error instanceof Error && error.message === "Course not found") {
+            return reply.code(404).send({ message: error.message });
+          }
           request.log.error({ err: error }, "course enrollments pdf render failed");
           return reply.status(502).send({
             message: "Falha ao gerar o relatório PDF localmente. Verifica se o Chromium do Playwright está instalado neste ambiente.",

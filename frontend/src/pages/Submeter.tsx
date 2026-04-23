@@ -738,39 +738,29 @@ export default function Submeter() {
             </div>
             <h1 className="text-3xl font-bold md:text-4xl">{selectedKind?.label}</h1>
           </div>
-          <p className="mt-2 max-w-3xl text-sm leading-7 text-muted-foreground md:text-base">
-            {selectedKind?.description} com validação completa, sincronização com a tua sessão e recibo reabrível depois do envio.
+          <p className="mt-2 max-w-2xl text-sm leading-7 text-muted-foreground md:text-base">
+            {selectedKind?.description}
           </p>
         </motion.div>
 
-        <div className="surface-card mb-6 overflow-hidden border-border/70 bg-[linear-gradient(135deg,rgba(255,255,255,0.94),rgba(248,250,252,0.92),rgba(255,94,0,0.08))] p-5 sm:p-6">
-          <div className="grid gap-4 lg:grid-cols-[minmax(0,1.3fr)_minmax(0,0.7fr)]">
+        <div className="surface-card mb-6 overflow-hidden border-border/70 bg-card p-5">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div>
-              <p className="premium-kicker">Estado operacional</p>
-              <p className={`mt-2 font-heading text-2xl font-bold ${config.isOpen ? "text-primary" : "text-destructive"}`}>
-                {config.isOpen ? "Submissões ativas" : "Submissões desativadas"}
+              <p className="text-sm font-medium text-foreground">
+                <span className={`mr-2 inline-block h-2 w-2 rounded-full ${config.isOpen ? "bg-primary" : "bg-destructive"}`}></span>
+                {config.isOpen ? "Candidaturas abertas" : "Candidaturas fechadas"}
               </p>
-              <p className="mt-3 max-w-2xl text-sm leading-7 text-muted-foreground">
+              <p className="mt-1 text-sm text-muted-foreground">
                 {kind === "projeto"
-                  ? "Projetos académicos aprovados entram na votação pública e podem receber o prémio oficial."
-                  : "Negócios e produtos aprovados ficam em categoria de exposição e seguem o fluxo de validação e gestão interna."}
+                  ? "Projetos aprovados entram na votação pública."
+                  : "Exposições aprovadas ficam visíveis na plataforma."}
               </p>
             </div>
-
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-1">
-              <div className="premium-stat-card">
-                <p className="premium-kicker">Conta protegida</p>
-                <p className="mt-2 text-base font-semibold text-slate-900">{student?.studentNumber || "Sessão ativa"}</p>
-                <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                  {isEditMode ? editingReceipt?.statusLabel || "Edição em curso" : "O envio fica associado à tua conta académica."}
-                </p>
-              </div>
-              <div className="premium-stat-card premium-stat-card--accent">
-                <p className="text-[11px] font-semibold uppercase tracking-[0.2em] text-white/70">Auto-preenchimento</p>
-                <p className="mt-2 text-2xl font-semibold">{autofilledFieldsCount}/3</p>
-                <p className="mt-1 text-xs leading-5 text-white/70">
-                  Nome, contacto e curso são comparados com a tua sessão e destacados quando coincidem.
-                </p>
+            <div className="flex items-center gap-3 rounded-xl border border-border/60 bg-muted/20 px-4 py-2">
+              <ShieldCheck className="h-4 w-4 text-primary" />
+              <div className="text-sm">
+                <p className="font-semibold">{student?.studentNumber || "Sessão ativa"}</p>
+                <p className="text-xs text-muted-foreground">{isEditMode ? "Modo de edição" : "Conta verificada"}</p>
               </div>
             </div>
           </div>
@@ -786,11 +776,7 @@ export default function Submeter() {
           <section className="space-y-6">
             <div className="surface-card space-y-5 p-6">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Dados do estudante</p>
-                <h2 className="mt-2 text-xl font-semibold">Auto-preenchimento ligado à tua sessão</h2>
-                <p className="mt-2 text-sm leading-7 text-muted-foreground">
-                  Estes campos são alimentados a partir da tua conta autenticada. Podes corrigir algo antes de enviar, mas o sistema mostra-te quando o valor continua alinhado com o perfil.
-                </p>
+                <h2 className="text-xl font-semibold">Representante da equipa</h2>
               </div>
 
               <div className="grid gap-3 sm:grid-cols-3">
@@ -1185,21 +1171,7 @@ export default function Submeter() {
               </div>
             </div>
 
-            <div className="surface-card space-y-4 p-6">
-              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Próximos passos</p>
-              <div className="space-y-3">
-                {[
-                  "Os teus dados são sincronizados primeiro com a conta autenticada.",
-                  "Depois do envio, és redirecionado para um recibo canónico reabrível.",
-                  "O histórico completo fica disponível em Minha Área com estado atualizado.",
-                ].map((item, index) => (
-                  <div key={item} className="flex gap-3 rounded-2xl border border-border/60 bg-muted/20 p-4">
-                    <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-primary/10 text-sm font-bold text-primary">{index + 1}</div>
-                    <p className="text-sm leading-6 text-muted-foreground">{item}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
+
 
             <div className="surface-card p-6">
               <div className="flex flex-col gap-3">

@@ -181,6 +181,24 @@ const studentSubmissionReceiptSchema = z.object({
   canEdit: z.boolean(),
 });
 
+const adminSubmissionQuerySchema = z.object({
+  status: z.enum(["PENDING", "APPROVED", "REJECTED"]).optional(),
+  type: z.enum(["PROJECT", "BUSINESS", "PRODUCT"]).optional(),
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(10).max(200).default(50),
+  search: z.string().trim().max(160).optional(),
+  sort: z.enum([
+    "created_desc",
+    "created_asc",
+    "name_asc",
+    "name_desc",
+    "reference_asc",
+    "reference_desc",
+    "course_asc",
+    "course_desc",
+  ]).default("created_desc"),
+});
+
 function hexToRgb(value: string) {
   const normalized = value.replace("#", "");
   return {
@@ -226,6 +244,57 @@ function validateSubmissionTheme(primaryColor: string, secondaryColor: string) {
   }
 
   return null;
+}
+
+function parseSubmissionNeeds(value: unknown) {
+  if (Array.isArray(value)) {
+    return value.map((item) => String(item)).filter(Boolean);
+  }
+
+  if (typeof value === "string") {
+    try {
+      const parsed = JSON.parse(value);
+      return Array.isArray(parsed) ? parsed.map((item) => String(item)).filter(Boolean) : [];
+    } catch {
+      return value ? [value] : [];
+    }
+  }
+
+  return [];
+}
+
+function toAdminSubmissionResponse(s: any) {
+  const membersList = normalizeTeamMembersInput(s.members);
+  const needsList = parseSubmissionNeeds(s.needs);
+  const competitionEligible = isCompetitionEligible(s.type, s.area);
+  const slug = buildSubmissionSlug(s.name, s.id);
+
+  return {
+    id: s.id,
+    slug,
+    detailPath: `/projeto/${slug}`,
+    referenceCode: s.referenceCode,
+    name: s.name,
+    description: s.description,
+    status: s.status,
+    type: normalizeSubmissionType(s.type, s.area),
+    area: s.area ?? null,
+    createdAt: s.createdAt ?? null,
+    course: s.course ?? null,
+    members: membersList.length > 0 ? formatTeamMembersLabel(membersList) : null,
+    membersList,
+    teamSize: membersList.length,
+    leaderName: s.leaderName ?? null,
+    leaderPhone: s.leaderPhone ?? null,
+    needs: needsList,
+    observations: s.observations ?? null,
+    primaryColor: s.primaryColor,
+    secondaryColor: s.secondaryColor,
+    bannerUrl: s.bannerUrl ?? null,
+    isWinner: competitionEligible ? s.isWinner ?? false : false,
+    canVote: competitionEligible,
+    eligibleForAward: competitionEligible
+  };
 }
 
 export async function submissionRoutes(app: FastifyInstance, { env }: { env: ReturnType<typeof loadEnv> }) {
@@ -542,37 +611,101 @@ export async function submissionRoutes(app: FastifyInstance, { env }: { env: Ret
       }, async (request) => {
         const { status, type } = request.query as { status?: any; type?: any };
         const list = await listDetailedSubmissions.execute(status, type);
-        return list.map((s) => {
-        const competitionEligible = isCompetitionEligible(s.type, s.area);
-        const slug = buildSubmissionSlug(s.name, s.id);
-
-        return {
-          id: s.id,
-          slug,
-          detailPath: `/projeto/${slug}`,
-          referenceCode: s.referenceCode,
-          name: s.name,
-          description: s.description,
-          status: s.status,
-          type: normalizeSubmissionType(s.type, s.area),
-          area: (s as any).area ?? null,
-          createdAt: (s as any).createdAt ?? null,
-          course: (s as any).course ?? null,
-          members: s.members.length > 0 ? formatTeamMembersLabel(s.members) : null,
-          membersList: s.members,
-          teamSize: s.members.length,
-          leaderName: (s as any).leaderName ?? null,
-          leaderPhone: (s as any).leaderPhone ?? null,
-          needs: s.needs,
-          observations: (s as any).observations ?? null,
-          primaryColor: s.primaryColor,
-          secondaryColor: s.secondaryColor,
-          bannerUrl: s.bannerUrl ?? null,
-          isWinner: competitionEligible ? (s as any).isWinner ?? false : false,
-          canVote: competitionEligible,
-          eligibleForAward: competitionEligible
-        };
+        return list.map((submission) => toAdminSubmissionResponse(submission));
       });
+
+      adminApp.get("/paged", {
+      schema: {
+        querystring: adminSubmissionQuerySchema,
+        response: {
+          200: z.object({
+            items: z.array(z.object({
+              id: z.number(),
+              slug: z.string(),
+              detailPath: z.string(),
+              referenceCode: z.string(),
+              name: z.string(),
+              description: z.string(),
+              status: z.string(),
+              type: z.string(),
+              area: z.string().nullable(),
+              createdAt: z.coerce.date().nullable(),
+              course: z.string().nullable(),
+              members: z.string().nullable(),
+              membersList: z.array(z.string()),
+              teamSize: z.number(),
+              leaderName: z.string().nullable(),
+              leaderPhone: z.string().nullable(),
+              needs: z.array(z.string()),
+              observations: z.string().nullable(),
+              primaryColor: z.string(),
+              secondaryColor: z.string(),
+              bannerUrl: z.string().nullable(),
+              isWinner: z.boolean(),
+              canVote: z.boolean(),
+              eligibleForAward: z.boolean()
+            })),
+            total: z.number(),
+            page: z.number(),
+            totalPages: z.number(),
+          }),
+          401: z.object({ message: z.string() }),
+          403: z.object({ message: z.string() })
+        }
+      }
+      }, async (request, reply) => {
+        const query = adminSubmissionQuerySchema.parse(request.query);
+        const page = query.page;
+        const limit = query.limit;
+        const search = query.search?.trim();
+        const where = {
+          ...(query.status ? { status: query.status } : {}),
+          ...(query.type ? { type: query.type } : {}),
+          ...(search
+            ? {
+              OR: [
+                { name: { contains: search } },
+                { referenceCode: { contains: search } },
+                { course: { contains: search } },
+                { leaderName: { contains: search } },
+                { leaderPhone: { contains: search } },
+              ],
+            }
+            : {}),
+        };
+
+        const orderBy = query.sort === "created_asc"
+          ? [{ createdAt: "asc" as const }]
+          : query.sort === "name_asc"
+            ? [{ name: "asc" as const }, { createdAt: "desc" as const }]
+            : query.sort === "name_desc"
+              ? [{ name: "desc" as const }, { createdAt: "desc" as const }]
+              : query.sort === "reference_asc"
+                ? [{ referenceCode: "asc" as const }, { createdAt: "desc" as const }]
+                : query.sort === "reference_desc"
+                  ? [{ referenceCode: "desc" as const }, { createdAt: "desc" as const }]
+                  : query.sort === "course_asc"
+                    ? [{ course: "asc" as const }, { createdAt: "desc" as const }]
+                    : query.sort === "course_desc"
+                      ? [{ course: "desc" as const }, { createdAt: "desc" as const }]
+                      : [{ createdAt: "desc" as const }];
+
+        const [total, items] = await Promise.all([
+          prisma.submission.count({ where }),
+          prisma.submission.findMany({
+            where,
+            orderBy,
+            skip: (page - 1) * limit,
+            take: limit,
+          }),
+        ]);
+
+        return reply.send({
+          items: items.map((item) => toAdminSubmissionResponse(item)),
+          total,
+          page,
+          totalPages: Math.max(1, Math.ceil(total / limit)),
+        });
       });
 
       adminApp.patch("/:id/status", {

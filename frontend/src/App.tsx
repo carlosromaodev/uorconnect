@@ -17,9 +17,7 @@ const LazyAnalyticsProvider = lazy(() =>
 );
 const Navbar = lazy(() => import("./components/Navbar"));
 const Footer = lazy(() => import("./components/Footer"));
-const PwaSystemBanner = lazy(() =>
-  import("./components/features/PwaSystemBanner").then((module) => ({ default: module.PwaSystemBanner })),
-);
+
 const Index = lazy(() => import("./pages/Index"));
 const Agenda = lazy(() => import("./pages/Agenda"));
 const Submeter = lazy(() => import("./pages/Submeter"));
@@ -163,7 +161,7 @@ const AppContent = () => {
       </main>
       {showChrome ? (
         <Suspense fallback={null}>
-          <PwaSystemBanner />
+
         </Suspense>
       ) : null}
       {showChrome ? (

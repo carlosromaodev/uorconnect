@@ -52,7 +52,7 @@ function LoginModal({ open, onClose, onLogin }: { open: boolean; onClose: () => 
               Entrar
             </DialogTitle>
             <DialogDescription className="text-xs leading-relaxed text-muted-foreground sm:text-sm">
-              Entra com o teu acesso académico para votar, gostar, comentar e partilhar o projeto a partir da tua sessão.
+              Usa os teus dados académicos para interagir com o projeto.
             </DialogDescription>
           </DialogHeader>
 
@@ -323,7 +323,7 @@ export default function ProjetoDetalhe() {
           className="overflow-hidden rounded-[32px] border border-border/60 shadow-xl"
         >
           <div className="relative min-h-[320px] px-6 py-8 text-white md:px-10 md:py-12" style={{ background: heroBackground }}>
-            <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(15,23,42,0.08),rgba(15,23,42,0.56))]" />
+            <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(15,23,42,0.12),rgba(15,23,42,0.62))]" />
             <div className="relative z-10 max-w-4xl">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="rounded-full border border-white/30 bg-white/10 px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em]">
@@ -406,7 +406,7 @@ export default function ProjetoDetalhe() {
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <p className="text-sm font-semibold">Comentários</p>
-                  <p className="text-xs text-muted-foreground">Os comentários são públicos e mostram nome e curso do estudante.</p>
+                  <p className="text-xs text-muted-foreground">Comentários públicos com nome e curso.</p>
                 </div>
                 <span className="inline-flex items-center gap-1 rounded-full border border-border px-3 py-1 text-xs font-semibold">
                   <MessageCircle className="h-3.5 w-3.5 text-primary" />

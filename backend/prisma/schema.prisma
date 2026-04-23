@@ -95,6 +95,39 @@ model AdminAuthorizedStudent {
   updatedAt     DateTime @updatedAt
 }
 
+model JuryMember {
+  id             Int              @id @default(autoincrement())
+  name           String
+  phone          String           @unique
+  isActive       Boolean          @default(true)
+  lastCodeSentAt DateTime?
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+  accessCodes    JuryAccessCode[]
+
+  @@index([isActive, createdAt])
+}
+
+model JuryAccessCode {
+  id                   Int        @id @default(autoincrement())
+  juryMember           JuryMember @relation(fields: [juryMemberId], references: [id], onDelete: Cascade)
+  juryMemberId         Int
+  codeHash             String
+  codeLast4            String
+  expiresAt            DateTime
+  usedAt               DateTime?
+  sentAt               DateTime   @default(now())
+  createdByStudentNumber String
+  providerMessageId    String?
+  providerResponseJson String?
+  deliveryStatus       String     @default("PENDING")
+  errorMessage         String?
+
+  @@index([juryMemberId, sentAt])
+  @@index([expiresAt])
+  @@index([usedAt])
+}
+
 model StudentLoginAudit {
   id            Int                @id @default(autoincrement())
   student       Student            @relation(fields: [studentId], references: [id])
@@ -117,6 +150,7 @@ model StudentLike {
   createdAt    DateTime   @default(now())
 
   @@unique([studentId, submissionId])
+  @@index([submissionId, createdAt])
 }
 
 model StudentVote {
@@ -128,6 +162,7 @@ model StudentVote {
   createdAt    DateTime   @default(now())
 
   @@unique([studentId, submissionId])
+  @@index([submissionId, createdAt])
 }
 
 model StudentComment {
@@ -138,6 +173,9 @@ model StudentComment {
   submissionId Int
   content      String
   createdAt    DateTime   @default(now())
+
+  @@index([submissionId, createdAt])
+  @@index([studentId, createdAt])
 }
 
 model Submission {
@@ -397,6 +435,8 @@ model CourseEnrollment {
   createdAt     DateTime @default(now())
 
   @@unique([studentId, courseId])
+  @@index([courseId, createdAt])
+  @@index([paymentStatus, createdAt])
 }
 
 model SmsCampaign {
@@ -467,6 +507,9 @@ model LiveChatMessage {
   student   Student  @relation(fields: [studentId], references: [id])
   studentId Int
   createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([studentId, createdAt])
 }
 
 model AnalyticsSession {
@@ -502,6 +545,9 @@ model AnalyticsSession {
   @@index([visitorId, startedAt])
   @@index([studentId, startedAt])
   @@index([audience, startedAt])
+  @@index([lastSeenAt])
+  @@index([studentCourse, lastSeenAt])
+  @@index([utmSource, lastSeenAt])
 }
 
 model AnalyticsEvent {

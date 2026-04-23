@@ -27,6 +27,25 @@ function normalizeCourseName(value?: string | null) {
   return (value ?? "").trim().toLowerCase();
 }
 
+const courseColorCacheTtlMs = 1000 * 60 * 5;
+let cachedCourseColorsAt = 0;
+let cachedCourseColorMap: Map<string, string | null> | null = null;
+
+async function getCourseColorMap() {
+  const now = Date.now();
+  if (cachedCourseColorMap && (now - cachedCourseColorsAt) < courseColorCacheTtlMs) {
+    return cachedCourseColorMap;
+  }
+
+  const courses = await prisma.course.findMany({
+    select: { name: true, courseColor: true }
+  });
+
+  cachedCourseColorMap = new Map(courses.map((course) => [normalizeCourseName(course.name), course.courseColor]));
+  cachedCourseColorsAt = now;
+  return cachedCourseColorMap;
+}
+
 function resolvePublicOrigin(request: FastifyRequest, env: Env) {
   if (env.PUBLIC_APP_URL) {
     return env.PUBLIC_APP_URL.replace(/\/$/, "");
@@ -150,7 +169,8 @@ function extractSubmissionIdFromSlug(slug: string) {
 
 export async function interactionsRoutes(app: FastifyInstance, opts: { env: Env }) {
   optsEnvCache = opts.env;
-  const adminVotesOverview = new GetAdminVotesOverview(new PrismaAdminVotesRepository());
+  const adminVotesRepository = new PrismaAdminVotesRepository();
+  const adminVotesOverview = new GetAdminVotesOverview(adminVotesRepository);
   const moderationRepository = new PrismaInteractionModerationRepository();
   const interactionModerationOverview = new GetInteractionModerationOverview(moderationRepository);
   const deleteProjectComment = new DeleteProjectComment(moderationRepository);
@@ -542,11 +562,80 @@ export async function interactionsRoutes(app: FastifyInstance, opts: { env: Env 
           return reply.send(await adminVotesOverview.execute());
         }
       );
+
+      adminApp.get(
+        "/admin/votes/paged",
+        {
+          schema: {
+            querystring: z.object({
+              projectsPage: z.coerce.number().int().min(1).default(1),
+              projectsLimit: z.coerce.number().int().min(10).max(200).default(50),
+              votesPage: z.coerce.number().int().min(1).default(1),
+              votesLimit: z.coerce.number().int().min(10).max(200).default(50),
+            }),
+            response: {
+              200: z.object({
+                projects: z.object({
+                  items: z.array(z.object({
+                    id: z.number(),
+                    name: z.string(),
+                    type: z.string(),
+                    votes: z.number(),
+                    comments: z.number(),
+                    averageRating: z.number()
+                  })),
+                  total: z.number(),
+                  page: z.number(),
+                  totalPages: z.number(),
+                }),
+                votes: z.object({
+                  items: z.array(z.object({
+                    id: z.number(),
+                    studentId: z.number(),
+                    studentNumber: z.string(),
+                    studentName: z.string().nullable(),
+                    studentEmail: z.string().nullable(),
+                    submissionId: z.number(),
+                    submissionName: z.string(),
+                    createdAt: z.string()
+                  })),
+                  total: z.number(),
+                  page: z.number(),
+                  totalPages: z.number(),
+                }),
+              }),
+              401: z.object({ message: z.string() }),
+              403: z.object({ message: z.string() }),
+            }
+          }
+        },
+        async (request, reply) => {
+          const { projectsPage, projectsLimit, votesPage, votesLimit } = request.query as {
+            projectsPage: number;
+            projectsLimit: number;
+            votesPage: number;
+            votesLimit: number;
+          };
+
+          const [projects, votes] = await Promise.all([
+            adminVotesRepository.listProjectSummariesPaged({ page: projectsPage, limit: projectsLimit }),
+            adminVotesRepository.listVotesPaged({ page: votesPage, limit: votesLimit }),
+          ]);
+
+          return reply.send({ projects, votes });
+        }
+      );
     });
 
     protectedApp.post(
       "/live-chat",
       {
+        config: {
+          rateLimit: {
+            max: 30,
+            timeWindow: 60_000,
+          }
+        },
         schema: {
           body: z.object({
             content: z.string().trim().min(1).max(280)
@@ -565,7 +654,12 @@ export async function interactionsRoutes(app: FastifyInstance, opts: { env: Env 
       },
       async (request: FastifyRequest<{ Body: { content: string } }>, reply: FastifyReply) => {
         const student = request.student;
-        if (!student) return reply.status(401).send({ message: "Unauthorized" });
+        if (!student) {
+          if (request.jury) {
+            return reply.status(403).send({ message: "Acesso de júri ainda não pode enviar mensagens no chat ao vivo." });
+          }
+          return reply.status(401).send({ message: "Unauthorized" });
+        }
 
         const created = await prisma.liveChatMessage.create({
           data: {
@@ -578,10 +672,7 @@ export async function interactionsRoutes(app: FastifyInstance, opts: { env: Env 
         });
 
         const profile = normalizeStudentProfile(created.student);
-        const course = await prisma.course.findMany({
-          select: { name: true, courseColor: true }
-        });
-        const courseColorMap = new Map(course.map((item) => [normalizeCourseName(item.name), item.courseColor]));
+        const courseColorMap = await getCourseColorMap();
 
         return reply.code(201).send({
           id: created.id,
@@ -597,6 +688,12 @@ export async function interactionsRoutes(app: FastifyInstance, opts: { env: Env 
     protectedApp.post(
       "/like",
       {
+        config: {
+          rateLimit: {
+            max: 60,
+            timeWindow: 60_000,
+          }
+        },
         schema: {
           body: submissionIdSchema,
           response: {
@@ -612,7 +709,12 @@ export async function interactionsRoutes(app: FastifyInstance, opts: { env: Env 
       },
       async (request: FastifyRequest<{ Body: { submissionId: number } }>, reply: FastifyReply) => {
         const student = request.student;
-        if (!student) return reply.status(401).send({ message: "Unauthorized" });
+        if (!student) {
+          if (request.jury) {
+            return reply.status(403).send({ message: "Acesso de júri ainda não pode registar likes." });
+          }
+          return reply.status(401).send({ message: "Unauthorized" });
+        }
 
         const { submissionId } = request.body;
         const submission = await prisma.submission.findUnique({ where: { id: submissionId } });
@@ -648,6 +750,12 @@ export async function interactionsRoutes(app: FastifyInstance, opts: { env: Env 
     protectedApp.post(
       "/vote",
       {
+        config: {
+          rateLimit: {
+            max: 30,
+            timeWindow: 60_000,
+          }
+        },
         schema: {
           body: submissionIdSchema,
           response: {
@@ -663,7 +771,12 @@ export async function interactionsRoutes(app: FastifyInstance, opts: { env: Env 
       },
       async (request: FastifyRequest<{ Body: { submissionId: number } }>, reply: FastifyReply) => {
         const student = request.student;
-        if (!student) return reply.status(401).send({ message: "Unauthorized" });
+        if (!student) {
+          if (request.jury) {
+            return reply.status(403).send({ message: "Acesso de júri ainda não pode registar votos." });
+          }
+          return reply.status(401).send({ message: "Unauthorized" });
+        }
         const { submissionId } = request.body;
 
         const submission = await prisma.submission.findUnique({ where: { id: submissionId } });
@@ -690,6 +803,12 @@ export async function interactionsRoutes(app: FastifyInstance, opts: { env: Env 
     protectedApp.post(
       "/comment",
       {
+        config: {
+          rateLimit: {
+            max: 20,
+            timeWindow: 60_000,
+          }
+        },
         schema: {
           body: z.object({
             submissionId: z.coerce.number().int().positive(),
@@ -712,7 +831,12 @@ export async function interactionsRoutes(app: FastifyInstance, opts: { env: Env 
       },
       async (request: FastifyRequest<{ Body: { submissionId: number; content: string } }>, reply: FastifyReply) => {
         const student = request.student;
-        if (!student) return reply.status(401).send({ message: "Unauthorized" });
+        if (!student) {
+          if (request.jury) {
+            return reply.status(403).send({ message: "Acesso de júri ainda não pode publicar comentários." });
+          }
+          return reply.status(401).send({ message: "Unauthorized" });
+        }
         const { submissionId, content } = request.body;
 
         const submission = await prisma.submission.findUnique({ where: { id: submissionId } });
@@ -734,10 +858,7 @@ export async function interactionsRoutes(app: FastifyInstance, opts: { env: Env 
           }
         });
 
-        const courses = await prisma.course.findMany({
-          select: { name: true, courseColor: true }
-        });
-        const courseColorMap = new Map(courses.map((course) => [normalizeCourseName(course.name), course.courseColor]));
+        const courseColorMap = await getCourseColorMap();
         const profile = normalizeStudentProfile(comment.student);
 
         return reply.code(201).send({
@@ -755,7 +876,34 @@ export async function interactionsRoutes(app: FastifyInstance, opts: { env: Env 
       "/me",
       async (request, reply) => {
         const student = request.student;
-        if (!student) return reply.status(401).send({ message: "Unauthorized" });
+        if (!student) {
+          if (request.jury) {
+            const juryMember = await prisma.juryMember.findUnique({
+              where: { id: request.jury.id },
+              select: { id: true, name: true, phone: true, isActive: true, lastCodeSentAt: true },
+            });
+
+            if (!juryMember || !juryMember.isActive) {
+              return reply.status(403).send({ message: "Sessão de júri inválida ou desativada." });
+            }
+
+            return reply.send({
+              student: null,
+              jury: {
+                id: juryMember.id,
+                name: juryMember.name,
+                phone: juryMember.phone,
+                lastCodeSentAt: juryMember.lastCodeSentAt?.toISOString() ?? null,
+              },
+              stats: {
+                likes: 0,
+                votes: 0,
+                comments: 0,
+              },
+            });
+          }
+          return reply.status(401).send({ message: "Unauthorized" });
+        }
 
         const [profile, likeCount, voteCount, commentCount] = await Promise.all([
           prisma.student.findUnique({ where: { id: student.id } }),

@@ -84,7 +84,7 @@ export function StudentLoginForm({
             : "rounded-xl border border-primary/20 bg-primary/5",
         )}
       >
-        <div className="flex items-start gap-3">
+        <div className="flex items-center gap-3">
           <div
             className={cn(
               "p-2",
@@ -95,16 +95,11 @@ export function StudentLoginForm({
           >
             <Shield className="h-4 w-4" />
           </div>
-          <div>
-            <p className={cn("text-xs font-bold uppercase tracking-[0.16em]", laboratorioMode ? "text-[#00e5c8]" : "text-primary")}>
-              {laboratorioMode ? "Sessão técnica validada" : "Validação segura"}
-            </p>
-            <p className={cn("mt-1 text-sm leading-6", laboratorioMode ? "text-[#7b8ca3]" : "text-muted-foreground")}>
-              {laboratorioMode
-                ? "Usa o teu acesso académico para libertar a sessão do Laboratório. A identidade é validada no backend próprio do concurso."
-                : "Usa os teus dados de login da secretaria.uor.edu.ao. O acesso serve apenas para validar que és estudante da UOR e nenhum dado sensível da secretaria é guardado."}
-            </p>
-          </div>
+          <p className={cn("text-sm", laboratorioMode ? "text-[#7b8ca3]" : "text-muted-foreground")}>
+            {laboratorioMode
+              ? "Usa o teu acesso académico para iniciar sessão."
+              : "Usa os dados de login da secretaria.uor.edu.ao."}
+          </p>
         </div>
       </div>
 
