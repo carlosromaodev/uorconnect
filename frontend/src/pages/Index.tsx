@@ -325,59 +325,86 @@ function LivePreview({ liveState, agendaItems }: { liveState: AgendaLiveState | 
 
   if (!featured) {
     return (
-      <div className="rounded-xl border border-border bg-card p-6 text-sm text-muted-foreground">
-        Ainda não há sessões configuradas para o módulo Ao Vivo.
-      </div>
+      <motion.div
+        initial={{ opacity: 0, scale: 0.98 }} whileInView={{ opacity: 1, scale: 1 }} viewport={{ once: true }}
+        className="mx-auto max-w-md rounded-2xl border border-dashed border-border/60 bg-muted/20 p-8 text-center"
+      >
+        <Radio className="mx-auto mb-3 h-10 w-10 text-muted-foreground/25" />
+        <p className="text-sm font-medium text-muted-foreground">Ainda não há sessões configuradas.</p>
+        <p className="mt-1 text-xs text-muted-foreground/70">As sessões ao vivo aparecerão aqui quando começarem.</p>
+      </motion.div>
     );
   }
 
   return (
-    <div className="grid md:grid-cols-2 gap-5">
+    <div className="grid gap-4 md:grid-cols-2">
+      {/* Featured session */}
       <motion.div
-        initial={{ opacity: 0, x: -20 }}
-        whileInView={{ opacity: 1, x: 0 }}
-        viewport={{ once: true }}
-        whileHover={{ scale: 1.02 }}
+        initial={{ opacity: 0, y: 16 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}
+        whileHover={{ y: -3 }}
         transition={{ type: "spring", stiffness: 300 }}
-        className="relative border-2 border-primary rounded-xl bg-primary/5 p-6 md:p-8 overflow-hidden cursor-pointer group"
+        className="group relative overflow-hidden rounded-2xl border-2 border-primary/40 bg-gradient-to-br from-primary/[0.06] to-primary/[0.02] p-5 md:p-6 cursor-pointer"
       >
-        <div className="absolute top-0 right-0 w-40 h-40 bg-primary/5 rounded-full -translate-y-1/2 translate-x-1/2 group-hover:scale-150 transition-transform duration-700" />
-        <div className="flex items-center gap-2.5 mb-4">
-          <span className="inline-flex items-center gap-1.5 bg-primary text-primary-foreground text-xs font-bold uppercase tracking-wider px-3 py-1.5 rounded-full">
-            <span className={`w-2 h-2 rounded-full ${featuredLabel === "Agora" ? "bg-primary-foreground animate-pulse" : "bg-primary-foreground/70"}`} />
+        {/* Decorative corner glow */}
+        <div className="pointer-events-none absolute -right-10 -top-10 h-32 w-32 rounded-full bg-primary/8 blur-2xl transition-all duration-500 group-hover:scale-150 group-hover:bg-primary/12" />
+        <div className="pointer-events-none absolute -bottom-6 -left-6 h-20 w-20 rounded-full bg-primary/5 blur-xl" />
+
+        <div className="relative flex items-center gap-2 mb-3">
+          <span className="inline-flex items-center gap-1.5 bg-primary text-primary-foreground text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full shadow-sm">
+            <span className="relative flex h-1.5 w-1.5">
+              {featuredLabel === "Agora" && <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary-foreground opacity-75" />}
+              <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-primary-foreground" />
+            </span>
             {featuredLabel}
           </span>
-          <span className={`text-xs font-bold uppercase tracking-wider px-2.5 py-1 rounded-full ${liveTypeColors[featured.type] || "bg-secondary text-secondary-foreground"}`}>
+          <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${liveTypeColors[featured.type] || "bg-secondary text-secondary-foreground"}`}>
             {featured.type}
           </span>
         </div>
-        <h3 className="font-heading font-bold text-lg md:text-xl mb-3">{featured.title}</h3>
-        <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
-          <span className="flex items-center gap-1.5"><Clock className="w-4 h-4 text-primary" />{featured.time} — {featured.endTime}</span>
-          <span className="flex items-center gap-1.5"><MapPin className="w-4 h-4 text-primary" />{featured.local}</span>
+        <h3 className="relative font-heading text-base font-bold md:text-lg mb-3 line-clamp-2">{featured.title}</h3>
+        <div className="relative flex flex-wrap gap-3 text-xs text-muted-foreground">
+          <span className="flex items-center gap-1.5 rounded-md bg-white/60 px-2 py-1">
+            <Clock className="h-3.5 w-3.5 text-primary" />{featured.time} — {featured.endTime}
+          </span>
+          <span className="flex items-center gap-1.5 rounded-md bg-white/60 px-2 py-1">
+            <MapPin className="h-3.5 w-3.5 text-primary" />{featured.local}
+          </span>
         </div>
       </motion.div>
 
-      {secondary && (
+      {/* Secondary session */}
+      {secondary ? (
         <motion.div
-          initial={{ opacity: 0, x: 20 }}
-          whileInView={{ opacity: 1, x: 0 }}
-          viewport={{ once: true }}
-          whileHover={{ scale: 1.02 }}
-          transition={{ type: "spring", stiffness: 300, delay: 0.1 }}
-          className="border border-border rounded-xl bg-card p-6 md:p-8 group cursor-pointer hover:border-primary/30 transition-colors"
+          initial={{ opacity: 0, y: 16 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}
+          whileHover={{ y: -3 }}
+          transition={{ type: "spring", stiffness: 300, delay: 0.08 }}
+          className="group relative overflow-hidden rounded-2xl border border-border/50 bg-white p-5 md:p-6 cursor-pointer transition-colors hover:border-primary/25"
         >
-          <div className="flex items-center gap-2.5 mb-4">
-            <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground bg-muted px-3 py-1.5 rounded-full">{secondaryLabel}</span>
-            <span className={`text-xs font-bold uppercase tracking-wider px-2.5 py-1 rounded-full ${liveTypeColors[secondary.type] || "bg-secondary text-secondary-foreground"}`}>
+          <div className="pointer-events-none absolute -right-8 -top-8 h-24 w-24 rounded-full bg-muted/40 blur-xl transition-all duration-500 group-hover:bg-primary/8" />
+          <div className="flex items-center gap-2 mb-3">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground bg-muted/80 px-2.5 py-1 rounded-full">{secondaryLabel}</span>
+            <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${liveTypeColors[secondary.type] || "bg-secondary text-secondary-foreground"}`}>
               {secondary.type}
             </span>
           </div>
-          <h3 className="font-heading font-bold text-lg md:text-xl mb-3">{secondary.title}</h3>
-          <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
-            <span className="flex items-center gap-1.5"><Clock className="w-4 h-4 text-primary" />{secondary.time} — {secondary.endTime}</span>
-            <span className="flex items-center gap-1.5"><MapPin className="w-4 h-4 text-primary" />{secondary.local}</span>
+          <h3 className="font-heading text-base font-bold md:text-lg mb-3 line-clamp-2">{secondary.title}</h3>
+          <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
+            <span className="flex items-center gap-1.5 rounded-md bg-muted/40 px-2 py-1">
+              <Clock className="h-3.5 w-3.5 text-primary/60" />{secondary.time} — {secondary.endTime}
+            </span>
+            <span className="flex items-center gap-1.5 rounded-md bg-muted/40 px-2 py-1">
+              <MapPin className="h-3.5 w-3.5 text-primary/60" />{secondary.local}
+            </span>
           </div>
+        </motion.div>
+      ) : (
+        <motion.div
+          initial={{ opacity: 0, y: 16 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}
+          transition={{ delay: 0.08 }}
+          className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-border/40 bg-muted/10 p-6 text-center"
+        >
+          <CalendarDays className="mb-2 h-8 w-8 text-muted-foreground/20" />
+          <p className="text-xs text-muted-foreground">Mais sessões em breve</p>
         </motion.div>
       )}
     </div>
@@ -717,6 +744,52 @@ function TypeBadge({ type }: { type: string }) {
     <span className={`text-xs font-bold uppercase tracking-wider px-2.5 py-1 rounded-full ${colors[type] || "bg-secondary text-secondary-foreground"}`}>
       {type}
     </span>
+  );
+}
+
+function HeroLabButton() {
+  const [showUnavailable, setShowUnavailable] = useState(false);
+
+  const handleClick = () => {
+    setShowUnavailable(true);
+    setTimeout(() => setShowUnavailable(false), 2000);
+  };
+
+  return (
+    <Button
+      size="sm"
+      variant="outline"
+      className="relative h-10 w-full gap-2 overflow-hidden rounded-lg border-border/50 text-sm font-semibold text-muted-foreground transition-all hover:border-border hover:text-foreground"
+      onClick={handleClick}
+    >
+      <AnimatePresence mode="wait">
+        {showUnavailable ? (
+          <motion.span
+            key="unavailable"
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.2 }}
+            className="flex items-center gap-2 text-amber-600"
+          >
+            <Clock className="h-4 w-4 shrink-0" />
+            Indisponível de momento
+          </motion.span>
+        ) : (
+          <motion.span
+            key="default"
+            initial={{ opacity: 0, y: 8 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.2 }}
+            className="flex items-center gap-2"
+          >
+            <Rocket className="h-4 w-4 shrink-0" />
+            Laboratório
+          </motion.span>
+        )}
+      </AnimatePresence>
+    </Button>
   );
 }
 
@@ -1102,23 +1175,19 @@ export default function Index() {
               {heroConfig.heroSubtitleText}
             </motion.p>
 
-            {/* CTAs — em fila, compactos */}
+            {/* CTAs — empilhados */}
             <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.55 }}
-              className="mb-6 flex items-center gap-2.5"
+              className="mb-6 flex w-full max-w-xs flex-col gap-2.5"
             >
-              <Button asChild size="sm" className="h-9 gap-2 rounded-lg px-4 text-sm font-semibold text-white shadow-md"
+              <Button asChild size="sm" className="h-10 w-full gap-2 rounded-lg text-sm font-semibold text-white shadow-md"
                 style={{ backgroundColor: heroConfig.primaryColor, boxShadow: `0 8px 24px ${withAlpha(heroConfig.primaryColor, "22")}` }}
               >
-                <Link to="/projetos"><Vote className="h-4 w-4 shrink-0" />Votar</Link>
+                <Link to="/projetos"><Vote className="h-4 w-4 shrink-0" />Votar Projetos</Link>
               </Button>
-              <Button asChild size="sm" variant="outline" className="h-9 gap-2 rounded-lg px-4 text-sm font-semibold"
-                style={{ borderColor: withAlpha(heroConfig.titleColor, "18"), color: heroConfig.titleColor }}
-              >
-                <Link to="/submeter"><Send className="h-4 w-4 shrink-0" />Submeter</Link>
+              <Button asChild size="sm" className="h-10 w-full gap-2 rounded-lg bg-emerald-600 text-sm font-semibold text-white shadow-md hover:bg-emerald-700">
+                <Link to="/submeter"><Send className="h-4 w-4 shrink-0" />Submeter Projeto</Link>
               </Button>
-              <Button asChild size="sm" className="h-9 gap-2 rounded-lg border border-destructive/20 bg-destructive/5 px-4 text-sm font-semibold text-destructive shadow-none hover:bg-destructive/10">
-                <a href={laboratorioHref}><Rocket className="h-4 w-4 shrink-0" />Laboratório</a>
-              </Button>
+              <HeroLabButton />
             </motion.div>
 
             {/* Auth strip */}
@@ -1403,102 +1472,192 @@ export default function Index() {
       {/* ══════════════════════════════════════
           AO VIVO
       ══════════════════════════════════════ */}
-      <section className="py-16 md:py-24">
-        <div className="container mx-auto px-4">
-          <motion.div initial={{ opacity: 0, y: 12 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="mb-10">
-            <div className="mb-3 flex items-center gap-3">
-              <h2 className="font-heading text-3xl font-bold md:text-4xl">Ao Vivo</h2>
-              <motion.span animate={{ scale: [1, 1.05, 1] }} transition={{ repeat: Infinity, duration: 2 }}
-                className="inline-flex items-center gap-1.5 rounded-full bg-destructive/10 px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-destructive"
-              >
-                <span className="h-1.5 w-1.5 rounded-full bg-destructive animate-pulse" />Em direto
-              </motion.span>
-            </div>
-            <p className="max-w-lg text-sm text-muted-foreground md:text-base">Acompanha o que está a acontecer agora.</p>
+      <section className="relative py-16 md:py-24 overflow-hidden">
+        {/* Ambient background glow */}
+        <div className="pointer-events-none absolute inset-0">
+          <div className="absolute -top-32 left-1/2 h-64 w-[600px] -translate-x-1/2 rounded-full bg-destructive/[0.04] blur-[100px]" />
+          <div className="absolute bottom-0 right-0 h-48 w-48 rounded-full bg-primary/[0.03] blur-[80px]" />
+        </div>
+
+        <div className="container relative z-10 mx-auto px-4">
+          {/* Section header */}
+          <motion.div initial={{ opacity: 0, y: 16 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="mb-10 text-center">
+            <motion.div
+              animate={{ scale: [1, 1.06, 1] }}
+              transition={{ repeat: Infinity, duration: 2.5, ease: "easeInOut" }}
+              className="mb-4 inline-flex items-center gap-2 rounded-full bg-destructive/10 px-4 py-1.5"
+            >
+              <span className="relative flex h-2 w-2">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-destructive opacity-75" />
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-destructive" />
+              </span>
+              <span className="text-xs font-bold uppercase tracking-wider text-destructive">Em direto</span>
+            </motion.div>
+            <h2 className="font-heading text-3xl font-bold md:text-4xl">Ao Vivo</h2>
+            <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground md:text-base">Acompanha o que está a acontecer agora na feira.</p>
           </motion.div>
 
+          {/* Live preview cards */}
           <LivePreview liveState={liveState} agendaItems={agendaItems} />
 
-          <div className="mt-6 grid gap-4 lg:grid-cols-2">
-            {/* Chat */}
-            <div className="relative overflow-hidden rounded-2xl border border-border/50 bg-white shadow-sm">
-              <div className="absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r from-primary/70 via-primary/30 to-transparent" />
+          {/* Chat + Activity grid */}
+          <div className="mt-8 grid gap-5 lg:grid-cols-2">
+            {/* Chat card */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}
+              transition={{ delay: 0.1 }}
+              className="group relative overflow-hidden rounded-2xl border border-border/50 bg-white shadow-sm transition-shadow hover:shadow-md"
+            >
+              {/* Top accent bar */}
+              <div className="h-1 bg-gradient-to-r from-primary via-primary/60 to-transparent" />
               <div className="p-5">
-                <div className="mb-4 flex items-center gap-2">
-                  <MessageSquare className="h-5 w-5 text-primary" />
-                  <h3 className="font-heading text-base font-bold">Mini-chat Ao Vivo</h3>
-                </div>
-                <div className="mb-4 max-h-64 space-y-2 overflow-y-auto pr-1">
-                  {liveChat.map((msg) => (
-                    <div key={msg.id} className="rounded-xl border border-border/50 bg-muted/30 p-3">
-                      <div className="flex items-center gap-2">
-                        <p className="text-sm font-semibold text-primary">{msg.studentName}</p>
-                        <span className="inline-flex rounded-full px-2 py-0.5 text-[10px] font-medium"
-                          style={{ backgroundColor: withAlpha(msg.courseColor, "18"), color: msg.courseColor || "#64748b" }}>
-                          {msg.course || "Sem curso"}
-                        </span>
-                      </div>
-                      <p className="mt-1 text-sm text-muted-foreground">{msg.content}</p>
+                <div className="mb-4 flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
+                      <MessageSquare className="h-4 w-4 text-primary" />
                     </div>
-                  ))}
+                    <h3 className="font-heading text-sm font-bold">Chat Ao Vivo</h3>
+                  </div>
+                  <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{liveChat.length} msg</span>
                 </div>
-                <div className="flex gap-2">
-                  <input value={chatInput} onChange={(e) => setChatInput(e.target.value)}
-                    placeholder="Escreve uma mensagem..."
-                    className="h-10 flex-1 rounded-lg border border-input bg-background px-3 text-sm"
-                  />
-                  <Button className="h-10 w-10 shrink-0 rounded-lg p-0" onClick={() => void handleLiveChatSend()}>
-                    <Send className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-            </div>
-
-            {/* Activity */}
-            <div className="relative overflow-hidden rounded-2xl border border-border/50 bg-white shadow-sm">
-              <div className="absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r from-transparent via-primary/30 to-primary/70" />
-              <div className="p-5">
-                <div className="mb-4 flex items-center gap-2">
-                  <TrendingUp className="h-5 w-5 text-primary" />
-                  <h3 className="font-heading text-base font-bold">Atividade Recente</h3>
-                </div>
-                <div className="space-y-2">
-                  {recentActivity.length ? recentActivity.map((item) => (
-                    <div key={item.id} className="rounded-xl border border-border/50 bg-muted/30 p-3.5">
-                      <div className="flex items-start justify-between gap-2">
-                        <div className="min-w-0">
-                          <p className="truncate text-sm font-bold text-primary">{item.actorName}</p>
-                          <p className="mt-0.5 text-sm text-foreground/80">
-                            {getActivityLabel(item)} <span className="font-semibold">{item.subject}</span>
-                          </p>
+                <div className="mb-4 max-h-60 space-y-1 overflow-y-auto pr-1 scrollbar-thin">
+                  {liveChat.length ? liveChat.map((msg, i) => (
+                    <motion.div
+                      key={msg.id}
+                      initial={{ opacity: 0, x: -10 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: i * 0.04, duration: 0.25 }}
+                      className="group/msg flex gap-2 rounded-xl px-2 py-2 transition-colors hover:bg-muted/50"
+                    >
+                      <UserAvatar name={msg.studentName} size="sm" className="mt-0.5 shrink-0" />
+                      <div className="min-w-0 flex-1">
+                        {/* Name row — name always visible, course wraps below on mobile */}
+                        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                          <span className="text-[13px] font-bold leading-tight text-foreground">{msg.studentName}</span>
+                          <span className="text-[10px] leading-tight text-muted-foreground/70">
+                            {new Date(msg.createdAt).toLocaleTimeString("pt-PT", { hour: "2-digit", minute: "2-digit" })}
+                          </span>
                         </div>
-                        <span className="shrink-0 text-[11px] text-muted-foreground">
-                          {new Date(item.createdAt).toLocaleTimeString("pt-PT", { hour: "2-digit", minute: "2-digit" })}
-                        </span>
+                        {msg.course && (
+                          <span className="mt-0.5 inline-flex items-center rounded-md px-1.5 py-0.5 text-[9px] font-semibold leading-none"
+                            style={{ backgroundColor: withAlpha(msg.courseColor, "12"), color: msg.courseColor || "#64748b" }}>
+                            {msg.course}
+                          </span>
+                        )}
+                        {/* Message content */}
+                        <p className="mt-1 text-[13px] leading-snug text-foreground/80">{msg.content}</p>
                       </div>
-                      <span className="mt-2 inline-flex rounded-full px-2.5 py-0.5 text-[10px] font-semibold"
-                        style={{ backgroundColor: withAlpha(item.actorCourseColor, "16"), color: item.actorCourseColor || "#64748b" }}>
-                        {item.actorCourse || "Sem curso"}
-                      </span>
-                    </div>
+                    </motion.div>
                   )) : (
-                    <div className="rounded-xl border border-dashed border-border/50 p-4 text-sm text-muted-foreground">
-                      Ainda não há atividade recente.
+                    <div className="flex flex-col items-center justify-center py-10 text-center">
+                      <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-muted/60">
+                        <MessageSquare className="h-5 w-5 text-muted-foreground/30" />
+                      </div>
+                      <p className="text-sm font-medium text-muted-foreground/70">Nenhuma mensagem ainda</p>
+                      <p className="mt-0.5 text-[11px] text-muted-foreground/50">Sê o primeiro a participar na conversa!</p>
                     </div>
                   )}
                 </div>
-                <div className="mt-4">
-                  <Button asChild variant="outline" size="sm" className="rounded-lg">
-                    <Link to="/ao-vivo">Ver mais</Link>
+                {/* Input area with user avatar */}
+                <div className="flex items-center gap-2 rounded-xl border border-border/60 bg-muted/20 p-1.5 transition-all focus-within:border-primary/30 focus-within:bg-white focus-within:shadow-sm">
+                  <UserAvatar name={studentProfile?.name || "?"} size="sm" className="shrink-0 ml-0.5" />
+                  <input value={chatInput} onChange={(e) => setChatInput(e.target.value)}
+                    onKeyDown={(e) => { if (e.key === "Enter" && chatInput.trim()) void handleLiveChatSend(); }}
+                    placeholder={studentProfile ? "Escreve uma mensagem..." : "Inicia sessão para participar"}
+                    disabled={!studentProfile}
+                    className="h-8 min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground/50 disabled:cursor-not-allowed disabled:opacity-50"
+                  />
+                  <Button
+                    size="sm"
+                    className="h-8 w-8 shrink-0 rounded-lg p-0 shadow-none transition-all disabled:opacity-30"
+                    disabled={!chatInput.trim() || !studentProfile}
+                    onClick={() => void handleLiveChatSend()}
+                  >
+                    <Send className="h-3.5 w-3.5" />
                   </Button>
                 </div>
               </div>
-            </div>
+            </motion.div>
+
+            {/* Activity card */}
+            <motion.div
+              initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}
+              transition={{ delay: 0.2 }}
+              className="group relative overflow-hidden rounded-2xl border border-border/50 bg-white shadow-sm transition-shadow hover:shadow-md"
+            >
+              {/* Top accent bar */}
+              <div className="h-1 bg-gradient-to-r from-transparent via-primary/60 to-primary" />
+              <div className="p-5">
+                <div className="mb-4 flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
+                      <TrendingUp className="h-4 w-4 text-primary" />
+                    </div>
+                    <h3 className="font-heading text-sm font-bold">Atividade Recente</h3>
+                  </div>
+                  {recentActivity.length > 0 && (
+                    <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-primary/10 px-1.5 text-[10px] font-bold text-primary">
+                      {recentActivity.length}
+                    </span>
+                  )}
+                </div>
+                <div className="max-h-56 space-y-2 overflow-y-auto pr-1 scrollbar-thin">
+                  {recentActivity.length ? recentActivity.map((item, i) => (
+                    <motion.div
+                      key={item.id}
+                      initial={{ opacity: 0, x: 8 }}
+                      whileInView={{ opacity: 1, x: 0 }}
+                      viewport={{ once: true }}
+                      transition={{ delay: i * 0.06 }}
+                      className="flex items-start gap-2.5 rounded-lg bg-muted/40 p-2.5"
+                    >
+                      <UserAvatar name={item.actorName} size="sm" />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="truncate text-xs font-bold text-foreground">{item.actorName}</span>
+                          <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground">
+                            {new Date(item.createdAt).toLocaleTimeString("pt-PT", { hour: "2-digit", minute: "2-digit" })}
+                          </span>
+                        </div>
+                        <p className="mt-0.5 text-xs text-muted-foreground">
+                          {getActivityLabel(item)} <span className="font-semibold text-foreground/80">{item.subject}</span>
+                        </p>
+                        <span className="mt-1 inline-flex rounded-full px-1.5 py-0.5 text-[9px] font-semibold"
+                          style={{ backgroundColor: withAlpha(item.actorCourseColor, "14"), color: item.actorCourseColor || "#64748b" }}>
+                          {item.actorCourse || "Sem curso"}
+                        </span>
+                      </div>
+                    </motion.div>
+                  )) : (
+                    <div className="flex flex-col items-center justify-center py-8 text-center">
+                      <TrendingUp className="mb-2 h-8 w-8 text-muted-foreground/20" />
+                      <p className="text-xs text-muted-foreground">Nenhuma atividade registada ainda.</p>
+                    </div>
+                  )}
+                </div>
+                {recentActivity.length > 0 && (
+                  <div className="mt-4 text-center">
+                    <Button asChild variant="ghost" size="sm" className="h-8 rounded-lg text-xs text-muted-foreground hover:text-foreground">
+                      <Link to="/ao-vivo">Ver toda a atividade <ArrowRight className="ml-1 h-3 w-3" /></Link>
+                    </Button>
+                  </div>
+                )}
+              </div>
+            </motion.div>
           </div>
 
-          <motion.div initial={{ opacity: 0 }} whileInView={{ opacity: 1 }} viewport={{ once: true }} className="mt-8 text-center">
-            <Button asChild size="lg" className="h-12 rounded-xl font-semibold">
-              <Link to="/ao-vivo"><Radio className="mr-2 h-5 w-5" />Ver Evento Ao Vivo</Link>
+          {/* CTA */}
+          <motion.div
+            initial={{ opacity: 0, y: 10 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}
+            transition={{ delay: 0.3 }}
+            className="mt-10 text-center"
+          >
+            <Button asChild size="lg" className="h-11 gap-2.5 rounded-xl font-semibold shadow-md">
+              <Link to="/ao-vivo">
+                <Radio className="h-4 w-4" />
+                Entrar no Evento Ao Vivo
+                <ArrowRight className="h-4 w-4" />
+              </Link>
             </Button>
           </motion.div>
         </div>

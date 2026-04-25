@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Clock3, KeyRound, Loader2, Plus, RefreshCcw, Send, Trash2, UserSquare2 } from "lucide-react";
+import { CheckCircle2, Clock3, KeyRound, Loader2, Plus, RefreshCcw, Send, Trash2, UserSquare2 } from "lucide-react";
 import { toast } from "@/components/ui/sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -18,12 +18,48 @@ function normalizePhoneDraft(value: string) {
   return value.replace(/[^\d+\s()-]/g, "").slice(0, 24);
 }
 
+type JuryAccessForm = {
+  team: string;
+  role: "SUPER_ADMIN" | "TEAM_LEAD" | "MEMBER";
+  permissions: string[];
+};
+
+const defaultJuryAccessForm: JuryAccessForm = {
+  team: "Júri",
+  role: "TEAM_LEAD",
+  permissions: ["OVERVIEW", "SUBMISSIONS", "VOTES", "WINNERS"],
+};
+
+const adminPermissions = [
+  { value: "OVERVIEW", label: "Visão Geral" },
+  { value: "ANALYTICS", label: "Analytics" },
+  { value: "SMS", label: "SMS" },
+  { value: "JURY", label: "Júri" },
+  { value: "ATTENDANCE", label: "Check-in" },
+  { value: "CERTIFICATES", label: "Certificados" },
+  { value: "AUDIT", label: "Auditoria" },
+  { value: "SUBMISSIONS", label: "Candidaturas" },
+  { value: "SPEAKERS", label: "Palestrantes" },
+  { value: "SCHEDULE", label: "Agenda" },
+  { value: "GUIDE", label: "Guia" },
+  { value: "COURSES", label: "Cursos" },
+  { value: "PANELS", label: "Painéis" },
+  { value: "EVENTO", label: "Evento" },
+  { value: "FAQ", label: "FAQ" },
+  { value: "LIVE", label: "Ao Vivo" },
+  { value: "VOTES", label: "Votações" },
+  { value: "SECURITY", label: "Segurança" },
+  { value: "STUDENTS", label: "Estudantes" },
+  { value: "WINNERS", label: "Vencedores" },
+];
+
 export function AdminJuryTab() {
   const [juryMembers, setJuryMembers] = useState<JuryMember[]>([]);
   const [loading, setLoading] = useState(true);
   const [busyKey, setBusyKey] = useState<string | null>(null);
   const [name, setName] = useState("");
   const [phone, setPhone] = useState("");
+  const [accessForm, setAccessForm] = useState<JuryAccessForm>(defaultJuryAccessForm);
   const [expiresInMinutes, setExpiresInMinutes] = useState(15);
 
   const activeMembers = useMemo(
@@ -60,16 +96,37 @@ export function AdminJuryTab() {
 
     setBusyKey("create-member");
     try {
-      const created = await api.jury.create({ name: name.trim(), phone: phone.trim() });
+      const created = await api.jury.create({
+        name: name.trim(),
+        phone: phone.trim(),
+        ...accessForm,
+      });
       setJuryMembers((current) => [created, ...current.filter((item) => item.id !== created.id)]);
       setName("");
       setPhone("");
+      setAccessForm(defaultJuryAccessForm);
       toast.success("Número de júri adicionado com sucesso.");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Não foi possível adicionar o júri.");
     } finally {
       setBusyKey(null);
     }
+  };
+
+  const selectedPermissions = accessForm.role === "SUPER_ADMIN"
+    ? adminPermissions.map((permission) => permission.value)
+    : accessForm.permissions;
+
+  const updatePermission = (permission: string, checked: boolean) => {
+    setAccessForm((current) => {
+      const currentPermissions = new Set(current.permissions);
+      if (checked) {
+        currentPermissions.add(permission);
+      } else {
+        currentPermissions.delete(permission);
+      }
+      return { ...current, permissions: Array.from(currentPermissions) };
+    });
   };
 
   const handleSendCode = async (member: JuryMember) => {
@@ -136,6 +193,59 @@ export function AdminJuryTab() {
             </Button>
           </div>
 
+          <div className="rounded-2xl border border-border/70 bg-muted/20 p-4">
+            <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_220px]">
+              <div className="space-y-2">
+                <p className="text-xs font-medium text-muted-foreground">Equipa</p>
+                <Input
+                  value={accessForm.team}
+                  onChange={(event) => setAccessForm((current) => ({ ...current, team: event.target.value }))}
+                  placeholder="Ex.: Júri técnico"
+                />
+              </div>
+              <div className="space-y-2">
+                <p className="text-xs font-medium text-muted-foreground">Perfil</p>
+                <select
+                  className="h-10 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  value={accessForm.role}
+                  onChange={(event) => setAccessForm((current) => ({
+                    ...current,
+                    role: event.target.value as JuryAccessForm["role"],
+                  }))}
+                >
+                  <option value="TEAM_LEAD">Líder</option>
+                  <option value="MEMBER">Membro</option>
+                  <option value="SUPER_ADMIN">Super admin</option>
+                </select>
+              </div>
+            </div>
+
+            <div className="mt-4">
+              <p className="mb-2 text-xs font-medium text-muted-foreground">Áreas permitidas</p>
+              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                {adminPermissions.map((permission) => {
+                  const checked = selectedPermissions.includes(permission.value);
+                  return (
+                    <button
+                      key={permission.value}
+                      type="button"
+                      disabled={accessForm.role === "SUPER_ADMIN"}
+                      onClick={() => updatePermission(permission.value, !checked)}
+                      className={`flex items-center justify-between rounded-xl border px-3 py-2 text-left text-xs transition ${
+                        checked
+                          ? "border-primary/30 bg-primary/10 text-primary"
+                          : "border-border/70 bg-background text-muted-foreground hover:border-primary/30"
+                      } ${accessForm.role === "SUPER_ADMIN" ? "opacity-80" : ""}`}
+                    >
+                      <span className="font-medium">{permission.label}</span>
+                      {checked ? <CheckCircle2 className="h-3.5 w-3.5" /> : null}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+
           <div className="flex flex-wrap items-center gap-3 rounded-xl border border-border/70 bg-muted/35 p-3">
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
               <Clock3 className="h-4 w-4" />
@@ -182,6 +292,12 @@ export function AdminJuryTab() {
                       <Badge variant={member.isActive ? "default" : "secondary"}>{member.isActive ? "Ativo" : "Inativo"}</Badge>
                     </div>
                     <p className="text-sm text-muted-foreground">{member.phone}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {member.team} · {member.role === "SUPER_ADMIN" ? "Super admin" : member.role === "TEAM_LEAD" ? "Líder" : "Membro"}
+                    </p>
+                    <p className="text-xs text-muted-foreground">
+                      Áreas: {member.permissions === "ALL" ? "Todas" : member.permissions.split(",").join(", ")}
+                    </p>
                     <p className="text-xs text-muted-foreground">Último código enviado: {formatDateLabel(member.lastCodeSentAt)}</p>
                   </div>
 

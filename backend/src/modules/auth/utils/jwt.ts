@@ -22,7 +22,7 @@ export function signStudentToken(studentId: number, studentNumber: string, env: 
 
 export function signJuryToken(juryMemberId: number, juryPhone: string, env: Env) {
   const payload: JuryJwtPayload = { sub: juryMemberId, juryPhone, role: "jury" };
-  return jwt.sign(payload, env.JWT_SECRET, { expiresIn: "12h" });
+  return jwt.sign(payload, env.JWT_SECRET, { expiresIn: "7d" });
 }
 
 export function verifyAuthToken(token: string, env: Env): JwtPayload {

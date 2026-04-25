@@ -3,7 +3,7 @@ import { Link } from "react-router-dom";
 import { AlertTriangle, Loader2, Shield } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { api, getToken, isAuthError, isForbiddenError, setToken } from "@/lib/api";
+import { api, getToken, isAuthError, isForbiddenError, setToken, type AdminAccessProfile } from "@/lib/api";
 
 const AdminWorkspace = lazy(() => import("@/features/admin/AdminWorkspace"));
 
@@ -53,6 +53,7 @@ function AdminAccessDenied({ forbidden }: { forbidden: boolean }) {
 
 export default function Admin() {
   const [state, setState] = useState<"checking" | "allowed" | "unauthenticated" | "forbidden">("checking");
+  const [adminAccess, setAdminAccess] = useState<AdminAccessProfile | null>(null);
 
   useEffect(() => {
     let active = true;
@@ -62,21 +63,27 @@ export default function Admin() {
       return;
     }
 
-    api.students.securityOverview()
-      .then(() => {
-        if (active) setState("allowed");
+    api.students.adminAccess()
+      .then((profile) => {
+        if (active) {
+          setAdminAccess(profile);
+          setState("allowed");
+        }
       })
       .catch((error) => {
         if (!active) return;
         if (isAuthError(error)) {
           setToken(null);
+          setAdminAccess(null);
           setState("unauthenticated");
           return;
         }
         if (isForbiddenError(error)) {
+          setAdminAccess(null);
           setState("forbidden");
           return;
         }
+        setAdminAccess(null);
         setState("forbidden");
       });
 
@@ -92,7 +99,7 @@ export default function Admin() {
 
   return (
     <Suspense fallback={<AdminAccessFallback message="A carregar módulos administrativos..." />}>
-      <AdminWorkspace />
+      <AdminWorkspace adminAccess={adminAccess} />
     </Suspense>
   );
 }

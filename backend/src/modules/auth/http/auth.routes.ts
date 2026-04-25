@@ -20,7 +20,8 @@ import {
   RevokeAdminStudentUseCase,
 } from "../use-cases/manage-admin-security";
 import { authGuard } from "./auth.middleware";
-import { adminGuard } from "./admin.middleware";
+import { adminGuard, getAdminProfileByStudentNumber, getJuryAdminProfileById } from "./admin.middleware";
+import { serializeAdminPermissions } from "../domain/admin-authorized-students";
 import {
   appendCookie,
   clearCookie,
@@ -79,8 +80,19 @@ const studentResponseSchema = z.object({
 const adminAuthorizedStudentSchema = z.object({
   id: z.number(),
   studentNumber: z.string(),
+  team: z.string(),
+  role: z.string(),
+  permissions: z.string(),
   createdAt: z.coerce.date(),
   updatedAt: z.coerce.date(),
+});
+
+const adminAccessProfileSchema = z.object({
+  studentNumber: z.string(),
+  team: z.string(),
+  role: z.string(),
+  permissions: z.array(z.string()),
+  isSuperAdmin: z.boolean(),
 });
 
 const securityOverviewSchema = z.object({
@@ -92,7 +104,10 @@ const securityStudentNumberSchema = z.object({
   studentNumber: z.string()
     .trim()
     .transform((value) => value.replace(/\D/g, ""))
-    .refine((value) => value.length === 8, "Student number must have exactly 8 digits"),
+    .refine((value) => value.length >= 8 && value.length <= 10, "Student number must have between 8 and 10 digits"),
+  team: z.string().trim().min(2).max(80).optional(),
+  role: z.enum(["SUPER_ADMIN", "TEAM_LEAD", "MEMBER"]).optional(),
+  permissions: z.array(z.string().trim().min(1).max(40)).optional(),
 });
 
 const studentsPagedQuerySchema = z.object({
@@ -124,6 +139,9 @@ const juryMemberResponseSchema = z.object({
   id: z.number(),
   name: z.string(),
   phone: z.string(),
+  team: z.string(),
+  role: z.string(),
+  permissions: z.string(),
   isActive: z.boolean(),
   lastCodeSentAt: z.coerce.date().nullable(),
   createdAt: z.coerce.date(),
@@ -133,6 +151,9 @@ const juryMemberResponseSchema = z.object({
 const juryMemberCreateSchema = z.object({
   name: z.string().trim().min(2).max(120),
   phone: z.string().trim().min(8).max(30),
+  team: z.string().trim().min(2).max(80).optional(),
+  role: z.enum(["SUPER_ADMIN", "TEAM_LEAD", "MEMBER"]).optional(),
+  permissions: z.array(z.string().trim().min(1).max(40)).optional(),
 });
 
 const juryMemberIdSchema = z.object({
@@ -695,6 +716,39 @@ export async function authRoutes(app: FastifyInstance, opts: { env?: Env } = {})
     adminApp.register(adminGuard);
 
     adminApp.get(
+      "/admin/access",
+      {
+        schema: {
+          description: "Perfil de acesso administrativo da sessão atual",
+          tags: ["Students"],
+          response: {
+            200: adminAccessProfileSchema,
+            401: z.object({ message: z.string() }),
+            403: z.object({ message: z.string() }),
+          }
+        }
+      },
+      async (request, reply) => {
+      if (request.jury) {
+          const juryProfile = await getJuryAdminProfileById(request.jury.id);
+          if (!juryProfile) return reply.status(403).send({ message: "Access denied" });
+          return reply.send(juryProfile);
+        }
+
+        if (!request.student) {
+          return reply.status(401).send({ message: "Unauthorized" });
+        }
+
+        const profile = await getAdminProfileByStudentNumber(request.student.studentNumber);
+        if (!profile) {
+          return reply.status(403).send({ message: "Access denied" });
+        }
+
+        return reply.send(profile);
+      }
+    );
+
+    adminApp.get(
       "/students/paged",
       {
         schema: {
@@ -798,7 +852,11 @@ export async function authRoutes(app: FastifyInstance, opts: { env?: Env } = {})
         }
       },
       async (request, reply) => {
-        const result = await authorizeAdminStudentUseCase.execute(request.body.studentNumber);
+        const result = await authorizeAdminStudentUseCase.execute(request.body.studentNumber, {
+          team: request.body.team,
+          role: request.body.role,
+          permissions: request.body.permissions,
+        });
         if (!result.success) {
           return reply.code(400).send({ message: result.error });
         }
@@ -808,7 +866,7 @@ export async function authRoutes(app: FastifyInstance, opts: { env?: Env } = {})
           action: "security.authorize_admin",
           entityType: "AdminAuthorizedStudent",
           entityId: result.authorizedStudent?.studentNumber,
-          summary: `Acesso administrativo autorizado para ${result.authorizedStudent?.studentNumber}.`,
+          summary: `Acesso administrativo autorizado para ${result.authorizedStudent?.studentNumber} (${result.authorizedStudent?.team}).`,
         });
 
         return reply.code(201).send(result.authorizedStudent);
@@ -902,6 +960,11 @@ export async function authRoutes(app: FastifyInstance, opts: { env?: Env } = {})
             data: {
               name: request.body.name.trim(),
               phone: normalizedPhone,
+              team: request.body.team?.trim() || "Júri",
+              role: request.body.role ?? "TEAM_LEAD",
+              permissions: request.body.role === "SUPER_ADMIN"
+                ? "ALL"
+                : serializeAdminPermissions(request.body.permissions ?? ["OVERVIEW", "SUBMISSIONS", "VOTES", "WINNERS"]),
               isActive: true,
             },
           });

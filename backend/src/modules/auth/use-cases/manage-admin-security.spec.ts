@@ -11,6 +11,9 @@ function makeAuthorizedStudent(overrides: Partial<AdminAuthorizedStudent> = {}):
   return {
     id: 1,
     studentNumber: "20242099",
+    team: "Geral",
+    role: "SUPER_ADMIN",
+    permissions: "ALL",
     createdAt: new Date("2026-03-22T18:00:00.000Z"),
     updatedAt: new Date("2026-03-22T18:00:00.000Z"),
     ...overrides,
@@ -67,7 +70,46 @@ describe("admin security use cases", () => {
       success: true,
       authorizedStudent: expect.objectContaining({ studentNumber: "20242111" }),
     });
-    expect(repo.authorizeAdminStudent).toHaveBeenCalledWith("20242111");
+    expect(repo.authorizeAdminStudent).toHaveBeenCalledWith("20242111", {
+      team: "Geral",
+      role: "SUPER_ADMIN",
+      permissions: ["ALL"],
+    });
+  });
+
+  it("autoriza um acesso por equipa com permissões específicas", async () => {
+    const repo: AdminSecurityRepository = {
+      listAuthorizedAdminStudents: vi.fn(),
+      authorizeAdminStudent: vi.fn().mockResolvedValue(makeAuthorizedStudent({
+        studentNumber: "20242112",
+        team: "Credenciamento",
+        role: "TEAM_LEAD",
+        permissions: "ATTENDANCE,CERTIFICATES",
+      })),
+      revokeAdminStudent: vi.fn(),
+      isAdminAuthorized: vi.fn(),
+      listRecentLogins: vi.fn(),
+    };
+
+    const result = await new AuthorizeAdminStudentUseCase(repo).execute("20242112", {
+      team: "Credenciamento",
+      role: "TEAM_LEAD",
+      permissions: ["ATTENDANCE", "CERTIFICATES"],
+    });
+
+    expect(result).toEqual({
+      success: true,
+      authorizedStudent: expect.objectContaining({
+        team: "Credenciamento",
+        role: "TEAM_LEAD",
+        permissions: "ATTENDANCE,CERTIFICATES",
+      }),
+    });
+    expect(repo.authorizeAdminStudent).toHaveBeenCalledWith("20242112", {
+      team: "Credenciamento",
+      role: "TEAM_LEAD",
+      permissions: ["ATTENDANCE", "CERTIFICATES"],
+    });
   });
 
   it("recusa autorização com número inválido", async () => {
@@ -81,8 +123,30 @@ describe("admin security use cases", () => {
 
     const result = await new AuthorizeAdminStudentUseCase(repo).execute("123");
 
-    expect(result).toEqual({ success: false, error: "Student number must have exactly 8 digits" });
+    expect(result).toEqual({ success: false, error: "Student number must have between 8 and 10 digits" });
     expect(repo.authorizeAdminStudent).not.toHaveBeenCalled();
+  });
+
+  it("autoriza número administrativo com até 10 dígitos", async () => {
+    const repo: AdminSecurityRepository = {
+      listAuthorizedAdminStudents: vi.fn(),
+      authorizeAdminStudent: vi.fn().mockResolvedValue(makeAuthorizedStudent({ studentNumber: "2024211101" })),
+      revokeAdminStudent: vi.fn(),
+      isAdminAuthorized: vi.fn(),
+      listRecentLogins: vi.fn(),
+    };
+
+    const result = await new AuthorizeAdminStudentUseCase(repo).execute("2024211101");
+
+    expect(result).toEqual({
+      success: true,
+      authorizedStudent: expect.objectContaining({ studentNumber: "2024211101" }),
+    });
+    expect(repo.authorizeAdminStudent).toHaveBeenCalledWith("2024211101", {
+      team: "Geral",
+      role: "SUPER_ADMIN",
+      permissions: ["ALL"],
+    });
   });
 
   it("remove um estudante autorizado existente", async () => {

@@ -161,8 +161,19 @@ export interface StudentEnrollmentReceipt {
 export interface AdminAuthorizedStudent {
   id: number;
   studentNumber: string;
+  team: string;
+  role: "SUPER_ADMIN" | "TEAM_LEAD" | "MEMBER" | string;
+  permissions: string;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface AdminAccessProfile {
+  studentNumber: string;
+  team: string;
+  role: "SUPER_ADMIN" | "TEAM_LEAD" | "MEMBER" | string;
+  permissions: string[];
+  isSuperAdmin: boolean;
 }
 
 export interface AdminSecurityOverview {
@@ -174,6 +185,9 @@ export interface JuryMember {
   id: number;
   name: string;
   phone: string;
+  team: string;
+  role: "SUPER_ADMIN" | "TEAM_LEAD" | "MEMBER" | string;
+  permissions: string;
   isActive: boolean;
   lastCodeSentAt: string | null;
   createdAt: string;
@@ -950,6 +964,15 @@ function storeLoginSession(result: AuthLoginResponse) {
   return result;
 }
 
+function storeJuryLoginSession(result: JuryLoginResponse) {
+  if (result.success && result.token) {
+    setSessionStudent(null);
+    setToken(result.token);
+  }
+
+  return result;
+}
+
 export function isAuthError(error: unknown) {
   if (error instanceof ApiError) {
     return error.status === 401;
@@ -1098,7 +1121,7 @@ export const api = {
       request<JuryLoginResponse>("/auth/jury/login", {
         method: "POST",
         body: JSON.stringify({ phone, code }),
-      }),
+      }).then(storeJuryLoginSession),
     logout: async () => {
       try {
         await request<{ success: boolean }>("/auth/logout", {
@@ -1177,10 +1200,11 @@ export const api = {
         | "interactions_desc";
     }) => request<PagedResult<StudentWithStats>>(`/auth/students/paged${toQueryString(params)}`),
     securityOverview: () => request<AdminSecurityOverview>("/auth/security"),
-    authorizeAdmin: (studentNumber: string) =>
+    adminAccess: () => request<AdminAccessProfile>("/auth/admin/access"),
+    authorizeAdmin: (studentNumber: string, access?: { team?: string; role?: string; permissions?: string[] }) =>
       request<AdminAuthorizedStudent>("/auth/security/authorized-students", {
         method: "POST",
-        body: JSON.stringify({ studentNumber }),
+        body: JSON.stringify({ studentNumber, ...access }),
       }),
     revokeAdmin: (studentNumber: string) =>
       request<{ success: boolean }>(`/auth/security/authorized-students/${studentNumber}`, {
@@ -1196,7 +1220,7 @@ export const api = {
     list: () =>
       request<{ juryMembers: JuryMember[] }>("/auth/security/jury-members")
         .then((payload) => payload.juryMembers),
-    create: (data: { name: string; phone: string }) =>
+    create: (data: { name: string; phone: string; team?: string; role?: string; permissions?: string[] }) =>
       request<JuryMember>("/auth/security/jury-members", {
         method: "POST",
         body: JSON.stringify(data),

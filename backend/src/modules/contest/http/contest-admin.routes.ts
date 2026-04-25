@@ -29,6 +29,9 @@ const studentResponseSchema = z.object({
 const adminAuthorizedStudentSchema = z.object({
   id: z.number(),
   studentNumber: z.string(),
+  team: z.string(),
+  role: z.string(),
+  permissions: z.string(),
   createdAt: z.coerce.date(),
   updatedAt: z.coerce.date(),
 });
@@ -42,7 +45,10 @@ const securityStudentNumberSchema = z.object({
   studentNumber: z.string()
     .trim()
     .transform((value) => value.replace(/\D/g, ""))
-    .refine((value) => value.length === 8, "Student number must have exactly 8 digits"),
+    .refine((value) => value.length >= 8 && value.length <= 10, "Student number must have between 8 and 10 digits"),
+  team: z.string().trim().min(2).max(80).optional(),
+  role: z.enum(["SUPER_ADMIN", "TEAM_LEAD", "MEMBER"]).optional(),
+  permissions: z.array(z.string().trim().min(1).max(40)).optional(),
 });
 
 const studentRepository = new StudentRepository(prisma);
@@ -95,7 +101,11 @@ export async function contestAdminRoutes(app: FastifyInstance, opts: { env?: Env
         },
       },
       async (request, reply) => {
-        const result = await authorizeAdminStudentUseCase.execute(request.body.studentNumber);
+        const result = await authorizeAdminStudentUseCase.execute(request.body.studentNumber, {
+          team: request.body.team,
+          role: request.body.role,
+          permissions: request.body.permissions,
+        });
 
         if (!result.success) {
           return reply.status(400).send({ message: result.error });

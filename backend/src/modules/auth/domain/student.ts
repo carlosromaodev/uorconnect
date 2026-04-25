@@ -59,6 +59,9 @@ export interface StudentWithStats extends Student {
 export interface AdminAuthorizedStudent {
   id: number;
   studentNumber: string;
+  team: string;
+  role: string;
+  permissions: string;
   createdAt: Date;
   updatedAt: Date;
 }

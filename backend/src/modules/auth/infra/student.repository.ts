@@ -7,6 +7,7 @@ import {
   type StudentProfile,
   type StudentWithStats,
 } from "../domain/student";
+import { serializeAdminPermissions, normalizeAdminRole, type AdminAccessInput } from "../domain/admin-authorized-students";
 
 export class StudentRepository {
   constructor(private prisma: PrismaClient) {}
@@ -212,11 +213,18 @@ export class StudentRepository {
     return Boolean(existing);
   }
 
-  async authorizeAdminStudent(studentNumber: string): Promise<AdminAuthorizedStudent> {
+  async authorizeAdminStudent(studentNumber: string, input: AdminAccessInput = {}): Promise<AdminAuthorizedStudent> {
+    const role = normalizeAdminRole(input.role);
+    const data = {
+      team: input.team?.trim() || "Geral",
+      role,
+      permissions: role === "SUPER_ADMIN" ? "ALL" : serializeAdminPermissions(input.permissions),
+    };
+
     return this.prisma.adminAuthorizedStudent.upsert({
       where: { studentNumber },
-      update: {},
-      create: { studentNumber },
+      update: data,
+      create: { studentNumber, ...data },
     });
   }
 

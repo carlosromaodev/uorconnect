@@ -75,9 +75,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
+import { AdminBulkSmsAction } from "@/components/admin/AdminBulkSmsAction";
+import { ContextualSmsAction } from "@/components/admin/ContextualSmsAction";
 import { defaultHomeSocialConfig } from "@/lib/home-content";
 import {
   type AdminAuthorizedStudent,
+  type AdminAccessProfile,
   type AnalyticsDashboard,
   type AnalyticsEventsPayload,
   type AnalyticsFilterInput,
@@ -117,6 +120,9 @@ import { readImageFileAsDataUrl } from "@/lib/project-media";
 const EventoTab = lazy(() =>
   import("@/components/admin/EventoTab").then((module) => ({ default: module.EventoTab })),
 );
+const AdminOverviewTab = lazy(() =>
+  import("@/components/admin/AdminOverviewTab").then((module) => ({ default: module.AdminOverviewTab })),
+);
 const AdminAnalyticsTab = lazy(() =>
   import("@/components/admin/AdminAnalyticsTab").then((module) => ({ default: module.AdminAnalyticsTab })),
 );
@@ -129,31 +135,35 @@ const AdminJuryTab = lazy(() =>
 const AdminAttendanceTab = lazy(() => import("@/components/admin/AdminAttendanceTab"));
 const AdminCertificatesTab = lazy(() => import("@/components/admin/AdminCertificatesTab"));
 const AdminAuditTab = lazy(() => import("@/components/admin/AdminAuditTab"));
+const AdminSecurityTab = lazy(() => import("@/components/admin/AdminSecurityTab"));
+const AdminStudentsTab = lazy(() => import("@/components/admin/AdminStudentsTab"));
+const AdminWinnersTab = lazy(() => import("@/components/admin/AdminWinnersTab"));
 
 const tabs = [
-  { id: "overview", label: "Visão Geral", icon: BarChart3 },
-  { id: "analytics", label: "Cookies & Analytics", icon: Cookie },
-  { id: "sms", label: "SMS", icon: MessageSquare },
-  { id: "jury", label: "Júri", icon: KeyRound },
-  { id: "attendance", label: "Check-in", icon: ClipboardCheck },
-  { id: "certificates", label: "Certificados", icon: Award },
-  { id: "audit", label: "Auditoria", icon: History },
-  { id: "submissions", label: "Candidaturas", icon: FolderOpen },
-  { id: "speakers", label: "Palestrantes", icon: Mic },
-  { id: "schedule", label: "Agenda", icon: CalendarDays },
-  { id: "guide", label: "Guia", icon: BookOpen },
-  { id: "courses", label: "Cursos", icon: GraduationCap },
-  { id: "panels", label: "Painéis", icon: Zap },
-  { id: "evento", label: "Evento", icon: Palette },
-  { id: "faq", label: "FAQ", icon: HelpCircle },
-  { id: "live", label: "Ao Vivo", icon: Radio },
-  { id: "votes", label: "Votações", icon: ThumbsUp },
-  { id: "security", label: "Segurança", icon: Shield },
-  { id: "students", label: "Estudantes", icon: Users },
-  { id: "winners", label: "Vencedores", icon: Trophy },
+  { id: "overview", label: "Visão Geral", icon: BarChart3, permission: "OVERVIEW" },
+  { id: "analytics", label: "Cookies & Analytics", icon: Cookie, permission: "ANALYTICS" },
+  { id: "sms", label: "SMS", icon: MessageSquare, permission: "SMS" },
+  { id: "jury", label: "Júri", icon: KeyRound, permission: "JURY" },
+  { id: "attendance", label: "Check-in", icon: ClipboardCheck, permission: "ATTENDANCE" },
+  { id: "certificates", label: "Certificados", icon: Award, permission: "CERTIFICATES" },
+  { id: "audit", label: "Auditoria", icon: History, permission: "AUDIT" },
+  { id: "submissions", label: "Candidaturas", icon: FolderOpen, permission: "SUBMISSIONS" },
+  { id: "speakers", label: "Palestrantes", icon: Mic, permission: "SPEAKERS" },
+  { id: "schedule", label: "Agenda", icon: CalendarDays, permission: "SCHEDULE" },
+  { id: "guide", label: "Guia", icon: BookOpen, permission: "GUIDE" },
+  { id: "courses", label: "Cursos", icon: GraduationCap, permission: "COURSES" },
+  { id: "panels", label: "Painéis", icon: Zap, permission: "PANELS" },
+  { id: "evento", label: "Evento", icon: Palette, permission: "EVENTO" },
+  { id: "faq", label: "FAQ", icon: HelpCircle, permission: "FAQ" },
+  { id: "live", label: "Ao Vivo", icon: Radio, permission: "LIVE" },
+  { id: "votes", label: "Votações", icon: ThumbsUp, permission: "VOTES" },
+  { id: "security", label: "Segurança", icon: Shield, permission: "SECURITY" },
+  { id: "students", label: "Estudantes", icon: Users, permission: "STUDENTS" },
+  { id: "winners", label: "Vencedores", icon: Trophy, permission: "WINNERS" },
 ] as const;
 
 type TabId = typeof tabs[number]["id"];
+type AdminPermission = typeof tabs[number]["permission"];
 type AdminDataSection =
   | "base"
   | "students"
@@ -179,6 +189,18 @@ const defaultLoadedSections: Record<AdminDataSection, boolean> = {
   courses: false,
   homeContent: false,
   security: false,
+};
+
+type AdminAccessForm = {
+  team: string;
+  role: "SUPER_ADMIN" | "TEAM_LEAD" | "MEMBER";
+  permissions: AdminPermission[];
+};
+
+const defaultAdminAccessForm: AdminAccessForm = {
+  team: "Geral",
+  role: "TEAM_LEAD",
+  permissions: ["OVERVIEW"],
 };
 
 type AdminSubmission = {
@@ -227,7 +249,7 @@ type VoteEntry = {
 };
 
 function normalizeStudentNumberInput(value: string) {
-  return value.replace(/\D/g, "").slice(0, 8);
+  return value.replace(/\D/g, "").slice(0, 10);
 }
 
 function whatsappLink(phone?: string | null) {
@@ -632,7 +654,11 @@ const FormField = ({
   </div>
 );
 
-const Admin = () => {
+function canAccessAdminPermission(adminAccess: AdminAccessProfile | null | undefined, permission: AdminPermission) {
+  return !adminAccess || adminAccess.isSuperAdmin || adminAccess.permissions.includes(permission);
+}
+
+const Admin = ({ adminAccess }: { adminAccess?: AdminAccessProfile | null }) => {
   const [activeTab, setActiveTab] = useState<TabId>("overview");
   const [showLeftGradient, setShowLeftGradient] = useState(false);
   const [showRightGradient, setShowRightGradient] = useState(true);
@@ -734,9 +760,14 @@ const Admin = () => {
   const [panelTopicForm, setPanelTopicForm] = useState<PanelTopicInput>(defaultPanelTopicForm);
   const [socialConfigForm, setSocialConfigForm] = useState<HomeSocialConfigInput>(defaultSocialConfigForm);
   const [authorizedStudentNumber, setAuthorizedStudentNumber] = useState("");
+  const [adminAccessForm, setAdminAccessForm] = useState<AdminAccessForm>(defaultAdminAccessForm);
   const deferredSubmissionSearch = useDeferredValue(searchTerm);
   const deferredStudentSearch = useDeferredValue(studentSearchTerm);
   const deferredModerationSearch = useDeferredValue(moderationSearchTerm);
+  const visibleTabs = useMemo(
+    () => tabs.filter((tab) => canAccessAdminPermission(adminAccess, tab.permission)),
+    [adminAccess]
+  );
 
   const mapSubmissionToAdmin = (
     submission: Awaited<ReturnType<typeof api.submissions.listDetailedPaged>>["items"][number]
@@ -1069,7 +1100,7 @@ const Admin = () => {
     try {
       const session = await api.interactions.me();
       const student = session.student;
-      const jury = (session as any).jury as { id: number; name: string; phone: string } | null | undefined;
+      const jury = session.jury;
 
       if (!student && !jury) {
         setToken(null);
@@ -1084,10 +1115,11 @@ const Admin = () => {
       }
 
       setAccessState("allowed");
-      await Promise.all([
-        loadSection("security", { force: true }),
-        loadSection("base", { force: true }),
-      ]);
+      const shouldLoadBaseInitially = (["OVERVIEW", "SUBMISSIONS", "VOTES", "WINNERS"] as AdminPermission[])
+        .some((permission) => canAccessAdminPermission(adminAccess, permission));
+      if (shouldLoadBaseInitially) {
+        await loadSection("base", { force: true });
+      }
     } catch (error) {
       if (isAuthError(error)) {
         setToken(null);
@@ -1182,6 +1214,12 @@ const Admin = () => {
   }, []);
 
   useEffect(() => {
+    if (visibleTabs.length > 0 && !visibleTabs.some((tab) => tab.id === activeTab)) {
+      setActiveTab(visibleTabs[0].id);
+    }
+  }, [activeTab, visibleTabs]);
+
+  useEffect(() => {
     if (accessState !== "allowed") return;
 
     const sectionsByTab: Record<TabId, AdminDataSection[]> = {
@@ -1201,7 +1239,7 @@ const Admin = () => {
       votes: ["base", "moderation"],
       security: ["security"],
       students: ["students"],
-      winners: ["base", "students"],
+      winners: ["base"],
     };
 
     for (const section of sectionsByTab[activeTab] ?? []) {
@@ -1212,7 +1250,7 @@ const Admin = () => {
   useEffect(() => {
     if (accessState !== "allowed") return;
 
-    const shouldPollLive = activeTab === "overview" || activeTab === "schedule" || activeTab === "live";
+    const shouldPollLive = activeTab === "schedule" || activeTab === "live";
     const shouldPollVotes = activeTab === "overview" || activeTab === "votes" || activeTab === "winners";
 
     if (!shouldPollLive && !shouldPollVotes) return;
@@ -1617,19 +1655,20 @@ const Admin = () => {
 
   const handleAuthorizeAdminStudent = async () => {
     const studentNumber = normalizeStudentNumberInput(authorizedStudentNumber);
-    if (studentNumber.length !== 8) {
-      toast.warning("Informa um número de estudante com 8 dígitos.");
+    if (studentNumber.length < 8 || studentNumber.length > 10) {
+      toast.warning("Informa um número de estudante entre 8 e 10 dígitos.");
       return;
     }
 
     try {
       setBusyKey("security-authorize");
-      const authorizedStudent = await api.students.authorizeAdmin(studentNumber);
+      const authorizedStudent = await api.students.authorizeAdmin(studentNumber, adminAccessForm);
       setAuthorizedAdminStudents((current) => {
         const next = current.filter((item) => item.studentNumber !== authorizedStudent.studentNumber);
         return [...next, authorizedStudent].sort((left, right) => left.createdAt.localeCompare(right.createdAt));
       });
       setAuthorizedStudentNumber("");
+      setAdminAccessForm(defaultAdminAccessForm);
       toast.success("Acesso administrativo autorizado.");
     } catch (error) {
       if (!handleAdminAuthFailure(error)) {
@@ -2529,6 +2568,38 @@ const Admin = () => {
       new Date(`${right.date.slice(0, 10)}T${right.startTime}:00`).getTime()
   );
 
+  if (visibleTabs.length === 0) {
+    return (
+      <div className="min-h-screen py-12 md:py-16">
+        <div className="container mx-auto px-4">
+          <Card className="mx-auto max-w-2xl border-primary/20 bg-primary/5">
+            <CardContent className="p-8 text-center">
+              <h1 className="font-heading text-2xl font-bold">Sem áreas atribuídas</h1>
+              <p className="mt-2 text-sm leading-6 text-muted-foreground">
+                A tua conta tem acesso administrativo, mas ainda não recebeu módulos para gerir.
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  }
+
+  if (!visibleTabs.some((tab) => tab.id === activeTab)) {
+    return (
+      <div className="min-h-screen bg-background py-12 md:py-16">
+        <div className="container mx-auto px-4">
+          <Card className="mx-auto max-w-2xl border-border/70">
+            <CardContent className="flex items-center gap-3 p-6 text-sm text-muted-foreground">
+              <Loader2 className="h-4 w-4 animate-spin text-primary" />
+              A preparar a tua área administrativa...
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-background">
       <AlertDialog
@@ -2624,7 +2695,7 @@ const Admin = () => {
               onScroll={handleTabsScroll}
               className="flex gap-1 sm:gap-1.5 overflow-x-auto pb-2 scroll-smooth snap-x snap-mandatory"
             >
-              {tabs.map((tab) => {
+              {visibleTabs.map((tab) => {
               const Icon = tab.icon;
               const isActive = activeTab === tab.id;
               return (
@@ -2669,80 +2740,15 @@ const Admin = () => {
               className="space-y-6"
             >
               {activeTab === "overview" && (
-                <>
-                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-                    <div>
-                      <h2 className="font-heading text-xl font-bold">Visão Geral Administrativa</h2>
-                      <p className="text-sm text-muted-foreground">Resumo consolidado da plataforma com opção única de exportação.</p>
-                    </div>
-                    <Button onClick={() => void handleExportOverviewReport()} disabled={exportingReport}>
-                      {exportingReport ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
-                      Exportar relatório
-                    </Button>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
-                    <StatCard icon={FolderOpen} label="Candidaturas" value={stats.total} color="bg-primary/10 text-primary" />
-                    <StatCard icon={AlertTriangle} label="Pendentes" value={stats.pendentes} color="bg-[hsl(var(--warning))]/10 text-[hsl(var(--warning))]" />
-                    <StatCard icon={CheckCircle} label="Aprovados" value={stats.aprovados} color="bg-[hsl(var(--success))]/10 text-[hsl(var(--success))]" />
-                    <StatCard icon={XCircle} label="Recusados" value={stats.recusados} color="bg-destructive/10 text-destructive" />
-                    <StatCard icon={ThumbsUp} label="Votos" value={stats.totalVotos} color="bg-[hsl(var(--area-iot))]/10 text-[hsl(var(--area-iot))]" />
-                    <StatCard icon={Users} label="Estudantes" value={stats.totalEstudantes} color="bg-[hsl(var(--area-web))]/10 text-[hsl(var(--area-web))]" />
-                  </div>
-
-                  <div className="grid gap-6 lg:grid-cols-2">
-                    <Card>
-                      <CardHeader className="pb-3">
-                        <CardTitle className="flex items-center gap-2 text-base">
-                          <Award className="h-4 w-4 text-primary" />
-                          Top Projetos
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent className="space-y-2">
-                        {rankedProjects.slice(0, 5).map((project, index) => {
-                          const Icon = tipoIcons[project.tipo];
-                          return (
-                            <div key={project.id} className="flex items-center gap-3 rounded-lg p-2 hover:bg-muted/50">
-                              <span className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold ${index < 3 ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>
-                                {index + 1}
-                              </span>
-                              <Icon className="h-4 w-4 text-muted-foreground" />
-                              <span className="flex-1 text-sm font-medium">{project.nome}</span>
-                              {project.isWinner && <Crown className="h-4 w-4 text-[hsl(var(--warning))]" />}
-                              <span className="text-xs text-muted-foreground">{project.votos} votos</span>
-                            </div>
-                          );
-                        })}
-                      </CardContent>
-                    </Card>
-
-                    <Card>
-                      <CardHeader className="pb-3">
-                        <CardTitle className="flex items-center gap-2 text-base">
-                          <Users className="h-4 w-4 text-primary" />
-                          Estudantes Mais Ativos
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent className="space-y-2">
-                        {rankedStudents.length === 0 ? (
-                          <div className="rounded-lg border border-dashed border-border/70 bg-muted/20 p-3 text-xs text-muted-foreground">
-                            Dados de estudantes ainda não carregados. Abre a aba "Estudantes" para sincronizar.
-                          </div>
-                        ) : (
-                          rankedStudents.slice(0, 5).map((student, index) => (
-                            <div key={student.id} className="flex items-center gap-3 rounded-lg p-2 hover:bg-muted/50">
-                              <span className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold ${index < 3 ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>
-                                {index + 1}
-                              </span>
-                              <span className="flex-1 text-sm font-medium">{student.name || `Estudante ${student.studentNumber}`}</span>
-                              <span className="text-xs text-muted-foreground">{studentInteractions(student)} interações</span>
-                            </div>
-                          ))
-                        )}
-                      </CardContent>
-                    </Card>
-                  </div>
-                </>
+                <Suspense fallback={<AdminPanelFallback label="Visão Geral" />}>
+                  <AdminOverviewTab
+                    exportingReport={exportingReport}
+                    rankedProjects={rankedProjects}
+                    rankedStudents={rankedStudents}
+                    stats={stats}
+                    onExportOverviewReport={() => void handleExportOverviewReport()}
+                  />
+                </Suspense>
               )}
 
               {activeTab === "analytics" && (
@@ -3129,6 +3135,15 @@ const Admin = () => {
                                     </a>
                                   </Button>
                                 ) : null}
+                                <ContextualSmsAction
+                                  title="Enviar SMS ao responsável"
+                                  recipient={{
+                                    name: submission.responsavel,
+                                    phone: submission.telefone,
+                                    course: submission.nome,
+                                  }}
+                                  defaultMessage="Olá {{nome}}, temos uma atualização sobre a tua candidatura no UOR Connect. Acompanha as orientações da equipa no painel."
+                                />
                                 {communityUrl ? (
                                   <Button size="sm" variant="outline" asChild className="h-auto whitespace-normal px-2.5 py-1.5 text-xs leading-tight">
                                     <a href={communityUrl} target="_blank" rel="noreferrer noopener">
@@ -3236,6 +3251,17 @@ const Admin = () => {
                           <p className="text-sm text-muted-foreground">{speaker.bio}</p>
                           <p className="text-xs text-muted-foreground">{speaker.talk}</p>
                           <div className="flex flex-wrap gap-2">
+                            <AdminBulkSmsAction
+                              title={`Avisar inscritos: ${course.name}`}
+                              buttonLabel="Avisar inscritos por SMS"
+                              description={`Envia uma SMS para todos os contactos válidos inscritos no curso ${course.name}.`}
+                              disabled={course.studentCount === 0}
+                              audience={{
+                                type: "COURSE_ENROLLED",
+                                courseIds: [course.id],
+                              }}
+                              defaultMessage={`Olá, temos uma atualização importante sobre o curso ${course.name} no UOR Connect. Consulta a plataforma para acompanhar os detalhes.`}
+                            />
                             <Button
                               size="sm"
                               variant="outline"
@@ -3829,6 +3855,16 @@ const Admin = () => {
                                                 </a>
                                               </Button>
                                             ) : null}
+                                            <ContextualSmsAction
+                                              title="Enviar SMS ao inscrito"
+                                              recipient={{
+                                                name: entry.fullName,
+                                                studentNumber: entry.studentNumber,
+                                                phone: entry.phone,
+                                                course: entry.course,
+                                              }}
+                                              defaultMessage="Olá {{nome}}, temos uma atualização sobre a tua inscrição no curso. Consulta o teu estado no UOR Connect."
+                                            />
                                           </div>
                                         </div>
                                         <div className="mt-3 flex flex-wrap gap-2">
@@ -4614,267 +4650,56 @@ const Admin = () => {
               )}
 
               {activeTab === "security" && (
-                <div className="space-y-6">
-                  <div className="grid gap-6 xl:grid-cols-[0.95fr_1.05fr]">
-                    <Card>
-                      <CardHeader>
-                        <CardTitle className="flex items-center gap-2 text-base">
-                          <Shield className="h-4 w-4 text-primary" />
-                          Acessos administrativos
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent className="space-y-4">
-                        <FormField label="Número de estudante autorizado">
-                          <div className="flex flex-col gap-3 sm:flex-row">
-                            <Input
-                              value={authorizedStudentNumber}
-                              onChange={(event) => setAuthorizedStudentNumber(normalizeStudentNumberInput(event.target.value))}
-                              placeholder="20242099"
-                              inputMode="numeric"
-                            />
-                            <Button onClick={() => void handleAuthorizeAdminStudent()} disabled={busyKey === "security-authorize"}>
-                              {busyKey === "security-authorize" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Shield className="mr-2 h-4 w-4" />}
-                              Autorizar
-                            </Button>
-                          </div>
-                        </FormField>
-
-                        <div className="space-y-3">
-                          {authorizedAdminStudents.length === 0 ? (
-                            <div className="rounded-xl border border-dashed border-border/70 bg-muted/20 p-4 text-sm text-muted-foreground">
-                              Ainda não existem estudantes autorizados para a área administrativa.
-                            </div>
-                          ) : (
-                            authorizedAdminStudents.map((student) => (
-                              <div key={student.id} className="flex flex-col gap-3 rounded-xl border border-border/70 p-4 sm:flex-row sm:items-center sm:justify-between">
-                                <div>
-                                  <p className="text-sm font-semibold">{student.studentNumber}</p>
-                                  <p className="text-xs text-muted-foreground">Autorizado em {formatDateLabel(student.createdAt)}</p>
-                                </div>
-                                <Button
-                                  size="sm"
-                                  variant="destructive"
-                                  onClick={() => void handleRevokeAdminStudent(student.studentNumber)}
-                                  disabled={busyKey === `security-revoke-${student.studentNumber}`}
-                                >
-                                  <Trash2 className="mr-1 h-3.5 w-3.5" />
-                                  Remover acesso
-                                </Button>
-                              </div>
-                            ))
-                          )}
-                        </div>
-                      </CardContent>
-                    </Card>
-
-                    <Card>
-                      <CardHeader>
-                        <CardTitle className="flex items-center gap-2 text-base">
-                          <Users className="h-4 w-4 text-primary" />
-                          Logins recentes
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent className="space-y-3">
-                        {recentLogins.length === 0 ? (
-                          <div className="rounded-xl border border-dashed border-border/70 bg-muted/20 p-4 text-sm text-muted-foreground">
-                            Ainda não existem logins recentes registados.
-                          </div>
-                        ) : (
-                          recentLogins.map((student) => {
-                            const whatsappUrl = whatsappLink(student.phone);
-                            return (
-                              <div key={student.id} className="rounded-xl border border-border/70 p-4">
-                                <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                                  <div className="space-y-1">
-                                    <p className="text-sm font-semibold">{student.name || `Estudante ${student.studentNumber}`}</p>
-                                    <p className="text-xs text-muted-foreground">Nº {student.studentNumber} · {student.course || "Curso não informado"}</p>
-                                    <p className="text-xs text-muted-foreground">{student.email || "Sem email"}</p>
-                                    <p className="text-xs text-muted-foreground">{student.phone || "Sem contacto telefónico"}</p>
-                                    <p className="text-xs text-muted-foreground">
-                                      Último login: {student.lastLoginAt ? formatDateLabel(student.lastLoginAt) : "Sem data registada"}
-                                    </p>
-                                  </div>
-                                  {whatsappUrl && (
-                                    <Button size="sm" className="bg-[#25D366] text-white hover:bg-[#1fb85a]" asChild>
-                                      <a href={whatsappUrl} target="_blank" rel="noreferrer noopener">
-                                        <MessageSquare className="mr-1 h-3.5 w-3.5" />
-                                        Puxar no WhatsApp
-                                      </a>
-                                    </Button>
-                                  )}
-                                </div>
-                              </div>
-                            );
-                          })
-                        )}
-                      </CardContent>
-                    </Card>
-                  </div>
-                </div>
+                <Suspense fallback={<AdminPanelFallback label="Segurança" />}>
+                  <AdminSecurityTab
+                    accessForm={adminAccessForm}
+                    authorizedAdminStudents={authorizedAdminStudents}
+                    authorizedStudentNumber={authorizedStudentNumber}
+                    busyKey={busyKey}
+                    recentLogins={recentLogins}
+                    onAccessFormChange={setAdminAccessForm}
+                    onAuthorizeAdminStudent={() => void handleAuthorizeAdminStudent()}
+                    onAuthorizedStudentNumberChange={setAuthorizedStudentNumber}
+                    onRevokeAdminStudent={(studentNumber) => void handleRevokeAdminStudent(studentNumber)}
+                  />
+                </Suspense>
               )}
 
               {activeTab === "students" && (
-                <div className="space-y-4">
-                  <div className="grid gap-3 lg:grid-cols-[1.3fr_0.9fr_0.9fr_0.9fr_auto]">
-                    <div className="relative">
-                      <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                      <Input className="pl-9" placeholder="Buscar por nome, número do estudante ou curso..." value={studentSearchTerm} onChange={(event) => setStudentSearchTerm(event.target.value)} />
-                    </div>
-                    <select className="h-10 rounded-md border border-input bg-background px-3 text-sm" value={studentCourseFilter} onChange={(event) => setStudentCourseFilter(event.target.value)}>
-                      <option value="todos">Todos os cursos</option>
-                      {availableStudentCourses.map((course) => (
-                        <option key={course} value={course}>{course}</option>
-                      ))}
-                    </select>
-                    <select className="h-10 rounded-md border border-input bg-background px-3 text-sm" value={studentSortBy} onChange={(event) => setStudentSortBy(event.target.value as typeof studentSortBy)}>
-                      <option value="interacoes">Mais interações</option>
-                      <option value="nome">Nome A-Z</option>
-                      <option value="numero">Número do estudante</option>
-                      <option value="curso">Curso</option>
-                    </select>
-                    <select className="h-10 rounded-md border border-input bg-background px-3 text-sm" value={studentPageSize} onChange={(event) => setStudentPageSize(Number(event.target.value))}>
-                      <option value={10}>10 por página</option>
-                      <option value={20}>20 por página</option>
-                      <option value={50}>50 por página</option>
-                    </select>
-                    <Button variant={groupStudentsByCourse ? "default" : "outline"} onClick={() => setGroupStudentsByCourse((current) => !current)}>
-                      {groupStudentsByCourse ? "Agrupado" : "Sem grupo"}
-                    </Button>
-                  </div>
-
-                  <div className="rounded-xl border border-border/70 bg-muted/20 px-4 py-3 text-sm text-muted-foreground">
-                    {loadingStudentsList
-                      ? "A carregar estudantes..."
-                      : studentsTotal === 0
-                        ? "Nenhum estudante encontrado."
-                        : `${studentsTotal} estudante(s) encontrado(s).`}
-                  </div>
-
-                  {studentListRows.length === 0 ? (
-                    <div className="rounded-xl border border-dashed border-border/70 bg-muted/20 p-6 text-sm text-muted-foreground">
-                      Nenhum estudante encontrado.
-                    </div>
-                  ) : groupStudentsByCourse ? (
-                    Object.entries(groupedStudents).map(([course, courseStudents]) => (
-                      <div key={course} className="space-y-3">
-                        <div className="rounded-xl border border-primary/20 bg-primary/5 px-4 py-3">
-                          <p className="text-sm font-semibold">{course}</p>
-                          <p className="text-xs text-muted-foreground">{courseStudents.length} estudante(s) nesta página</p>
-                        </div>
-                        {courseStudents.map((student) => (
-                          <Card key={student.id} className="border-border/60">
-                            <CardContent className="p-4">
-                              <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-                                <div className="min-w-0 flex-1">
-                                  <p className="break-words text-sm font-medium">{student.studentNumber}</p>
-                                  <p className="break-words text-sm text-muted-foreground">{student.name || `Estudante ${student.studentNumber}`}</p>
-                                  <p className="break-words text-[11px] text-muted-foreground">{student.course || "Curso não informado"}</p>
-                                </div>
-                                <div className="grid grid-cols-3 gap-2 text-xs text-muted-foreground sm:flex sm:gap-4">
-                                  <span className="flex items-center gap-1"><ThumbsUp className="h-3 w-3" /> {student._count?.likes ?? 0}</span>
-                                  <span className="flex items-center gap-1"><MessageSquare className="h-3 w-3" /> {student._count?.comments ?? 0}</span>
-                                  <span className="flex items-center gap-1"><Star className="h-3 w-3" /> {student._count?.votes ?? 0}</span>
-                                </div>
-                                <div className="flex flex-col gap-2 sm:items-end">
-                                  <Badge className="w-fit border-primary/20 bg-primary/10 text-[10px] text-primary">{studentInteractions(student)} interações</Badge>
-                                  <Button size="sm" variant="destructive" className="w-full sm:w-auto" onClick={() => setStudentPendingRemoval(student)}>
-                                    <Trash2 className="mr-1 h-3.5 w-3.5" />
-                                    Remover
-                                  </Button>
-                                </div>
-                              </div>
-                            </CardContent>
-                          </Card>
-                        ))}
-                      </div>
-                    ))
-                  ) : (
-                    studentListRows.map((student) => (
-                      <Card key={student.id} className="border-border/60">
-                        <CardContent className="p-4">
-                          <div className="flex flex-col gap-4 sm:flex-row sm:items-center">
-                            <div className="min-w-0 flex-1">
-                              <p className="break-words text-sm font-medium">{student.studentNumber}</p>
-                              <p className="break-words text-sm text-muted-foreground">{student.name || `Estudante ${student.studentNumber}`}</p>
-                              <p className="break-words text-[11px] text-muted-foreground">{student.course || "Curso não informado"}</p>
-                            </div>
-                            <div className="grid grid-cols-3 gap-2 text-xs text-muted-foreground sm:flex sm:gap-4">
-                              <span className="flex items-center gap-1"><ThumbsUp className="h-3 w-3" /> {student._count?.likes ?? 0}</span>
-                              <span className="flex items-center gap-1"><MessageSquare className="h-3 w-3" /> {student._count?.comments ?? 0}</span>
-                              <span className="flex items-center gap-1"><Star className="h-3 w-3" /> {student._count?.votes ?? 0}</span>
-                            </div>
-                            <div className="flex flex-col gap-2 sm:items-end">
-                              <Badge className="w-fit border-primary/20 bg-primary/10 text-[10px] text-primary">{studentInteractions(student)} interações</Badge>
-                              <Button size="sm" variant="destructive" className="w-full sm:w-auto" onClick={() => setStudentPendingRemoval(student)}>
-                                <Trash2 className="mr-1 h-3.5 w-3.5" />
-                                Remover
-                              </Button>
-                            </div>
-                          </div>
-                        </CardContent>
-                      </Card>
-                    ))
-                  )}
-
-                  <div className="flex flex-col items-center justify-between gap-3 rounded-xl border border-border/70 bg-muted/20 px-4 py-3 text-sm md:flex-row">
-                    <p className="text-muted-foreground">
-                      Página {studentPage} de {studentsTotalPages}
-                    </p>
-                    <div className="flex gap-2">
-                      <Button size="sm" variant="outline" onClick={() => setStudentPage((current) => Math.max(1, current - 1))} disabled={loadingStudentsList || studentPage <= 1}>
-                        <ChevronLeft className="mr-1 h-3.5 w-3.5" />
-                        Anterior
-                      </Button>
-                      <Button size="sm" variant="outline" onClick={() => setStudentPage((current) => Math.min(studentsTotalPages, current + 1))} disabled={loadingStudentsList || studentPage >= studentsTotalPages}>
-                        Próximo
-                        <ChevronRight className="ml-1 h-3.5 w-3.5" />
-                      </Button>
-                    </div>
-                  </div>
-                </div>
+                <Suspense fallback={<AdminPanelFallback label="Estudantes" />}>
+                  <AdminStudentsTab
+                    availableStudentCourses={availableStudentCourses}
+                    groupStudentsByCourse={groupStudentsByCourse}
+                    groupedStudents={groupedStudents}
+                    loadingStudentsList={loadingStudentsList}
+                    studentCourseFilter={studentCourseFilter}
+                    studentListRows={studentListRows}
+                    studentPage={studentPage}
+                    studentPageSize={studentPageSize}
+                    studentSearchTerm={studentSearchTerm}
+                    studentSortBy={studentSortBy}
+                    studentsTotal={studentsTotal}
+                    studentsTotalPages={studentsTotalPages}
+                    onGroupStudentsByCourseChange={setGroupStudentsByCourse}
+                    onRemoveStudent={setStudentPendingRemoval}
+                    onStudentCourseFilterChange={setStudentCourseFilter}
+                    onStudentPageChange={setStudentPage}
+                    onStudentPageSizeChange={setStudentPageSize}
+                    onStudentSearchTermChange={setStudentSearchTerm}
+                    onStudentSortByChange={setStudentSortBy}
+                  />
+                </Suspense>
               )}
 
               {activeTab === "winners" && (
-                <div className="space-y-6">
-                  <div className="flex items-center justify-between gap-3">
-                    <h2 className="flex items-center gap-2 text-lg font-heading font-bold">
-                      <Trophy className="h-5 w-5 text-[hsl(var(--warning))]" />
-                      Selecionar Vencedor
-                    </h2>
-                    <Button variant="outline" onClick={() => void handleClearWinner()}>
-                      Desclassificar Projeto
-                    </Button>
-                  </div>
-
-                  <Card className="border-primary/30">
-                    <CardHeader className="pb-3">
-                      <CardTitle className="flex items-center gap-2 text-base">
-                        <Award className="h-4 w-4 text-primary" />
-                        Melhor Projeto Académico
-                      </CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-2">
-                      {approvedProjects.map((project) => {
-                        const Icon = tipoIcons[project.tipo];
-                        const isSelected = selectedWinners.projectWinner === project.id;
-                        return (
-                          <motion.div
-                            key={project.id}
-                            whileHover={{ scale: 1.01 }}
-                            className={`flex cursor-pointer items-center gap-3 rounded-xl border p-3 transition-all ${isSelected ? "border-primary bg-primary/5 shadow-sm" : "border-border/40 hover:border-primary/30"}`}
-                            onClick={() => void handleSelectWinner(project.id)}
-                          >
-                            {isSelected && <Crown className="h-5 w-5 text-[hsl(var(--warning))]" />}
-                            <Icon className="h-4 w-4 text-muted-foreground" />
-                            <span className="flex-1 text-sm font-medium">{project.nome}</span>
-                            <Badge variant="outline" className={tipoBadgeColors[project.tipo]}>{project.tipo}</Badge>
-                            <span className="text-xs text-muted-foreground">{project.votos} votos · ⭐ {project.rating}</span>
-                          </motion.div>
-                        );
-                      })}
-                    </CardContent>
-                  </Card>
-                </div>
+                <Suspense fallback={<AdminPanelFallback label="Vencedores" />}>
+                  <AdminWinnersTab
+                    approvedProjects={approvedProjects}
+                    selectedProjectWinnerId={selectedWinners.projectWinner}
+                    onClearWinner={() => void handleClearWinner()}
+                    onSelectWinner={(projectId) => void handleSelectWinner(projectId)}
+                  />
+                </Suspense>
               )}
             </motion.div>
           </AnimatePresence>

@@ -94,6 +94,9 @@ enum AnalyticsCategory {
 model AdminAuthorizedStudent {
   id            Int      @id @default(autoincrement())
   studentNumber String   @unique
+  team          String   @default("Geral")
+  role          String   @default("SUPER_ADMIN")
+  permissions   String   @default("ALL")
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 }
@@ -102,6 +105,9 @@ model JuryMember {
   id             Int              @id @default(autoincrement())
   name           String
   phone          String           @unique
+  team           String           @default("Júri")
+  role           String           @default("TEAM_LEAD")
+  permissions    String           @default("OVERVIEW,SUBMISSIONS,VOTES,WINNERS")
   isActive       Boolean          @default(true)
   lastCodeSentAt DateTime?
   createdAt      DateTime         @default(now())
