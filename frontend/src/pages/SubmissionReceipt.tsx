@@ -175,7 +175,7 @@ export default function SubmissionReceipt() {
               </div>
 
               <div className="mt-8 responsive-two-col items-start">
-                <div className="min-w-0 rounded-[28px] border border-white/70 bg-white/92 p-4 shadow-sm sm:p-5">
+                <div className="min-w-0 rounded-[18px] border border-white/70 bg-white/92 p-4 shadow-sm sm:p-5">
                   <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">
                     <QrCode className="h-4 w-4" />
                     Referência
@@ -197,7 +197,7 @@ export default function SubmissionReceipt() {
                   initial={{ opacity: 0, scale: 0.96 }}
                   animate={{ opacity: 1, scale: 1 }}
                   transition={{ duration: 0.24, delay: 0.08, ease: "easeOut" }}
-                  className="min-w-0 rounded-[28px] border border-slate-900/10 bg-slate-950 p-4 text-white shadow-lg sm:p-5"
+                  className="min-w-0 rounded-[18px] border border-slate-900/10 bg-slate-950 p-4 text-white shadow-lg sm:p-5"
                 >
                   <div className="flex items-center gap-3">
                     <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/10 shadow-[0_0_22px_rgba(34,211,238,0.18)]">

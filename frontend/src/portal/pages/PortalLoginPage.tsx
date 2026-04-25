@@ -104,7 +104,7 @@ export function PortalLoginPage({ redirectTo }: { redirectTo: string }) {
         </div>
 
         {/* Login card */}
-        <div className="rounded-[26px] border border-border/70 bg-card/95 p-6 shadow-2xl md:p-8">
+        <div className="rounded-[18px] border border-border/70 bg-card/95 p-6 shadow-2xl md:p-8">
           <div className="space-y-5">
             <ModeSelector mode={authMode} onChange={setAuthMode} />
 
@@ -162,7 +162,7 @@ export function PortalLoginPage({ redirectTo }: { redirectTo: string }) {
           <motion.div
             initial={{ opacity: 0, y: 18, scale: 0.96 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
-            className="w-full max-w-lg overflow-hidden rounded-[28px] border border-white/20 bg-[linear-gradient(145deg,rgba(255,255,255,0.96),rgba(255,247,237,0.94))] shadow-2xl"
+            className="w-full max-w-lg overflow-hidden rounded-[18px] border border-white/20 bg-[linear-gradient(145deg,rgba(255,255,255,0.96),rgba(255,247,237,0.94))] shadow-2xl"
           >
             <div className="h-1.5 bg-[linear-gradient(90deg,#FD8305,#223D42)]" />
             <div className="p-7 md:p-8">

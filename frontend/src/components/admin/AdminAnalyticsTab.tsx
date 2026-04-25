@@ -58,7 +58,7 @@ export function AdminAnalyticsTab({
 
   return (
     <div className="space-y-6">
-      <section className="overflow-hidden rounded-[28px] border border-border/70 bg-[linear-gradient(135deg,rgba(10,61,98,0.08),rgba(0,184,148,0.06),rgba(255,255,255,0.96))] p-6 shadow-lg">
+      <section className="overflow-hidden rounded-[18px] border border-border/70 bg-[linear-gradient(135deg,rgba(10,61,98,0.08),rgba(0,184,148,0.06),rgba(255,255,255,0.96))] p-6 shadow-lg">
         <div className="flex flex-col gap-5 lg:flex-row lg:items-end lg:justify-between">
           <div className="space-y-3">
             <div className="inline-flex items-center gap-2 rounded-full border border-[#0A3D62]/10 bg-white/90 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#0A3D62]">

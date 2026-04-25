@@ -171,7 +171,7 @@ export default function CourseEnrollmentReceipt() {
               </div>
 
               <div className="mt-8 responsive-two-col items-start">
-                <div className="min-w-0 rounded-[28px] border border-white/70 bg-white/92 p-4 shadow-sm sm:p-5">
+                <div className="min-w-0 rounded-[18px] border border-white/70 bg-white/92 p-4 shadow-sm sm:p-5">
                   <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Referência</p>
                   <p className="mt-3 break-all font-mono text-2xl font-bold">{receipt.referenceCode}</p>
                   <div className="mt-5 grid gap-3 sm:grid-cols-2">
@@ -186,7 +186,7 @@ export default function CourseEnrollmentReceipt() {
                   </div>
                 </div>
 
-                <div className="min-w-0 rounded-[28px] border border-slate-900/10 bg-slate-950 p-4 text-white shadow-lg sm:p-5">
+                <div className="min-w-0 rounded-[18px] border border-slate-900/10 bg-slate-950 p-4 text-white shadow-lg sm:p-5">
                   <div className="flex items-center gap-3">
                     <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white/10">
                       <GraduationCap className="h-6 w-6 text-emerald-300" />

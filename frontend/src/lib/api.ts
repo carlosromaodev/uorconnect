@@ -607,6 +607,107 @@ export interface PdfJobStatus {
   filePath: string;
 }
 
+export interface AttendanceCredential {
+  id: number;
+  token: string;
+  studentNumber: string;
+  studentName: string | null;
+  studentCourse: string | null;
+  label: string;
+  validationUrl: string;
+  qrImageUrl: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AttendanceCheckIn {
+  id: number;
+  credentialId: number;
+  studentNumber: string;
+  studentName: string | null;
+  studentCourse: string | null;
+  eventKey: string;
+  eventLabel: string;
+  checkedInAt: string;
+  checkedInByStudentNumber: string;
+  notes: string | null;
+}
+
+export interface AttendanceMePayload {
+  credential: AttendanceCredential;
+  checkedIn: boolean;
+  lastCheckIn: AttendanceCheckIn | null;
+  certificatesCount: number;
+}
+
+export interface AttendanceOverview {
+  totalCredentials: number;
+  totalCheckIns: number;
+  todayCheckIns: number;
+  recentCheckIns: AttendanceCheckIn[];
+}
+
+export interface CertificateItem {
+  id: number;
+  code: string;
+  validationToken: string;
+  type: string;
+  title: string;
+  recipientName: string;
+  recipientNumber: string | null;
+  recipientCourse: string | null;
+  sourceType: string | null;
+  sourceId: number | null;
+  issuedAt: string;
+  issuedByStudentNumber: string;
+  status: string;
+  revokedAt: string | null;
+  validationUrl: string;
+  qrImageUrl: string;
+  pdfPath: string;
+}
+
+export interface PublicValidationPayload {
+  valid: boolean;
+  kind: "certificate" | "attendance";
+  status: string;
+  title: string;
+  validationUrl: string;
+  qrImageUrl: string;
+  certificate: {
+    id: number;
+    code: string;
+    type: string;
+    recipientName: string;
+    recipientNumber: string | null;
+    recipientCourse: string | null;
+    issuedAt: string;
+    issuedByStudentNumber: string;
+    revokedAt: string | null;
+  } | null;
+  attendance: {
+    credentialId: number;
+    studentNumber: string;
+    studentName: string | null;
+    studentCourse: string | null;
+    checkedIn: boolean;
+    lastCheckInAt: string | null;
+    eventLabel: string | null;
+  } | null;
+}
+
+export interface AdminAuditLog {
+  id: number;
+  actorStudentNumber: string;
+  actorRole: string;
+  action: string;
+  entityType: string;
+  entityId: string | null;
+  summary: string;
+  metadata: Record<string, unknown> | null;
+  createdAt: string;
+}
+
 export interface ActivityFeedItem {
   id: string;
   type: "vote" | "comment" | "submission";
@@ -1412,6 +1513,66 @@ export const api = {
       }),
     like: (id: number) =>
       request<{ liked: boolean; likesCount: number }>(`/courses/${id}/like`, { method: "POST" }),
+  },
+
+  attendance: {
+    me: () =>
+      request<AttendanceMePayload>("/attendance/me"),
+    overview: () =>
+      request<AttendanceOverview>("/attendance/admin/overview"),
+    checkIns: (params?: { page?: number; limit?: number; search?: string }) =>
+      request<PagedResult<AttendanceCheckIn>>(`/attendance/admin/check-ins${toQueryString(params)}`),
+    checkIn: (data: { token?: string; studentNumber?: string; eventKey?: string; eventLabel?: string; notes?: string | null }) =>
+      request<{ checkIn: AttendanceCheckIn; credential: AttendanceCredential; alreadyCheckedIn: boolean }>("/attendance/admin/check-in", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+  },
+
+  certificates: {
+    mine: () =>
+      request<CertificateItem[]>("/certificates/mine"),
+    list: (params?: { page?: number; limit?: number; search?: string; type?: string; status?: string }) =>
+      request<PagedResult<CertificateItem>>(`/certificates/admin/list${toQueryString(params)}`),
+    issue: (data: { studentNumber: string; type?: string; title?: string; sourceType?: string; sourceId?: number; metadata?: Record<string, unknown> }) =>
+      request<CertificateItem>("/certificates/admin/issue", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+    issueAttendees: (data?: { type?: string; title?: string; eventKey?: string }) =>
+      request<{ issued: number; skipped: number; certificates: CertificateItem[] }>("/certificates/admin/issue-attendees", {
+        method: "POST",
+        body: JSON.stringify(data ?? {}),
+      }),
+    issueBulk: (data: {
+      mode: "STUDENT_LIST" | "STUDENT_COURSE" | "COURSE_ENROLLMENT" | "PROJECT";
+      type?: string;
+      title?: string;
+      studentNumbers?: string[];
+      studentCourse?: string;
+      courseId?: number;
+      submissionId?: number;
+    }) =>
+      request<{ issued: number; skipped: number; certificates: CertificateItem[] }>("/certificates/admin/issue-bulk", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+    revoke: (id: number) =>
+      request<CertificateItem>(`/certificates/admin/${id}/revoke`, { method: "PATCH" }),
+    pdf: (id: number) =>
+      requestBlob(`/certificates/${id}/pdf`),
+  },
+
+  validation: {
+    get: (token: string) =>
+      request<PublicValidationPayload>(`/validation/${encodeURIComponent(token)}`),
+  },
+
+  audit: {
+    logs: (params?: { page?: number; limit?: number; search?: string; action?: string; entityType?: string; from?: string; to?: string }) =>
+      request<PagedResult<AdminAuditLog>>(`/audit/admin/logs${toQueryString(params)}`),
+    exportCsv: (params?: { search?: string; action?: string; entityType?: string; from?: string; to?: string; limit?: number }) =>
+      requestBlob(`/audit/admin/logs/export.csv${toQueryString(params)}`),
   },
 
   sms: {

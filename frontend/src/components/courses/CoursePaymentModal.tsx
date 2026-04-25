@@ -61,7 +61,7 @@ export function CoursePaymentModal({
 
   return (
     <Dialog open={open} onOpenChange={(nextOpen) => { if (!nextOpen) onClose(); }}>
-      <DialogContent className="w-[94vw] max-w-[560px] overflow-hidden rounded-[28px] border-border/70 p-0">
+      <DialogContent className="w-[94vw] max-w-[560px] overflow-hidden rounded-[18px] border-border/70 p-0">
         <div className="bg-[radial-gradient(circle_at_top_left,rgba(249,115,22,0.16),transparent_24%),linear-gradient(180deg,rgba(2,132,199,0.08),transparent)] p-6">
           <DialogHeader className="text-left">
             <DialogTitle className="flex items-center gap-2 font-heading text-xl">

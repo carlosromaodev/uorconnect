@@ -1,4 +1,5 @@
 import { escapeHtml, formatDateLabel, loadLogoDataUri, renderPdfFromHtml } from "../../reports/http/pdf-report.utils";
+import { renderQrDataUri } from "../../../shared/qr";
 
 type RenderCourseEnrollmentTicketParams = {
   courseName: string;
@@ -24,7 +25,10 @@ function paymentStatusLabel(status: string) {
   return "Sem validação";
 }
 
-function buildCourseEnrollmentTicketHtml(params: RenderCourseEnrollmentTicketParams & { logoDataUri: string | null }) {
+function buildCourseEnrollmentTicketHtml(params: RenderCourseEnrollmentTicketParams & {
+  logoDataUri: string | null;
+  qrImageDataUri: string;
+}) {
   const {
     courseName,
     courseDescription,
@@ -42,17 +46,16 @@ function buildCourseEnrollmentTicketHtml(params: RenderCourseEnrollmentTicketPar
     proofUrl,
     communityUrl,
     logoDataUri,
+    qrImageDataUri,
   } = params;
 
-  const qrValue = courseAccessUrl ?? `${siteUrl}/cursos`;
-  const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(qrValue)}`;
   const barcodeValue = studentNumber.padEnd(12, "0");
 
   return `<!DOCTYPE html>
   <html lang="pt">
     <head>
       <meta charset="utf-8" />
-      <title>UOR Boarding Pass | ${escapeHtml(courseName)}</title>
+      <title>Comprovativo UOR Connect | ${escapeHtml(courseName)}</title>
       <style>
         @page {
           size: A4 portrait;
@@ -62,12 +65,11 @@ function buildCourseEnrollmentTicketHtml(params: RenderCourseEnrollmentTicketPar
           color-scheme: light;
           --ink: #112234;
           --muted: #5f7082;
-          --line: rgba(148, 163, 184, 0.22);
-          --surface: #f6f3eb;
-          --card: rgba(255, 253, 248, 0.98);
+          --line: #dbe3ec;
+          --surface: #f3f6f9;
+          --card: #ffffff;
           --accent: #fd8305;
           --accent-deep: #143844;
-          --gold: #c7972d;
           --success: #0f9d58;
         }
         * {
@@ -78,21 +80,17 @@ function buildCourseEnrollmentTicketHtml(params: RenderCourseEnrollmentTicketPar
           margin: 0;
           font-family: Inter, "Segoe UI", Arial, sans-serif;
           color: var(--ink);
-          background:
-            radial-gradient(circle at top right, rgba(253, 131, 5, 0.16), transparent 34%),
-            radial-gradient(circle at bottom left, rgba(20, 56, 68, 0.1), transparent 30%),
-            linear-gradient(180deg, #fffaf2, var(--surface));
+          background: var(--surface);
         }
         .sheet {
           min-height: calc(297mm - 24mm);
           padding: 24px;
         }
         .ticket {
-          border-radius: 30px;
+          border-radius: 16px;
           overflow: hidden;
           border: 1px solid var(--line);
           background: var(--card);
-          box-shadow: 0 28px 70px rgba(15, 23, 42, 0.12);
         }
         .top {
           display: grid;
@@ -101,13 +99,13 @@ function buildCourseEnrollmentTicketHtml(params: RenderCourseEnrollmentTicketPar
           align-items: stretch;
           padding: 24px;
           background:
-            linear-gradient(140deg, rgba(253, 131, 5, 0.18), rgba(255, 255, 255, 0.94) 52%, rgba(20, 56, 68, 0.1)),
-            linear-gradient(180deg, rgba(255, 255, 255, 0.92), rgba(248, 250, 252, 0.96));
+            linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+          border-bottom: 3px solid var(--accent);
         }
         .intro {
-          border-radius: 26px;
-          border: 1px solid rgba(255, 255, 255, 0.72);
-          background: rgba(255, 255, 255, 0.74);
+          border-radius: 12px;
+          border: 1px solid var(--line);
+          background: #ffffff;
           padding: 22px;
         }
         .brand-row {
@@ -124,13 +122,12 @@ function buildCourseEnrollmentTicketHtml(params: RenderCourseEnrollmentTicketPar
         .brand-logo {
           width: 152px;
           min-height: 72px;
-          border-radius: 22px;
-          border: 1px solid rgba(20, 56, 68, 0.1);
-          background: rgba(255, 255, 255, 0.95);
+          border-radius: 10px;
+          border: 1px solid var(--line);
+          background: #ffffff;
           display: flex;
           align-items: center;
           justify-content: center;
-          box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
         }
         .brand-logo img {
           width: 132px;
@@ -144,8 +141,8 @@ function buildCourseEnrollmentTicketHtml(params: RenderCourseEnrollmentTicketPar
           gap: 8px;
           padding: 9px 14px;
           border-radius: 999px;
-          border: 1px solid rgba(199, 151, 45, 0.24);
-          background: rgba(255, 248, 232, 0.9);
+          border: 1px solid rgba(253, 131, 5, 0.24);
+          background: rgba(253, 131, 5, 0.08);
           font-size: 11px;
           font-weight: 700;
           letter-spacing: 0.18em;
@@ -158,7 +155,7 @@ function buildCourseEnrollmentTicketHtml(params: RenderCourseEnrollmentTicketPar
           font-weight: 700;
           letter-spacing: 0.18em;
           text-transform: uppercase;
-          color: var(--gold);
+          color: var(--accent);
         }
         h1 {
           margin: 14px 0 0;
@@ -187,7 +184,7 @@ function buildCourseEnrollmentTicketHtml(params: RenderCourseEnrollmentTicketPar
         .share-card {
           border-radius: 20px;
           border: 1px solid var(--line);
-          background: rgba(255, 255, 255, 0.88);
+          background: #ffffff;
           padding: 15px 16px;
           overflow: hidden;
         }
@@ -216,34 +213,10 @@ function buildCourseEnrollmentTicketHtml(params: RenderCourseEnrollmentTicketPar
         .pass-panel {
           position: relative;
           overflow: hidden;
-          border-radius: 26px;
+          border-radius: 12px;
           padding: 22px;
           color: #fff;
-          background:
-            linear-gradient(180deg, rgba(15, 23, 42, 0.98), rgba(20, 56, 68, 0.95)),
-            radial-gradient(circle at top right, rgba(253, 131, 5, 0.24), transparent 34%);
-        }
-        .pass-panel::before,
-        .pass-panel::after {
-          content: "";
-          position: absolute;
-          border-radius: 999px;
-          filter: blur(18px);
-          opacity: 0.82;
-        }
-        .pass-panel::before {
-          width: 140px;
-          height: 140px;
-          top: -38px;
-          right: -28px;
-          background: rgba(253, 131, 5, 0.52);
-        }
-        .pass-panel::after {
-          width: 110px;
-          height: 110px;
-          left: -24px;
-          bottom: -30px;
-          background: rgba(56, 189, 248, 0.34);
+          background: #14212f;
         }
         .panel-stack {
           position: relative;
@@ -254,11 +227,10 @@ function buildCourseEnrollmentTicketHtml(params: RenderCourseEnrollmentTicketPar
         }
         .panel-row,
         .barcode {
-          border-radius: 18px;
+          border-radius: 10px;
           border: 1px solid rgba(255, 255, 255, 0.12);
           background: rgba(255, 255, 255, 0.08);
           padding: 13px 15px;
-          backdrop-filter: blur(10px);
         }
         .panel-title {
           margin: 0;
@@ -324,8 +296,8 @@ function buildCourseEnrollmentTicketHtml(params: RenderCourseEnrollmentTicketPar
         .footer-note {
           margin-top: 18px;
           border-radius: 20px;
-          border: 1px solid rgba(199, 151, 45, 0.2);
-          background: linear-gradient(135deg, rgba(253, 131, 5, 0.08), rgba(199, 151, 45, 0.08));
+          border: 1px solid rgba(253, 131, 5, 0.22);
+          background: rgba(253, 131, 5, 0.07);
           padding: 16px;
           font-size: 13px;
           line-height: 1.8;
@@ -389,15 +361,15 @@ function buildCourseEnrollmentTicketHtml(params: RenderCourseEnrollmentTicketPar
                 <div class="brand">
                   <div class="brand-logo">${logoDataUri ? `<img src="${logoDataUri}" alt="UOR Connect" />` : ""}</div>
                   <div>
-                    <p class="eyebrow" style="margin-bottom:6px;">UOR Boarding Pass</p>
-                    <div style="font-size:16px; font-weight:800; color: var(--accent-deep);">Ticket de Embarque para o Conhecimento</div>
+                    <p class="eyebrow" style="margin-bottom:6px;">UOR Connect</p>
+                    <div style="font-size:16px; font-weight:800; color: var(--accent-deep);">Comprovativo oficial de inscrição</div>
                   </div>
                 </div>
-                <div class="badge">Vaga garantida</div>
+                <div class="badge">${escapeHtml(paymentStatusLabel(paymentStatus))}</div>
               </div>
               <h1>${escapeHtml(courseName)}</h1>
               <p class="lede">
-                Um talão premium pensado para stories, WhatsApp e partilha orgânica. Limpo em mobile, elegante em screenshot e alinhado ao ecossistema UOR Connect.
+                Documento de confirmação da inscrição, com dados do estudante, estado administrativo, ligações úteis e QR de acesso ao curso.
               </p>
               <div class="summary-grid">
                 <div class="mini-card">
@@ -417,10 +389,10 @@ function buildCourseEnrollmentTicketHtml(params: RenderCourseEnrollmentTicketPar
 
             <div class="pass-panel">
               <div style="position:relative; z-index:1;">
-                <div class="eyebrow" style="color: rgba(255,255,255,0.74);">Boarding Pass</div>
+                <div class="eyebrow" style="color: rgba(255,255,255,0.74);">Comprovativo</div>
                 <div style="margin-top:8px; font-size:30px; font-weight:800; line-height:1;">#${escapeHtml(studentNumber)}</div>
                 <div style="margin-top:8px; font-size:12px; line-height:1.7; color: rgba(255,255,255,0.74);">
-                  Ticket de inscrição confirmada para aluno UOR Connect.
+                  Comprovativo de inscrição emitido pelo portal UOR Connect.
                 </div>
               </div>
               <div class="panel-stack">
@@ -437,7 +409,7 @@ function buildCourseEnrollmentTicketHtml(params: RenderCourseEnrollmentTicketPar
                   <p class="panel-text">${escapeHtml(paymentPhone ?? "Sem contacto associado")}</p>
                 </div>
                 <div class="barcode">
-                  <p class="panel-title">Código de embarque</p>
+                  <p class="panel-title">Código de referência</p>
                   <div class="barcode__value">${escapeHtml(barcodeValue)}</div>
                 </div>
               </div>
@@ -462,11 +434,11 @@ function buildCourseEnrollmentTicketHtml(params: RenderCourseEnrollmentTicketPar
                 </div>
               </div>
               <div class="footer-note">
-                Este ticket foi desenhado para screenshot e partilha. Se alguém o receber e quiser entrar no próximo voo, deve usar o portal oficial em <strong>${escapeHtml(siteUrl)}</strong>.
+                Este comprovativo reúne os dados registados no momento da inscrição. Para validar informações atualizadas, usa sempre o portal oficial em <strong>${escapeHtml(siteUrl)}</strong>.
               </div>
             </section>
 
-            <div class="divider"><span>Para partilhar</span></div>
+            <div class="divider"><span>Referências e acesso</span></div>
 
             <section class="bottom">
               <div>
@@ -499,15 +471,15 @@ function buildCourseEnrollmentTicketHtml(params: RenderCourseEnrollmentTicketPar
                   </div>` : ""}
                 </div>
                 <div class="footer-note">
-                  Faça parte do UOR Connect. Inscreva-se no próximo curso, partilhe este pass e mostre o seu embarque para um novo ciclo de conhecimento.
+                  Mantém este documento para consulta e apresentação quando solicitado pela organização ou pela equipa formadora.
                 </div>
               </div>
 
               <aside class="share-card">
                 <p class="section-title" style="margin-bottom:0;">QR de partilha</p>
-                <img src="${qrUrl}" alt="QR code do curso" />
+                <img src="${qrImageDataUri}" alt="QR code do curso" />
                 <p class="caption">
-                  Abre diretamente a página do curso no portal UOR Connect para inscrição ou verificação.
+                  Abre diretamente a página do curso no portal UOR Connect para consulta ou verificação.
                 </p>
               </aside>
             </section>
@@ -520,12 +492,14 @@ function buildCourseEnrollmentTicketHtml(params: RenderCourseEnrollmentTicketPar
 
 export async function renderCourseEnrollmentTicketPdf(params: RenderCourseEnrollmentTicketParams) {
   const logoDataUri = await loadLogoDataUri();
+  const qrImageDataUri = await renderQrDataUri(params.courseAccessUrl ?? `${params.siteUrl}/cursos`, 220);
   const html = buildCourseEnrollmentTicketHtml({
     ...params,
     logoDataUri,
+    qrImageDataUri,
   });
 
   return renderPdfFromHtml(html, {
-    footerLabel: `${params.courseName} · UOR Boarding Pass`,
+    footerLabel: `${params.courseName} · Comprovativo UOR Connect`,
   });
 }

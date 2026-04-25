@@ -1,11 +1,12 @@
-import { Link, useLocation } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Bell, CalendarClock, Menu, Radio, Search, Wifi, WifiOff, X } from "lucide-react";
+import { Bell, CalendarClock, ChevronDown, LogOut, Menu, Radio, Search, User, Wifi, WifiOff, X } from "lucide-react";
 import { toast } from "@/components/ui/sonner";
 import { NotificationInline } from "@/components/ui/notification";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import {
   api,
+  getSessionStudent,
   getToken,
   isAuthError,
   setToken,
@@ -15,6 +16,7 @@ import {
   type StudentEnrollmentListItem,
   type StudentOwnedSubmissionListItem,
 } from "@/lib/api";
+import { UserAvatar } from "@/components/social/UserAvatar";
 import SearchDialog from "./SearchDialog";
 import { getSaasShowcaseHref } from "@/lib/contest-lab";
 
@@ -22,17 +24,23 @@ const SUBMISSION_APPROVAL_SEEN_STORAGE_KEY = "uor-approved-submissions-seen";
 const ENROLLMENT_APPROVAL_SEEN_STORAGE_KEY = "uor-approved-enrollments-seen";
 const INTERNAL_BANNER_DISMISS_SIGNATURE_KEY = "uor-internal-approval-banner-dismissed-signature";
 
-const navItems = [
+const primaryNavItems = [
   { label: "Início", path: "/" },
-  { label: "Agenda", path: "/agenda" },
-  { label: "Palestrantes", path: "/palestrantes" },
-  { label: "Submeter", path: "/submeter" },
   { label: "Projetos", path: "/projetos" },
   { label: "Cursos", path: "/cursos" },
+  { label: "Agenda", path: "/agenda" },
+  { label: "Palestrantes", path: "/palestrantes" },
+];
+
+const secondaryNavItems = [
+  { label: "Submeter", path: "/submeter" },
   { label: "FAQ", path: "/faq" },
   { label: "Guia", path: "/guia" },
-  { label: "Minha Área", path: "/minha-area" },
+  { label: "Sobre", path: "/sobre" },
+  { label: "Regras", path: "/regras" },
 ];
+
+const allNavItems = [...primaryNavItems, ...secondaryNavItems, { label: "Minha Área", path: "/minha-area" }];
 
 function readSeenIds(storageKey: string) {
   try {
@@ -151,9 +159,14 @@ function buildUnreadSignature(
 
 export default function Navbar() {
   const location = useLocation();
+  const navigate = useNavigate();
   const [open, setOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
   const [notificationOpen, setNotificationOpen] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const moreRef = useRef<HTMLDivElement>(null);
+  const userMenuRef = useRef<HTMLDivElement>(null);
   const [liveState, setLiveState] = useState<AgendaLiveState | null>(null);
   const [activityFeed, setActivityFeed] = useState<ActivityFeedItem[]>([]);
   const [liveChatPreview, setLiveChatPreview] = useState<LiveChatMessage[]>([]);
@@ -317,10 +330,23 @@ export default function Navbar() {
     };
   }, [notificationOpen]);
 
+  const student = useMemo(() => getSessionStudent(), [token]);
+
   useEffect(() => {
     setOpen(false);
     setNotificationOpen(false);
+    setMoreOpen(false);
+    setUserMenuOpen(false);
   }, [location.pathname, location.search, location.hash]);
+
+  useEffect(() => {
+    function handleClickOutside(e: MouseEvent) {
+      if (moreRef.current && !moreRef.current.contains(e.target as Node)) setMoreOpen(false);
+      if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) setUserMenuOpen(false);
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   const unreadSignature = useMemo(
     () => buildUnreadSignature(unreadApprovedSubmissions, unreadConfirmedEnrollments),
@@ -683,7 +709,7 @@ export default function Navbar() {
           </div>
 
           <div className="hidden xl:flex items-center gap-1">
-            {navItems.map((item) => (
+            {primaryNavItems.map((item) => (
               <Link
                 key={item.path}
                 to={item.path}
@@ -696,9 +722,43 @@ export default function Navbar() {
                 {item.label}
               </Link>
             ))}
+
+            {/* Mais dropdown */}
+            <div ref={moreRef} className="relative">
+              <button
+                onClick={() => setMoreOpen(!moreOpen)}
+                className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-2 text-sm font-medium transition-all duration-200 ${
+                  secondaryNavItems.some((i) => location.pathname === i.path)
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:text-foreground hover:bg-secondary"
+                }`}
+              >
+                Mais
+                <ChevronDown className={`h-3.5 w-3.5 transition-transform ${moreOpen ? "rotate-180" : ""}`} />
+              </button>
+              {moreOpen && (
+                <div className="absolute left-0 top-full mt-1.5 w-48 rounded-xl border border-border/60 bg-white p-1.5 shadow-lg">
+                  {secondaryNavItems.map((item) => (
+                    <Link
+                      key={item.path}
+                      to={item.path}
+                      onClick={() => setMoreOpen(false)}
+                      className={`block rounded-lg px-3 py-2 text-sm font-medium transition-colors ${
+                        location.pathname === item.path
+                          ? "bg-primary/10 text-primary"
+                          : "text-muted-foreground hover:bg-secondary hover:text-foreground"
+                      }`}
+                    >
+                      {item.label}
+                    </Link>
+                  ))}
+                </div>
+              )}
+            </div>
+
             <a
               href={getSaasShowcaseHref("/")}
-              className="ml-1 inline-flex shrink-0 items-center whitespace-nowrap rounded-lg bg-[#25D366] px-3 py-1.5 text-sm font-semibold text-white shadow-sm transition-all duration-200 hover:-translate-y-px hover:bg-[#20bd5a]"
+              className="ml-1 inline-flex shrink-0 items-center whitespace-nowrap rounded-lg bg-primary px-3 py-1.5 text-sm font-semibold text-primary-foreground shadow-sm transition-all duration-200 hover:-translate-y-px hover:bg-primary/90"
             >
               Marcar evento
             </a>
@@ -706,34 +766,76 @@ export default function Navbar() {
 
           <div className="relative flex items-center gap-1">
             <button
+              onClick={() => setSearchOpen(true)}
+              className="rounded-lg p-2 transition-colors hover:bg-secondary"
+              aria-label="Pesquisar"
+            >
+              <Search className="h-[18px] w-[18px] text-muted-foreground" />
+            </button>
+
+            <button
               onClick={handleToggleNotifications}
-              className="relative rounded-lg p-2.5 transition-colors hover:bg-secondary"
+              className="relative rounded-lg p-2 transition-colors hover:bg-secondary"
               aria-label="Centro de notificações"
             >
-              <Bell className="h-5 w-5 text-muted-foreground" />
+              <Bell className="h-[18px] w-[18px] text-muted-foreground" />
               {hasUnreadApprovals ? (
-                <span className="absolute right-2 top-2 h-2.5 w-2.5 rounded-full bg-[hsl(var(--success))]" />
+                <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-[hsl(var(--success))] ring-2 ring-white" />
               ) : null}
             </button>
 
-            {hasApprovalNotifications ? (
+            {/* User avatar / login */}
+            {token && student ? (
+              <div ref={userMenuRef} className="relative hidden sm:block">
+                <button
+                  onClick={() => setUserMenuOpen(!userMenuOpen)}
+                  className="flex items-center gap-2 rounded-lg px-2 py-1.5 transition-colors hover:bg-secondary"
+                >
+                  <UserAvatar name={student.name || student.studentNumber} size="sm" />
+                  <span className="hidden text-sm font-medium text-foreground lg:block">
+                    {student.name?.split(" ")[0] || student.studentNumber}
+                  </span>
+                  <ChevronDown className={`hidden h-3.5 w-3.5 text-muted-foreground transition-transform lg:block ${userMenuOpen ? "rotate-180" : ""}`} />
+                </button>
+                {userMenuOpen && (
+                  <div className="absolute right-0 top-full mt-1.5 w-52 rounded-xl border border-border/60 bg-white p-1.5 shadow-lg">
+                    <div className="mb-1.5 border-b border-border/50 px-3 py-2">
+                      <p className="text-sm font-semibold text-foreground">{student.name || "Estudante"}</p>
+                      <p className="text-xs text-muted-foreground">{student.studentNumber}</p>
+                    </div>
+                    <Link
+                      to="/minha-area"
+                      onClick={() => setUserMenuOpen(false)}
+                      className="flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground"
+                    >
+                      <User className="h-4 w-4" />
+                      Minha Área
+                    </Link>
+                    <button
+                      onClick={() => {
+                        setUserMenuOpen(false);
+                        setToken(null);
+                        navigate("/");
+                        toast.success("Sessão terminada com sucesso.");
+                      }}
+                      className="flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive"
+                    >
+                      <LogOut className="h-4 w-4" />
+                      Sair
+                    </button>
+                  </div>
+                )}
+              </div>
+            ) : (
               <Link
-                to="/minha-area"
-                className="hidden rounded-lg border border-border/60 bg-card/70 px-3 py-1.5 text-xs font-semibold text-foreground transition-colors hover:bg-card sm:inline-flex"
+                to="/login"
+                className="hidden items-center gap-1.5 rounded-lg border border-border/60 px-3 py-1.5 text-sm font-medium text-muted-foreground transition-colors hover:bg-secondary hover:text-foreground sm:inline-flex"
               >
-                Gerir Aprovações
+                Entrar
               </Link>
-            ) : null}
+            )}
 
-            <button
-              onClick={() => setSearchOpen(true)}
-              className="rounded-lg p-2.5 transition-colors hover:bg-secondary"
-              aria-label="Pesquisar"
-            >
-              <Search className="h-5 w-5 text-muted-foreground" />
-            </button>
-
-            <button onClick={() => setOpen(!open)} className="xl:hidden rounded-lg p-2.5 hover:bg-secondary" aria-label="Menu">
+            <button onClick={() => setOpen(!open)} className="xl:hidden rounded-lg p-2 hover:bg-secondary" aria-label="Menu">
               {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
             </button>
           </div>
@@ -764,8 +866,8 @@ export default function Navbar() {
         ) : null}
 
         {open ? (
-          <div className="xl:hidden border-t border-border/60 bg-white/70 px-4 pb-3 pt-1 backdrop-blur-2xl supports-[backdrop-filter]:bg-white/55">
-            {navItems.map((item) => (
+          <div className="xl:hidden border-t border-border/60 bg-white/90 px-4 pb-3 pt-2 backdrop-blur-2xl">
+            {primaryNavItems.map((item) => (
               <Link
                 key={item.path}
                 to={item.path}
@@ -779,19 +881,49 @@ export default function Navbar() {
                 {item.label}
               </Link>
             ))}
-            {hasApprovalNotifications ? (
+            <div className="my-1.5 h-px bg-border/50" />
+            <p className="px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Mais</p>
+            {secondaryNavItems.map((item) => (
+              <Link
+                key={item.path}
+                to={item.path}
+                onClick={() => setOpen(false)}
+                className={`block rounded-lg px-3 py-2.5 text-sm font-medium ${
+                  location.pathname === item.path
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:bg-secondary"
+                }`}
+              >
+                {item.label}
+              </Link>
+            ))}
+            <div className="my-1.5 h-px bg-border/50" />
+            {token ? (
               <Link
                 to="/minha-area"
                 onClick={() => setOpen(false)}
-                className="mt-2 block rounded-lg border border-border/60 bg-card/80 px-3 py-2.5 text-sm font-semibold text-foreground"
+                className={`flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm font-medium ${
+                  location.pathname === "/minha-area"
+                    ? "bg-primary text-primary-foreground"
+                    : "text-muted-foreground hover:bg-secondary"
+                }`}
               >
-                Gerir Aprovações
+                {student ? <UserAvatar name={student.name || student.studentNumber} size="sm" /> : <User className="h-4 w-4" />}
+                Minha Área
               </Link>
-            ) : null}
+            ) : (
+              <Link
+                to="/login"
+                onClick={() => setOpen(false)}
+                className="block rounded-lg px-3 py-2.5 text-sm font-medium text-muted-foreground hover:bg-secondary"
+              >
+                Entrar
+              </Link>
+            )}
             <a
               href={getSaasShowcaseHref("/")}
               onClick={() => setOpen(false)}
-              className="mt-2 block rounded-lg bg-[#25D366] px-3 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-[#20bd5a]"
+              className="mt-2 block rounded-lg bg-primary px-3 py-2.5 text-center text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
             >
               Marcar evento
             </a>

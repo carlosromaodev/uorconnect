@@ -27,11 +27,11 @@ export default function Regras() {
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
               transition={{ delay: i * 0.05 }}
-              className="border border-border rounded-xl bg-card p-5"
+              className="rounded-[16px] border border-border/60 bg-white/96 p-5 shadow-sm"
             >
               <div className="flex items-center gap-2.5 mb-3">
-                <div className="w-8 h-8 rounded-lg bg-primary flex items-center justify-center shrink-0">
-                  <rule.icon className="h-4 w-4 text-primary-foreground" />
+                <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+                  <rule.icon className="h-4 w-4 text-primary" />
                 </div>
                 <h3 className="font-heading font-semibold text-sm">{rule.title}</h3>
               </div>

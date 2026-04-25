@@ -22,6 +22,8 @@ export default defineConfig(({ mode }) => ({
           if (!id.includes("node_modules")) return undefined;
           if (id.includes("recharts")) return "charts";
           if (id.includes("framer-motion")) return "motion";
+          if (id.includes("@zxing")) return "qr-scanner";
+          if (id.includes("qrcode")) return "qr-code";
           if (id.includes("@radix-ui")) return "radix";
           if (id.includes("@tanstack/react-query")) return "query";
           if (id.includes("react-router")) return "router";

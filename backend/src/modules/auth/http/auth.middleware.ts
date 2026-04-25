@@ -29,9 +29,11 @@ export const authGuard = fp<AuthPluginOpts>(async (app, opts) => {
       ? authHeader.substring("Bearer ".length)
       : null;
     const cookieToken = getCookie(request, "uor_auth");
-    const token = cookieToken || bearerToken;
+    // Prefer Bearer token over cookie so an explicit fresh JWT can override stale cookie auth.
+    const token = bearerToken || cookieToken;
+    const authSource = bearerToken ? "bearer" : cookieToken ? "cookie" : null;
 
-    if (!token) {
+    if (!token || !authSource) {
       return reply.status(401).send({ message: "Missing or invalid token" });
     }
 
@@ -44,7 +46,7 @@ export const authGuard = fp<AuthPluginOpts>(async (app, opts) => {
         request.jury = { id: payload.sub, phone: payload.juryPhone };
         request.authRole = "jury";
       }
-      request.authSource = cookieToken ? "cookie" : "bearer";
+      request.authSource = authSource;
 
       if (request.authSource === "cookie" && !["GET", "HEAD", "OPTIONS"].includes(request.method.toUpperCase())) {
         const csrfCookie = getCookie(request, "uor_csrf");

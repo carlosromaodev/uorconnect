@@ -23,8 +23,8 @@ const contestCardVariants = cva(
         flush: "p-0",
       },
       radius: {
-        default: "rounded-[28px]",
-        lg: "rounded-[32px]",
+        default: "rounded-[18px]",
+        lg: "rounded-[20px]",
         pill: "rounded-full",
       },
     },

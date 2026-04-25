@@ -1063,7 +1063,7 @@ export default function Submeter() {
               </div>
 
               <label
-                className={`grid cursor-pointer gap-4 rounded-[28px] border border-dashed p-5 transition-all ${
+                className={`grid cursor-pointer gap-4 rounded-[18px] border border-dashed p-5 transition-all ${
                   isDragging ? "border-primary bg-primary/10 shadow-[0_18px_36px_rgba(255,94,0,0.14)]" : "border-primary/30 bg-[linear-gradient(135deg,rgba(255,94,0,0.05),rgba(0,184,148,0.06))] hover:border-primary/50 hover:bg-primary/5"
                 }`}
                 onDragOver={handleDragOver}

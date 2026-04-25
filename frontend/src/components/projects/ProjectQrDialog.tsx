@@ -5,17 +5,13 @@ import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { getProjectShareUrl } from "@/lib/project-links";
+import { createQrDataUrl } from "@/lib/qr";
 import type { ProjectPublicFeedItem } from "@/lib/api";
 
 type ProjectCardItem = ProjectPublicFeedItem & {
   userHasLiked?: boolean;
   userHasVoted?: boolean;
 };
-
-function qrCodeUrl(value?: string | null) {
-  const target = value || "";
-  return target ? `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(target)}` : "";
-}
 
 export function ProjectQrDialog({
   project,
@@ -26,20 +22,36 @@ export function ProjectQrDialog({
   open: boolean;
   onClose: () => void;
 }) {
+  const absoluteShareUrl = project ? getProjectShareUrl(project) : "";
+  const [qrImageUrl, setQrImageUrl] = useState("");
   const [qrFailed, setQrFailed] = useState(false);
 
   useEffect(() => {
+    let isMounted = true;
+
     setQrFailed(false);
-  }, [project?.id, open]);
+    setQrImageUrl("");
+
+    if (!open || !absoluteShareUrl) return undefined;
+
+    createQrDataUrl(absoluteShareUrl, 220)
+      .then((dataUrl) => {
+        if (isMounted) setQrImageUrl(dataUrl);
+      })
+      .catch(() => {
+        if (isMounted) setQrFailed(true);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [absoluteShareUrl, open]);
 
   if (!project) return null;
 
-  const absoluteShareUrl = getProjectShareUrl(project);
-  const qrImageUrl = qrCodeUrl(absoluteShareUrl);
-
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="w-[94vw] max-w-[420px] rounded-[32px] border-border/70 p-0">
+      <DialogContent className="w-[94vw] max-w-[420px] rounded-[20px] border-border/70 p-0">
         <div className="space-y-5 bg-[linear-gradient(180deg,rgba(232,247,243,0.92),rgba(255,255,255,0.96))] p-6">
           <DialogHeader className="text-left">
             <DialogTitle className="flex items-center gap-2 font-heading text-lg">
@@ -49,17 +61,17 @@ export function ProjectQrDialog({
             <DialogDescription>{project.name}</DialogDescription>
           </DialogHeader>
 
-          <div className="rounded-[28px] border border-border/60 bg-white p-4 shadow-sm">
+          <div className="rounded-[18px] border border-border/60 bg-white p-4 shadow-sm">
             {qrImageUrl && !qrFailed ? (
               <img
                 src={qrImageUrl}
                 alt={`QR do expositor ${project.name}`}
-                className="mx-auto aspect-square w-full max-w-[220px] rounded-2xl border border-border/60 object-cover"
+                className="mx-auto aspect-square w-full max-w-[220px] rounded-2xl border border-border/60 object-contain"
                 onError={() => setQrFailed(true)}
               />
             ) : (
               <div className="mx-auto flex aspect-square w-full max-w-[220px] items-center justify-center rounded-2xl border border-dashed border-border/60 px-4 text-center text-sm text-muted-foreground">
-                Não foi possível carregar o QR Code. O link continua disponível abaixo.
+                {qrFailed ? "Não foi possível gerar o QR Code. O link continua disponível abaixo." : "A gerar QR Code..."}
               </div>
             )}
           </div>

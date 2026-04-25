@@ -31,6 +31,7 @@ import {
 } from "../../../shared/cookies";
 import { PrismaSubmissionRepository } from "../../submission/infra/prisma/prisma.submission.repository";
 import { type StudentLoginOrigin } from "../domain/student";
+import { recordAdminAudit } from "../../audit/application/audit.service";
 
 const AUTH_COOKIE = "uor_auth";
 const CSRF_COOKIE = "uor_csrf";
@@ -802,6 +803,14 @@ export async function authRoutes(app: FastifyInstance, opts: { env?: Env } = {})
           return reply.code(400).send({ message: result.error });
         }
 
+        await recordAdminAudit({
+          actorStudentNumber: request.student?.studentNumber,
+          action: "security.authorize_admin",
+          entityType: "AdminAuthorizedStudent",
+          entityId: result.authorizedStudent?.studentNumber,
+          summary: `Acesso administrativo autorizado para ${result.authorizedStudent?.studentNumber}.`,
+        });
+
         return reply.code(201).send(result.authorizedStudent);
       }
     );
@@ -825,6 +834,13 @@ export async function authRoutes(app: FastifyInstance, opts: { env?: Env } = {})
       async (request, reply) => {
         const result = await revokeAdminStudentUseCase.execute(request.params.studentNumber);
         if (result.success) {
+          await recordAdminAudit({
+            actorStudentNumber: request.student?.studentNumber,
+            action: "security.revoke_admin",
+            entityType: "AdminAuthorizedStudent",
+            entityId: request.params.studentNumber,
+            summary: `Acesso administrativo revogado para ${request.params.studentNumber}.`,
+          });
           return reply.send({ success: true });
         }
 
@@ -1069,6 +1085,13 @@ export async function authRoutes(app: FastifyInstance, opts: { env?: Env } = {})
       async (request, reply) => {
         const result = await deleteStudentUseCase.execute(Number(request.params.id));
         if (result.success) {
+          await recordAdminAudit({
+            actorStudentNumber: request.student?.studentNumber,
+            action: "student.delete",
+            entityType: "Student",
+            entityId: request.params.id,
+            summary: `Estudante ${request.params.id} removido pelo administrador.`,
+          });
           return reply.send({ success: true });
         }
 

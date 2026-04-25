@@ -1,0 +1,378 @@
+import { type FormEvent, useEffect, useState } from "react";
+import { Award, Ban, Download, Eye, Loader2, RefreshCw, Search, Send, ShieldCheck } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { toast } from "@/components/ui/sonner";
+import { api, type CertificateItem, type Course, type PagedResult } from "@/lib/api";
+import { downloadBlobFile } from "@/lib/student-documents";
+import { AdminTablePagination } from "@/components/admin/AdminTablePagination";
+
+function formatDate(value: string) {
+  return new Intl.DateTimeFormat("pt-PT", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  }).format(new Date(value));
+}
+
+function certificateStatusLabel(status: string) {
+  if (status === "ISSUED") return "Emitido";
+  if (status === "REVOKED") return "Revogado";
+  return status;
+}
+
+function parseStudentNumbers(value: string) {
+  return Array.from(new Set(value.split(/[\s,;]+/).map((item) => item.replace(/\D/g, "").trim()).filter(Boolean)));
+}
+
+export default function AdminCertificatesTab() {
+  const [certificates, setCertificates] = useState<PagedResult<CertificateItem> | null>(null);
+  const [courses, setCourses] = useState<Course[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [issuing, setIssuing] = useState(false);
+  const [bulkIssuing, setBulkIssuing] = useState(false);
+  const [downloadingId, setDownloadingId] = useState<number | null>(null);
+  const [revokingId, setRevokingId] = useState<number | null>(null);
+  const [studentNumber, setStudentNumber] = useState("");
+  const [title, setTitle] = useState("Certificado de Participação");
+  const [type, setType] = useState("PARTICIPATION");
+  const [search, setSearch] = useState("");
+  const [page, setPage] = useState(1);
+  const [statusFilter, setStatusFilter] = useState("todos");
+  const [typeFilter, setTypeFilter] = useState("");
+  const [bulkMode, setBulkMode] = useState<"ATTENDANCE" | "STUDENT_LIST" | "STUDENT_COURSE" | "COURSE_ENROLLMENT" | "PROJECT">("ATTENDANCE");
+  const [bulkStudentNumbers, setBulkStudentNumbers] = useState("");
+  const [bulkStudentCourse, setBulkStudentCourse] = useState("");
+  const [bulkCourseId, setBulkCourseId] = useState("");
+  const [bulkSubmissionId, setBulkSubmissionId] = useState("");
+  const [bulkEventKey, setBulkEventKey] = useState("main-event");
+
+  const load = async (nextPage = page, nextSearch = search, nextStatus = statusFilter, nextType = typeFilter) => {
+    setLoading(true);
+    try {
+      const payload = await api.certificates.list({
+        page: nextPage,
+        search: nextSearch || undefined,
+        status: nextStatus === "todos" ? undefined : nextStatus,
+        type: nextType.trim() || undefined,
+      });
+      setCertificates(payload);
+      setPage(payload.page);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Falha ao carregar certificados.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    void load();
+    api.courses.list(true)
+      .then((payload) => setCourses(payload.courses))
+      .catch(() => setCourses([]));
+  }, []);
+
+  const handleIssue = async () => {
+    if (!studentNumber.trim()) {
+      toast.error("Informa o número de estudante.");
+      return;
+    }
+
+    setIssuing(true);
+    try {
+      await api.certificates.issue({
+        studentNumber,
+        title,
+        type,
+      });
+      toast.success("Certificado emitido.");
+      setStudentNumber("");
+      await load(1, search.trim(), statusFilter, typeFilter);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Falha ao emitir certificado.");
+    } finally {
+      setIssuing(false);
+    }
+  };
+
+  const handleBulkIssue = async () => {
+    setBulkIssuing(true);
+    try {
+      const result = bulkMode === "ATTENDANCE"
+        ? await api.certificates.issueAttendees({
+          title,
+          type: type || "EVENT_PARTICIPATION",
+          eventKey: bulkEventKey || "main-event",
+        })
+        : await api.certificates.issueBulk({
+          mode: bulkMode,
+          title,
+          type,
+          studentNumbers: bulkMode === "STUDENT_LIST" ? parseStudentNumbers(bulkStudentNumbers) : undefined,
+          studentCourse: bulkMode === "STUDENT_COURSE" ? bulkStudentCourse.trim() : undefined,
+          courseId: bulkMode === "COURSE_ENROLLMENT" && bulkCourseId ? Number(bulkCourseId) : undefined,
+          submissionId: bulkMode === "PROJECT" && bulkSubmissionId ? Number(bulkSubmissionId) : undefined,
+        });
+      toast.success(`${result.issued} certificado(s) emitido(s). ${result.skipped} já existiam.`);
+      await load(1, search.trim(), statusFilter, typeFilter);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Falha ao emitir certificados em lote.");
+    } finally {
+      setBulkIssuing(false);
+    }
+  };
+
+  const handleDownload = async (certificate: CertificateItem) => {
+    setDownloadingId(certificate.id);
+    try {
+      const blob = await api.certificates.pdf(certificate.id);
+      downloadBlobFile(blob, `${certificate.code.toLowerCase()}.pdf`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Falha ao baixar PDF.");
+    } finally {
+      setDownloadingId(null);
+    }
+  };
+
+  const handleRevoke = async (certificate: CertificateItem) => {
+    setRevokingId(certificate.id);
+    try {
+      await api.certificates.revoke(certificate.id);
+      toast.success("Certificado revogado.");
+      await load(page, search.trim(), statusFilter, typeFilter);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Falha ao revogar certificado.");
+    } finally {
+      setRevokingId(null);
+    }
+  };
+
+  const handleSearch = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    void load(1, search.trim(), statusFilter, typeFilter);
+  };
+
+  const handlePageChange = (nextPage: number) => {
+    void load(nextPage, search.trim(), statusFilter, typeFilter);
+  };
+
+  return (
+    <div className="space-y-5">
+      <div className="grid gap-5 xl:grid-cols-[1fr_1fr]">
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <Award className="h-5 w-5 text-primary" />
+              Emitir certificado individual
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="grid gap-3">
+            <div className="grid gap-3 md:grid-cols-3">
+              <Input value={studentNumber} onChange={(event) => setStudentNumber(event.target.value)} placeholder="Número estudante" />
+              <Input value={type} onChange={(event) => setType(event.target.value.toUpperCase())} placeholder="Tipo" />
+              <Input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Título do certificado" />
+            </div>
+            <div className="rounded-[16px] border border-border/70 bg-muted/20 p-4">
+              <div className="mb-2 flex items-center gap-2 text-sm font-semibold">
+                <Eye className="h-4 w-4 text-primary" />
+                Pré-visualização
+              </div>
+              <p className="text-base font-bold">{title || "Certificado de Participação"}</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                Destinatário: {studentNumber.trim() ? `Estudante ${studentNumber.trim()}` : "número ainda não informado"}
+              </p>
+              <p className="mt-1 font-mono text-xs text-muted-foreground">Tipo: {type || "PARTICIPATION"}</p>
+            </div>
+            <Button className="w-fit rounded-xl" onClick={() => void handleIssue()} disabled={issuing}>
+              {issuing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
+              Emitir certificado
+            </Button>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center gap-2 text-base">
+              <ShieldCheck className="h-5 w-5 text-primary" />
+              Emissão em lote
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <p className="text-sm leading-6 text-muted-foreground">
+              Gera certificados para presenças, lista de estudantes, curso académico, inscritos num curso do portal ou líder de projeto.
+            </p>
+            <div className="grid gap-3 md:grid-cols-2">
+              <select
+                className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+                value={bulkMode}
+                onChange={(event) => setBulkMode(event.target.value as typeof bulkMode)}
+              >
+                <option value="ATTENDANCE">Presenças do evento</option>
+                <option value="STUDENT_LIST">Lista de estudantes</option>
+                <option value="STUDENT_COURSE">Curso académico</option>
+                <option value="COURSE_ENROLLMENT">Inscritos em curso do portal</option>
+                <option value="PROJECT">Projeto específico</option>
+              </select>
+              {bulkMode === "ATTENDANCE" ? (
+                <Input value={bulkEventKey} onChange={(event) => setBulkEventKey(event.target.value)} placeholder="Código do evento" />
+              ) : null}
+              {bulkMode === "STUDENT_COURSE" ? (
+                <Input value={bulkStudentCourse} onChange={(event) => setBulkStudentCourse(event.target.value)} placeholder="Ex.: Engenharia Informática" />
+              ) : null}
+              {bulkMode === "COURSE_ENROLLMENT" ? (
+                <select className="h-10 rounded-md border border-input bg-background px-3 text-sm" value={bulkCourseId} onChange={(event) => setBulkCourseId(event.target.value)}>
+                  <option value="">Selecionar curso</option>
+                  {courses.map((course) => (
+                    <option key={course.id} value={course.id}>{course.name}</option>
+                  ))}
+                </select>
+              ) : null}
+              {bulkMode === "PROJECT" ? (
+                <Input value={bulkSubmissionId} onChange={(event) => setBulkSubmissionId(event.target.value.replace(/\D/g, ""))} placeholder="ID do projeto" />
+              ) : null}
+            </div>
+            {bulkMode === "STUDENT_LIST" ? (
+              <Textarea
+                value={bulkStudentNumbers}
+                onChange={(event) => setBulkStudentNumbers(event.target.value)}
+                placeholder="Cole números separados por linha, espaço ou vírgula"
+                className="min-h-[96px]"
+              />
+            ) : null}
+            <Button className="mt-4 rounded-xl" variant="outline" onClick={() => void handleBulkIssue()} disabled={bulkIssuing}>
+              {bulkIssuing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Award className="mr-2 h-4 w-4" />}
+              Emitir em lote
+            </Button>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <CardTitle className="text-base">Certificados emitidos</CardTitle>
+            <form className="flex flex-col gap-2 sm:flex-row" onSubmit={handleSearch}>
+              <div className="relative">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                <Input className="pl-9" value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Pesquisar certificado..." />
+              </div>
+              <select className="h-10 rounded-md border border-input bg-background px-3 text-sm" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+                <option value="todos">Todos estados</option>
+                <option value="ISSUED">Emitidos</option>
+                <option value="REVOKED">Revogados</option>
+              </select>
+              <Input className="sm:w-40" value={typeFilter} onChange={(event) => setTypeFilter(event.target.value.toUpperCase())} placeholder="Tipo" />
+              <Button variant="outline" className="rounded-xl" type="submit" disabled={loading}>
+                <Search className="mr-2 h-4 w-4" />
+                Pesquisar
+              </Button>
+              <Button variant="outline" className="rounded-xl" type="button" onClick={() => void load(page, search.trim(), statusFilter, typeFilter)} disabled={loading}>
+                <RefreshCw className={`mr-2 h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+                Atualizar
+              </Button>
+            </form>
+          </div>
+        </CardHeader>
+        <CardContent>
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Certificado</TableHead>
+                  <TableHead>Destinatário</TableHead>
+                  <TableHead>Estado</TableHead>
+                  <TableHead>Emitido</TableHead>
+                  <TableHead>Ações</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {loading ? (
+                  <TableRow><TableCell colSpan={5}>A carregar certificados...</TableCell></TableRow>
+                ) : certificates?.items.length ? (
+                  certificates.items.map((certificate) => (
+                    <TableRow key={certificate.id}>
+                      <TableCell>
+                        <p className="font-semibold">{certificate.title}</p>
+                        <p className="font-mono text-xs text-muted-foreground">{certificate.code}</p>
+                      </TableCell>
+                      <TableCell>
+                        <p className="font-semibold">{certificate.recipientName}</p>
+                        <p className="text-xs text-muted-foreground">{certificate.recipientNumber || "Sem número"}</p>
+                      </TableCell>
+                      <TableCell>
+                        <Badge variant={certificate.status === "REVOKED" ? "outline" : "secondary"}>
+                          {certificateStatusLabel(certificate.status)}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="whitespace-nowrap">{formatDate(certificate.issuedAt)}</TableCell>
+                      <TableCell>
+                        <div className="flex flex-wrap gap-2">
+                          <Button size="sm" variant="outline" onClick={() => void handleDownload(certificate)} disabled={downloadingId === certificate.id}>
+                            {downloadingId === certificate.id ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <Download className="mr-1 h-3.5 w-3.5" />}
+                            PDF
+                          </Button>
+                          <Button asChild size="sm" variant="outline">
+                            <a href={certificate.validationUrl} target="_blank" rel="noreferrer">Validar</a>
+                          </Button>
+                          {certificate.status !== "REVOKED" ? (
+                            <AlertDialog>
+                              <AlertDialogTrigger asChild>
+                                <Button size="sm" variant="outline" disabled={revokingId === certificate.id}>
+                                  {revokingId === certificate.id ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <Ban className="mr-1 h-3.5 w-3.5" />}
+                                  Revogar
+                                </Button>
+                              </AlertDialogTrigger>
+                              <AlertDialogContent>
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle>Revogar certificado?</AlertDialogTitle>
+                                  <AlertDialogDescription>
+                                    O certificado {certificate.code} deixará de aparecer como válido na página pública de validação.
+                                  </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                                  <AlertDialogAction onClick={() => void handleRevoke(certificate)}>
+                                    Revogar certificado
+                                  </AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
+                          ) : null}
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                ) : (
+                  <TableRow><TableCell colSpan={5}>Sem certificados emitidos para estes filtros.</TableCell></TableRow>
+                )}
+              </TableBody>
+            </Table>
+          </div>
+          {certificates ? (
+            <AdminTablePagination
+              page={certificates.page}
+              total={certificates.total}
+              totalPages={certificates.totalPages}
+              loading={loading}
+              onPageChange={handlePageChange}
+            />
+          ) : null}
+        </CardContent>
+      </Card>
+    </div>
+  );
+}

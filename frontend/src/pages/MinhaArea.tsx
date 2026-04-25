@@ -1,12 +1,14 @@
 import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { motion } from "framer-motion";
-import { BookOpenCheck, BriefcaseBusiness, CalendarClock, ExternalLink, FileText, GraduationCap, ImagePlus, Layers3, Loader2, Sparkles, Trash2 } from "lucide-react";
+import { AlertTriangle, BadgeCheck, BookOpenCheck, BriefcaseBusiness, CalendarClock, CheckCircle2, Download, ExternalLink, FileText, GraduationCap, ImagePlus, Layers3, Loader2, QrCode, ShieldCheck, Trash2, User } from "lucide-react";
+import { UserAvatar } from "@/components/social/UserAvatar";
 import { toast } from "@/components/ui/sonner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { api, type StudentEnrollmentListItem, type StudentOwnedSubmissionListItem, getSessionStudent, isAuthError, setToken } from "@/lib/api";
+import { api, type AttendanceMePayload, type CertificateItem, type StudentEnrollmentListItem, type StudentOwnedSubmissionListItem, getSessionStudent, isAuthError, setToken } from "@/lib/api";
 import { getProjectBannerSource, readImageFileAsDataUrl } from "@/lib/project-media";
+import { downloadBlobFile } from "@/lib/student-documents";
 
 function itemDateLabel(value: string) {
   return new Intl.DateTimeFormat("pt-PT", {
@@ -46,11 +48,16 @@ export default function MinhaArea() {
   const [loading, setLoading] = useState(true);
   const [submissions, setSubmissions] = useState<StudentOwnedSubmissionListItem[]>([]);
   const [enrollments, setEnrollments] = useState<StudentEnrollmentListItem[]>([]);
+  const [attendance, setAttendance] = useState<AttendanceMePayload | null>(null);
+  const [certificates, setCertificates] = useState<CertificateItem[]>([]);
   const [student, setStudent] = useState(() => getSessionStudent());
   const [submissionBannerDrafts, setSubmissionBannerDrafts] = useState<Record<number, string | null | undefined>>({});
   const [savingBannerId, setSavingBannerId] = useState<number | null>(null);
-  const [activeTab, setActiveTab] = useState<"submissoes" | "inscricoes">(
-    searchParams.get("tab") === "inscricoes" ? "inscricoes" : "submissoes"
+  const [downloadingCertificateId, setDownloadingCertificateId] = useState<number | null>(null);
+  const [activeTab, setActiveTab] = useState<"jornada" | "submissoes" | "inscricoes">(
+    searchParams.get("tab") === "submissoes" || searchParams.get("tab") === "inscricoes"
+      ? searchParams.get("tab") as "submissoes" | "inscricoes"
+      : "jornada"
   );
 
   useEffect(() => {
@@ -67,8 +74,10 @@ export default function MinhaArea() {
     Promise.all([
       api.submissions.mine(),
       api.courses.enrollmentsMine(),
+      api.attendance.me(),
+      api.certificates.mine(),
     ])
-      .then(([submissionItems, enrollmentItems]) => {
+      .then(([submissionItems, enrollmentItems, attendancePayload, certificateItems]) => {
         if (!active) return;
         setSubmissions(submissionItems);
         setSubmissionBannerDrafts(
@@ -78,6 +87,8 @@ export default function MinhaArea() {
           }, {})
         );
         setEnrollments(enrollmentItems);
+        setAttendance(attendancePayload);
+        setCertificates(certificateItems);
       })
       .catch((error) => {
         if (!active) return;
@@ -100,7 +111,8 @@ export default function MinhaArea() {
   }, []);
 
   useEffect(() => {
-    const requestedTab = searchParams.get("tab") === "inscricoes" ? "inscricoes" : "submissoes";
+    const tabParam = searchParams.get("tab");
+    const requestedTab = tabParam === "submissoes" || tabParam === "inscricoes" ? tabParam : "jornada";
     setActiveTab(requestedTab);
   }, [searchParams]);
 
@@ -205,12 +217,98 @@ export default function MinhaArea() {
   };
 
   const handleTabChange = (next: string) => {
-    const normalized = next === "inscricoes" ? "inscricoes" : "submissoes";
+    const normalized = next === "submissoes" || next === "inscricoes" ? next : "jornada";
     setActiveTab(normalized);
     const nextParams = new URLSearchParams(searchParams);
     nextParams.set("tab", normalized);
     setSearchParams(nextParams);
   };
+
+  const handleDownloadCertificate = async (certificate: CertificateItem) => {
+    try {
+      setDownloadingCertificateId(certificate.id);
+      const blob = await api.certificates.pdf(certificate.id);
+      downloadBlobFile(blob, `${certificate.code.toLowerCase()}.pdf`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Falha ao baixar o certificado.");
+    } finally {
+      setDownloadingCertificateId(null);
+    }
+  };
+
+  const hasConfirmedEnrollment = enrollments.some((item) => item.paymentStatus === "CONFIRMED");
+  const hasApprovedSubmission = submissions.some((item) => item.status === "APPROVED");
+  const journeySteps = [
+    {
+      label: "Sessão ativa",
+      description: student?.studentNumber ? `Número ${student.studentNumber}` : "Inicia sessão para acompanhar a jornada.",
+      done: Boolean(student?.studentNumber),
+    },
+    {
+      label: "Credencial QR criada",
+      description: attendance?.credential ? "Pronta para validação no evento." : "A credencial será criada automaticamente.",
+      done: Boolean(attendance?.credential),
+    },
+    {
+      label: "Inscrição em curso",
+      description: enrollments.length > 0 ? `${enrollments.length} inscrição(ões) registada(s).` : "Escolhe um curso oficial para participar.",
+      done: enrollments.length > 0,
+    },
+    {
+      label: "Pagamento confirmado",
+      description: hasConfirmedEnrollment ? "Tens pelo menos uma inscrição confirmada." : "A confirmação aparece depois da validação administrativa.",
+      done: hasConfirmedEnrollment,
+    },
+    {
+      label: "Projeto aprovado",
+      description: hasApprovedSubmission ? "Tens exposição aprovada para a vitrine pública." : "Submete ou aguarda a análise da organização.",
+      done: hasApprovedSubmission,
+    },
+    {
+      label: "Presença confirmada",
+      description: attendance?.checkedIn ? "Check-in registado pela organização." : "Mostra o QR na entrada do evento.",
+      done: Boolean(attendance?.checkedIn),
+    },
+    {
+      label: "Certificado disponível",
+      description: certificates.length > 0 ? `${certificates.length} certificado(s) emitido(s).` : "Será liberado quando a organização emitir.",
+      done: certificates.length > 0,
+    },
+  ];
+  const journeyAlerts = [
+    ...(!attendance?.checkedIn
+      ? [{
+        title: "Falta confirmar presença",
+        description: "Mostra o teu QR no check-in para a organização validar a tua participação.",
+        action: "Ver QR",
+        tab: "jornada" as const,
+      }]
+      : []),
+    ...(enrollments.length === 0
+      ? [{
+        title: "Ainda não tens inscrição em cursos",
+        description: "Explora os cursos oficiais e guarda o comprovativo na tua área.",
+        action: "Ver cursos",
+        href: "/cursos",
+      }]
+      : []),
+    ...(submissions.length === 0
+      ? [{
+        title: "Nenhum projeto submetido",
+        description: "Submete um projeto, negócio ou produto para aparecer na vitrine pública.",
+        action: "Submeter",
+        href: "/submeter",
+      }]
+      : []),
+    ...(certificates.length === 0 && attendance?.checkedIn
+      ? [{
+        title: "Certificado ainda não emitido",
+        description: "A tua presença já está registada. O certificado aparecerá aqui quando for emitido.",
+        action: "Acompanhar",
+        tab: "jornada" as const,
+      }]
+      : []),
+  ].slice(0, 3);
 
   return (
     <div className="page-section">
@@ -225,7 +323,7 @@ export default function MinhaArea() {
           <div className="relative flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div className="space-y-3">
               <div className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-white/80 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-primary shadow-sm">
-                <Sparkles className="h-3.5 w-3.5" />
+                <User className="h-3.5 w-3.5" />
                 Área do estudante
               </div>
               <div>
@@ -236,19 +334,179 @@ export default function MinhaArea() {
               </div>
             </div>
 
-            <div className="rounded-3xl border border-white/70 bg-white/85 px-5 py-4 shadow-sm">
-              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Sessão ativa</p>
-              <p className="mt-2 text-base font-semibold">{student?.name || "Estudante UOR"}</p>
-              <p className="text-sm text-muted-foreground">{student?.studentNumber || "Número não disponível"}</p>
+            <div className="flex items-center gap-4 rounded-2xl border border-white/70 bg-white/90 px-5 py-4 shadow-sm">
+              <UserAvatar name={student?.name || student?.studentNumber || "U"} size="lg" />
+              <div>
+                <p className="text-base font-semibold">{student?.name || "Estudante UOR"}</p>
+                <p className="text-sm text-muted-foreground">{student?.studentNumber || "Número não disponível"}</p>
+              </div>
             </div>
           </div>
         </motion.section>
 
         <Tabs value={activeTab} onValueChange={handleTabChange} className="space-y-6">
           <TabsList className="h-auto w-full flex-wrap justify-start gap-2 rounded-2xl bg-muted/40 p-2">
+            <TabsTrigger value="jornada" className="h-11 rounded-xl px-4 text-sm md:text-sm">Jornada</TabsTrigger>
             <TabsTrigger value="submissoes" className="h-11 rounded-xl px-4 text-sm md:text-sm">Meus Projetos</TabsTrigger>
             <TabsTrigger value="inscricoes" className="h-11 rounded-xl px-4 text-sm md:text-sm">Minhas Inscrições</TabsTrigger>
           </TabsList>
+
+          <TabsContent value="jornada" className="space-y-6">
+            {loading ? (
+              <div className="surface-card flex min-h-[240px] items-center justify-center">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              </div>
+            ) : (
+              <>
+                {journeyAlerts.length > 0 ? (
+                  <section className="grid gap-3 md:grid-cols-3">
+                    {journeyAlerts.map((alert) => (
+                      <article key={alert.title} className="rounded-[18px] border border-amber-500/20 bg-amber-500/10 p-4">
+                        <div className="flex items-start gap-3">
+                          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-500/10 text-amber-700">
+                            <AlertTriangle className="h-4 w-4" />
+                          </span>
+                          <div className="min-w-0">
+                            <p className="text-sm font-semibold text-foreground">{alert.title}</p>
+                            <p className="mt-1 text-xs leading-5 text-muted-foreground">{alert.description}</p>
+                            {"href" in alert ? (
+                              <Button asChild size="sm" variant="outline" className="mt-3 rounded-xl bg-white/70">
+                                <Link to={alert.href}>{alert.action}</Link>
+                              </Button>
+                            ) : (
+                              <Button size="sm" variant="outline" className="mt-3 rounded-xl bg-white/70" onClick={() => handleTabChange(alert.tab)}>
+                                {alert.action}
+                              </Button>
+                            )}
+                          </div>
+                        </div>
+                      </article>
+                    ))}
+                  </section>
+                ) : null}
+
+                <div className="grid gap-5 lg:grid-cols-[1.15fr_0.85fr]">
+                  <section className="surface-card border-border/70 bg-card/95 p-5 sm:p-6">
+                    <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-primary">Credencial de presença</p>
+                        <h2 className="mt-2 text-2xl font-semibold">QR oficial do estudante</h2>
+                        <p className="mt-2 max-w-xl text-sm leading-6 text-muted-foreground">
+                          Apresenta este QR no check-in. A organização valida a presença e a tua jornada fica pronta para certificados.
+                        </p>
+                      </div>
+                      <span className={`inline-flex w-fit items-center rounded-full border px-3 py-1 text-xs font-semibold ${
+                        attendance?.checkedIn ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-700" : "border-amber-500/20 bg-amber-500/10 text-amber-700"
+                      }`}>
+                        <ShieldCheck className="mr-1.5 h-3.5 w-3.5" />
+                        {attendance?.checkedIn ? "Presença confirmada" : "Aguardando check-in"}
+                      </span>
+                    </div>
+
+                    <div className="mt-6 grid gap-5 sm:grid-cols-[220px_1fr]">
+                      <div className="rounded-2xl border border-border/70 bg-muted/20 p-4 text-center">
+                        {attendance?.credential ? (
+                          <img src={attendance.credential.qrImageUrl} alt="QR de check-in" className="mx-auto h-44 w-44 rounded-xl border border-border bg-white p-2" />
+                        ) : (
+                          <div className="mx-auto flex h-44 w-44 items-center justify-center rounded-xl border border-dashed border-border bg-white">
+                            <QrCode className="h-10 w-10 text-muted-foreground" />
+                          </div>
+                        )}
+                        <p className="mt-3 break-words text-xs leading-5 text-muted-foreground">
+                          {attendance?.credential?.validationUrl ?? "Credencial indisponível"}
+                        </p>
+                      </div>
+
+                      <div className="grid content-start gap-3">
+                        <div className="rounded-2xl border border-border/70 bg-muted/20 p-4">
+                          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Estudante</p>
+                          <p className="mt-1 text-sm font-semibold">{attendance?.credential.studentName || student?.name || "Nome não informado"}</p>
+                          <p className="mt-1 text-xs text-muted-foreground">{attendance?.credential.studentNumber || student?.studentNumber}</p>
+                        </div>
+                        <div className="rounded-2xl border border-border/70 bg-muted/20 p-4">
+                          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">Última presença</p>
+                          <p className="mt-1 text-sm font-semibold">
+                            {attendance?.lastCheckIn ? itemDateLabel(attendance.lastCheckIn.checkedInAt) : "Ainda sem check-in"}
+                          </p>
+                          <p className="mt-1 text-xs text-muted-foreground">{attendance?.lastCheckIn?.eventLabel ?? "Evento principal UOR Connect"}</p>
+                        </div>
+                      </div>
+                    </div>
+                  </section>
+
+                  <section className="surface-card border-border/70 bg-card/95 p-5 sm:p-6">
+                    <p className="text-xs font-semibold uppercase tracking-[0.16em] text-primary">Progresso</p>
+                    <h2 className="mt-2 text-2xl font-semibold">Minha Jornada</h2>
+                    <div className="mt-5 space-y-3">
+                      {journeySteps.map((step) => (
+                        <div key={step.label} className="flex gap-3 rounded-2xl border border-border/70 bg-muted/15 p-3">
+                          <span className={`mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border ${
+                            step.done ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-700" : "border-muted-foreground/20 bg-white text-muted-foreground"
+                          }`}>
+                            <CheckCircle2 className="h-4 w-4" />
+                          </span>
+                          <div>
+                            <p className="text-sm font-semibold">{step.label}</p>
+                            <p className="mt-1 text-xs leading-5 text-muted-foreground">{step.description}</p>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </section>
+                </div>
+
+                <section className="surface-card border-border/70 bg-card/95 p-5 sm:p-6">
+                  <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                    <div>
+                      <p className="text-xs font-semibold uppercase tracking-[0.16em] text-primary">Certificados</p>
+                      <h2 className="mt-2 text-2xl font-semibold">Documentos emitidos</h2>
+                    </div>
+                    <span className="inline-flex w-fit items-center rounded-full border border-primary/20 bg-primary/5 px-3 py-1 text-xs font-semibold text-primary">
+                      <BadgeCheck className="mr-1.5 h-3.5 w-3.5" />
+                      {certificates.length} disponível(eis)
+                    </span>
+                  </div>
+
+                  {certificates.length === 0 ? (
+                    <div className="mt-5 rounded-2xl border border-dashed border-border bg-muted/20 p-5 text-sm leading-6 text-muted-foreground">
+                      Os certificados aparecerão aqui depois da emissão pela organização.
+                    </div>
+                  ) : (
+                    <div className="mt-5 grid gap-3 md:grid-cols-2">
+                      {certificates.map((certificate) => (
+                        <article key={certificate.id} className="rounded-2xl border border-border/70 bg-muted/15 p-4">
+                          <div className="flex items-start justify-between gap-3">
+                            <div>
+                              <p className="text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">{certificate.type}</p>
+                              <h3 className="mt-1 text-base font-semibold">{certificate.title}</h3>
+                              <p className="mt-1 break-words font-mono text-xs text-muted-foreground">{certificate.code}</p>
+                            </div>
+                            <span className={`rounded-full border px-2.5 py-1 text-xs font-semibold ${
+                              certificate.status === "ISSUED" ? "border-emerald-500/20 bg-emerald-500/10 text-emerald-700" : "border-rose-500/20 bg-rose-500/10 text-rose-700"
+                            }`}>
+                              {certificate.status}
+                            </span>
+                          </div>
+                          <div className="mt-4 flex flex-wrap gap-2">
+                            <Button size="sm" variant="outline" className="rounded-xl" onClick={() => void handleDownloadCertificate(certificate)} disabled={downloadingCertificateId === certificate.id}>
+                              {downloadingCertificateId === certificate.id ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Download className="mr-1.5 h-3.5 w-3.5" />}
+                              Baixar PDF
+                            </Button>
+                            <Button asChild size="sm" variant="outline" className="rounded-xl">
+                              <a href={certificate.validationUrl} target="_blank" rel="noreferrer">
+                                Validar
+                                <ExternalLink className="ml-1.5 h-3.5 w-3.5" />
+                              </a>
+                            </Button>
+                          </div>
+                        </article>
+                      ))}
+                    </div>
+                  )}
+                </section>
+              </>
+            )}
+          </TabsContent>
 
           <TabsContent value="submissoes" className="space-y-5">
             {loading ? (
@@ -341,7 +599,7 @@ export default function MinhaArea() {
                             <input
                               type="file"
                               accept="image/*"
-                              className="max-w-[230px] rounded-xl border border-input bg-background px-3 py-2 text-xs"
+                              className="w-full max-w-[230px] rounded-xl border border-input bg-background px-3 py-2 text-xs"
                               disabled={savingCurrentBanner}
                               onChange={(event) => {
                                 void handleSubmissionBannerFile(item, event.target.files?.[0] ?? null);

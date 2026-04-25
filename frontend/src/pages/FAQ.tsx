@@ -37,7 +37,7 @@ export default function FAQ() {
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.05 }}
-          className="border border-border rounded-xl bg-card overflow-hidden"
+          className="rounded-[18px] border border-border/60 bg-white/96 overflow-hidden shadow-sm"
         >
           <Accordion type="single" collapsible className="divide-y divide-border">
             {faqs.map((faq) => (

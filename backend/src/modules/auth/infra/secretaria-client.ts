@@ -50,6 +50,43 @@ function mergeCookies(...cookieHeaders: string[]) {
     .join("; ");
 }
 
+function hasAuthFailureMarker(html: string) {
+  const normalized = html.toLowerCase();
+  return (
+    normalized.includes("notauthenticated")
+    || normalized.includes("acesso negado")
+    || normalized.includes("não tem acesso")
+    || normalized.includes("nao tem acesso")
+    || normalized.includes("credenciais inválidas")
+    || normalized.includes("credenciais invalidas")
+    || normalized.includes("utilizador inexistente")
+    || (normalized.includes("autentica") && normalized.includes("falhada"))
+    || normalized.includes("authentication failed")
+  );
+}
+
+function hasLoginForm(html: string) {
+  return /<form[^>]*name=["']login["']/i.test(html);
+}
+
+function hasProfilePageMarker(html: string) {
+  const normalized = html.toLowerCase();
+
+  if (
+    normalized.includes("boletimmatricula")
+    || normalized.includes("boletim de matricula")
+    || normalized.includes("consulta de notas do aluno")
+  ) {
+    return true;
+  }
+
+  return (
+    /id=["'](nome|nomeRO|curso|cursoRO|dataNascimento|nacionalidade|nacionalidadeRO|telefonePrincipal|telemovel)["']/i
+      .test(html)
+    || /for=["']aluno["']/i.test(html)
+  );
+}
+
 async function fetchWithCookies(url: string, cookie: string) {
   // Requisição GET preservando cookies capturados no login manual que o site espera
   return fetch(url, {
@@ -104,48 +141,74 @@ export async function loginSecretaria(studentNumber: string, password: string): 
       redirect: "manual"
     });
 
-    const unauthorized = loginResp.status === 401;
+    const loginBody = await loginResp.text();
+    const unauthorized = loginResp.status === 401 || hasAuthFailureMarker(loginBody);
     const cookieHeader = mergeCookies(baseCookie, extractCookieHeader(loginResp));
     const location = loginResp.headers.get("location") || "";
 
-    // Precisa redirecionar para a página alvo
-    const hasRedirect = location.includes(TARGET_STAGE);
+    // Qualquer Location válido é um redirecionamento potencial de sessão
+    const hasRedirect = location.trim().length > 0;
     const status200NoRedirect = loginResp.status === 200 && !hasRedirect;
-    if ((!hasRedirect && !status200NoRedirect) || unauthorized) {
+    if (unauthorized) {
+      return {
+        success: false,
+        reason: `step:login invalid credentials status ${loginResp.status} redirect:${location || "none"}`
+      };
+    }
+
+    if (!hasRedirect && !status200NoRedirect) {
       return {
         success: false,
         reason: `step:login status ${loginResp.status} redirect:${location || "none"} cookie:${!!cookieHeader}`
       };
     }
 
-    // Se houve redirect, usa-o; senão, tenta acessar a stage alvo diretamente
-    const targetUrl = hasRedirect ? new URL(location, LOGIN_URL).toString() : `${LOGIN_URL.replace("loginstage", TARGET_STAGE)}`;
-    // Segue para a página alvo com o cookie capturado
-    const finalUrl = targetUrl;
-    const followResp = await fetchWithCookies(finalUrl, cookieHeader);
-    const followBody = await followResp.text();
+    const directTargetUrl = `${LOGIN_URL.replace("loginstage", TARGET_STAGE)}`;
+    const candidateUrls = Array.from(
+      new Set(
+        [
+          hasRedirect ? new URL(location, LOGIN_URL).toString() : "",
+          directTargetUrl,
+        ].filter(Boolean)
+      )
+    );
 
-    const followUnauthorized =
-      followResp.status === 401 ||
-      followBody.includes("NotAuthenticated") ||
-      followBody.toLowerCase().includes("não tem acesso") ||
-      followBody.toLowerCase().includes("acesso negado");
+    let lastFollowReason = "step:follow no candidate succeeded";
+    let hasAuthenticatedSessionHint = false;
 
-    if (followUnauthorized || followResp.status >= 400) {
-      return {
-        success: false,
-        reason: `step:follow status ${followResp.status} unauthorized:${followUnauthorized}`
-      };
+    for (const candidateUrl of candidateUrls) {
+      const followResp = await fetchWithCookies(candidateUrl, cookieHeader);
+      const followBody = await followResp.text();
+
+      const followUnauthorized =
+        followResp.status === 401 ||
+        hasAuthFailureMarker(followBody);
+
+      if (followUnauthorized || followResp.status >= 400) {
+        lastFollowReason = `step:follow status ${followResp.status} unauthorized:${followUnauthorized} url:${candidateUrl}`;
+        continue;
+      }
+
+      if (hasProfilePageMarker(followBody)) {
+        // Extrai campos principais do HTML da secretaria
+        const profile = extractProfile(followBody);
+        return { success: true, profile };
+      }
+
+      if (hasRedirect && !hasLoginForm(followBody)) {
+        hasAuthenticatedSessionHint = true;
+      }
+
+      lastFollowReason = `step:follow missing target content url:${candidateUrl}`;
     }
 
-    if (!followBody.includes(TARGET_STAGE) && !followBody.toLowerCase().includes("consulta de notas do aluno")) {
-      return { success: false, reason: "step:follow missing target content" };
+    if (hasAuthenticatedSessionHint) {
+      // Login aparentemente válido, mas sem página de perfil estável.
+      // Mantemos o acesso e sincronizamos o perfil numa próxima sessão bem-sucedida.
+      return { success: true, profile: {} };
     }
 
-    // Extrai campos principais do HTML da secretaria
-    const profile = extractProfile(followBody);
-
-    return { success: true, profile };
+    return { success: false, reason: lastFollowReason };
   } catch (err) {
     return { success: false, reason: err instanceof Error ? err.message : "Unknown error" };
   }

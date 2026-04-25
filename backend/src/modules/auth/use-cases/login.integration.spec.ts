@@ -80,6 +80,47 @@ describe("LoginUseCase – integração com secretaria", () => {
   );
 
   it(
+    "mantém 401 apenas para marcador explícito de credenciais inválidas",
+    async () => {
+      vi.mocked(loginSecretaria).mockResolvedValueOnce({
+        success: false,
+        reason: "step:login invalid credentials status 200 redirect:none",
+      } as any);
+
+      const useCase = new LoginUseCase(repo);
+      const result = await useCase.execute({
+        studentNumber: STUDENT_NUMBER,
+        password: STUDENT_PASSWORD,
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toBe("Número de estudante ou palavra-passe inválidos.");
+    },
+    30_000
+  );
+
+  it(
+    "não classifica follow 401 ambíguo como credenciais inválidas",
+    async () => {
+      vi.mocked(loginSecretaria).mockResolvedValueOnce({
+        success: false,
+        reason: "step:follow status 401 unauthorized:true url:http://secretaria.uor.edu.ao/netpa/page?stage=BoletimMatricula",
+      } as any);
+
+      const useCase = new LoginUseCase(repo);
+      const result = await useCase.execute({
+        studentNumber: STUDENT_NUMBER,
+        password: STUDENT_PASSWORD,
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error).not.toBe("Número de estudante ou palavra-passe inválidos.");
+      expect(result.error?.toLowerCase()).toContain("não foi possível validar");
+    },
+    30_000
+  );
+
+  it(
     "orienta inicialização da base local quando a tabela Student não existe",
     async () => {
       vi.mocked(loginSecretaria).mockResolvedValueOnce({

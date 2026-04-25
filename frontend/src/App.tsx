@@ -38,6 +38,7 @@ const Login = lazy(() => import("./pages/Login"));
 const SaasShowcase = lazy(() => import("./pages/SaasShowcase"));
 const MinhaArea = lazy(() => import("./pages/MinhaArea"));
 const SubmissionReceipt = lazy(() => import("./pages/SubmissionReceipt"));
+const PublicValidation = lazy(() => import("./pages/PublicValidation"));
 
 function RouteFallback() {
   return (
@@ -147,6 +148,7 @@ const AppContent = () => {
                 <Route path="/admin" element={<Admin />} />
                 <Route path="/minha-area" element={<MinhaArea />} />
                 <Route path="/submissoes/:id" element={<SubmissionReceipt />} />
+                <Route path="/validar/:token" element={<PublicValidation />} />
 
                 <Route path="/desafios" element={<ContestExperienceRedirect />} />
                 <Route path="/desafios/*" element={<ContestExperienceRedirect />} />

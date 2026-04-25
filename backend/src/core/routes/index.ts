@@ -17,6 +17,10 @@ import { analyticsRoutes } from "../../modules/analytics/http/analytics.routes";
 import { contestAuthRoutes } from "../../modules/contest/http/contest-auth.routes";
 import { contestAdminRoutes } from "../../modules/contest/http/contest-admin.routes";
 import { smsRoutes } from "../../modules/sms/http/sms.routes";
+import { attendanceRoutes } from "../../modules/attendance/http/attendance.routes";
+import { certificatesRoutes } from "../../modules/certificates/http/certificates.routes";
+import { validationRoutes } from "../../modules/validation/http/validation.routes";
+import { auditRoutes } from "../../modules/audit/http/audit.routes";
 
 export function registerRoutes(app: FastifyInstance, env: Env, deps?: AppDependencies) {
   // Basic landing route so hitting "/" does not 404
@@ -36,6 +40,10 @@ export function registerRoutes(app: FastifyInstance, env: Env, deps?: AppDepende
   app.register(reportsRoutes, { prefix: "/reports", env });
   app.register(analyticsRoutes, { prefix: "/analytics", env });
   app.register(smsRoutes, { prefix: "/sms", env });
+  app.register(attendanceRoutes, { prefix: "/attendance", env });
+  app.register(certificatesRoutes, { prefix: "/certificates", env });
+  app.register(validationRoutes, { prefix: "/validation", env });
+  app.register(auditRoutes, { prefix: "/audit", env });
   app.register(contestAuthRoutes, { prefix: "/contest", env });
   app.register(contestAdminRoutes, { prefix: "/contest", env });
 }

@@ -36,6 +36,7 @@ import {
   buildStudentSubmissionReceiptResponse,
   canStudentEditSubmission,
 } from "./student-submission-presenter";
+import { recordAdminAudit } from "../../audit/application/audit.service";
 
 const submissionRepo = new PrismaSubmissionRepository();
 const submissionConfigRepo = new PrismaSubmissionConfigRepository();
@@ -727,6 +728,14 @@ export async function submissionRoutes(app: FastifyInstance, { env }: { env: Ret
 
         try {
           await updateSubmissionStatus.execute(id, status);
+          await recordAdminAudit({
+            actorStudentNumber: request.student?.studentNumber,
+            action: "submission.update_status",
+            entityType: "Submission",
+            entityId: id,
+            summary: `Estado da candidatura ${id} atualizado para ${status}.`,
+            metadata: { status },
+          });
           return reply.send({ success: true });
         } catch (error) {
           return reply.code(404).send({ message: error instanceof Error ? error.message : "Submission not found" });
@@ -749,6 +758,13 @@ export async function submissionRoutes(app: FastifyInstance, { env }: { env: Ret
 
       try {
         await selectWinnerSubmission.execute(id);
+        await recordAdminAudit({
+          actorStudentNumber: request.student?.studentNumber,
+          action: "submission.select_winner",
+          entityType: "Submission",
+          entityId: id,
+          summary: `Candidatura ${id} marcada como vencedora.`,
+        });
         return reply.send({ success: true });
       } catch (error) {
         const message = error instanceof Error ? error.message : "Unable to select winner";
@@ -798,6 +814,19 @@ export async function submissionRoutes(app: FastifyInstance, { env }: { env: Ret
       const updated = await updateSubmissionPresentation.execute(id, body);
       const slug = buildSubmissionSlug(updated.name, updated.id);
 
+      await recordAdminAudit({
+        actorStudentNumber: request.student?.studentNumber,
+        action: "submission.update_presentation",
+        entityType: "Submission",
+        entityId: id,
+        summary: `Apresentação da candidatura ${id} atualizada.`,
+        metadata: {
+          primaryColor: updated.primaryColor,
+          secondaryColor: updated.secondaryColor,
+          hasBanner: Boolean(updated.bannerUrl),
+        },
+      });
+
       return reply.send({
         id: updated.id,
         slug,
@@ -816,8 +845,14 @@ export async function submissionRoutes(app: FastifyInstance, { env }: { env: Ret
           403: z.object({ message: z.string() })
         }
       }
-      }, async (_, reply) => {
+      }, async (request, reply) => {
         await clearWinnerSubmission.execute();
+        await recordAdminAudit({
+          actorStudentNumber: request.student?.studentNumber,
+          action: "submission.clear_winner",
+          entityType: "Submission",
+          summary: "Vencedor de candidaturas removido.",
+        });
         return reply.send({ success: true });
       });
 
@@ -832,8 +867,16 @@ export async function submissionRoutes(app: FastifyInstance, { env }: { env: Ret
         }
       }
       }, async (request, reply) => {
+        const { id } = request.params as { id: number };
         try {
-          await deleteSubmission.execute((request.params as { id: number }).id);
+          await deleteSubmission.execute(id);
+          await recordAdminAudit({
+            actorStudentNumber: request.student?.studentNumber,
+            action: "submission.delete",
+            entityType: "Submission",
+            entityId: id,
+            summary: `Candidatura ${id} removida.`,
+          });
           return reply.send({ success: true });
         } catch (error) {
           return reply.code(404).send({ message: error instanceof Error ? error.message : "Submission not found" });

@@ -549,7 +549,7 @@ export function EventoTab({ value, onChange, onSave, isSaving = false }: EventoT
           </CardHeader>
           <CardContent className="space-y-4 sm:space-y-5 md:space-y-6">
             <div
-              className="relative overflow-hidden rounded-[28px] border border-border/60 bg-[#fffaf5] p-6 shadow-sm"
+              className="relative overflow-hidden rounded-[18px] border border-border/60 bg-[#fffaf5] p-6 shadow-sm"
               style={{
                 backgroundImage: preview.primaryGradient,
               }}

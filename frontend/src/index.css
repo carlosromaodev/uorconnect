@@ -6,14 +6,14 @@
 
 @layer base {
   :root {
-    --background: 0 0% 99%;
-    --foreground: 0 0% 9%;
+    --background: 30 8% 98%;
+    --foreground: 220 13% 10%;
 
     --card: 0 0% 100%;
-    --card-foreground: 0 0% 9%;
+    --card-foreground: 220 13% 10%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 0 0% 9%;
+    --popover-foreground: 220 13% 10%;
 
     --primary: 27 90% 52%;
     --primary-foreground: 0 0% 100%;
@@ -21,8 +21,8 @@
     --secondary: 30 100% 96%;
     --secondary-foreground: 27 90% 40%;
 
-    --muted: 30 10% 95%;
-    --muted-foreground: 0 0% 45%;
+    --muted: 30 8% 96%;
+    --muted-foreground: 220 8% 42%;
 
     --accent: 27 90% 52%;
     --accent-foreground: 0 0% 100%;
@@ -30,11 +30,17 @@
     --destructive: 0 72% 51%;
     --destructive-foreground: 0 0% 100%;
 
-    --border: 30 10% 91%;
-    --input: 30 10% 91%;
+    --border: 30 8% 90%;
+    --input: 30 8% 90%;
     --ring: 27 90% 52%;
 
-    --radius: 0.625rem;
+    --radius: 0.75rem;
+
+    /* Elevation system */
+    --shadow-flat: 0 1px 3px rgba(15,23,42,0.03);
+    --shadow-raised: 0 2px 8px rgba(15,23,42,0.04);
+    --shadow-raised-hover: 0 12px 32px rgba(15,23,42,0.10);
+    --shadow-elevated: 0 8px 24px rgba(15,23,42,0.08);
 
     --sidebar-background: 0 0% 98%;
     --sidebar-foreground: 0 0% 9%;
@@ -106,9 +112,9 @@
   body {
     @apply bg-background text-foreground font-body antialiased;
     background:
-      radial-gradient(circle at top left, rgb(255 94 0 / 0.09), transparent 24%),
-      radial-gradient(circle at top right, rgb(0 184 148 / 0.08), transparent 22%),
-      linear-gradient(180deg, rgb(255 255 255 / 0.98), rgb(248 250 252 / 0.98));
+      radial-gradient(circle at top left, rgb(255 94 0 / 0.03), transparent 24%),
+      radial-gradient(circle at top right, rgb(0 184 148 / 0.02), transparent 22%),
+      hsl(30 8% 98%);
     min-height: 100vh;
   }
 
@@ -130,9 +136,9 @@
 
   .uor-page-bg {
     background:
-      radial-gradient(circle at 12% 0%, rgb(255 94 0 / 0.12), transparent 28%),
-      radial-gradient(circle at 88% 12%, rgb(0 184 148 / 0.1), transparent 22%),
-      radial-gradient(circle at 50% 100%, rgb(10 61 98 / 0.08), transparent 34%);
+      radial-gradient(circle at 12% 0%, rgb(255 94 0 / 0.06), transparent 28%),
+      radial-gradient(circle at 88% 12%, rgb(0 184 148 / 0.05), transparent 22%),
+      radial-gradient(circle at 50% 100%, rgb(10 61 98 / 0.04), transparent 34%);
   }
 
   .page-shell {
@@ -144,10 +150,15 @@
   }
 
   .surface-card {
-    @apply min-w-0 overflow-hidden rounded-[28px] border shadow-[0_12px_36px_rgba(10,61,98,0.06)] backdrop-blur-xl transition-all duration-300 hover:shadow-[0_22px_54px_rgba(10,61,98,0.10)];
+    @apply min-w-0 overflow-hidden rounded-2xl border transition-all duration-300;
     border-color: hsl(var(--border) / 0.6);
-    background-color: rgb(255 255 255 / 0.82);
-    background-image: linear-gradient(180deg, rgb(255 255 255 / 0.94), rgb(248 250 252 / 0.88));
+    background-color: white;
+    box-shadow: var(--shadow-raised);
+  }
+
+  .surface-card:hover {
+    box-shadow: var(--shadow-raised-hover);
+    border-color: hsl(var(--primary) / 0.18);
   }
 
   .responsive-two-col {
@@ -167,9 +178,10 @@
   }
 
   .document-frame {
-    @apply min-w-0 overflow-hidden rounded-[28px] border shadow-[0_14px_40px_rgba(15,23,42,0.08)];
+    @apply min-w-0 overflow-hidden rounded-2xl border;
     border-color: hsl(var(--border) / 0.6);
-    background-color: rgb(255 255 255 / 0.92);
+    background-color: white;
+    box-shadow: var(--shadow-elevated);
   }
 
   .document-frame__viewport {
@@ -211,14 +223,15 @@
   }
 
   .field-shell {
-    @apply rounded-[26px] border p-4 shadow-[0_10px_28px_rgba(15,23,42,0.05)] transition-all duration-300;
+    @apply rounded-xl border p-4 transition-all duration-300;
     border-color: hsl(var(--border) / 0.65);
-    background-color: rgb(255 255 255 / 0.84);
+    background-color: white;
+    box-shadow: var(--shadow-raised);
   }
 
   .field-shell:hover {
     border-color: rgb(10 61 98 / 0.18);
-    box-shadow: 0 18px 38px rgb(10 61 98 / 0.08);
+    box-shadow: var(--shadow-raised-hover);
   }
 
   .field-shell--auto {
@@ -244,9 +257,10 @@
   }
 
   .premium-stat-card {
-    @apply rounded-[26px] border p-4 shadow-[0_12px_34px_rgba(15,23,42,0.06)] backdrop-blur-sm;
+    @apply rounded-xl border p-4;
     border-color: hsl(var(--border) / 0.65);
-    background-color: rgb(255 255 255 / 0.88);
+    background-color: white;
+    box-shadow: var(--shadow-raised);
   }
 
   .premium-stat-card--accent {
@@ -258,9 +272,9 @@
   }
 
   .premium-check-card {
-    @apply flex min-w-0 items-start gap-3 rounded-[22px] border p-4 shadow-sm transition-colors;
+    @apply flex min-w-0 items-start gap-3 rounded-xl border p-4 shadow-sm transition-colors;
     border-color: hsl(var(--border) / 0.65);
-    background-color: rgb(255 255 255 / 0.86);
+    background-color: white;
   }
 
   .premium-check-card:hover {
@@ -293,9 +307,9 @@
   /* Hero Gradient Mesh */
   .hero-mesh {
     background:
-      radial-gradient(ellipse 80% 50% at 15% 40%, hsl(var(--primary) / 0.14) 0%, transparent 60%),
-      radial-gradient(ellipse 60% 40% at 85% 60%, hsl(var(--area-web) / 0.09) 0%, transparent 55%),
-      radial-gradient(ellipse 50% 35% at 50% 0%, hsl(var(--area-ia) / 0.07) 0%, transparent 50%);
+      radial-gradient(ellipse 80% 50% at 15% 40%, hsl(var(--primary) / 0.08) 0%, transparent 60%),
+      radial-gradient(ellipse 60% 40% at 85% 60%, hsl(var(--area-web) / 0.05) 0%, transparent 55%),
+      radial-gradient(ellipse 50% 35% at 50% 0%, hsl(var(--area-ia) / 0.04) 0%, transparent 50%);
   }
 
   /* Section title badge */
@@ -305,9 +319,13 @@
 
   /* Quick action card */
   .quick-action-card {
-    @apply flex min-h-[132px] flex-col items-center justify-center gap-3 rounded-[26px] border border-white/60 p-5 text-center shadow-[0_14px_34px_rgba(15,23,42,0.08)]
-           transition-all duration-200 hover:shadow-[0_22px_44px_rgba(15,23,42,0.12)] md:p-6;
-    backdrop-filter: blur(18px);
+    @apply flex min-h-[132px] flex-col items-center justify-center gap-3 rounded-xl border border-white/60 p-5 text-center
+           transition-all duration-200 md:p-6;
+    box-shadow: var(--shadow-raised);
+  }
+
+  .quick-action-card:hover {
+    box-shadow: var(--shadow-raised-hover);
   }
 
   /* Neon hover glow for premium cards and buttons */
@@ -331,9 +349,10 @@
   }
 
   .table-scroll-premium {
-    @apply w-full overflow-x-auto rounded-[26px] border shadow-[0_12px_34px_rgba(15,23,42,0.06)];
+    @apply w-full overflow-x-auto rounded-xl border;
     border-color: hsl(var(--border) / 0.65);
-    background-color: rgb(255 255 255 / 0.9);
+    background-color: white;
+    box-shadow: var(--shadow-raised);
   }
 
   .table-scroll-premium table {
@@ -449,6 +468,11 @@
 
   .hero-primary-action:hover {
     box-shadow: 0 24px 44px rgb(255 94 0 / 0.26);
+  }
+
+  .section-divider {
+    @apply mx-auto h-px max-w-5xl;
+    background: linear-gradient(90deg, transparent, hsl(var(--border)), transparent);
   }
 
   .contest-graph-paper {

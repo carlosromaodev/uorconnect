@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { Link } from "react-router-dom";
 import {
-  Star,
   ThumbsUp,
   MessageCircle,
   Send,
@@ -14,9 +13,7 @@ import {
   User,
   Loader2,
   Heart,
-  Sparkles,
   Crown,
-  Share2
 } from "lucide-react";
 import { ProjectQrDialog, type ProjectCardItem } from "@/components/projects/ProjectQrDialog";
 import { ProjectShowcaseCard } from "@/components/projects/ProjectShowcaseCard";
@@ -32,65 +29,10 @@ import {
   setToken,
   getToken
 } from "@/lib/api";
-import { canVoteSubmission, getSubmissionAreaLabel, getSubmissionAudienceCopy, normalizeSubmissionType } from "@/lib/submission-meta";
-
-const areaColors: Record<string, string> = {
-  IoT: "bg-[hsl(199,89%,48%)]/10 text-[hsl(199,89%,48%)]",
-  Telecom: "bg-primary/10 text-primary",
-  Segurança: "bg-destructive/10 text-destructive",
-  Web: "bg-[hsl(200,92%,42%)]/10 text-[hsl(200,92%,42%)]",
-  IA: "bg-[hsl(142,71%,45%)]/10 text-[hsl(142,71%,45%)]",
-  Negócio: "bg-[hsl(38,92%,50%)]/10 text-[hsl(38,92%,50%)]",
-  Produto: "bg-[hsl(330,81%,60%)]/10 text-[hsl(330,81%,60%)]",
-};
-
-const areaTopBar: Record<string, string> = {
-  IoT: "bg-[hsl(199,89%,48%)]",
-  Telecom: "bg-primary",
-  Segurança: "bg-destructive",
-  Web: "bg-[hsl(200,92%,42%)]",
-  IA: "bg-[hsl(142,71%,45%)]",
-  Negócio: "bg-[hsl(38,92%,50%)]",
-  Produto: "bg-[hsl(330,81%,60%)]",
-};
-
-const areaBorderAccent: Record<string, string> = {
-  IoT: "border-[hsl(199,89%,48%)]/30 hover:border-[hsl(199,89%,48%)]/60",
-  Telecom: "border-primary/30 hover:border-primary/60",
-  Segurança: "border-destructive/30 hover:border-destructive/60",
-  Web: "border-[hsl(200,92%,42%)]/30 hover:border-[hsl(200,92%,42%)]/60",
-  IA: "border-[hsl(142,71%,45%)]/30 hover:border-[hsl(142,71%,45%)]/60",
-  Negócio: "border-[hsl(38,92%,50%)]/30 hover:border-[hsl(38,92%,50%)]/60",
-  Produto: "border-[hsl(330,81%,60%)]/30 hover:border-[hsl(330,81%,60%)]/60",
-};
+import { canVoteSubmission, getSubmissionAreaLabel, getSubmissionAudienceCopy } from "@/lib/submission-meta";
+import { getProjectAreaClasses } from "@/lib/project-card-ui";
 
 type Project = ProjectCardItem;
-
-function getAreaClasses(area: string, type?: string) {
-  const normalizedType = normalizeSubmissionType(type, area);
-
-  if (normalizedType === "BUSINESS") {
-    return {
-      badge: areaColors.Negócio,
-      topBar: areaTopBar.Negócio,
-      border: areaBorderAccent.Negócio,
-    };
-  }
-
-  if (normalizedType === "PRODUCT") {
-    return {
-      badge: areaColors.Produto,
-      topBar: areaTopBar.Produto,
-      border: areaBorderAccent.Produto,
-    };
-  }
-
-  return {
-    badge: areaColors[area] || "bg-secondary text-secondary-foreground",
-    topBar: areaTopBar[area] || "bg-primary",
-    border: areaBorderAccent[area] || "border-border hover:border-primary/40",
-  };
-}
 
 function formatRelativeDate(value: string) {
   const date = new Date(value);
@@ -100,20 +42,6 @@ function formatRelativeDate(value: string) {
     hour: "2-digit",
     minute: "2-digit"
   }).format(date);
-}
-
-function StarRating({ rating, size = 14 }: { rating: number; size?: number }) {
-  return (
-    <div className="flex items-center gap-0.5">
-      {[1, 2, 3, 4, 5].map((value) => (
-        <Star
-          key={value}
-          style={{ width: size, height: size }}
-          className={rating >= value ? "text-primary fill-primary" : "text-muted-foreground/30"}
-        />
-      ))}
-    </div>
-  );
 }
 
 function LoginModal({ open, onClose, onLogin }: { open: boolean; onClose: () => void; onLogin: () => void }) {
@@ -191,7 +119,7 @@ function ProjectDetailModal({
   }, [project?.id, open]);
 
   if (!project) return null;
-  const areaUi = getAreaClasses(project.area, project.type);
+  const areaUi = getProjectAreaClasses(project.area, project.type);
   const displayArea = getSubmissionAreaLabel(project.area, project.type);
   const canVote = canVoteSubmission(project.type, project.area, project.canVote);
 
@@ -221,7 +149,7 @@ function ProjectDetailModal({
             <div className={`absolute inset-x-0 top-0 h-1.5 ${areaUi.topBar}`} />
             <div className="p-8">
               <div className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
-                <Sparkles className="h-3.5 w-3.5" />
+                {project.isWinner ? <Crown className="h-3.5 w-3.5" /> : <Trophy className="h-3.5 w-3.5" />}
                 {project.isWinner ? "Projeto vencedor" : canVote ? "Projeto em destaque" : "Exposição em destaque"}
               </div>
               <h2 className="mt-6 max-w-xl font-heading text-4xl font-bold leading-tight">{project.name}</h2>

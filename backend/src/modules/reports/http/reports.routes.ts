@@ -422,7 +422,7 @@ function buildReportHtml(params: {
             margin: 0;
             font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
             color: var(--text);
-            background: linear-gradient(180deg, rgba(253, 131, 5, 0.04) 0%, rgba(27, 43, 58, 0.01) 100%);
+            background: #f4f6f8;
           }
 
           .report-shell {
@@ -444,25 +444,15 @@ function buildReportHtml(params: {
           .submission-card {
             background: var(--surface);
             border: 1px solid var(--line);
-            border-radius: 18px;
+            border-radius: 10px;
           }
 
           .hero-panel {
             position: relative;
             overflow: hidden;
-            padding: 24px 26px;
-            background:
-              radial-gradient(circle at top right, rgba(253, 131, 5, 0.18), transparent 34%),
-              linear-gradient(135deg, rgba(253, 131, 5, 0.08), rgba(27, 43, 58, 0.02));
-          }
-
-          .hero-panel::after {
-            content: "";
-            position: absolute;
-            inset: auto -80px -90px auto;
-            width: 260px;
-            height: 260px;
-            background: radial-gradient(circle, rgba(34, 61, 66, 0.14), transparent 62%);
+            padding: 22px 24px;
+            border-top: 4px solid var(--brand);
+            background: #ffffff;
           }
 
           .brand-row {
@@ -474,7 +464,7 @@ function buildReportHtml(params: {
           }
 
           .brand-logo {
-            width: 164px;
+            width: 150px;
             height: auto;
             object-fit: contain;
           }
@@ -482,7 +472,7 @@ function buildReportHtml(params: {
           .brand-fallback {
             width: 100px;
             height: 100px;
-            border-radius: 26px;
+            border-radius: 10px;
             background: var(--brand-dark);
             color: white;
             display: grid;
@@ -521,12 +511,12 @@ function buildReportHtml(params: {
             display: grid;
             gap: 12px;
             align-content: start;
-            background: linear-gradient(180deg, #ffffff 0%, #fbfcfd 100%);
+            background: #ffffff;
           }
 
           .meta-card {
             border: 1px solid var(--line);
-            border-radius: 14px;
+            border-radius: 8px;
             padding: 14px 16px;
             background: var(--surface-alt);
           }
@@ -554,7 +544,7 @@ function buildReportHtml(params: {
 
           .summary-card {
             padding: 18px;
-            background: linear-gradient(180deg, #ffffff 0%, #fbfbfc 100%);
+            background: #ffffff;
           }
 
           .summary-card__label {
@@ -606,17 +596,20 @@ function buildReportHtml(params: {
 
           .table {
             width: 100%;
-            border-collapse: collapse;
+            border-collapse: separate;
+            border-spacing: 0;
             background: var(--surface);
             border: 1px solid var(--line);
-            border-radius: 16px;
+            border-radius: 8px;
             overflow: hidden;
           }
 
           .table thead th {
-            background: var(--brand-dark);
-            color: #ffffff;
-            padding: 11px 12px;
+            background: #eef2f6;
+            color: var(--brand-dark);
+            padding: 10px 11px;
+            border-bottom: 1px solid #d8e0e8;
+            border-right: 1px solid #d8e0e8;
             font-size: 11px;
             font-weight: 700;
             letter-spacing: 0.08em;
@@ -627,16 +620,24 @@ function buildReportHtml(params: {
           .table tbody td,
           .table tbody th,
           .table tfoot td {
-            padding: 10px 12px;
-            border-bottom: 1px solid var(--line);
+            padding: 9px 11px;
+            border-bottom: 1px solid #e5eaf0;
+            border-right: 1px solid #edf1f5;
             font-size: 12px;
             line-height: 1.5;
             vertical-align: top;
           }
 
+          .table thead th:last-child,
+          .table tbody td:last-child,
+          .table tbody th:last-child,
+          .table tfoot td:last-child {
+            border-right: 0;
+          }
+
           .table tbody tr:nth-child(even) td,
           .table tbody tr:nth-child(even) th {
-            background: rgba(247, 248, 250, 0.72);
+            background: #f8fafc;
           }
 
           .table tbody th {
@@ -647,7 +648,7 @@ function buildReportHtml(params: {
           }
 
           .table tfoot td {
-            background: rgba(253, 131, 5, 0.08);
+            background: #fff4e8;
             font-weight: 800;
             color: var(--brand-dark);
           }
@@ -681,7 +682,7 @@ function buildReportHtml(params: {
           .info-card,
           .metric-card {
             border: 1px solid var(--line);
-            border-radius: 14px;
+            border-radius: 8px;
             padding: 12px 14px;
             background: var(--surface-alt);
           }
@@ -875,7 +876,7 @@ function buildReportHtml(params: {
           ${submissionSections}
 
           <p class="footer-note">
-            Documento administrativo gerado automaticamente pelo UOR Connect.
+            Documento administrativo emitido pelo sistema UOR Connect.
           </p>
         </main>
       </body>

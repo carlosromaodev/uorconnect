@@ -26,6 +26,7 @@ import { getContestAbsoluteUrl } from "@/lib/contest-lab";
 import { defaultHeroSponsors, defaultHomeSocialConfig } from "@/lib/home-content";
 import { getHeroIconByName } from "@/lib/phosphor-icons";
 import { canVoteSubmission, getSubmissionAreaLabel, getSubmissionAudienceCopy, normalizeSubmissionType } from "@/lib/submission-meta";
+import { UserAvatar } from "@/components/social/UserAvatar";
 
 function withAlpha(color?: string | null, alpha = "22") {
   return color ? `${color}${alpha}` : `rgba(249,115,22,0.12)`;
@@ -263,7 +264,7 @@ function StarRating({ rating, size = 18 }: { rating: number; size?: number }) {
 }
 
 /* ─── Animated Counter ─── */
-function AnimatedCounter({ target, label, icon: Icon }: { target: string; label: string; icon: React.ElementType }) {
+function AnimatedCounter({ target, label, icon: Icon, inline = false }: { target: string; label: string; icon: React.ElementType; inline?: boolean }) {
   const numericValue = parseInt(target.replace(/\D/g, ""));
   const suffix = target.replace(/\d/g, "");
   const [count, setCount] = useState(0);
@@ -271,7 +272,7 @@ function AnimatedCounter({ target, label, icon: Icon }: { target: string; label:
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    const obs = new IntersectionObserver(([e]) => { if (e.isIntersecting) setInView(true); }, { threshold: 0.5 });
+    const obs = new IntersectionObserver(([e]) => { if (e.isIntersecting) setInView(true); }, { threshold: 0.3 });
     if (ref.current) obs.observe(ref.current);
     return () => obs.disconnect();
   }, []);
@@ -280,31 +281,39 @@ function AnimatedCounter({ target, label, icon: Icon }: { target: string; label:
     if (!inView) return;
     let start = 0;
     const duration = 1200;
+    const easeOut = (t: number) => 1 - Math.pow(1 - t, 3);
     const step = (ts: number) => {
       if (!start) start = ts;
       const progress = Math.min((ts - start) / duration, 1);
-      setCount(Math.floor(progress * numericValue));
+      setCount(Math.floor(easeOut(progress) * numericValue));
       if (progress < 1) requestAnimationFrame(step);
     };
     requestAnimationFrame(step);
   }, [inView, numericValue]);
 
-  return (
-    <div
-      ref={ref}
-      className="group flex h-full min-h-[130px] flex-col items-center justify-center rounded-2xl border border-border/60 bg-card/80 px-4 py-6 text-center shadow-sm backdrop-blur-sm transition-all duration-300 hover:-translate-y-1.5 hover:shadow-lg hover:border-primary/25"
-    >
-      <motion.div
-        whileHover={{ scale: 1.12, rotate: 6 }}
-        className="mb-3 flex h-12 w-12 items-center justify-center rounded-xl bg-primary/10 shadow-sm transition-colors group-hover:bg-primary/15"
-      >
-        <Icon className="w-6 h-6 text-primary" />
-      </motion.div>
-      <div className="text-3xl md:text-4xl font-heading font-extrabold text-foreground leading-none tracking-tight">
+  if (inline) {
+    return (
+      <div ref={ref} className="text-lg font-heading font-bold tabular-nums text-foreground">
         {count}{suffix}
       </div>
-      <div className="mt-2 text-xs text-muted-foreground font-semibold uppercase tracking-wider">{label}</div>
-    </div>
+    );
+  }
+
+  return (
+    <motion.div
+      ref={ref}
+      whileHover={{ y: -3, transition: { duration: 0.2 } }}
+      className="group relative flex h-full min-h-[100px] flex-col items-center justify-center overflow-hidden rounded-xl border border-border/50 bg-white px-3 py-4 text-center shadow-sm transition-all duration-300 hover:shadow-md hover:border-primary/20"
+    >
+      <div className="absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r from-transparent via-primary/40 to-transparent opacity-0 transition-opacity group-hover:opacity-100" />
+      <div className="mb-2 flex h-9 w-9 items-center justify-center rounded-lg bg-primary/8 transition-colors group-hover:bg-primary/14">
+        <Icon className="h-4 w-4 text-primary" />
+      </div>
+      <div className="text-xl font-heading font-bold text-foreground leading-none tracking-tight sm:text-2xl md:text-3xl">
+        {count}{suffix}
+      </div>
+      <div className="mt-1 text-[10px] text-muted-foreground font-semibold uppercase tracking-wider sm:text-[11px]">{label}</div>
+    </motion.div>
   );
 }
 
@@ -1044,355 +1053,221 @@ export default function Index() {
 
   return (
     <div className="min-h-screen">
-      {/* ─── HERO ─── */}
+
+      {/* ══════════════════════════════════════
+          HERO
+      ══════════════════════════════════════ */}
       <section className={`relative overflow-x-clip py-16 md:py-28 ${heroConfig.heroMeshEnabled ? "hero-mesh" : ""}`}>
-        <div
-          className="pointer-events-none absolute inset-0"
-          style={{ backgroundImage: heroConfig.primaryGradient, opacity: heroConfig.heroBlobsIntensity / 280 }}
-        />
+        <div className="pointer-events-none absolute inset-0" style={{ backgroundImage: heroConfig.primaryGradient, opacity: heroConfig.heroBlobsIntensity / 280 }} />
         <FloatingIcons items={heroConfig.heroFloatingIcons} accentColor={heroConfig.accentColor} iconsOpacity={heroConfig.heroIconsOpacity} />
-        {/* Soft glow orbs */}
-        <div className="absolute top-0 right-0 h-[600px] w-[600px] rounded-full blur-[120px] pointer-events-none -translate-y-1/3 translate-x-1/3" style={{ backgroundColor: withAlpha(heroConfig.primaryColor, "18"), opacity: heroConfig.heroBlobsIntensity / 100 }} />
-        <div className="absolute bottom-0 left-0 h-[400px] w-[400px] rounded-full blur-[90px] pointer-events-none" style={{ backgroundColor: withAlpha(heroConfig.accentColor, "16"), opacity: heroConfig.heroBlobsIntensity / 100 }} />
-        <div className="absolute top-1/2 left-1/2 h-[300px] w-[300px] rounded-full blur-[80px] pointer-events-none -translate-x-1/2 -translate-y-1/2" style={{ backgroundColor: withAlpha(heroConfig.titleColor, "10"), opacity: heroConfig.heroBlobsIntensity / 150 }} />
+        <div className="absolute top-0 right-0 h-[500px] w-[500px] rounded-full blur-[130px] pointer-events-none -translate-y-1/3 translate-x-1/3" style={{ backgroundColor: withAlpha(heroConfig.primaryColor, "14"), opacity: heroConfig.heroBlobsIntensity / 120 }} />
+        <div className="absolute bottom-0 left-0 h-[350px] w-[350px] rounded-full blur-[100px] pointer-events-none" style={{ backgroundColor: withAlpha(heroConfig.accentColor, "12"), opacity: heroConfig.heroBlobsIntensity / 120 }} />
 
-        <div className="relative z-10 mx-auto w-full max-w-screen-xl px-4 sm:px-6 md:px-8 lg:px-12">
-          <div className="grid grid-cols-1 items-start gap-10 lg:grid-cols-[minmax(0,1fr)_410px] xl:grid-cols-[minmax(0,1fr)_450px] 2xl:grid-cols-[minmax(0,1fr)_480px] lg:gap-20 xl:gap-24">
-            {/* Left: Main content */}
-            <div className="mx-auto w-full min-w-0 max-w-4xl text-left lg:pr-4">
-              <motion.div
-                initial={{ opacity: 0, x: -20 }}
-                animate={{ opacity: 1, x: 0 }}
-                transition={{ duration: 0.5 }}
-                className="mb-6 flex min-w-0 flex-col items-start justify-start gap-2 sm:flex-row sm:gap-3"
-              >
-                <img src="/logoworconnect.png" alt="UOR Connect" className="h-10 shrink-0 drop-shadow-sm sm:h-12" />
-                <div className="hidden h-6 w-px bg-border sm:block" />
-                <span className="max-w-[17rem] text-left text-[11px] font-semibold uppercase leading-4 tracking-[0.16em] text-muted-foreground sm:max-w-none sm:text-sm sm:leading-normal sm:tracking-wider">
-                  NEIC · Universidade Óscar Ribas
-                </span>
-              </motion.div>
+        <div className="relative z-10 mx-auto w-full max-w-screen-xl px-4 sm:px-6">
+          <div className="mx-auto flex max-w-2xl flex-col items-center text-center">
 
-              {/* Badge da edição — font-mono para feel técnico/académico */}
-              <motion.div
-                initial={{ opacity: 0, scale: 0.9 }}
-                animate={{ opacity: 1, scale: 1 }}
-                transition={{ delay: 0.2, type: "spring" }}
-                className="mb-6 inline-flex max-w-full items-center gap-2 rounded-full px-4 py-2 text-center text-sm font-semibold shadow-sm sm:text-sm"
-                style={{
-                  backgroundColor: withAlpha(heroConfig.primaryColor, "16"),
-                  color: heroConfig.accentColor,
-                  boxShadow: `0 10px 30px ${withAlpha(heroConfig.primaryColor, "14")}`,
-                }}
-              >
-                <Sparkles className="h-4 w-4 animate-pulse" />
-                {heroConfig.heroBadgeText}
-              </motion.div>
+            {/* Logo + instituição */}
+            <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}
+              className="mb-5 flex items-center gap-2.5"
+            >
+              <img src="/logoworconnect.png" alt="UOR Connect" className="h-9 shrink-0 drop-shadow-sm" />
+              <div className="h-4 w-px bg-border/60" />
+              <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+                NEIC · Universidade Óscar Ribas
+              </span>
+            </motion.div>
 
-              {/* Título H1 — separado em duas partes para aplicar duas cores e quebra responsiva */}
-              <motion.h1
-                initial={{ opacity: 0, y: 30 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.3, duration: 0.6, ease: "easeOut" }}
-                className="mb-5 w-full min-w-0 max-w-[12ch] break-words hyphens-auto font-heading font-extrabold tracking-tight leading-[1.03] text-balance text-pretty text-[length:var(--hero-title-fluid-size)] lg:max-w-[10.2ch]"
-                style={{
-                  ["--hero-title-fluid-size" as string]: heroTypography.titleFluid,
-                }}
+            {/* Badge edição */}
+            <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.15, type: "spring" }}
+              className="mb-5 inline-flex items-center gap-2 rounded-full border px-3.5 py-1 text-xs font-semibold"
+              style={{ backgroundColor: withAlpha(heroConfig.primaryColor, "10"), borderColor: withAlpha(heroConfig.primaryColor, "22"), color: heroConfig.accentColor }}
+            >
+              {heroConfig.heroBadgeText}
+            </motion.div>
+
+            {/* H1 — tamanho contido para não quebrar */}
+            <motion.h1
+              initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.25, duration: 0.5, ease: "easeOut" }}
+              className="mb-4 font-heading font-extrabold tracking-tight leading-[1.08] text-3xl sm:text-4xl md:text-[2.75rem] lg:text-5xl"
+            >
+              <span style={{ color: heroConfig.titleColor }}>{heroConfig.heroTitlePrefix} </span>
+              <span style={{ color: heroConfig.accentColor }}>{heroConfig.heroTitleHighlight}</span>
+            </motion.h1>
+
+            {/* Subtitle */}
+            <motion.p initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.4 }}
+              className="mb-8 max-w-md text-sm leading-relaxed text-muted-foreground sm:text-base"
+            >
+              {heroConfig.heroSubtitleText}
+            </motion.p>
+
+            {/* CTAs — em fila, compactos */}
+            <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.55 }}
+              className="mb-6 flex items-center gap-2.5"
+            >
+              <Button asChild size="sm" className="h-9 gap-2 rounded-lg px-4 text-sm font-semibold text-white shadow-md"
+                style={{ backgroundColor: heroConfig.primaryColor, boxShadow: `0 8px 24px ${withAlpha(heroConfig.primaryColor, "22")}` }}
               >
-                <span className="inline" style={{ color: heroConfig.titleColor }}>{heroConfig.heroTitlePrefix} </span>
-                <motion.span
-                  className="inline-block"
-                  style={{ color: heroConfig.accentColor }}
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.45, duration: 0.45 }}
+                <Link to="/projetos"><Vote className="h-4 w-4 shrink-0" />Votar</Link>
+              </Button>
+              <Button asChild size="sm" variant="outline" className="h-9 gap-2 rounded-lg px-4 text-sm font-semibold"
+                style={{ borderColor: withAlpha(heroConfig.titleColor, "18"), color: heroConfig.titleColor }}
+              >
+                <Link to="/submeter"><Send className="h-4 w-4 shrink-0" />Submeter</Link>
+              </Button>
+              <Button asChild size="sm" className="h-9 gap-2 rounded-lg border border-destructive/20 bg-destructive/5 px-4 text-sm font-semibold text-destructive shadow-none hover:bg-destructive/10">
+                <a href={laboratorioHref}><Rocket className="h-4 w-4 shrink-0" />Laboratório</a>
+              </Button>
+            </motion.div>
+
+            {/* Auth strip */}
+            {!studentProfile ? (
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.68 }}>
+                <Link to="/login?redirect=/projetos"
+                  className="group inline-flex items-center gap-2.5 rounded-full border border-dashed bg-card/60 px-4 py-2 text-xs backdrop-blur-sm transition-all hover:border-primary/40 hover:shadow-sm sm:text-sm"
+                  style={{ borderColor: withAlpha(heroConfig.primaryColor, "30") }}
                 >
-                  {heroConfig.heroTitleHighlight}
-                </motion.span>
-              </motion.h1>
-
-              <motion.p
-                initial={{ opacity: 0, y: 8 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.54, duration: 0.5 }}
-                className="mb-10 max-w-xl font-normal leading-relaxed tracking-normal text-pretty text-[length:var(--hero-subtitle-fluid-size)]"
-                style={{
-                  color: heroConfig.heroSubtitleColor,
-                  ["--hero-subtitle-fluid-size" as string]: heroTypography.subtitleFluid,
-                }}
-              >
-                {heroConfig.heroSubtitleText}
-              </motion.p>
-
-              {/* CTAs */}
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                transition={{ delay: 0.68 }}
-                className="mb-10 flex w-full max-w-xl flex-col gap-3 sm:flex-row"
-              >
-                <motion.div whileHover={{ scale: 1.02, y: -2 }} whileTap={{ scale: 0.98 }} className="w-full sm:flex-1">
-                  <Button
-                    asChild
-                    size="lg"
-                    className="h-13 w-full justify-center gap-2.5 rounded-2xl text-sm font-bold text-white shadow-xl transition-all sm:text-base"
-                    style={{
-                      backgroundColor: heroConfig.primaryColor,
-                      boxShadow: `0 20px 40px ${withAlpha(heroConfig.primaryColor, "30")}`,
-                    }}
-                  >
-                    <Link to="/projetos" className="flex w-full items-center justify-center gap-2.5">
-                      <Vote className="h-5 w-5 shrink-0" />
-                      Votar Projetos
-                    </Link>
-                  </Button>
-                </motion.div>
-
-                <motion.div whileHover={{ scale: 1.02, y: -2 }} whileTap={{ scale: 0.98 }} className="w-full sm:flex-1">
-                  <Button
-                    asChild
-                    size="lg"
-                    variant="outline"
-                    className="h-13 w-full justify-center gap-2.5 rounded-2xl bg-card/90 text-sm font-semibold shadow-md backdrop-blur-sm transition-all hover:bg-secondary sm:text-base"
-                    style={{ borderColor: withAlpha(heroConfig.titleColor, "22"), color: heroConfig.titleColor }}
-                  >
-                    <Link to="/submeter" className="flex w-full items-center justify-center gap-2.5">
-                      <Send className="h-5 w-5 shrink-0" />
-                      Submeter
-                    </Link>
-                  </Button>
-                </motion.div>
-
-                <motion.div whileHover={{ scale: 1.02, y: -2 }} whileTap={{ scale: 0.98 }} className="w-full sm:flex-[0.85]">
-                  <Button
-                    asChild
-                    size="lg"
-                    className="h-13 w-full justify-center gap-2.5 overflow-hidden rounded-2xl border border-destructive/25 bg-destructive/8 text-sm font-semibold text-destructive shadow-none transition-all hover:border-destructive/45 hover:bg-destructive/14 sm:text-base"
-                  >
-                    <a href={laboratorioHref} className="flex w-full items-center justify-center gap-2.5">
-                      <Rocket className="h-5 w-5 shrink-0" />
-                      Laboratório
-                    </a>
-                  </Button>
-                </motion.div>
+                  <Lock className="h-3.5 w-3.5 shrink-0" style={{ color: heroConfig.primaryColor }} />
+                  <span className="text-muted-foreground"><span className="font-semibold" style={{ color: heroConfig.primaryColor }}>Entra na tua conta</span> para votar</span>
+                  <ArrowRight className="h-3.5 w-3.5 shrink-0 transition-transform group-hover:translate-x-0.5" style={{ color: heroConfig.primaryColor }} />
+                </Link>
               </motion.div>
+            ) : (
+              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.68 }}
+                className="inline-flex items-center gap-2.5 rounded-full border px-3 py-2 backdrop-blur-sm"
+                style={{ borderColor: withAlpha(heroConfig.primaryColor, "28"), backgroundColor: withAlpha(heroConfig.primaryColor, "08") }}
+              >
+                <UserAvatar name={studentProfile.name || "Estudante"} size="sm" />
+                <span className="text-sm font-semibold">{(studentProfile.name ?? "").split(" ").slice(0, 2).join(" ") || "Estudante"}</span>
+                <Button size="sm" variant="ghost" className="ml-1 h-7 shrink-0 rounded-md px-2 text-xs" onClick={handleLogout}>Sair</Button>
+              </motion.div>
+            )}
 
-              {/* Login prompt or user profile */}
-              {!studentProfile && (
-                <motion.div
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.8 }}
-                  className="mx-auto mb-8 w-full max-w-xl sm:mx-0"
-                >
-                  <Link
-                    to="/login?redirect=/projetos"
-                    className="group flex items-center gap-3 rounded-2xl border border-dashed bg-card/80 px-4 py-3.5 backdrop-blur-sm transition-all hover:border-primary/40 hover:shadow-md"
-                    style={{ borderColor: withAlpha(heroConfig.primaryColor, "35") }}
-                  >
-                    <div className="shrink-0 rounded-xl p-2" style={{ backgroundColor: withAlpha(heroConfig.primaryColor, "12"), color: heroConfig.primaryColor }}>
-                      <Lock className="h-4 w-4" />
-                    </div>
-                    <p className="min-w-0 flex-1 text-sm font-medium text-muted-foreground">
-                      <span className="font-semibold" style={{ color: heroConfig.primaryColor }}>Entra na tua conta</span> para votar e interagir
-                    </p>
-                    <ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground transition-transform group-hover:translate-x-1" style={{ color: heroConfig.primaryColor }} />
-                  </Link>
-                </motion.div>
-              )}
-
-              {studentProfile && (
-                <motion.div
-                  initial={{ opacity: 0, y: 8 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: 0.8 }}
-                  className="mx-auto mb-8 flex w-full max-w-md flex-col items-start gap-3 rounded-2xl border p-4 backdrop-blur-sm sm:mx-0 sm:max-w-lg sm:flex-row sm:items-center md:p-5"
-                  style={{ borderColor: withAlpha(heroConfig.primaryColor, "33"), backgroundColor: withAlpha(heroConfig.primaryColor, "10") }}
-                >
-                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl font-heading font-bold" style={{ backgroundColor: withAlpha(heroConfig.primaryColor, "18"), color: heroConfig.primaryColor }}>
-                    <User className="h-5 w-5" />
-                  </div>
-                  <div className="min-w-0 flex-1 text-left">
-                    <p className="text-sm font-heading font-bold" style={{ color: heroConfig.primaryColor }}>Sessão ativa</p>
-                    <p className="truncate text-base font-semibold">{(studentProfile?.name ?? "").split(" ").slice(0, 2).join(" ") || "Estudante"}</p>
-                    <p className="truncate text-xs text-muted-foreground">{studentProfile?.course ?? "Curso não informado"}</p>
-                  </div>
-                  <Button size="sm" variant="outline" className="h-9 w-full rounded-lg text-xs sm:h-8 sm:w-auto" onClick={handleLogout}>
-                    Logout
-                  </Button>
-                </motion.div>
-              )}
-
+            {/* Sponsors */}
+            <div className="mt-8 w-full">
               <SponsorsMarquee items={heroConfig.sponsors} dashedColor={heroConfig.dashedColor} dashedOpacity={heroConfig.dashedOpacity} />
             </div>
-
-            {/* Right: Stats — visible on large screens */}
-            <motion.div
-              className="hidden lg:block lg:mt-[450px]"
-              initial={{ opacity: 0, x: 30 }}
-              animate={{ opacity: 1, x: 0 }}
-              transition={{ delay: 0.9, duration: 0.6 }}
-            >
-              <div className="rounded-3xl border border-border/60 bg-card/80 backdrop-blur-md p-6 shadow-xl shadow-black/5">
-                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground mb-4">Em números</p>
-                <div className="grid grid-cols-2 gap-3">
-                  {statsData.map((s) => (
-                    <AnimatedCounter key={s.label} target={s.value} label={s.label} icon={s.icon} />
-                  ))}
-                </div>
-                {/* Live badge */}
-                <div className="mt-4 flex items-center gap-2.5 rounded-2xl border border-destructive/20 bg-destructive/[0.06] px-4 py-3">
-                  <span className="relative flex h-2.5 w-2.5">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-destructive opacity-60" />
-                    <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-destructive" />
-                  </span>
-                  <Link to="/ao-vivo" className="text-sm font-semibold text-destructive hover:underline">
-                    Acompanhar Ao Vivo
-                  </Link>
-                  <ArrowRight className="ml-auto h-4 w-4 text-destructive" />
-                </div>
-                {/* Quick link to schedule */}
-                <Link
-                  to="/agenda"
-                  className="mt-3 flex items-center gap-2.5 rounded-2xl border border-border/60 bg-muted/30 px-4 py-3 text-sm font-semibold text-foreground hover:bg-muted transition-colors"
-                >
-                  <CalendarDays className="h-4 w-4 text-primary" />
-                  Ver Agenda Completa
-                  <ArrowRight className="ml-auto h-4 w-4 text-muted-foreground" />
-                </Link>
-              </div>
-            </motion.div>
           </div>
-
-          {/* Stats — mobile only */}
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.9 }}
-            className="mt-10 grid max-w-5xl grid-cols-2 gap-3 sm:grid-cols-4 lg:hidden"
-          >
-            {statsData.map((s) => (
-              <AnimatedCounter key={s.label} target={s.value} label={s.label} icon={s.icon} />
-            ))}
-          </motion.div>
         </div>
       </section>
 
-      {/* ─── QUICK ACTIONS BAR ─── */}
-      <section className="border-y border-border/60 bg-muted/25 py-10 md:py-14">
+      {/* ══════════════════════════════════════
+          STATS BAR + QUICK LINKS
+      ══════════════════════════════════════ */}
+      <section className="border-y border-border/40 bg-muted/30 py-10 md:py-14">
         <div className="container mx-auto px-4">
           <motion.div
-            initial={{ opacity: 0, y: 8 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            className="mb-8 flex items-center gap-4"
+            initial={{ opacity: 0, y: 12 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}
+            className="grid grid-cols-2 gap-4 sm:grid-cols-4 lg:gap-6"
           >
-            <div className="flex items-center gap-2.5">
-              <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                <Rocket className="w-5 h-5" />
+            {statsData.map((s) => (
+              <div key={s.label} className="flex flex-col items-center gap-1.5 text-center">
+                <s.icon className="h-5 w-5 text-primary/70" />
+                <span className="font-heading text-2xl font-bold tabular-nums text-foreground md:text-3xl">{s.value}</span>
+                <span className="text-xs text-muted-foreground md:text-sm">{s.label}</span>
               </div>
-              <span className="text-xl font-heading font-bold">Acesso Rápido</span>
-            </div>
-            <div className="h-px flex-1 border-t border-dashed border-primary/15" />
-          </motion.div>
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 md:grid-cols-4">
-            {quickActions.map((action, i) => (
-              <motion.div
-                key={action.label}
-                initial={{ opacity: 0, y: 15 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: i * 0.05 }}
-                whileHover={{ y: -5, scale: 1.03, transition: { duration: 0.18 } }}
-                whileTap={{ scale: 0.96 }}
-              >
-                {action.external ? (
-                  <a
-                    href={action.href}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className={`quick-action-card ${action.color}`}
-                  >
-                    <action.icon className="h-7 w-7 md:h-8 md:w-8" />
-                    <span className="text-xs font-bold leading-tight">{action.label}</span>
-                  </a>
-                ) : (
-                  <Link
-                    to={action.path ?? "/"}
-                    className={`quick-action-card ${action.color}`}
-                  >
-                    <action.icon className="h-7 w-7 md:h-8 md:w-8" />
-                    <span className="text-xs font-bold leading-tight">{action.label}</span>
-                  </Link>
-                )}
-              </motion.div>
             ))}
-          </div>
+          </motion.div>
+          <motion.div
+            initial={{ opacity: 0, y: 8 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}
+            transition={{ delay: 0.15 }}
+            className="mt-8 flex flex-col items-center justify-center gap-3 sm:flex-row"
+          >
+            <Link to="/ao-vivo" className="group inline-flex items-center gap-2.5 rounded-xl border border-destructive/20 bg-destructive/[0.05] px-5 py-3 text-sm font-semibold text-destructive transition-all hover:bg-destructive/[0.10]">
+              <span className="relative flex h-2 w-2 shrink-0">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-destructive opacity-60" />
+                <span className="relative inline-flex h-2 w-2 rounded-full bg-destructive" />
+              </span>
+              Acompanhar Ao Vivo
+              <ArrowRight className="h-4 w-4 shrink-0 opacity-50 transition-transform group-hover:translate-x-0.5" />
+            </Link>
+            <Link to="/agenda" className="group inline-flex items-center gap-2.5 rounded-xl border border-border/50 bg-card/80 px-5 py-3 text-sm font-medium text-foreground transition-all hover:bg-muted/50">
+              <CalendarDays className="h-4 w-4 shrink-0 text-primary" />
+              Ver Agenda Completa
+              <ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground/50 transition-transform group-hover:translate-x-0.5" />
+            </Link>
+          </motion.div>
         </div>
       </section>
 
       <SectionDivider />
 
+      {/* ══════════════════════════════════════
+          TOP PROJETOS
+      ══════════════════════════════════════ */}
+      <section className="py-16 md:py-24">
+        <div className="container mx-auto px-4">
+          <motion.div initial={{ opacity: 0, y: 12 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="mb-10">
+            <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/5 px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-primary">
+              <Award className="h-3.5 w-3.5" />Exposição
+            </div>
+            <h2 className="font-heading text-3xl font-bold md:text-4xl">Top Projetos</h2>
+            <p className="mt-2 max-w-lg text-sm text-muted-foreground md:text-base">Os projetos mais votados pela comunidade.</p>
+          </motion.div>
+          <TopProjectsCarousel />
+          <motion.div initial={{ opacity: 0 }} whileInView={{ opacity: 1 }} viewport={{ once: true }} className="mt-10 text-center">
+            <Button asChild size="lg" variant="outline" className="h-12 rounded-xl font-semibold">
+              <Link to="/projetos">Ver Todos os Projetos <ArrowRight className="ml-2 h-5 w-5" /></Link>
+            </Button>
+          </motion.div>
+        </div>
+      </section>
+
+      <SectionDivider />
+
+      {/* ══════════════════════════════════════
+          CURSOS
+      ══════════════════════════════════════ */}
       <section className="py-16 md:py-24 bg-muted/20">
         <div className="container mx-auto px-4">
-          <motion.div initial={{ opacity: 0, y: 12 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}>
-            <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/5 px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-primary">
-              <GraduationCap className="h-3.5 w-3.5" />
-              Formação
+          <motion.div initial={{ opacity: 0, y: 12 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="mb-10">
+            <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/5 px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-primary">
+              <GraduationCap className="h-3.5 w-3.5" />Formação
             </div>
-            <h2 className="text-2xl md:text-4xl font-heading font-bold mb-2">Cursos em Destaque</h2>
-            <p className="text-muted-foreground mb-10 text-sm md:text-base">Os cursos mais populares desta edição.</p>
+            <h2 className="font-heading text-3xl font-bold md:text-4xl">Cursos em Destaque</h2>
+            <p className="mt-2 max-w-lg text-sm text-muted-foreground md:text-base">Os cursos mais populares desta edição.</p>
           </motion.div>
 
-          <div className="mb-8 grid gap-3 md:grid-cols-3">
+          {/* Top 3 ranking */}
+          <div className="mb-8 flex flex-col gap-2 sm:flex-row sm:gap-3">
             {topCourses.slice(0, 3).map((course, index) => (
-              <div
-                key={`${course.id}-${index}`}
-                className="rounded-xl border p-4"
-                style={{
-                  borderColor: withAlpha(course.courseColor, "44"),
-                  background: `linear-gradient(135deg, ${withAlpha(course.accentColor)}, ${withAlpha(course.accentColorSecondary)})`
-                }}
+              <motion.div key={`${course.id}-${index}`}
+                initial={{ opacity: 0, y: 8 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}
+                transition={{ delay: index * 0.06 }}
+                className="flex flex-1 items-center gap-3 rounded-xl border bg-white p-3.5 shadow-sm"
+                style={{ borderColor: withAlpha(course.courseColor, "30") }}
               >
-                <p className="text-xs font-bold mb-1" style={{ color: course.courseColor }}>Top #{index + 1}</p>
-                <p className="font-heading font-semibold text-base">{course.name}</p>
-                <p className="text-sm text-muted-foreground mt-1">{course.studentCount} inscritos</p>
-              </div>
+                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-sm font-bold text-white" style={{ backgroundColor: course.courseColor }}>
+                  #{index + 1}
+                </div>
+                <div className="min-w-0">
+                  <p className="truncate font-heading text-sm font-bold">{course.name}</p>
+                  <p className="text-xs text-muted-foreground">{course.studentCount} inscritos</p>
+                </div>
+              </motion.div>
             ))}
           </div>
 
-          <div className="flex gap-5 overflow-x-auto scrollbar-hide pb-2">
+          {/* Course cards carousel */}
+          <div className="flex gap-5 overflow-x-auto scrollbar-hide pb-2 snap-x snap-mandatory">
             {homepageCourses.map((course, i) => (
-              <motion.div
-                key={course.id ?? i}
-                initial={{ opacity: 0, scale: 0.9, y: 20 }}
-                whileInView={{ opacity: 1, scale: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: i * 0.07, type: "spring", stiffness: 200 }}
-                whileHover={{ y: -6, transition: { duration: 0.2 } }}
-                className="snap-start min-w-[340px] max-w-[340px] md:min-w-[390px] md:max-w-[390px]"
+              <motion.div key={course.id ?? i}
+                initial={{ opacity: 0, scale: 0.96, y: 16 }} whileInView={{ opacity: 1, scale: 1, y: 0 }}
+                viewport={{ once: true }} transition={{ delay: i * 0.06, type: "spring", stiffness: 200 }}
+                className="snap-start min-w-[300px] max-w-[340px] sm:min-w-[340px] md:min-w-[380px] md:max-w-[400px]"
               >
                 <FeaturedCourseCard
-                  course={course}
-                  liked={likedCourseIds.has(course.id)}
-                  enrolled={enrolledCourseIds.has(course.id)}
+                  course={course} liked={likedCourseIds.has(course.id)} enrolled={enrolledCourseIds.has(course.id)}
                   enrollmentStatusLabel={courseEnrollmentsByCourse[course.id]?.statusLabel}
-                  className="h-full shadow-sm"
+                  className="h-full"
                   onEnroll={() => {
                     const enrollment = courseEnrollmentsByCourse[course.id];
-                    if (enrollment?.receiptPath) {
-                      navigate(enrollment.receiptPath);
-                      return;
-                    }
-
+                    if (enrollment?.receiptPath) { navigate(enrollment.receiptPath); return; }
                     void handleCourseEnroll(course);
                   }}
                   onCommunity={() => {
-                    if (!enrolledCourseIds.has(course.id)) {
-                      toast.warning("Precisas estar inscrito no curso antes de entrar na comunidade.");
-                      return;
-                    }
-
+                    if (!enrolledCourseIds.has(course.id)) { toast.warning("Precisas estar inscrito no curso antes de entrar na comunidade."); return; }
                     openExternal(course.communityUrl, "A comunidade deste curso ainda não foi configurada.");
                   }}
                   onLike={() => void handleCourseLike(course.id)}
@@ -1404,117 +1279,217 @@ export default function Index() {
         </div>
       </section>
 
-      {/* ─── AO VIVO — TOP ─── */}
-      <section className="py-14 md:py-20 bg-muted/30">
+      <SectionDivider />
+
+      {/* ══════════════════════════════════════
+          PALESTRANTES
+      ══════════════════════════════════════ */}
+      <section className="py-16 md:py-24">
         <div className="container mx-auto px-4">
-          <motion.div initial={{ opacity: 0, y: 12 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}>
-            <div className="flex items-center gap-3 mb-2">
-              <h2 className="text-2xl md:text-4xl font-heading font-bold">Ao Vivo</h2>
-              <motion.span
-                animate={{ scale: [1, 1.04, 1] }}
-                transition={{ repeat: Infinity, duration: 2 }}
-                className="inline-flex items-center gap-1.5 bg-destructive/10 text-destructive text-[11px] font-bold uppercase tracking-wider px-3 py-1.5 rounded-full"
+          <motion.div initial={{ opacity: 0, y: 12 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="mb-10">
+            <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-[hsl(var(--area-negocio))]/20 bg-[hsl(var(--area-negocio))]/5 px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-[hsl(var(--area-negocio))]">
+              <Mic className="h-3.5 w-3.5" />Oradores
+            </div>
+            <h2 className="font-heading text-3xl font-bold md:text-4xl">Palestrantes</h2>
+            <p className="mt-2 max-w-lg text-sm text-muted-foreground md:text-base">Os profissionais que vão partilhar conhecimento.</p>
+          </motion.div>
+
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {speakers.map((s, i) => (
+              <motion.div key={s.name}
+                initial={{ opacity: 0, y: 16 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}
+                transition={{ delay: i * 0.07, type: "spring", stiffness: 260, damping: 22 }}
+                whileHover={{ y: -4, transition: { type: "spring", stiffness: 300, damping: 24 } }}
+                className="group relative overflow-hidden rounded-2xl border border-border/50 bg-white shadow-sm transition-shadow hover:shadow-md hover:border-primary/20"
               >
-                <span className="w-2 h-2 bg-destructive rounded-full animate-pulse" />
-                Em direto
+                <div className="h-0.5 bg-gradient-to-r from-primary/70 via-primary/30 to-transparent" />
+                <div className="p-5">
+                  <div className="mb-4 flex items-center gap-3">
+                    <UserAvatar
+                      name={s.name}
+                      avatarUrl={(s as Record<string, unknown>).avatarUrl as string | undefined}
+                      size="lg" className="h-12 w-12 shrink-0 text-sm"
+                    />
+                    <div className="min-w-0">
+                      <h3 className="truncate font-heading text-sm font-bold leading-tight">{s.name}</h3>
+                      <p className="truncate text-xs font-semibold text-primary mt-0.5">{s.role}</p>
+                    </div>
+                  </div>
+                  <div className="border-t border-border/40 pt-3">
+                    <div className="flex items-start gap-1.5">
+                      <Presentation className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground/50" />
+                      <p className="line-clamp-2 text-xs leading-relaxed text-muted-foreground">{s.talk}</p>
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
+            ))}
+          </div>
+
+          <motion.div initial={{ opacity: 0 }} whileInView={{ opacity: 1 }} viewport={{ once: true }} className="mt-10 text-center">
+            <Button asChild size="lg" variant="outline" className="h-12 rounded-xl font-semibold">
+              <Link to="/palestrantes">Ver Todos os Palestrantes <ArrowRight className="ml-2 h-5 w-5" /></Link>
+            </Button>
+          </motion.div>
+        </div>
+      </section>
+
+      <SectionDivider />
+
+      {/* ══════════════════════════════════════
+          PAINÉIS & AGENDA
+      ══════════════════════════════════════ */}
+      <section className="py-16 md:py-24 bg-muted/20">
+        <div className="container mx-auto px-4">
+          <motion.div initial={{ opacity: 0, y: 12 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="mb-10">
+            <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-[hsl(var(--area-web))]/20 bg-[hsl(var(--area-web))]/5 px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-[hsl(var(--area-web))]">
+              <Presentation className="h-3.5 w-3.5" />Programação
+            </div>
+            <h2 className="font-heading text-3xl font-bold md:text-4xl">Painéis & Agenda</h2>
+            <p className="mt-2 max-w-lg text-sm text-muted-foreground md:text-base">As sessões que vão marcar esta edição.</p>
+          </motion.div>
+
+          <div className="flex gap-4 overflow-x-auto scrollbar-hide pb-2 snap-x snap-mandatory lg:grid lg:grid-cols-3 lg:overflow-visible">
+            {homepagePanels.map((panel, i) => (
+              <motion.div key={panel.id ?? `${panel.title}-${panel.time}`}
+                initial={{ opacity: 0, y: 16 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}
+                transition={{ delay: i * 0.06 }}
+                whileHover={{ y: -4, transition: { type: "spring", stiffness: 300, damping: 24 } }}
+                className="group min-w-[300px] overflow-hidden rounded-2xl border border-border/50 bg-white shadow-sm transition-shadow hover:shadow-md lg:min-w-0"
+              >
+                <div className="h-1 bg-gradient-to-r from-primary to-primary/40" />
+                <div className="p-5">
+                  <div className="mb-3 flex items-center justify-between gap-2">
+                    <span className="inline-flex items-center gap-1.5 rounded-full bg-primary/8 px-3 py-1 text-[11px] font-bold uppercase tracking-wide text-primary">
+                      {panel.day} · {panel.date}
+                    </span>
+                    <TypeBadge type={panel.type} />
+                  </div>
+                  <div className="mb-2 flex items-center gap-1.5 text-xs font-mono text-muted-foreground">
+                    <Clock className="h-3.5 w-3.5" />{panel.time}
+                  </div>
+                  <div className="mb-3 flex items-start gap-3">
+                    <div className="mt-0.5 flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/8">
+                      <panel.icon className="h-5 w-5 text-primary" />
+                    </div>
+                    <h3 className="font-heading text-sm font-bold leading-snug sm:text-base">{panel.title}</h3>
+                  </div>
+                  <p className="mb-4 line-clamp-2 text-xs leading-relaxed text-muted-foreground">{panel.desc}</p>
+                  <div className="flex flex-wrap gap-x-4 gap-y-1 border-t border-border/40 pt-3 text-xs text-muted-foreground">
+                    <span className="flex items-center gap-1.5"><User className="h-3.5 w-3.5 text-primary/60" />{panel.speaker}</span>
+                    <span className="flex items-center gap-1.5"><MapPin className="h-3.5 w-3.5 text-primary/60" />{panel.local}</span>
+                  </div>
+                </div>
+              </motion.div>
+            ))}
+          </div>
+
+          {!homepagePanels.length && (
+            <div className="rounded-xl border border-dashed border-border bg-muted/30 p-8 text-center text-sm text-muted-foreground">
+              Ainda não há painéis publicados.
+            </div>
+          )}
+
+          <motion.div initial={{ opacity: 0 }} whileInView={{ opacity: 1 }} viewport={{ once: true }} className="mt-10 text-center">
+            <Button asChild size="lg" variant="outline" className="h-12 rounded-xl font-semibold">
+              <Link to="/agenda">Ver Agenda Completa <ArrowRight className="ml-2 h-5 w-5" /></Link>
+            </Button>
+          </motion.div>
+        </div>
+      </section>
+
+      <SectionDivider />
+
+      {/* ══════════════════════════════════════
+          AO VIVO
+      ══════════════════════════════════════ */}
+      <section className="py-16 md:py-24">
+        <div className="container mx-auto px-4">
+          <motion.div initial={{ opacity: 0, y: 12 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="mb-10">
+            <div className="mb-3 flex items-center gap-3">
+              <h2 className="font-heading text-3xl font-bold md:text-4xl">Ao Vivo</h2>
+              <motion.span animate={{ scale: [1, 1.05, 1] }} transition={{ repeat: Infinity, duration: 2 }}
+                className="inline-flex items-center gap-1.5 rounded-full bg-destructive/10 px-3 py-1 text-[11px] font-bold uppercase tracking-wider text-destructive"
+              >
+                <span className="h-1.5 w-1.5 rounded-full bg-destructive animate-pulse" />Em direto
               </motion.span>
             </div>
-            <p className="text-muted-foreground mb-8 text-sm md:text-base">Acompanha o que está a acontecer agora.</p>
+            <p className="max-w-lg text-sm text-muted-foreground md:text-base">Acompanha o que está a acontecer agora.</p>
           </motion.div>
 
           <LivePreview liveState={liveState} agendaItems={agendaItems} />
 
-          <div className="mt-8 grid gap-5 lg:grid-cols-[1.05fr_0.95fr]">
-            <div className="relative overflow-hidden rounded-xl border border-border bg-card p-5">
-              <div className="absolute inset-0 bg-gradient-to-br from-primary/8 via-transparent to-[hsl(var(--area-web))]/8" />
-              <IconPattern density={5} />
-              <div className="relative z-10">
+          <div className="mt-6 grid gap-4 lg:grid-cols-2">
+            {/* Chat */}
+            <div className="relative overflow-hidden rounded-2xl border border-border/50 bg-white shadow-sm">
+              <div className="absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r from-primary/70 via-primary/30 to-transparent" />
+              <div className="p-5">
                 <div className="mb-4 flex items-center gap-2">
                   <MessageSquare className="h-5 w-5 text-primary" />
-                  <h3 className="font-heading text-lg font-bold">Mini-chat Ao Vivo</h3>
+                  <h3 className="font-heading text-base font-bold">Mini-chat Ao Vivo</h3>
                 </div>
-                <div className="mb-4 max-h-72 space-y-3 overflow-y-auto pr-1">
-                  {liveChat.map((message) => (
-                    <div key={message.id} className="rounded-lg border border-border/70 bg-background/80 p-3">
-                      <p className="text-sm font-semibold text-primary">{message.studentName}</p>
-                      <p
-                        className="inline-flex rounded-full px-2 py-0.5 text-[11px] font-medium"
-                        style={{
-                          backgroundColor: withAlpha(message.courseColor, "1c"),
-                          color: message.courseColor || "#64748b"
-                        }}
-                      >
-                        {message.course || "Curso não informado"}
-                      </p>
-                      <p className="mt-1 text-sm text-muted-foreground">{message.content}</p>
+                <div className="mb-4 max-h-64 space-y-2 overflow-y-auto pr-1">
+                  {liveChat.map((msg) => (
+                    <div key={msg.id} className="rounded-xl border border-border/50 bg-muted/30 p-3">
+                      <div className="flex items-center gap-2">
+                        <p className="text-sm font-semibold text-primary">{msg.studentName}</p>
+                        <span className="inline-flex rounded-full px-2 py-0.5 text-[10px] font-medium"
+                          style={{ backgroundColor: withAlpha(msg.courseColor, "18"), color: msg.courseColor || "#64748b" }}>
+                          {msg.course || "Sem curso"}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-sm text-muted-foreground">{msg.content}</p>
                     </div>
                   ))}
                 </div>
                 <div className="flex gap-2">
-                  <input
-                    value={chatInput}
-                    onChange={(event) => setChatInput(event.target.value)}
+                  <input value={chatInput} onChange={(e) => setChatInput(e.target.value)}
                     placeholder="Escreve uma mensagem..."
-                    className="h-11 flex-1 rounded-lg border border-input bg-background px-3 text-base md:text-sm"
+                    className="h-10 flex-1 rounded-lg border border-input bg-background px-3 text-sm"
                   />
-                  <Button className="h-11" onClick={() => void handleLiveChatSend()}>
+                  <Button className="h-10 w-10 shrink-0 rounded-lg p-0" onClick={() => void handleLiveChatSend()}>
                     <Send className="h-4 w-4" />
                   </Button>
                 </div>
               </div>
             </div>
 
-            <div className="relative overflow-hidden rounded-xl border border-border bg-card p-5">
-              <div className="absolute inset-0 bg-gradient-to-br from-primary/8 via-transparent to-[hsl(var(--area-negocio))]/8" />
-              <IconPattern density={5} />
-              <div className="relative z-10">
+            {/* Activity */}
+            <div className="relative overflow-hidden rounded-2xl border border-border/50 bg-white shadow-sm">
+              <div className="absolute inset-x-0 top-0 h-0.5 bg-gradient-to-r from-transparent via-primary/30 to-primary/70" />
+              <div className="p-5">
                 <div className="mb-4 flex items-center gap-2">
                   <TrendingUp className="h-5 w-5 text-primary" />
-                  <h3 className="font-heading text-lg font-bold">Atividade Recente</h3>
+                  <h3 className="font-heading text-base font-bold">Atividade Recente</h3>
                 </div>
-                <div className="space-y-3">
+                <div className="space-y-2">
                   {recentActivity.length ? recentActivity.map((item) => (
-                    <motion.div
-                      key={item.id}
-                      initial={{ opacity: 0, y: 10 }}
-                      whileInView={{ opacity: 1, y: 0 }}
-                      viewport={{ once: true }}
-                      className="rounded-xl border border-border/70 bg-background/85 p-4 shadow-sm backdrop-blur-sm transition-all duration-300 hover:border-primary/20 hover:shadow-md"
-                    >
-                      <div className="flex items-start justify-between gap-3">
+                    <div key={item.id} className="rounded-xl border border-border/50 bg-muted/30 p-3.5">
+                      <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0">
-                          <p className="truncate text-sm font-bold text-primary md:text-[0.95rem]">{item.actorName}</p>
-                          <p className="mt-1 text-sm text-foreground/90">
-                            {getActivityLabel(item)} <span className="font-semibold text-foreground">{item.subject}</span>
+                          <p className="truncate text-sm font-bold text-primary">{item.actorName}</p>
+                          <p className="mt-0.5 text-sm text-foreground/80">
+                            {getActivityLabel(item)} <span className="font-semibold">{item.subject}</span>
                           </p>
                         </div>
-                        <div className="flex items-center gap-2 pt-0.5 text-[11px] font-medium text-muted-foreground shrink-0">
-                          <span className="h-2.5 w-2.5 rounded-full bg-primary/70" />
+                        <span className="shrink-0 text-[11px] text-muted-foreground">
                           {new Date(item.createdAt).toLocaleTimeString("pt-PT", { hour: "2-digit", minute: "2-digit" })}
-                        </div>
-                      </div>
-                      <p className="mt-3 line-clamp-2 text-sm leading-6 text-muted-foreground">{item.message}</p>
-                      <div className="mt-3">
-                        <span
-                          className="inline-flex rounded-full px-2.5 py-1 text-[11px] font-semibold"
-                          style={{
-                            backgroundColor: withAlpha(item.actorCourseColor, "18"),
-                            color: item.actorCourseColor || "#64748b"
-                          }}
-                        >
-                          {item.actorCourse || "Curso não informado"}
                         </span>
                       </div>
-                    </motion.div>
+                      <span className="mt-2 inline-flex rounded-full px-2.5 py-0.5 text-[10px] font-semibold"
+                        style={{ backgroundColor: withAlpha(item.actorCourseColor, "16"), color: item.actorCourseColor || "#64748b" }}>
+                        {item.actorCourse || "Sem curso"}
+                      </span>
+                    </div>
                   )) : (
-                    <div className="rounded-xl border border-dashed border-border/70 bg-background/75 p-4 text-sm text-muted-foreground">
-                      Ainda não há atividade recente para mostrar.
+                    <div className="rounded-xl border border-dashed border-border/50 p-4 text-sm text-muted-foreground">
+                      Ainda não há atividade recente.
                     </div>
                   )}
                 </div>
                 <div className="mt-4">
-                  <Button asChild variant="outline" size="sm">
-                    <Link to="/ao-vivo">Ver mais atividades</Link>
+                  <Button asChild variant="outline" size="sm" className="rounded-lg">
+                    <Link to="/ao-vivo">Ver mais</Link>
                   </Button>
                 </div>
               </div>
@@ -1522,57 +1497,43 @@ export default function Index() {
           </div>
 
           <motion.div initial={{ opacity: 0 }} whileInView={{ opacity: 1 }} viewport={{ once: true }} className="mt-8 text-center">
-            <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.97 }}>
-              <Button asChild size="lg" className="font-semibold rounded-xl shadow-md text-base h-12">
-                <Link to="/ao-vivo"><Radio className="mr-2 h-5 w-5" />Ver Evento Ao Vivo</Link>
-              </Button>
-            </motion.div>
+            <Button asChild size="lg" className="h-12 rounded-xl font-semibold">
+              <Link to="/ao-vivo"><Radio className="mr-2 h-5 w-5" />Ver Evento Ao Vivo</Link>
+            </Button>
           </motion.div>
         </div>
       </section>
 
-      {!hideExposureSection ? (
+      {/* Tipos de Exposição — condicional */}
+      {!hideExposureSection && (
         <>
           <SectionDivider />
-
-          {/* ─── TIPOS DE EXPOSIÇÃO ─── */}
-          <section ref={exposureSectionRef} className="py-14 md:py-20">
+          <section ref={exposureSectionRef} className="py-16 md:py-24 bg-muted/20">
             <div className="container mx-auto px-4">
-              <div className="relative overflow-hidden rounded-[30px] border border-border/70 bg-card/90 p-5 shadow-xl shadow-black/5 md:p-10">
-                <div className="absolute inset-0 bg-[radial-gradient(circle_at_top_left,rgba(2,132,199,0.15),transparent_42%),radial-gradient(circle_at_bottom_right,rgba(217,119,6,0.12),transparent_46%)]" />
-                <IconPattern density={8} />
-                <motion.div initial={{ opacity: 0, y: 12 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="relative z-10 mb-8 md:mb-10">
-                  <div className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-white/80 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-[0.12em] text-primary shadow-sm sm:text-xs">
-                    <Sparkles className="h-3.5 w-3.5" />
-                    Exposição na 3ª edição da Feira do Dia das Telecomunicações
+              <div className="relative overflow-hidden rounded-2xl border border-border/50 bg-white p-6 shadow-sm md:p-10">
+                <motion.div initial={{ opacity: 0, y: 12 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="mb-8">
+                  <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/5 px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-primary">
+                    Exposição · 3.ª edição
                   </div>
-                  <h2 className="mt-3 text-xl font-heading font-bold leading-snug sm:text-2xl md:text-[1.9rem]">Tipos de Exposição</h2>
-                  <p className="mt-2 max-w-2xl text-sm text-muted-foreground sm:text-[15px]">Três formas de participar e mostrar o teu trabalho.</p>
+                  <h2 className="font-heading text-2xl font-bold sm:text-3xl">Tipos de Exposição</h2>
+                  <p className="mt-2 text-sm text-muted-foreground">Três formas de participar e mostrar o teu trabalho.</p>
                 </motion.div>
-
-                <div className="relative z-10 flex gap-5 overflow-x-auto scrollbar-hide pb-2 md:grid md:grid-cols-3 md:overflow-visible">
+                <div className="flex gap-4 overflow-x-auto scrollbar-hide pb-2 md:grid md:grid-cols-3 md:overflow-visible">
                   {projectTypes.map((t, i) => (
-                    <motion.div
-                      key={t.key}
-                      initial={{ opacity: 0, y: 20, rotate: -2 }}
-                      whileInView={{ opacity: 1, y: 0, rotate: 0 }}
-                      viewport={{ once: true }}
+                    <motion.div key={t.key}
+                      initial={{ opacity: 0, y: 16 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}
                       transition={{ delay: i * 0.1, type: "spring", stiffness: 200 }}
-                      whileHover={{ y: -8, transition: { duration: 0.2 } }}
-                      className="min-w-[285px] md:min-w-0"
+                      whileHover={{ y: -6, transition: { type: "spring", stiffness: 280, damping: 22 } }}
+                      className="min-w-[260px] md:min-w-0"
                     >
-                      <Link to="/submeter" className="group relative block overflow-hidden rounded-2xl border border-border/70 bg-white/85 p-8 text-center shadow-sm transition-all duration-300 hover:-translate-y-1.5 hover:shadow-xl md:p-9">
-                        <div className={`absolute inset-0 bg-gradient-to-br ${t.surface}`} />
+                      <Link to="/submeter" className="group relative block overflow-hidden rounded-2xl border border-border/60 bg-white p-7 text-center shadow-sm transition-all hover:shadow-lg">
+                        <div className={`absolute inset-0 bg-gradient-to-br ${t.surface} opacity-60`} />
                         <div className="relative z-10">
-                          <motion.div
-                            whileHover={{ rotate: [0, -10, 10, 0], scale: 1.12 }}
-                            transition={{ duration: 0.5 }}
-                            className={`mx-auto mb-5 flex h-20 w-20 items-center justify-center rounded-2xl shadow-lg ${t.color}`}
-                          >
-                            <t.icon className="h-10 w-10" />
-                          </motion.div>
-                          <h3 className="mb-2 font-heading text-lg font-bold md:text-xl">{t.label}</h3>
-                          <p className="mb-4 text-sm text-muted-foreground md:text-base">{t.desc}</p>
+                          <div className={`mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl shadow-md ${t.color}`}>
+                            <t.icon className="h-8 w-8" />
+                          </div>
+                          <h3 className="mb-2 font-heading text-base font-bold md:text-lg">{t.label}</h3>
+                          <p className="mb-4 text-sm text-muted-foreground">{t.desc}</p>
                           <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-primary opacity-0 transition-opacity group-hover:opacity-100">
                             Submeter <ArrowRight className="h-4 w-4" />
                           </span>
@@ -1585,189 +1546,50 @@ export default function Index() {
             </div>
           </section>
         </>
-      ) : null}
+      )}
 
       <SectionDivider />
 
-      {/* ─── TOP PROJETOS — CAROUSEL ─── */}
-      <section className="py-14 md:py-20 bg-muted/20">
-        <div className="container mx-auto px-4">
-          <motion.div initial={{ opacity: 0, y: 12 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}>
-            <div className="flex items-center gap-3 mb-2">
-              <motion.div animate={{ rotate: [0, 15, -15, 0] }} transition={{ repeat: Infinity, duration: 3, repeatDelay: 2 }}>
-                <Award className="w-7 h-7 text-primary" />
-              </motion.div>
-              <h2 className="text-2xl md:text-4xl font-heading font-bold">Top Projetos</h2>
-            </div>
-            <p className="text-muted-foreground mb-10 text-sm md:text-base">Os mais votados pela comunidade. Arrasta para ver todos.</p>
-          </motion.div>
-
-          <TopProjectsCarousel />
-
-          <motion.div initial={{ opacity: 0 }} whileInView={{ opacity: 1 }} viewport={{ once: true }} className="mt-10 text-center">
-            <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.97 }}>
-              <Button asChild size="lg" variant="outline" className="font-semibold rounded-xl border-foreground/20 hover:bg-secondary text-base h-12">
-                <Link to="/projetos">Ver Todos os Projetos <ArrowRight className="ml-2 h-5 w-5" /></Link>
-              </Button>
-            </motion.div>
-          </motion.div>
-        </div>
-      </section>
-
-      <SectionDivider />
-
-      {/* ─── PAINÉIS ─── */}
+      {/* ══════════════════════════════════════
+          FAQ
+      ══════════════════════════════════════ */}
       <section className="py-16 md:py-24">
         <div className="container mx-auto px-4">
-          <motion.div initial={{ opacity: 0, y: 12 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}>
-            <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-[hsl(var(--area-web))]/20 bg-[hsl(var(--area-web))]/5 px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-[hsl(var(--area-web))]">
-              <Presentation className="h-3.5 w-3.5" />
-              Programação
+          <motion.div initial={{ opacity: 0, y: 12 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="mb-10">
+            <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-border/50 bg-muted/50 px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              <HelpCircle className="h-3.5 w-3.5" />Suporte
             </div>
-            <h2 className="text-2xl md:text-4xl font-heading font-bold mb-2">Painéis</h2>
-            <p className="text-muted-foreground mb-12 text-sm md:text-base">As sessões que vão marcar esta edição.</p>
+            <h2 className="font-heading text-3xl font-bold md:text-4xl">Perguntas Frequentes</h2>
+            <p className="mt-2 max-w-lg text-sm text-muted-foreground md:text-base">Respostas rápidas às dúvidas mais comuns.</p>
           </motion.div>
 
-          <div className="flex gap-5 overflow-x-auto scrollbar-hide pb-2 lg:grid lg:grid-cols-3 lg:overflow-visible">
-            {homepagePanels.map((panel, i) => (
-              <motion.div
-                key={panel.id ?? `${panel.title}-${panel.time}`}
-                initial={{ opacity: 0, y: 16 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: i * 0.06 }}
-                whileHover={{ y: -4, transition: { duration: 0.2 } }}
-                className="relative group min-w-[320px] rounded-xl border border-border bg-card overflow-hidden hover:shadow-lg hover:border-primary/20 transition-all duration-300 lg:min-w-0"
-              >
-                <div className="h-1.5 bg-primary" />
-                <div className="relative z-10 p-6 md:p-7">
-                  <div className="flex items-center justify-between mb-4">
-                    <span className="inline-flex items-center gap-1.5 text-xs font-bold uppercase tracking-wider text-primary bg-primary/10 px-3 py-1.5 rounded-full">{panel.day} · {panel.date}</span>
-                    <TypeBadge type={panel.type} />
-                  </div>
-                  <div className="flex items-center gap-2 text-sm text-muted-foreground font-mono mb-4"><Clock className="w-4 h-4" />{panel.time}</div>
-                  <div className="flex items-start gap-3 mb-4">
-                    <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center shrink-0"><panel.icon className="w-6 h-6 text-primary" /></div>
-                    <h3 className="font-heading font-bold text-base md:text-lg leading-snug pt-1">{panel.title}</h3>
-                  </div>
-                  <p className="text-muted-foreground text-sm leading-relaxed mb-5">{panel.desc}</p>
-                  <div className="flex flex-wrap items-center gap-4 text-sm text-muted-foreground border-t border-border pt-4">
-                    <span className="flex items-center gap-1.5"><User className="w-4 h-4 text-primary" />{panel.speaker}</span>
-                    <span className="flex items-center gap-1.5"><MapPin className="w-4 h-4 text-primary" />{panel.local}</span>
-                  </div>
-                </div>
-              </motion.div>
-            ))}
-          </div>
-
-          {!homepagePanels.length ? (
-            <div className="rounded-xl border border-border bg-card p-6 text-sm text-muted-foreground">
-              Ainda não há painéis publicados para mostrar na home.
-            </div>
-          ) : null}
-
-          <motion.div initial={{ opacity: 0 }} whileInView={{ opacity: 1 }} viewport={{ once: true }} className="mt-10 text-center">
-            <Button asChild size="lg" variant="outline" className="font-semibold rounded-xl border-foreground/20 hover:bg-secondary text-base h-12">
-              <Link to="/agenda">Ver Agenda Completa <ArrowRight className="ml-2 h-5 w-5" /></Link>
-            </Button>
-          </motion.div>
-        </div>
-      </section>
-
-      <SectionDivider />
-
-      {/* ─── SPEAKERS ─── */}
-      <section className="py-16 md:py-24">
-        <div className="container mx-auto px-4">
-          <motion.div initial={{ opacity: 0, y: 12 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}>
-            <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-[hsl(var(--area-negocio))]/20 bg-[hsl(var(--area-negocio))]/5 px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-[hsl(var(--area-negocio))]">
-              <Mic className="h-3.5 w-3.5" />
-              Oradores
-            </div>
-            <h2 className="text-2xl md:text-4xl font-heading font-bold mb-2">Palestrantes</h2>
-            <p className="text-muted-foreground mb-12 text-sm md:text-base">Quem vai partilhar conhecimento e experiência.</p>
-          </motion.div>
-
-          <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-5">
-            {speakers.map((s, i) => (
-              <motion.div
-                key={s.name}
-                initial={{ opacity: 0, y: 12 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true }}
-                transition={{ delay: i * 0.08 }}
-                whileHover={{ y: -6, transition: { duration: 0.2 } }}
-                className="relative border border-border rounded-xl bg-card p-6 md:p-8 hover:shadow-lg hover:border-primary/20 transition-all duration-300 group overflow-hidden"
-              >
-                <IconPattern density={5} />
-                <div className="relative z-10">
-                  <motion.div
-                    whileHover={{ scale: 1.1 }}
-                    className="w-16 h-16 md:w-20 md:h-20 rounded-full bg-primary/10 flex items-center justify-center mb-5 mx-auto"
-                  >
-                    <User className="w-8 h-8 md:w-10 md:h-10 text-primary" />
-                  </motion.div>
-                  <h3 className="font-heading font-bold text-base md:text-lg text-center">{s.name}</h3>
-                  <p className="text-sm text-muted-foreground text-center mt-1.5">{s.role}</p>
-                  <div className="mt-4 pt-4 border-t border-border"><p className="text-sm md:text-base text-center text-primary font-medium">{s.talk}</p></div>
-                </div>
-              </motion.div>
-            ))}
-          </div>
-
-          <motion.div initial={{ opacity: 0 }} whileInView={{ opacity: 1 }} viewport={{ once: true }} className="mt-10 text-center">
-            <Button asChild size="lg" variant="outline" className="font-semibold rounded-xl border-foreground/20 hover:bg-secondary text-base h-12">
-              <Link to="/palestrantes">Ver Todos os Palestrantes <ArrowRight className="ml-2 h-5 w-5" /></Link>
-            </Button>
-          </motion.div>
-        </div>
-      </section>
-
-      <SectionDivider />
-
-      {/* ─── FAQ ─── */}
-      <section className="py-16 md:py-24">
-        <div className="container mx-auto px-4">
-          <motion.div initial={{ opacity: 0, y: 12 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}>
-            <div className="mb-2 inline-flex items-center gap-2 rounded-full border border-muted-foreground/20 bg-muted/50 px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-              <HelpCircle className="h-3.5 w-3.5" />
-              Suporte
-            </div>
-            <h2 className="text-2xl md:text-4xl font-heading font-bold mb-2">Perguntas Frequentes</h2>
-            <p className="text-muted-foreground mb-10 text-sm md:text-base">Respostas rápidas às dúvidas mais comuns.</p>
-          </motion.div>
-
-          <motion.div
-            initial={{ opacity: 0, y: 12 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            transition={{ delay: 0.05 }}
-            className="max-w-3xl overflow-hidden rounded-xl border border-border bg-card"
+          <motion.div initial={{ opacity: 0, y: 12 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}
+            className="mx-auto max-w-3xl overflow-hidden rounded-2xl border border-border/50 bg-white shadow-sm"
           >
-            <Accordion type="single" collapsible className="divide-y divide-border">
-              {faqPreviewItems.map((faq) => (
-                <AccordionItem key={faq.id} value={`home-faq-${faq.id}`} className="border-none">
-                  <AccordionTrigger className="px-5 py-4 text-sm font-heading font-semibold hover:no-underline hover:bg-secondary/50 transition-colors">
-                    <span className="flex items-center gap-2 text-left">
-                      <HelpCircle className="w-4 h-4 text-primary shrink-0" />
+            <Accordion type="single" collapsible>
+              {faqPreviewItems.map((faq, i) => (
+                <AccordionItem key={faq.id ?? i} value={`faq-${i}`}
+                  className="border-b border-border/50 px-5 last:border-0"
+                >
+                  <AccordionTrigger className="py-4 text-left text-sm font-semibold hover:no-underline">
+                    <span className="flex items-center gap-2">
+                      <HelpCircle className="h-4 w-4 shrink-0 text-primary" />
                       {faq.question}
                     </span>
                   </AccordionTrigger>
-                  <AccordionContent className="px-5 pb-4 pl-11 text-sm leading-relaxed text-muted-foreground">
+                  <AccordionContent className="pb-4 pl-6 text-sm leading-relaxed text-muted-foreground">
                     {faq.answer}
                   </AccordionContent>
                 </AccordionItem>
               ))}
             </Accordion>
-            {!faqPreviewItems.length ? (
-              <div className="px-5 py-6 text-sm text-muted-foreground">
-                Ainda não há perguntas frequentes publicadas.
-              </div>
-            ) : null}
+            {!faqPreviewItems.length && (
+              <div className="p-6 text-sm text-muted-foreground">Ainda não há perguntas publicadas.</div>
+            )}
           </motion.div>
 
           <motion.div initial={{ opacity: 0 }} whileInView={{ opacity: 1 }} viewport={{ once: true }} className="mt-8 text-center">
-            <Button asChild variant="ghost" size="lg" className="font-semibold text-primary text-base">
+            <Button asChild variant="ghost" size="lg" className="h-12 font-semibold text-primary">
               <Link to="/faq">{faqs.length > 5 ? "Ver mais perguntas" : "Ver todas as perguntas"} <ChevronRight className="ml-1 h-5 w-5" /></Link>
             </Button>
           </motion.div>
@@ -1776,59 +1598,54 @@ export default function Index() {
 
       <SectionDivider />
 
-      {/* ─── CTA ─── */}
-      <section className="py-16 md:py-20">
+      {/* ══════════════════════════════════════
+          CTA
+      ══════════════════════════════════════ */}
+      <section className="py-16 md:py-24 bg-muted/20">
         <div className="container mx-auto px-4">
-          <motion.div
-            initial={{ opacity: 0, scale: 0.97 }}
-            whileInView={{ opacity: 1, scale: 1 }}
-            viewport={{ once: true }}
-            className="relative bg-primary rounded-3xl p-10 md:p-14 flex flex-col md:flex-row items-start md:items-center justify-between gap-8 overflow-hidden shadow-xl shadow-primary/15"
+          <motion.div initial={{ opacity: 0, y: 16 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}
+            className="relative overflow-hidden rounded-2xl border border-primary/20 bg-white p-8 text-center shadow-sm md:p-14"
           >
-            <div className="absolute inset-0 overflow-hidden pointer-events-none">
-              {patternIconNames.map((iconName, i) => {
-                const Icon = getHeroIconByName(iconName);
-                return (
-                  <Icon key={`${iconName}-${i}`} className="absolute text-primary-foreground/[0.08]" style={{
-                    width: `${28 + (i % 3) * 12}px`,
-                    height: `${28 + (i % 3) * 12}px`,
-                    top: `${5 + (i * 27) % 80}%`,
-                    left: `${3 + (i * 29) % 90}%`,
-                    transform: `rotate(${i * 41}deg)`,
-                  }} />
-                );
-              })}
-            </div>
+            <div className="absolute inset-0 bg-[radial-gradient(ellipse_80%_80%_at_50%_110%,hsl(var(--primary)/0.08),transparent)]" />
             <div className="relative z-10">
-              <h2 className="text-2xl md:text-4xl font-heading font-bold text-primary-foreground mb-3">Tens um projeto, negócio ou produto?</h2>
-              <p className="text-primary-foreground/80 text-base md:text-lg max-w-lg">Submete o teu trabalho e apresenta-o perante profissionais e colegas da universidade.</p>
+              <div className="mb-4 inline-flex h-16 w-16 items-center justify-center rounded-2xl shadow-lg"
+                style={{ backgroundColor: withAlpha(heroConfig.primaryColor, "14") }}>
+                <Target className="h-8 w-8" style={{ color: heroConfig.primaryColor }} />
+              </div>
+              <h2 className="mb-3 font-heading text-2xl font-bold sm:text-3xl md:text-4xl">Pronto para mostrar o teu trabalho?</h2>
+              <p className="mx-auto mb-8 max-w-md text-muted-foreground md:text-lg">
+                Submete o teu projeto académico, negócio ou produto e faz parte desta edição.
+              </p>
+              <div className="flex flex-wrap items-center justify-center gap-3">
+                <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>
+                  <Button asChild size="lg" className="h-12 gap-2.5 rounded-xl px-8 font-bold text-white shadow-lg"
+                    style={{ backgroundColor: heroConfig.primaryColor, boxShadow: `0 16px 36px ${withAlpha(heroConfig.primaryColor, "28")}` }}>
+                    <Link to="/submeter"><Send className="h-5 w-5" />Submeter Projeto</Link>
+                  </Button>
+                </motion.div>
+                <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>
+                  <Button asChild size="lg" variant="outline" className="h-12 gap-2.5 rounded-xl px-8 font-semibold">
+                    <Link to="/guia"><BookOpen className="h-5 w-5" />Ver o Guia</Link>
+                  </Button>
+                </motion.div>
+              </div>
             </div>
-            <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.97 }} className="relative z-10">
-              <Button asChild size="lg" variant="secondary" className="font-semibold rounded-xl shrink-0 shadow-md text-base px-8 h-12">
-                <Link to="/submeter">Submeter Agora <ArrowRight className="ml-2 h-5 w-5" /></Link>
-              </Button>
-            </motion.div>
           </motion.div>
         </div>
       </section>
 
-      {/* ─── ADMIN LINK ─── */}
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ delay: 2 }}
-        className="fixed bottom-4 right-4 z-40"
-      >
-        <motion.div whileHover={{ scale: 1.08 }} whileTap={{ scale: 0.95 }}>
-          <Link
-            to="/admin"
-            className="flex items-center gap-1.5 bg-card/90 border border-border/60 shadow-lg rounded-full px-4 py-2.5 text-xs font-semibold text-muted-foreground/70 hover:text-foreground hover:border-primary/25 hover:shadow-xl backdrop-blur-md transition-all"
-          >
-            <Settings className="w-3.5 h-3.5" />
-            Admin
+      {/* Admin quick-link */}
+      {getToken() && (
+        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 1.2 }}
+          className="fixed bottom-4 right-4 z-50"
+        >
+          <Link to="/admin">
+            <Button size="icon" variant="outline" className="h-11 w-11 rounded-full border-border/60 bg-white/90 shadow-lg backdrop-blur-sm">
+              <Settings className="h-5 w-5 text-muted-foreground" />
+            </Button>
           </Link>
         </motion.div>
-      </motion.div>
+      )}
     </div>
   );
 }

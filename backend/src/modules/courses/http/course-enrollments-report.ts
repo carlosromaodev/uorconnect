@@ -90,7 +90,7 @@ function buildCourseEnrollmentsHtml(params: RenderCourseEnrollmentsPdfParams & {
             margin: 0;
             font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
             color: var(--text);
-            background: linear-gradient(180deg, rgba(253, 131, 5, 0.04) 0%, rgba(27, 43, 58, 0.01) 100%);
+            background: #f4f6f8;
           }
 
           .report-shell {
@@ -111,14 +111,13 @@ function buildCourseEnrollmentsHtml(params: RenderCourseEnrollmentsPdfParams & {
           .table {
             background: var(--surface);
             border: 1px solid var(--line);
-            border-radius: 18px;
+            border-radius: 10px;
           }
 
           .hero-panel {
             padding: 24px 26px;
-            background:
-              radial-gradient(circle at top right, rgba(253, 131, 5, 0.18), transparent 34%),
-              linear-gradient(135deg, rgba(253, 131, 5, 0.08), rgba(27, 43, 58, 0.02));
+            border-top: 4px solid var(--brand);
+            background: #ffffff;
           }
 
           .brand-row {
@@ -128,7 +127,7 @@ function buildCourseEnrollmentsHtml(params: RenderCourseEnrollmentsPdfParams & {
           }
 
           .brand-logo {
-            width: 164px;
+            width: 150px;
             height: auto;
             object-fit: contain;
           }
@@ -136,7 +135,7 @@ function buildCourseEnrollmentsHtml(params: RenderCourseEnrollmentsPdfParams & {
           .brand-fallback {
             width: 100px;
             height: 100px;
-            border-radius: 26px;
+            border-radius: 10px;
             background: var(--brand-dark);
             color: white;
             display: grid;
@@ -173,12 +172,12 @@ function buildCourseEnrollmentsHtml(params: RenderCourseEnrollmentsPdfParams & {
             padding: 22px;
             display: grid;
             gap: 12px;
-            background: linear-gradient(180deg, #ffffff 0%, #fbfcfd 100%);
+            background: #ffffff;
           }
 
           .meta-card {
             border: 1px solid var(--line);
-            border-radius: 14px;
+            border-radius: 8px;
             padding: 14px 16px;
             background: var(--surface-alt);
           }
@@ -206,7 +205,7 @@ function buildCourseEnrollmentsHtml(params: RenderCourseEnrollmentsPdfParams & {
 
           .summary-card {
             padding: 18px;
-            background: linear-gradient(180deg, #ffffff 0%, #fbfbfc 100%);
+            background: #ffffff;
           }
 
           .summary-card__label {
@@ -252,14 +251,17 @@ function buildCourseEnrollmentsHtml(params: RenderCourseEnrollmentsPdfParams & {
 
           .table {
             width: 100%;
-            border-collapse: collapse;
+            border-collapse: separate;
+            border-spacing: 0;
             overflow: hidden;
           }
 
           .table thead th {
-            background: var(--brand-dark);
-            color: #ffffff;
-            padding: 11px 12px;
+            background: #eef2f6;
+            color: var(--brand-dark);
+            padding: 10px 11px;
+            border-bottom: 1px solid #d8e0e8;
+            border-right: 1px solid #d8e0e8;
             font-size: 11px;
             font-weight: 700;
             letter-spacing: 0.08em;
@@ -268,15 +270,21 @@ function buildCourseEnrollmentsHtml(params: RenderCourseEnrollmentsPdfParams & {
           }
 
           .table tbody td {
-            padding: 10px 12px;
-            border-bottom: 1px solid var(--line);
+            padding: 9px 11px;
+            border-bottom: 1px solid #e5eaf0;
+            border-right: 1px solid #edf1f5;
             font-size: 12px;
             line-height: 1.5;
             vertical-align: top;
           }
 
+          .table thead th:last-child,
+          .table tbody td:last-child {
+            border-right: 0;
+          }
+
           .table tbody tr:nth-child(even) td {
-            background: rgba(247, 248, 250, 0.72);
+            background: #f8fafc;
           }
 
           .number-cell {
@@ -381,7 +389,7 @@ function buildCourseEnrollmentsHtml(params: RenderCourseEnrollmentsPdfParams & {
             </table>
           </section>
 
-          <p class="footer-note">Documento administrativo gerado automaticamente pelo UOR Connect.</p>
+          <p class="footer-note">Documento administrativo emitido pelo sistema UOR Connect.</p>
         </main>
       </body>
     </html>

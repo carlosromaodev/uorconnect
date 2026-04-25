@@ -55,23 +55,20 @@ export function buildBoardingPassHtml(submission: Submission, options: {
           margin: 0;
           font-family: Inter, Arial, sans-serif;
           color: #14212f;
-          background:
-            radial-gradient(circle at top left, ${primary}22, transparent 26%),
-            radial-gradient(circle at bottom right, ${secondary}1f, transparent 32%),
-            #f4f7fb;
+          background: #f3f6f9;
         }
         .sheet {
           min-height: calc(297mm - 24mm);
-          border-radius: 28px;
+          border-radius: 16px;
           overflow: hidden;
-          border: 1px solid #d9e2ec;
+          border: 1px solid #d8e0e8;
           background: #ffffff;
-          box-shadow: 0 18px 60px rgba(15, 23, 42, 0.10);
         }
         .header {
-          padding: 18mm 16mm 10mm;
-          background: linear-gradient(135deg, ${primary}, ${secondary});
-          color: #fff;
+          padding: 14mm 16mm 10mm;
+          border-bottom: 3px solid ${primary};
+          background: linear-gradient(180deg, #ffffff 0%, #f8fafc 100%);
+          color: #14212f;
         }
         .header-top {
           display: flex;
@@ -84,8 +81,19 @@ export function buildBoardingPassHtml(submission: Submission, options: {
           align-items: center;
           gap: 5mm;
         }
-        .brand img {
-          width: 42mm;
+        .brand-mark {
+          width: 45mm;
+          min-height: 23mm;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          padding: 2mm 3mm;
+          border: 1px solid #e2e8f0;
+          border-radius: 10px;
+          background: #ffffff;
+        }
+        .brand-mark img {
+          width: 39mm;
           height: auto;
           object-fit: contain;
         }
@@ -93,7 +101,7 @@ export function buildBoardingPassHtml(submission: Submission, options: {
           font-size: 9px;
           letter-spacing: 0.26em;
           text-transform: uppercase;
-          opacity: 0.86;
+          color: #61707f;
           overflow-wrap: anywhere;
           word-break: break-word;
         }
@@ -109,7 +117,7 @@ export function buildBoardingPassHtml(submission: Submission, options: {
           margin: 3mm 0 0;
           font-size: 11px;
           line-height: 1.7;
-          color: rgba(255,255,255,0.88);
+          color: #4b5b6c;
           max-width: 135mm;
           overflow-wrap: anywhere;
           word-break: break-word;
@@ -123,7 +131,7 @@ export function buildBoardingPassHtml(submission: Submission, options: {
           gap: 8mm;
         }
         .card {
-          border-radius: 18px;
+          border-radius: 12px;
           border: 1px solid #dbe4ee;
           background: #fff;
           padding: 6mm;
@@ -163,7 +171,7 @@ export function buildBoardingPassHtml(submission: Submission, options: {
           word-break: break-word;
         }
         .reference {
-          background: #0f172a;
+          background: #14212f;
           color: #fff;
           min-height: 100%;
         }
@@ -184,7 +192,7 @@ export function buildBoardingPassHtml(submission: Submission, options: {
           gap: 4mm;
         }
         .note {
-          border-radius: 14px;
+          border-radius: 10px;
           background: #f8fafc;
           border: 1px solid #e2e8f0;
           padding: 4.5mm 5mm;
@@ -212,26 +220,26 @@ export function buildBoardingPassHtml(submission: Submission, options: {
         <section class="header">
           <div class="header-top">
             <div class="brand">
-              ${options.logoDataUri ? `<img src="${options.logoDataUri}" alt="UOR Connect" />` : ""}
+              <div class="brand-mark">${options.logoDataUri ? `<img src="${options.logoDataUri}" alt="UOR Connect" />` : ""}</div>
               <div>
                 <small>UOR Connect</small>
-                <div style="margin-top: 1.5mm; font-size: 15px; font-weight: 700;">Talão de embarque da candidatura</div>
+                <div style="margin-top: 1.5mm; font-size: 15px; font-weight: 700;">Comprovativo oficial de submissão</div>
               </div>
             </div>
             <div style="text-align:right;">
-              <div class="label">Check-in concluído</div>
+              <div class="label">Registo concluído</div>
               <div style="margin-top: 2mm; font-size: 12px; font-weight: 600;">${escapeHtml(typeLabel)}</div>
             </div>
           </div>
           <h1 class="title">${escapeHtml(submission.name)}</h1>
-          <p class="subtitle">O teu embarque no avião do conhecimento foi confirmado. Guarda este convite premium para validação, entrada e partilha com outros estudantes interessados.</p>
+          <p class="subtitle">Documento de confirmação da candidatura, com referência, dados do responsável, composição da equipa e ligações oficiais para acompanhamento.</p>
         </section>
 
         <section class="content">
           <div class="grid">
             <div>
               <article class="card hero">
-                <div class="label" style="color:#526274;">Passageiro principal</div>
+                <div class="label" style="color:#526274;">Responsável principal</div>
                 <strong>${escapeHtml(compactText(submission.leaderName))}</strong>
                 <div class="meta-grid">
                   <div class="meta-item">
@@ -243,7 +251,7 @@ export function buildBoardingPassHtml(submission: Submission, options: {
                     <strong>${escapeHtml(compactText(submission.course || submission.area))}</strong>
                   </div>
                   <div class="meta-item">
-                    <span>Data de embarque</span>
+                    <span>Data de registo</span>
                     <strong>${escapeHtml(createdAt)}</strong>
                   </div>
                   <div class="meta-item">
@@ -254,7 +262,7 @@ export function buildBoardingPassHtml(submission: Submission, options: {
               </article>
 
               <article class="card" style="margin-top: 6mm;">
-                <div class="label" style="color:#526274;">Manifesto de voo</div>
+                <div class="label" style="color:#526274;">Dados da candidatura</div>
                 <div class="meta-grid">
                   <div class="meta-item">
                     <span>Área</span>
@@ -283,20 +291,20 @@ export function buildBoardingPassHtml(submission: Submission, options: {
                     <p>${escapeHtml(pdfUrl)}</p>
                   </div>
                   <div class="note">
-                    <strong>Mensagem para partilhar</strong>
-                    <p>Mostra este talão e convida outros estudantes a inscreverem-se no portal UOR Connect para entrarem também neste voo de conhecimento.</p>
+                    <strong>Orientação</strong>
+                    <p>Guarda este comprovativo e usa a referência sempre que precisares de acompanhar ou validar a submissão junto da equipa organizadora.</p>
                   </div>
                 </div>
               </article>
             </div>
 
             <article class="card reference">
-              <div class="label">Boarding pass</div>
+              <div class="label">Referência oficial</div>
               <div class="reference-code">${softWrapReference(submission.referenceCode)}</div>
               <div class="notes">
                 <div class="note">
-                  <strong>Legenda de partilha</strong>
-                  <p>Baixa este PDF e envia-o com o comprovativo do pagamento no grupo da comunidade correspondente ao teu tipo de expositor.</p>
+                  <strong>Validação</strong>
+                  <p>Apresenta esta referência quando solicitado pela organização. O estado final depende da validação administrativa.</p>
                 </div>
                 <div class="note">
                   <strong>Gerado em</strong>

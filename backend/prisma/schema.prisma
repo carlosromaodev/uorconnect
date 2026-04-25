@@ -64,6 +64,9 @@ model Student {
   consentRecords    ConsentRecord[]
   loginAudits       StudentLoginAudit[]
   smsRecipients     SmsCampaignRecipient[]
+  attendanceCredential AttendanceCredential?
+  attendanceCheckIns AttendanceCheckIn[]
+  certificates      Certificate[]
 }
 
 enum StudentLoginOrigin {
@@ -620,4 +623,84 @@ model AgendaItem {
   theme       String
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
+}
+
+model AttendanceCredential {
+  id            Int                 @id @default(autoincrement())
+  token         String              @unique
+  student       Student             @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  studentId     Int                 @unique
+  studentNumber String
+  studentName   String?
+  studentCourse String?
+  label         String              @default("Credencial UOR Connect")
+  createdAt     DateTime            @default(now())
+  updatedAt     DateTime            @updatedAt
+  checkIns      AttendanceCheckIn[]
+
+  @@index([studentNumber])
+  @@index([createdAt])
+}
+
+model AttendanceCheckIn {
+  id                       Int                  @id @default(autoincrement())
+  credential               AttendanceCredential @relation(fields: [credentialId], references: [id], onDelete: Cascade)
+  credentialId             Int
+  student                  Student?             @relation(fields: [studentId], references: [id], onDelete: SetNull)
+  studentId                Int?
+  studentNumber            String
+  studentName              String?
+  studentCourse            String?
+  eventKey                 String               @default("main-event")
+  eventLabel               String               @default("Evento principal UOR Connect")
+  checkedInAt              DateTime             @default(now())
+  checkedInByStudentNumber String
+  notes                    String?
+
+  @@unique([credentialId, eventKey])
+  @@index([studentId, checkedInAt])
+  @@index([studentNumber, checkedInAt])
+  @@index([checkedInAt])
+}
+
+model Certificate {
+  id                    Int       @id @default(autoincrement())
+  code                  String    @unique
+  validationToken       String    @unique
+  type                  String
+  title                 String
+  recipientName         String
+  recipientNumber       String?
+  recipientCourse       String?
+  student               Student?  @relation(fields: [studentId], references: [id], onDelete: SetNull)
+  studentId             Int?
+  sourceType            String?
+  sourceId              Int?
+  issuedAt              DateTime  @default(now())
+  issuedByStudentNumber String
+  status                String    @default("ISSUED")
+  revokedAt             DateTime?
+  metadataJson          String?
+
+  @@index([studentId, issuedAt])
+  @@index([recipientNumber])
+  @@index([type, issuedAt])
+  @@index([status, issuedAt])
+}
+
+model AdminAuditLog {
+  id                 Int      @id @default(autoincrement())
+  actorStudentNumber String
+  actorRole          String   @default("admin")
+  action             String
+  entityType         String
+  entityId           String?
+  summary            String
+  metadataJson       String?
+  createdAt          DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([actorStudentNumber, createdAt])
+  @@index([entityType, createdAt])
+  @@index([action, createdAt])
 }

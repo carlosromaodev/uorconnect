@@ -60,26 +60,9 @@ export default function Guia() {
               whileInView={{ opacity: 1, y: 0 }}
               viewport={{ once: true }}
               transition={{ delay: i * 0.06 }}
-              className="relative border border-border rounded-xl bg-card p-6 hover:shadow-md hover:border-primary/20 transition-all duration-300 group overflow-hidden"
+              className="relative rounded-[16px] border border-border/60 bg-white/96 p-6 hover:shadow-[0_14px_32px_rgba(15,23,42,0.10)] hover:border-primary/20 transition-all duration-300 group overflow-hidden"
             >
-              {/* Pattern */}
-              <div className="absolute inset-0 overflow-hidden pointer-events-none">
-                {patternIcons.slice(0, 4).map((Icon, j) => (
-                  <Icon
-                    key={j}
-                    className="absolute text-primary/[0.03] group-hover:text-primary/[0.06] transition-colors duration-500"
-                    style={{
-                      width: `${16 + ((i + j) % 3) * 6}px`,
-                      height: `${16 + ((i + j) % 3) * 6}px`,
-                      top: `${15 + ((j * 29) % 60)}%`,
-                      left: `${60 + ((j * 23) % 35)}%`,
-                      transform: `rotate(${(i + j) * 43}deg)`,
-                    }}
-                  />
-                ))}
-              </div>
-
-              <div className="relative z-10">
+              <div>
                 <div className="w-11 h-11 rounded-xl bg-primary/10 flex items-center justify-center mb-4">
                   <StepIcon className="w-5 h-5 text-primary" />
                 </div>
@@ -103,7 +86,7 @@ export default function Guia() {
           initial={{ opacity: 0, y: 12 }}
           whileInView={{ opacity: 1, y: 0 }}
           viewport={{ once: true }}
-          className="border border-border rounded-xl bg-card p-6 md:p-8"
+          className="rounded-[18px] border border-border/60 bg-white/96 p-6 md:p-8 shadow-sm"
         >
           <div className="flex items-center gap-2.5 mb-5">
             <div className="w-9 h-9 rounded-xl bg-primary/10 flex items-center justify-center">

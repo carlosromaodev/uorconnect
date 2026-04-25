@@ -26,6 +26,7 @@ import { StudentLoginForm } from "@/components/auth/StudentLoginForm";
 import { api, type ProjectPublicComment, type ProjectPublicFeedItem, getToken, isAuthError, setToken } from "@/lib/api";
 import { canVoteSubmission, getSubmissionAreaLabel, getSubmissionAudienceCopy } from "@/lib/submission-meta";
 import { toast } from "@/components/ui/sonner";
+import { createQrDataUrl } from "@/lib/qr";
 
 function withAlpha(hexColor: string, alpha = "22") {
   return `${hexColor}${alpha}`;
@@ -98,6 +99,8 @@ export default function ProjetoDetalhe() {
   const [submittingComment, setSubmittingComment] = useState(false);
   const [userHasLiked, setUserHasLiked] = useState(false);
   const [userHasVoted, setUserHasVoted] = useState(false);
+  const [qrImageUrl, setQrImageUrl] = useState("");
+  const [qrFailed, setQrFailed] = useState(false);
 
   const canVote = useMemo(() => (
     project ? canVoteSubmission(project.type, project.area, project.canVote) : false
@@ -141,6 +144,27 @@ export default function ProjetoDetalhe() {
     if (!project || !studentProfile?.name) return;
     setUserHasLiked(project.likes.some((like) => like.studentName === studentProfile.name));
   }, [project, studentProfile?.name]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    setQrImageUrl("");
+    setQrFailed(false);
+
+    if (!project?.qrCodeValue) return undefined;
+
+    createQrDataUrl(project.qrCodeValue, 220)
+      .then((dataUrl) => {
+        if (isMounted) setQrImageUrl(dataUrl);
+      })
+      .catch(() => {
+        if (isMounted) setQrFailed(true);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, [project?.qrCodeValue]);
 
   const handleProtectedAction = () => {
     if (!loggedIn) {
@@ -302,7 +326,6 @@ export default function ProjetoDetalhe() {
     );
   }
 
-  const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=220x220&data=${encodeURIComponent(project.qrCodeValue)}`;
   const heroBackground = project.bannerUrl
     ? `linear-gradient(135deg, ${withAlpha(project.primaryColor, "cc")}, ${withAlpha(project.secondaryColor, "d4")}), url(${project.bannerUrl}) center/cover`
     : `linear-gradient(135deg, ${project.primaryColor}, ${project.secondaryColor})`;
@@ -320,7 +343,7 @@ export default function ProjetoDetalhe() {
         <motion.section
           initial={{ opacity: 0, y: 14 }}
           animate={{ opacity: 1, y: 0 }}
-          className="overflow-hidden rounded-[32px] border border-border/60 shadow-xl"
+          className="overflow-hidden rounded-[20px] border border-border/60 shadow-xl"
         >
           <div className="relative min-h-[320px] px-6 py-8 text-white md:px-10 md:py-12" style={{ background: heroBackground }}>
             <div className="absolute inset-0 bg-[linear-gradient(180deg,rgba(15,23,42,0.12),rgba(15,23,42,0.62))]" />
@@ -478,11 +501,18 @@ export default function ProjetoDetalhe() {
                   <QrCode className="h-4 w-4 text-primary" />
                   QR Code para a bancada
                 </div>
-                <img
-                  src={qrImageUrl}
-                  alt={`QR do projeto ${project.name}`}
-                  className="mx-auto aspect-square w-full max-w-[220px] rounded-2xl border border-border/60 object-cover"
-                />
+                {qrImageUrl && !qrFailed ? (
+                  <img
+                    src={qrImageUrl}
+                    alt={`QR do projeto ${project.name}`}
+                    className="mx-auto aspect-square w-full max-w-[220px] rounded-2xl border border-border/60 object-contain"
+                    onError={() => setQrFailed(true)}
+                  />
+                ) : (
+                  <div className="mx-auto flex aspect-square w-full max-w-[220px] items-center justify-center rounded-2xl border border-dashed border-border/60 px-4 text-center text-sm text-muted-foreground">
+                    {qrFailed ? "Não foi possível gerar o QR Code." : "A gerar QR Code..."}
+                  </div>
+                )}
               </div>
 
               <div className="mt-4 space-y-2">

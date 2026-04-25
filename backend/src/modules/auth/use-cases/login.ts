@@ -18,9 +18,8 @@ function normalizeSecretariaError(reason?: string) {
 
   if (
     normalized.includes("invalid credentials")
-    || normalized.includes("unauthorized:true")
+    || normalized.includes("step:login invalid credentials")
     || normalized.includes("step:login status 401")
-    || normalized.includes("step:follow status 401")
     || normalized.includes("acesso negado")
     || normalized.includes("não tem acesso")
   ) {

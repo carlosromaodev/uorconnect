@@ -444,7 +444,7 @@ export function AnalyticsProvider({ children }: { children: ReactNode }) {
             initial={{ opacity: 0, y: 24 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 24 }}
-            className="fixed bottom-4 left-4 right-4 z-[80] mx-auto max-w-5xl rounded-[28px] border border-[#0A3D62]/20 bg-[linear-gradient(145deg,rgba(255,255,255,0.98),rgba(240,255,250,0.96))] p-5 shadow-[0_18px_50px_rgba(10,61,98,0.16)] backdrop-blur"
+            className="fixed bottom-4 left-4 right-4 z-[80] mx-auto max-w-5xl rounded-[18px] border border-[#0A3D62]/20 bg-[linear-gradient(145deg,rgba(255,255,255,0.98),rgba(240,255,250,0.96))] p-5 shadow-[0_18px_50px_rgba(10,61,98,0.16)] backdrop-blur"
           >
             <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
               <div className="space-y-3">
