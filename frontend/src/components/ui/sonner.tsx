@@ -111,7 +111,7 @@ const notify = {
 function Toaster() {
   return (
     <ToastContainer
-      position="top-center"
+      position="bottom-right"
       theme="colored"
       newestOnTop
       closeOnClick

@@ -21,10 +21,10 @@ import {
   buildStudentEnrollmentReceipt,
   buildWhatsAppUrl,
   getEnrollmentStatusLabel,
-  normalizePhoneForWhatsApp,
   toAbsoluteUrl,
 } from "./course-enrollment-helpers";
 import { enqueuePdfJob, getPdfJob, getPdfJobResult } from "../../../shared/pdf-job-queue";
+import { sendWhatsAppAutomationEvent } from "../../whatsapp/http/whatsapp.routes";
 
 const courseSchema = z.object({
   id: z.number(),
@@ -655,6 +655,30 @@ export async function coursesRoutes(app: FastifyInstance, opts: { env: Env }) {
           ? `${publicApiBaseUrl ?? ""}/courses/enrollments/${updated.id}/payment-proof`
           : null;
 
+        try {
+          await sendWhatsAppAutomationEvent(opts.env, "COURSE_ENROLLMENT_STATUS_UPDATED", {
+            phone: updated.student?.phone ?? updated.paymentPhone,
+            studentId: updated.studentId,
+            studentNumber: updated.studentNumber,
+            recipientName: fullName,
+            recipientCourse: studentCourse ?? updated.course.name,
+            values: {
+              curso: updated.course.name,
+              estado: getEnrollmentStatusLabel(updated.paymentStatus, paymentProofPath),
+              detalhe: updated.paymentStatus === "CONFIRMED"
+                ? "A tua vaga foi confirmada pela equipa."
+                : updated.paymentStatus === "REJECTED"
+                  ? "A equipa marcou a inscrição como rejeitada. Revê os dados enviados."
+                  : updated.paymentStatus === "CANCELED"
+                    ? "A inscrição foi cancelada pela equipa."
+                    : "A equipa está a rever a tua inscrição.",
+              link: `${publicAppUrl}/cursos/inscricoes/${updated.id}`,
+            },
+          });
+        } catch (error) {
+          request.log.warn({ err: error, enrollmentId: updated.id }, "automatic course enrollment status WhatsApp notification failed");
+        }
+
         return reply.send({
           enrollment: {
             id: updated.id,
@@ -984,6 +1008,28 @@ export async function coursesRoutes(app: FastifyInstance, opts: { env: Env }) {
       const ticketPath = finalEnrollment
         ? `${publicApiBaseUrl ?? ""}/courses/enrollments/${finalEnrollment.id}/ticket.pdf`
         : null;
+      const shouldNotifyEnrollment = Boolean(finalEnrollment && (!existing || (course.isPaid && body.paymentProof)));
+
+      if (shouldNotifyEnrollment && finalEnrollment) {
+        try {
+          await sendWhatsAppAutomationEvent(opts.env, "COURSE_ENROLLMENT_CREATED", {
+            phone: studentProfile?.phone ?? normalizedPaymentPhone,
+            studentId: student.id,
+            studentNumber: student.studentNumber,
+            recipientName: studentProfile?.name ?? null,
+            recipientCourse: studentProfile?.course ?? course.name,
+            values: {
+              curso: course.name,
+              detalhe: course.isPaid
+                ? "Recebemos o comprovativo e a equipa vai validar o pagamento."
+                : "A tua inscrição ficou confirmada.",
+              link: `${publicAppUrl}/cursos/inscricoes/${finalEnrollment.id}`,
+            },
+          });
+        } catch (error) {
+          request.log.warn({ err: error }, "automatic course enrollment WhatsApp notification failed");
+        }
+      }
 
       return {
         enrolled: true,
@@ -1099,19 +1145,6 @@ export async function coursesRoutes(app: FastifyInstance, opts: { env: Env }) {
 
       if (!course) {
         return reply.status(404).send({ message: "Course not found" });
-      }
-
-      const enrollment = await prisma.courseEnrollment.findUnique({
-        where: {
-          studentId_courseId: {
-            studentId: student.id,
-            courseId: course.id
-          }
-        }
-      });
-
-      if (!enrollment) {
-        return reply.status(403).send({ message: "Precisas estar inscrito neste curso para curtir." });
       }
 
       const existing = await prisma.courseLike.findUnique({

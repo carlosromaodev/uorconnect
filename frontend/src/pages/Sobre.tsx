@@ -2,6 +2,7 @@ import { motion } from "framer-motion";
 import { Calendar, FolderOpen, Users, GraduationCap, Target, Lightbulb, Handshake, MapPin, Mail } from "lucide-react";
 import { Link } from "react-router-dom";
 import logoNeic from "@/assets/logo-neic.jpeg";
+import { UOR_EVENT_LEMA, UOR_EVENT_TITLE_HIGHLIGHT, UOR_EVENT_TITLE_PREFIX } from "@/lib/home-content";
 
 const stats = [
   { label: "Edição", value: "3.ª", icon: Calendar },
@@ -25,11 +26,11 @@ export default function Sobre() {
           <div className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-3.5 py-1.5 text-xs font-semibold uppercase tracking-[0.18em] text-primary mb-4">
             Sobre o evento
           </div>
-          <h1 className="text-3xl md:text-5xl font-heading font-bold mb-4">
-            Feira do Dia das<br />Telecomunicações
+          <h1 className="mx-auto mb-4 max-w-4xl font-heading text-3xl font-bold leading-tight md:text-5xl">
+            {UOR_EVENT_TITLE_PREFIX} {UOR_EVENT_TITLE_HIGHLIGHT}
           </h1>
           <p className="mx-auto max-w-2xl text-muted-foreground leading-relaxed">
-            Evento académico em celebração do Dia Mundial das Telecomunicações e da Sociedade da Informação.
+            {UOR_EVENT_LEMA}. Evento académico em celebração do Dia Mundial das Telecomunicações e da Sociedade da Informação.
             Dois dias de painéis, workshops, exposições e apresentação de projetos que reúnem estudantes, professores e profissionais.
           </p>
         </motion.div>
@@ -106,7 +107,7 @@ export default function Sobre() {
             </div>
             <div className="hidden sm:block h-16 w-px bg-border" />
             <div className="text-center">
-              <img src="/logoworconnect.png" alt="UOR Connect" className="h-16 mx-auto mb-3" />
+              <img src="/uorconnect-logo-navbar.png" alt="UOR Connect" className="h-16 mx-auto mb-3" />
               <p className="font-semibold text-sm">UOR Connect</p>
               <p className="text-xs text-muted-foreground">Plataforma Académica Digital</p>
             </div>

@@ -8,6 +8,8 @@ import { type Env } from "./config/env";
 
 export type AppDependencies = Record<string, unknown>;
 
+const requestBodyLimitBytes = 10 * 1024 * 1024;
+
 function normalizeAllowedOrigins(value: string) {
   return value
     .split(",")
@@ -38,7 +40,8 @@ function isAllowedVercelPreview(origin: string) {
 
 export function buildApp(env: Env, deps?: AppDependencies) {
   const app = fastify({
-    logger: true
+    logger: true,
+    bodyLimit: requestBodyLimitBytes,
   }).withTypeProvider<ZodTypeProvider>();
 
   app.setValidatorCompiler(validatorCompiler);

@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Loader2, Send, Smartphone } from "lucide-react";
+import { Loader2, MessageCircle, Send, Smartphone } from "lucide-react";
 import { toast } from "@/components/ui/sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -34,6 +34,7 @@ export function AdminBulkSmsAction({
 }: AdminBulkSmsActionProps) {
   const [open, setOpen] = useState(false);
   const [message, setMessage] = useState(defaultMessage);
+  const [channel, setChannel] = useState<"SMS" | "WHATSAPP" | "BOTH">("SMS");
   const [preview, setPreview] = useState<SmsRecipientPreviewPayload | null>(null);
   const [previewing, setPreviewing] = useState(false);
   const [sending, setSending] = useState(false);
@@ -47,13 +48,15 @@ export function AdminBulkSmsAction({
   const handlePreview = async () => {
     setPreviewing(true);
     try {
-      const payload = await api.sms.previewRecipients({ audience, limit: 30 });
+      const payload = channel === "WHATSAPP"
+        ? await api.whatsapp.previewRecipients({ audience, limit: 30 })
+        : await api.sms.previewRecipients({ audience, limit: 30 });
       setPreview(payload);
       if (payload.totalRecipients === 0) {
         toast.warning("Nenhum contacto válido encontrado para este envio.");
       }
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Falha ao validar destinatários SMS.");
+      toast.error(error instanceof Error ? error.message : "Falha ao validar destinatários.");
     } finally {
       setPreviewing(false);
     }
@@ -61,23 +64,35 @@ export function AdminBulkSmsAction({
 
   const handleSend = async () => {
     if (!message.trim()) {
-      toast.error("Escreve o texto da SMS antes de enviar.");
+      toast.error("Escreve o texto da mensagem antes de enviar.");
       return;
     }
 
     setSending(true);
     try {
-      const payload = await api.sms.sendCampaign({
-        title,
-        sender: "UOR CONNECT",
-        message,
-        audience,
-      });
+      const results: string[] = [];
+      if (channel === "SMS" || channel === "BOTH") {
+        const payload = await api.sms.sendCampaign({
+          title,
+          sender: "UOR CONNECT",
+          message,
+          audience,
+        });
+        results.push(`SMS: ${payload.successCount}/${payload.totalRecipients}`);
+      }
+      if (channel === "WHATSAPP" || channel === "BOTH") {
+        const payload = await api.whatsapp.sendCampaign({
+          title,
+          message,
+          audience,
+        });
+        results.push(`WhatsApp: ${payload.successCount}/${payload.totalRecipients}`);
+      }
       setPreview(null);
       setOpen(false);
-      toast.success(`SMS processada: ${payload.successCount} enviada(s), ${payload.failedCount} falhada(s).`);
+      toast.success(`Envio processado. ${results.join(" · ")}`);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Falha ao enviar SMS.");
+      toast.error(error instanceof Error ? error.message : "Falha ao enviar comunicação.");
     } finally {
       setSending(false);
     }
@@ -100,6 +115,31 @@ export function AdminBulkSmsAction({
         <div className="space-y-4">
           <Textarea value={message} onChange={(event) => setMessage(event.target.value)} className="min-h-32" />
 
+          <div className="grid gap-2 rounded-xl border border-border/70 bg-muted/20 p-3 sm:grid-cols-3">
+            {([
+              { id: "SMS", label: "SMS", icon: Smartphone },
+              { id: "WHATSAPP", label: "WhatsApp", icon: MessageCircle },
+              { id: "BOTH", label: "Ambos", icon: Send },
+            ] as const).map((item) => {
+              const Icon = item.icon;
+              return (
+                <Button
+                  key={item.id}
+                  type="button"
+                  variant={channel === item.id ? "default" : "outline"}
+                  className="justify-start rounded-xl"
+                  onClick={() => {
+                    setChannel(item.id);
+                    setPreview(null);
+                  }}
+                >
+                  <Icon className="mr-2 h-4 w-4" />
+                  {item.label}
+                </Button>
+              );
+            })}
+          </div>
+
           <div className="rounded-xl border border-border/70 bg-muted/20 p-3">
             <div className="flex flex-wrap gap-2">
               <Badge variant="outline">{previewLabel}</Badge>
@@ -120,7 +160,7 @@ export function AdminBulkSmsAction({
           </Button>
           <Button onClick={handleSend} disabled={sending || preview?.totalRecipients === 0}>
             {sending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
-            Enviar SMS
+            {channel === "BOTH" ? "Enviar ambos" : channel === "WHATSAPP" ? "Enviar WhatsApp" : "Enviar SMS"}
           </Button>
         </DialogFooter>
       </DialogContent>

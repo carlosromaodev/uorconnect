@@ -6,10 +6,6 @@ import { toast } from "@/components/ui/sonner";
 import { FeaturedCourseCard } from "@/components/courses/FeaturedCourseCard";
 import { api, type Course, type StudentEnrollmentListItem, getToken, isAuthError, setToken } from "@/lib/api";
 
-function withAlpha(color: string, alpha = "22") {
-  return `${color}${alpha}`;
-}
-
 function openExternal(url?: string | null, emptyMessage = "Link não disponível.") {
   if (!url) {
     toast.error(emptyMessage);
@@ -19,10 +15,29 @@ function openExternal(url?: string | null, emptyMessage = "Link não disponível
   window.open(url, "_blank", "noopener,noreferrer");
 }
 
+function hasCourseEngagement(course: Course) {
+  return course.likesCount > 0 || course.studentCount > 0;
+}
+
+function getCourseEngagementScore(course: Course) {
+  return course.studentCount + course.likesCount;
+}
+
+function compareNewestCourse(left: Course, right: Course) {
+  const rightTime = new Date(right.createdAt).getTime();
+  const leftTime = new Date(left.createdAt).getTime();
+  const safeRightTime = Number.isFinite(rightTime) ? rightTime : 0;
+  const safeLeftTime = Number.isFinite(leftTime) ? leftTime : 0;
+
+  if (safeRightTime !== safeLeftTime) return safeRightTime - safeLeftTime;
+  return right.id - left.id;
+}
+
 export default function Cursos() {
   const navigate = useNavigate();
   const [courses, setCourses] = useState<Course[]>([]);
   const [topCourses, setTopCourses] = useState<Course[]>([]);
+  const [topMode, setTopMode] = useState<"featured" | "voted">("featured");
   const [likedCourseIds, setLikedCourseIds] = useState<Set<number>>(new Set());
   const [enrolledCourseIds, setEnrolledCourseIds] = useState<Set<number>>(new Set());
   const [enrollmentsByCourse, setEnrollmentsByCourse] = useState<Record<number, StudentEnrollmentListItem>>({});
@@ -123,14 +138,24 @@ export default function Cursos() {
     }
   };
 
-  const handleCommunity = (course: Course) => {
-    if (!enrolledCourseIds.has(course.id)) {
-      toast.warning("Precisas estar inscrito no curso antes de entrar na comunidade.");
-      return;
-    }
+  const topCourseSource = courses.length ? courses : topCourses;
+  const visibleTopCourses = [...topCourseSource]
+    .sort((left, right) => {
+      if (topMode === "featured") return compareNewestCourse(left, right);
 
-    openExternal(course.communityUrl, "A comunidade deste curso ainda não foi configurada.");
-  };
+      const leftEngaged = hasCourseEngagement(left);
+      const rightEngaged = hasCourseEngagement(right);
+      if (leftEngaged !== rightEngaged) return leftEngaged ? -1 : 1;
+
+      const likesDiff = right.likesCount - left.likesCount;
+      if (likesDiff !== 0) return likesDiff;
+
+      const scoreDiff = getCourseEngagementScore(right) - getCourseEngagementScore(left);
+      if (scoreDiff !== 0) return scoreDiff;
+
+      return compareNewestCourse(left, right);
+    })
+    .slice(0, 6);
 
   return (
     <div className="min-h-screen py-12 md:py-20">
@@ -142,7 +167,7 @@ export default function Cursos() {
           </div>
           <h1 className="text-4xl md:text-5xl font-heading font-bold mb-2">Cursos</h1>
           <p className="max-w-2xl text-sm md:text-base text-muted-foreground">
-            Inscreve-te nos cursos geridos por empresas parceiras e acede à comunidade.
+            Inscreve-te nos cursos geridos por empresas parceiras e acompanha a tua inscrição com acesso rápido ao recibo.
           </p>
         </motion.div>
 
@@ -152,45 +177,71 @@ export default function Cursos() {
           </div>
         ) : (
           <>
-            <section className="space-y-5">
-              <h2 className="text-xl md:text-2xl font-heading font-bold flex items-center gap-2.5">
-                <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[hsl(var(--area-negocio))]/10">
-                  <Users className="h-4 w-4 text-[hsl(var(--area-negocio))]" />
+            {visibleTopCourses.length > 0 ? (
+              <section className="space-y-5">
+                <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+                  <div>
+                    <h2 className="flex items-center gap-2.5 font-heading text-xl font-bold md:text-2xl">
+                      <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[hsl(var(--area-negocio))]/10">
+                        <Users className="h-4 w-4 text-[hsl(var(--area-negocio))]" />
+                      </div>
+                      Top Cursos
+                    </h2>
+                    <p className="mt-2 max-w-xl text-sm text-muted-foreground">
+                      Os cursos mais procurados pela comunidade.
+                    </p>
+                  </div>
+
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setTopMode("featured")}
+                      className={`h-9 rounded-lg px-3 text-sm font-semibold transition-colors ${topMode === "featured" ? "bg-primary text-primary-foreground" : "border border-border bg-white text-foreground hover:bg-muted/40"}`}
+                    >
+                      Destaques
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setTopMode("voted")}
+                      className={`h-9 rounded-lg px-3 text-sm font-semibold transition-colors ${topMode === "voted" ? "bg-primary text-primary-foreground" : "border border-border bg-white text-foreground hover:bg-muted/40"}`}
+                    >
+                      Mais votados agora
+                    </button>
+                  </div>
                 </div>
-                Top Cursos
-              </h2>
-              {topCourses.length === 0 ? (
-                <div className="rounded-2xl border border-dashed border-primary/30 bg-primary/5 p-8 text-base text-muted-foreground">
-                  Ainda não existem cursos em destaque.
-                </div>
-              ) : (
-                <div className="flex gap-4 overflow-x-auto pb-2 scrollbar-hide snap-x snap-mandatory">
-                  {topCourses.map((course, index) => (
+
+                <div className="flex gap-5 overflow-x-auto pb-2 scrollbar-hide snap-x snap-mandatory">
+                  {visibleTopCourses.map((course, index) => (
                     <motion.div
                       key={course.id}
-                      initial={{ opacity: 0, scale: 0.96, y: 10 }}
+                      initial={{ opacity: 0, scale: 0.96, y: 16 }}
                       whileInView={{ opacity: 1, scale: 1, y: 0 }}
                       viewport={{ once: true }}
-                      transition={{ delay: index * 0.05, duration: 0.25 }}
-                      className="snap-start w-[82vw] max-w-[300px] sm:w-[300px] sm:max-w-[300px] lg:w-[330px] lg:max-w-[330px]"
+                      transition={{ delay: index * 0.05, type: "spring", stiffness: 220, damping: 24 }}
+                      className="h-full snap-start w-[88vw] max-w-[340px] sm:w-[350px] sm:max-w-[350px] lg:w-[380px] lg:max-w-[380px]"
                     >
-                      <div
-                        className="h-full rounded-2xl border p-4 md:p-5"
-                        style={{
-                          borderColor: withAlpha(course.courseColor, "44"),
-                          background: `linear-gradient(135deg, ${withAlpha(course.accentColor)}, ${withAlpha(course.accentColorSecondary)})`
+                      <FeaturedCourseCard
+                        course={course}
+                        liked={likedCourseIds.has(course.id)}
+                        enrolled={enrolledCourseIds.has(course.id)}
+                        enrollmentStatusLabel={enrollmentsByCourse[course.id]?.statusLabel}
+                        className="h-full"
+                        onEnroll={() => {
+                          const enrollment = enrollmentsByCourse[course.id];
+                          if (enrollment?.receiptPath) {
+                            navigate(enrollment.receiptPath);
+                            return;
+                          }
+                          void handleEnroll(course);
                         }}
-                      >
-                        <p className="mb-2 text-xs font-bold md:text-sm" style={{ color: course.courseColor }}>Top #{index + 1}</p>
-                        <p className="safe-break line-clamp-2 font-heading text-base font-bold md:text-lg">{course.name}</p>
-                        <p className="mt-2 text-sm text-muted-foreground">{course.studentCount} inscritos</p>
-                        <p className="mt-1 text-sm" style={{ color: course.courseColor }}>{course.likesCount} curtidas</p>
-                      </div>
+                        onLike={() => void handleLike(course.id)}
+                        onOpenExternal={openExternal}
+                      />
                     </motion.div>
                   ))}
                 </div>
-              )}
-            </section>
+              </section>
+            ) : null}
 
             <section className="space-y-5">
               <h2 className="text-xl md:text-2xl font-heading font-bold flex items-center gap-2.5">
@@ -234,7 +285,6 @@ export default function Cursos() {
 
                           void handleEnroll(course);
                         }}
-                        onCommunity={() => handleCommunity(course)}
                         onLike={() => void handleLike(course.id)}
                         onOpenExternal={openExternal}
                       />

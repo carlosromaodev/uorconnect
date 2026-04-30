@@ -22,7 +22,7 @@ it("renderiza a variante de negócio com os campos exclusivos esperados", async 
 
   expect(screen.getByLabelText("Entidade responsável")).toBeInTheDocument();
   expect(screen.getByRole("combobox", { name: /Estágio do negócio/i })).toBeInTheDocument();
-  expect(screen.getByText("Tudo dentro de limites consistentes")).toBeInTheDocument();
+  expect(screen.getByText("Dados da candidatura")).toBeInTheDocument();
   expect(screen.queryByLabelText("Docente orientador")).not.toBeInTheDocument();
   expect(screen.queryByRole("combobox", { name: /Categoria do produto/i })).not.toBeInTheDocument();
   expect(screen.queryByLabelText("Email")).not.toBeInTheDocument();

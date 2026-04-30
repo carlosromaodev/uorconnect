@@ -1,6 +1,6 @@
 import { Suspense, lazy, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
-import { AlertTriangle, Loader2, Shield } from "lucide-react";
+import { AlertTriangle, Shield } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { api, getToken, isAuthError, isForbiddenError, setToken, type AdminAccessProfile } from "@/lib/api";
@@ -9,14 +9,14 @@ const AdminWorkspace = lazy(() => import("@/features/admin/AdminWorkspace"));
 
 function AdminAccessFallback({ message = "A preparar painel administrativo..." }: { message?: string }) {
   return (
-    <div className="min-h-screen bg-background py-12 md:py-16">
-      <div className="container mx-auto px-4">
-        <Card className="mx-auto max-w-2xl border-border/70">
-          <CardContent className="flex items-center gap-3 p-6 text-sm text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin text-primary" />
-            {message}
-          </CardContent>
-        </Card>
+    <div className="min-h-screen bg-background px-4 pt-6">
+      <div className="mx-auto w-full max-w-5xl">
+        <div className="site-loading-bar" role="status" aria-label={message}>
+          <span className="site-loading-bar__track">
+            <span className="site-loading-bar__progress" />
+          </span>
+          <span className="site-loading-bar__label">{message}</span>
+        </div>
       </div>
     </div>
   );

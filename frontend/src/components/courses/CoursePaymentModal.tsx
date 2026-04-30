@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Loader2, MessageSquareMore, Paperclip, ShieldCheck, Wallet } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -47,15 +47,41 @@ export function CoursePaymentModal({
   const [paymentProof, setPaymentProof] = useState("");
   const [paymentProofName, setPaymentProofName] = useState("");
   const [error, setError] = useState<string | null>(null);
+  const latestPaymentProofRef = useRef("");
+  const selectedPaymentProofFileRef = useRef<File | null>(null);
 
   useEffect(() => {
     if (!open) {
       setPaymentPhone("");
       setPaymentProof("");
       setPaymentProofName("");
+      latestPaymentProofRef.current = "";
+      selectedPaymentProofFileRef.current = null;
       setError(null);
     }
   }, [open]);
+
+  const setPaymentProofValue = (value: string) => {
+    latestPaymentProofRef.current = value;
+    setPaymentProof(value);
+  };
+
+  const resolvePaymentProofForSubmit = async () => {
+    const currentProof = paymentProof || latestPaymentProofRef.current;
+    if (currentProof) return currentProof;
+
+    const selectedFile = selectedPaymentProofFileRef.current;
+    if (!selectedFile) return "";
+
+    const dataUrl = await readFileAsDataUrl(selectedFile);
+    if (!dataUrl.startsWith("data:")) {
+      throw new Error("O ficheiro selecionado não gerou um comprovativo válido.");
+    }
+
+    setPaymentProofValue(dataUrl);
+    setPaymentProofName(selectedFile.name);
+    return dataUrl;
+  };
 
   if (!course) return null;
 
@@ -128,12 +154,23 @@ export function CoursePaymentModal({
                   accept="application/pdf,image/png,image/jpeg,image/webp"
                   className="hidden"
                   onChange={async (event) => {
+                    const input = event.currentTarget;
                     const file = event.target.files?.[0];
                     if (!file) return;
-                    const dataUrl = await readFileAsDataUrl(file);
-                    setPaymentProof(dataUrl);
-                    setPaymentProofName(file.name);
-                    setError(null);
+                    selectedPaymentProofFileRef.current = file;
+                    try {
+                      const dataUrl = await readFileAsDataUrl(file);
+                      if (!dataUrl.startsWith("data:")) {
+                        throw new Error("O ficheiro selecionado não gerou um comprovativo válido.");
+                      }
+                      setPaymentProofValue(dataUrl);
+                      setPaymentProofName(file.name);
+                      setError(null);
+                    } catch (error) {
+                      setError(error instanceof Error ? error.message : "Não foi possível ler o comprovativo.");
+                    } finally {
+                      input.value = "";
+                    }
                   }}
                 />
               </label>
@@ -154,7 +191,17 @@ export function CoursePaymentModal({
                     return;
                   }
 
-                  if (!paymentProof) {
+                  let resolvedPaymentProof = paymentProof || latestPaymentProofRef.current;
+                  if (!resolvedPaymentProof && selectedPaymentProofFileRef.current) {
+                    try {
+                      resolvedPaymentProof = await resolvePaymentProofForSubmit();
+                    } catch (error) {
+                      setError(error instanceof Error ? error.message : "Não foi possível ler o comprovativo.");
+                      return;
+                    }
+                  }
+
+                  if (!resolvedPaymentProof) {
                     setError("Anexa o comprovativo do pagamento antes de continuar.");
                     return;
                   }
@@ -162,7 +209,7 @@ export function CoursePaymentModal({
                   setError(null);
                   await onSubmit({
                     paymentPhone: `${PHONE_PREFIX}${paymentPhone}`,
-                    paymentProof,
+                    paymentProof: resolvedPaymentProof,
                   });
                 }}
               >

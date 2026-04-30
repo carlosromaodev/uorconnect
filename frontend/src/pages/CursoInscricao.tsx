@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import { z } from "zod";
@@ -146,6 +146,10 @@ export default function CursoInscricao() {
   const [form, setForm] = useState<EnrollmentFormState>(emptyFormState);
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [, setTouchedFields] = useState<Partial<Record<EnrollmentFieldKey, boolean>>>({});
+  const [proofReading, setProofReading] = useState(false);
+  const [isDraggingProof, setIsDraggingProof] = useState(false);
+  const latestPaymentProofRef = useRef("");
+  const selectedPaymentProofFileRef = useRef<File | null>(null);
 
   useEffect(() => {
     const previousTitle = document.title;
@@ -183,6 +187,8 @@ export default function CursoInscricao() {
           nextForm.paymentProof = toAbsoluteAssetUrl(currentEnrollment.paymentProofPath) ?? "";
           nextForm.paymentProofName = "Comprovativo atual";
         }
+        latestPaymentProofRef.current = nextForm.paymentProof;
+        selectedPaymentProofFileRef.current = null;
         setForm(nextForm);
         setTouchedFields({});
         setErrors({});
@@ -230,26 +236,45 @@ export default function CursoInscricao() {
     return parsed.error.issues.find((issue) => String(issue.path[0] ?? "form") === key)?.message ?? null;
   };
 
-  const updateField = <K extends EnrollmentFieldKey>(key: K, value: EnrollmentFormState[K]) => {
-    const nextForm = { ...form, [key]: value };
-    setForm(nextForm);
-    setTouchedFields((current) => ({ ...current, [key]: true }));
+  const applyFieldPatch = (patch: Partial<EnrollmentFormState>, touchedKeys: EnrollmentFieldKey[]) => {
+    if (Object.prototype.hasOwnProperty.call(patch, "paymentProof")) {
+      latestPaymentProofRef.current = patch.paymentProof ?? "";
+    }
 
-    const fieldError = validateField(key, nextForm);
-    setErrors((current) => {
-      if (!fieldError) {
-        if (!current[key]) return current;
-        const next = { ...current };
-        delete next[key];
-        return next;
+    setTouchedFields((current) => {
+      const next = { ...current };
+      for (const key of touchedKeys) {
+        next[key] = true;
       }
+      return next;
+    });
 
-      return { ...current, [key]: fieldError };
+    setForm((currentForm) => {
+      const nextForm = { ...currentForm, ...patch };
+
+      setErrors((current) => {
+        const next = { ...current };
+        for (const key of touchedKeys) {
+          const fieldError = validateField(key, nextForm);
+          if (fieldError) {
+            next[key] = fieldError;
+          } else {
+            delete next[key];
+          }
+        }
+        return next;
+      });
+
+      return nextForm;
     });
   };
 
-  const validate = () => {
-    const parsed = buildEnrollmentSchema(Boolean(course?.isPaid)).safeParse(form);
+  const updateField = <K extends EnrollmentFieldKey>(key: K, value: EnrollmentFormState[K]) => {
+    applyFieldPatch({ [key]: value }, [key]);
+  };
+
+  const validate = (nextForm: EnrollmentFormState = { ...form, paymentProof: form.paymentProof || latestPaymentProofRef.current }) => {
+    const parsed = buildEnrollmentSchema(Boolean(course?.isPaid)).safeParse(nextForm);
 
     if (parsed.success) {
       setErrors({});
@@ -268,36 +293,101 @@ export default function CursoInscricao() {
 
   const handleProofSelected = async (file?: File | null) => {
     if (!file) {
-      updateField("paymentProof", "");
-      updateField("paymentProofName", "");
+      selectedPaymentProofFileRef.current = null;
+      applyFieldPatch({ paymentProof: "", paymentProofName: "" }, ["paymentProof", "paymentProofName"]);
       return;
     }
 
     if (file.size > 5 * 1024 * 1024) {
+      selectedPaymentProofFileRef.current = null;
       toast.error("O comprovativo deve ter no máximo 5 MB.");
       return;
     }
 
+    selectedPaymentProofFileRef.current = file;
+
     try {
+      setProofReading(true);
       const dataUrl = await readFileAsDataUrl(file);
-      updateField("paymentProof", dataUrl);
-      updateField("paymentProofName", file.name);
+      if (!dataUrl.startsWith("data:")) {
+        throw new Error("O ficheiro selecionado não gerou um comprovativo válido.");
+      }
+      applyFieldPatch({ paymentProof: dataUrl, paymentProofName: file.name }, ["paymentProof", "paymentProofName"]);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Não foi possível carregar o comprovativo.");
+    } finally {
+      setProofReading(false);
     }
   };
 
+  const resolvePaymentProofForSubmit = async () => {
+    const currentProof = form.paymentProof || latestPaymentProofRef.current;
+    if (currentProof) return currentProof;
+
+    const selectedFile = selectedPaymentProofFileRef.current;
+    if (!selectedFile) return "";
+
+    try {
+      setProofReading(true);
+      const dataUrl = await readFileAsDataUrl(selectedFile);
+      if (!dataUrl.startsWith("data:")) {
+        throw new Error("O ficheiro selecionado não gerou um comprovativo válido.");
+      }
+      applyFieldPatch(
+        { paymentProof: dataUrl, paymentProofName: selectedFile.name },
+        ["paymentProof", "paymentProofName"],
+      );
+      return dataUrl;
+    } finally {
+      setProofReading(false);
+    }
+  };
+
+  const handleProofDrop: React.DragEventHandler<HTMLLabelElement> = async (event) => {
+    event.preventDefault();
+    setIsDraggingProof(false);
+    const file = event.dataTransfer?.files?.[0];
+    if (file) {
+      await handleProofSelected(file);
+    }
+  };
+
+  const handleProofDragOver: React.DragEventHandler<HTMLLabelElement> = (event) => {
+    event.preventDefault();
+    setIsDraggingProof(true);
+  };
+
+  const handleProofDragLeave: React.DragEventHandler<HTMLLabelElement> = () => setIsDraggingProof(false);
+
   const handleSubmit = async () => {
-    if (!course || !validate()) return;
+    if (proofReading) {
+      toast.info("Aguarda o carregamento do comprovativo terminar.");
+      return;
+    }
+
+    if (!course) return;
+
+    let resolvedPaymentProof = form.paymentProof || latestPaymentProofRef.current;
+    if (course.isPaid && !resolvedPaymentProof && selectedPaymentProofFileRef.current) {
+      try {
+        resolvedPaymentProof = await resolvePaymentProofForSubmit();
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Não foi possível carregar o comprovativo.");
+        return;
+      }
+    }
+
+    const submissionForm = { ...form, paymentProof: resolvedPaymentProof };
+    if (!validate(submissionForm)) return;
 
     try {
       setSubmitting(true);
-      const normalizedStudentCourse = getOfficialCourseFieldValue(form.studentCourse);
+      const normalizedStudentCourse = getOfficialCourseFieldValue(submissionForm.studentCourse);
 
       const syncedStudent = await syncStudentProfileIfNeeded(student, {
-        name: form.fullName,
+        name: submissionForm.fullName,
         course: normalizedStudentCourse || undefined,
-        phone: formatPhone(form.phoneDigits),
+        phone: formatPhone(submissionForm.phoneDigits),
       });
       setStudent(syncedStudent ?? student);
 
@@ -306,8 +396,8 @@ export default function CursoInscricao() {
         course.isPaid
           ? {
               paymentConfirmed: true,
-              paymentPhone: formatPhone(form.paymentPhoneDigits),
-              paymentProof: form.paymentProof,
+              paymentPhone: formatPhone(submissionForm.paymentPhoneDigits),
+              paymentProof: submissionForm.paymentProof,
             }
           : undefined
       );
@@ -473,10 +563,17 @@ export default function CursoInscricao() {
                     {errors.paymentPhoneDigits ? <p className="field-error-msg"><span className="inline-block h-3 w-3 rounded-full bg-destructive/20">·</span>{errors.paymentPhoneDigits}</p> : null}
                   </div>
 
-                  <label className="grid cursor-pointer gap-4 rounded-3xl border border-dashed border-primary/30 bg-primary/[0.03] p-5 transition-colors hover:border-primary/50">
+                  <label
+                    className={`grid cursor-pointer gap-4 rounded-[18px] border border-dashed p-5 transition-all ${
+                      isDraggingProof ? "border-primary bg-primary/10 shadow-[0_18px_36px_rgba(255,94,0,0.14)]" : "border-primary/30 bg-[linear-gradient(135deg,rgba(255,94,0,0.05),rgba(0,184,148,0.06))] hover:border-primary/50 hover:bg-primary/5"
+                    }`}
+                    onDragOver={handleProofDragOver}
+                    onDragLeave={handleProofDragLeave}
+                    onDrop={handleProofDrop}
+                  >
                     <div className="min-w-0">
                       <p className="text-sm font-semibold">{form.paymentProofName || "Selecionar PDF ou imagem do comprovativo"}</p>
-                      <p className="mt-1 text-xs leading-6 text-muted-foreground">Aceitamos PDF, PNG, JPG e WEBP (até 5 MB).</p>
+                      <p className="mt-1 text-xs leading-6 text-muted-foreground">PDF, PNG, JPG ou WEBP.</p>
                     </div>
                     <div className="inline-flex h-11 w-fit items-center justify-center rounded-xl bg-primary/10 px-4 text-sm font-semibold text-primary">
                       <Paperclip className="mr-2 h-4 w-4" />
@@ -486,14 +583,32 @@ export default function CursoInscricao() {
                       type="file"
                       accept="application/pdf,image/png,image/jpeg,image/webp"
                       className="hidden"
-                      onChange={(event) => void handleProofSelected(event.target.files?.[0])}
+                      onChange={(event) => {
+                        const input = event.currentTarget;
+                        const file = input.files?.[0] ?? null;
+                        void handleProofSelected(file).finally(() => {
+                          input.value = "";
+                        });
+                      }}
                     />
                   </label>
                   {errors.paymentProof ? <p className="text-xs font-medium text-destructive">{errors.paymentProof}</p> : null}
+                  {proofReading ? (
+                    <p className="text-xs font-medium text-primary">A carregar o comprovativo selecionado...</p>
+                  ) : form.paymentProof ? (
+                    <p className="text-xs font-medium text-emerald-600">Comprovativo carregado e pronto para envio.</p>
+                  ) : null}
+
+                  {form.paymentProof ? (
+                    <div className="flex justify-end">
+                      <Button type="button" variant="ghost" size="sm" onClick={() => void handleProofSelected(null)}>
+                        Remover ficheiro
+                      </Button>
+                    </div>
+                  ) : null}
 
                   <ResponsiveDocumentViewer
                     title="Comprovativo anexado"
-                    description="Pré-visualização do comprovativo anexado."
                     source={proofSource}
                     fileName={form.paymentProofName || (existingEnrollment?.paymentProofPath ? "Comprovativo atual" : null)}
                   />
@@ -569,9 +684,9 @@ export default function CursoInscricao() {
 
             <div className="surface-card p-6">
               <div className="flex flex-col gap-3">
-                <Button onClick={() => void handleSubmit()} disabled={submitting} className="h-11 rounded-xl">
-                  {submitting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
-                  {existingEnrollment ? "Atualizar e abrir recibo" : "Confirmar e abrir recibo"}
+                <Button onClick={() => void handleSubmit()} disabled={submitting || proofReading} className="h-11 rounded-xl">
+                  {submitting || proofReading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
+                  {proofReading ? "A carregar comprovativo" : existingEnrollment ? "Atualizar e abrir recibo" : "Confirmar e abrir recibo"}
                 </Button>
                 {existingEnrollment ? (
                   <Button asChild variant="outline" className="h-11 rounded-xl">

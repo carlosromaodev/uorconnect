@@ -1,5 +1,5 @@
 import { type FormEvent, useEffect, useState } from "react";
-import { Award, Ban, Download, Eye, Loader2, RefreshCw, Search, Send, ShieldCheck } from "lucide-react";
+import { Award, Ban, Download, Eye, Loader2, MessageCircle, RefreshCw, Search, Send, ShieldCheck } from "lucide-react";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -15,6 +15,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { toast } from "@/components/ui/sonner";
@@ -39,6 +40,11 @@ function parseStudentNumbers(value: string) {
   return Array.from(new Set(value.split(/[\s,;]+/).map((item) => item.replace(/\D/g, "").trim()).filter(Boolean)));
 }
 
+function buildCertificateSmsMessage(certificate: CertificateItem) {
+  const recipientName = certificate.recipientName || "estudante";
+  return `Olá ${recipientName}, o teu certificado "${certificate.title}" já está disponível no UOR Connect. Valida e baixa aqui: ${certificate.validationUrl}`;
+}
+
 export default function AdminCertificatesTab() {
   const [certificates, setCertificates] = useState<PagedResult<CertificateItem> | null>(null);
   const [courses, setCourses] = useState<Course[]>([]);
@@ -48,6 +54,8 @@ export default function AdminCertificatesTab() {
   const [downloadingId, setDownloadingId] = useState<number | null>(null);
   const [revokingId, setRevokingId] = useState<number | null>(null);
   const [studentNumber, setStudentNumber] = useState("");
+  const [notifyStudentBySms, setNotifyStudentBySms] = useState(true);
+  const [notifyStudentByWhatsApp, setNotifyStudentByWhatsApp] = useState(false);
   const [title, setTitle] = useState("Certificado de Participação");
   const [type, setType] = useState("PARTICIPATION");
   const [search, setSearch] = useState("");
@@ -94,12 +102,47 @@ export default function AdminCertificatesTab() {
 
     setIssuing(true);
     try {
-      await api.certificates.issue({
-        studentNumber,
+      const normalizedStudentNumber = studentNumber.replace(/\D/g, "").trim();
+      const certificate = await api.certificates.issue({
+        studentNumber: normalizedStudentNumber,
         title,
         type,
       });
-      toast.success("Certificado emitido.");
+
+      if (notifyStudentBySms || notifyStudentByWhatsApp) {
+        const deliveryResults: string[] = [];
+        try {
+          const audience = {
+            type: "SELECTED_STUDENTS" as const,
+            selectedStudentNumbers: [certificate.recipientNumber ?? normalizedStudentNumber],
+          };
+          if (notifyStudentBySms) {
+            const result = await api.sms.sendCampaign({
+              title: `Certificado emitido - ${certificate.recipientNumber ?? normalizedStudentNumber}`,
+              sender: "UOR CONNECT",
+              message: buildCertificateSmsMessage(certificate),
+              audience,
+            });
+            deliveryResults.push(`SMS ${result.successCount}/${result.totalRecipients}`);
+          }
+          if (notifyStudentByWhatsApp) {
+            const result = await api.whatsapp.sendCampaign({
+              title: `Certificado emitido - ${certificate.recipientNumber ?? normalizedStudentNumber}`,
+              message: buildCertificateSmsMessage(certificate),
+              audience,
+            });
+            deliveryResults.push(`WhatsApp ${result.successCount}/${result.totalRecipients}`);
+          }
+          toast.success(`Certificado emitido e aviso enviado: ${deliveryResults.join(" · ")}.`);
+        } catch (deliveryError) {
+          toast.warning(deliveryError instanceof Error
+            ? `Certificado emitido, mas o aviso falhou: ${deliveryError.message}`
+            : "Certificado emitido, mas não foi possível enviar o aviso.");
+        }
+      } else {
+        toast.success("Certificado emitido.");
+      }
+
       setStudentNumber("");
       await load(1, search.trim(), statusFilter, typeFilter);
     } catch (error) {
@@ -196,6 +239,27 @@ export default function AdminCertificatesTab() {
                 Destinatário: {studentNumber.trim() ? `Estudante ${studentNumber.trim()}` : "número ainda não informado"}
               </p>
               <p className="mt-1 font-mono text-xs text-muted-foreground">Tipo: {type || "PARTICIPATION"}</p>
+            </div>
+            <div className="flex flex-col gap-3 rounded-[16px] border border-border/70 bg-background p-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="text-sm font-semibold">Enviar link por SMS</p>
+                <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                  Depois da emissão, o estudante recebe uma mensagem com o link público de validação e download.
+                </p>
+              </div>
+              <Switch checked={notifyStudentBySms} onCheckedChange={setNotifyStudentBySms} />
+            </div>
+            <div className="flex flex-col gap-3 rounded-[16px] border border-emerald-500/20 bg-emerald-500/5 p-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p className="flex items-center gap-2 text-sm font-semibold">
+                  <MessageCircle className="h-4 w-4 text-emerald-700" />
+                  Enviar link por WhatsApp
+                </p>
+                <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                  Usa a instância padrão da Evolution API para enviar a mesma validação.
+                </p>
+              </div>
+              <Switch checked={notifyStudentByWhatsApp} onCheckedChange={setNotifyStudentByWhatsApp} />
             </div>
             <Button className="w-fit rounded-xl" onClick={() => void handleIssue()} disabled={issuing}>
               {issuing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}

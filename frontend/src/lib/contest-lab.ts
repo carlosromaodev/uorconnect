@@ -4,6 +4,7 @@ import { challengeContestConfig, challengeItems } from "@/data/challenges";
 const CONTEST_PREFIX = "/desafios";
 const CONTEST_LAB_HOST = "laboratorio.uorconnect.space";
 const SAAS_SHOWCASE_HOST = "agendar.uorconnect.space";
+const COMMUNITY_APP_HOST = "app.uorconnect.space";
 const PRIMARY_PORTAL_HOST = "uorconnect.space";
 const CONTEST_LAB_BRAND_ASSET = "/logouorlabratoriowite.png";
 const DEDICATED_CONTEST_RUNTIME = (import.meta.env.VITE_APP_RUNTIME as string | undefined)?.trim().toLowerCase() === "laboratorio";
@@ -79,6 +80,28 @@ export function isSaasShowcaseHost(hostname = getBrowserLocation()?.hostname ?? 
   return hostname.trim().toLowerCase() === SAAS_SHOWCASE_HOST;
 }
 
+export function isCommunityAppHost(hostname = getBrowserLocation()?.hostname ?? "") {
+  const h = hostname.trim().toLowerCase();
+  return h === COMMUNITY_APP_HOST;
+}
+
+export function getCommunityAppHref(path = "/", location = getBrowserLocation()) {
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+
+  if (!location) {
+    return `https://${COMMUNITY_APP_HOST}${normalizedPath}`;
+  }
+
+  const h = location.hostname.trim().toLowerCase();
+  const localhost = h === "localhost" || h === "127.0.0.1";
+
+  if (localhost) {
+    return `${location.protocol}//${location.hostname}:8082${normalizedPath}`;
+  }
+
+  return `https://${COMMUNITY_APP_HOST}${normalizedPath}`;
+}
+
 function getContestAwarePathname(pathname = getBrowserLocation()?.pathname ?? "/") {
   return stripDedicatedContestBasePath(pathname);
 }
@@ -147,7 +170,7 @@ export function getContestBrandAsset(
   hostname = getBrowserLocation()?.hostname ?? "",
   pathname = getContestAwarePathname(),
 ) {
-  return isContestLabHost(hostname) || isContestRoutePath(pathname, hostname) ? CONTEST_LAB_BRAND_ASSET : "/logoworconnect.png";
+  return isContestLabHost(hostname) || isContestRoutePath(pathname, hostname) ? CONTEST_LAB_BRAND_ASSET : "/uorconnect-logo-navbar.png";
 }
 
 export function getContestBrandName(

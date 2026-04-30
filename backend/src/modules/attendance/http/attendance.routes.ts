@@ -8,6 +8,7 @@ import { adminGuard } from "../../auth/http/admin.middleware";
 import { normalizeStudentProfile } from "../../auth/domain/student-format";
 import { recordAdminAudit } from "../../audit/application/audit.service";
 import { buildValidationQrUrl, buildValidationUrl, extractValidationToken } from "../../validation/application/validation-links";
+import { sendWhatsAppAutomationEvent } from "../../whatsapp/http/whatsapp.routes";
 
 const DEFAULT_EVENT_KEY = "main-event";
 const DEFAULT_EVENT_LABEL = "Evento principal UOR Connect";
@@ -343,6 +344,28 @@ export async function attendanceRoutes(app: FastifyInstance, opts: { env: Env })
             eventLabel,
           },
         });
+
+        try {
+          const student = await prisma.student.findUnique({
+            where: { id: credential.studentId ?? 0 },
+            select: { phone: true },
+          });
+
+          await sendWhatsAppAutomationEvent(opts.env, "ATTENDANCE_CHECKED_IN", {
+            phone: student?.phone ?? null,
+            studentId: credential.studentId,
+            studentNumber: credential.studentNumber,
+            recipientName: credential.studentName,
+            recipientCourse: credential.studentCourse,
+            values: {
+              evento: eventLabel,
+              detalhe: body.notes?.trim() || "O teu check-in ficou registado com sucesso.",
+              link: buildValidationUrl(opts.env, credential.token),
+            },
+          });
+        } catch (error) {
+          request.log.warn({ err: error, checkInId: checkIn.id }, "automatic attendance WhatsApp notification failed");
+        }
 
         return {
           checkIn: serializeCheckIn(checkIn),

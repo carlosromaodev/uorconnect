@@ -6,11 +6,13 @@ services:
       POSTGRES_DB: ${POSTGRES_DB:-uorconnect}
       POSTGRES_USER: ${POSTGRES_USER:-uorconnect}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      EVOLUTION_POSTGRES_DB: ${EVOLUTION_POSTGRES_DB:-evolution}
       PGDATA: /var/lib/postgresql/data/pgdata
     command: ["postgres", "-c", "config_file=/etc/postgresql/postgresql.conf"]
     volumes:
       - postgres_data:/var/lib/postgresql/data
       - ./postgres/postgresql.conf:/etc/postgresql/postgresql.conf:ro
+      - ./postgres/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-uorconnect} -d ${POSTGRES_DB:-uorconnect}"]
       interval: 10s
@@ -18,6 +20,61 @@ services:
       retries: 10
     mem_limit: 700m
     cpus: 1.25
+    networks:
+      - internal
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes", "--maxmemory", "160mb", "--maxmemory-policy", "allkeys-lru"]
+    volumes:
+      - redis_data:/data
+    mem_limit: 192m
+    cpus: 0.35
+    networks:
+      - internal
+
+  evolution-api:
+    image: ${EVOLUTION_IMAGE:-evoapicloud/evolution-api:v2.3.6}
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    env_file:
+      - path: .env
+        required: false
+    environment:
+      SERVER_URL: ${EVOLUTION_SERVER_URL:-http://evolution-api:8080}
+      CORS_ORIGIN: ${EVOLUTION_CORS_ORIGIN:-*}
+      DEL_INSTANCE: ${EVOLUTION_DEL_INSTANCE:-false}
+      AUTHENTICATION_API_KEY: ${AUTHENTICATION_API_KEY}
+      DATABASE_ENABLED: "true"
+      DATABASE_PROVIDER: postgresql
+      DATABASE_URL: postgresql://${POSTGRES_USER:-uorconnect}:${POSTGRES_PASSWORD}@postgres:5432/${EVOLUTION_POSTGRES_DB:-evolution}
+      DATABASE_CONNECTION_URI: postgresql://${POSTGRES_USER:-uorconnect}:${POSTGRES_PASSWORD}@postgres:5432/${EVOLUTION_POSTGRES_DB:-evolution}
+      DATABASE_CONNECTION_CLIENT_NAME: evolution_v2
+      DATABASE_SAVE_DATA_INSTANCE: "true"
+      DATABASE_SAVE_DATA_NEW_MESSAGE: "true"
+      DATABASE_SAVE_MESSAGE_UPDATE: "true"
+      DATABASE_SAVE_DATA_CONTACTS: "true"
+      DATABASE_SAVE_DATA_CHATS: "true"
+      DATABASE_SAVE_DATA_LABELS: "true"
+      DATABASE_SAVE_DATA_HISTORIC: "true"
+      CACHE_REDIS_ENABLED: "true"
+      CACHE_REDIS_URI: redis://redis:6379/1
+      CACHE_REDIS_PREFIX_KEY: evolution_v2
+      CACHE_REDIS_SAVE_INSTANCES: "false"
+      CACHE_LOCAL_ENABLED: "false"
+      RABBITMQ_ENABLED: "false"
+      LOG_LEVEL: ${EVOLUTION_LOG_LEVEL:-ERROR}
+    expose:
+      - "8080"
+    volumes:
+      - evolution_instances:/evolution/instances
+    mem_limit: 768m
+    cpus: 1.00
     networks:
       - internal
 
@@ -69,8 +126,11 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+      evolution-api:
+        condition: service_started
     env_file:
-      - .env
+      - path: .env
+        required: false
     environment:
       NODE_ENV: production
       PORT: 3333
@@ -83,6 +143,8 @@ services:
       PGPOOL_MIN: ${PGPOOL_MIN:-2}
       PGPOOL_IDLE_TIMEOUT_MS: ${PGPOOL_IDLE_TIMEOUT_MS:-30000}
       PGPOOL_CONNECT_TIMEOUT_MS: ${PGPOOL_CONNECT_TIMEOUT_MS:-8000}
+      EVOLUTION_API_BASE_URL: ${EVOLUTION_API_BASE_URL:-http://evolution-api:8080}
+      EVOLUTION_API_KEY: ${EVOLUTION_API_KEY}
     expose:
       - "3333"
     healthcheck:
@@ -123,6 +185,8 @@ services:
 
 volumes:
   postgres_data:
+  redis_data:
+  evolution_instances:
   caddy_data:
   caddy_config:
 

@@ -295,7 +295,7 @@ export default function SaasShowcase() {
       <nav className="sticky top-0 z-50 border-b border-border bg-card/90 backdrop-blur-md">
         <div className="container mx-auto flex h-16 items-center justify-between px-4">
           <Link to="/" className="flex items-center gap-2.5">
-            <img src="/logoworconnect.png" alt="UOR Connect" className="h-10" />
+            <img src="/uorconnect-logo-navbar.png" alt="UOR Connect" className="h-10" />
             <div className="hidden md:flex flex-col leading-tight">
               <span className="text-xs font-bold text-foreground">UOR Connect</span>
               <span className="text-[10px] text-muted-foreground">Gestão Digital de Eventos</span>
@@ -322,7 +322,7 @@ export default function SaasShowcase() {
           <div className="max-w-3xl">
             <motion.div initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }} transition={{ duration: 0.5 }}
               className="flex items-center gap-3 mb-6">
-              <img src="/logoworconnect.png" alt="UOR Connect" className="h-12" />
+              <img src="/uorconnect-logo-navbar.png" alt="UOR Connect" className="h-12" />
               <span className="text-sm font-semibold text-muted-foreground uppercase tracking-wider">UOR Connect · Universidade Óscar Ribas</span>
             </motion.div>
             <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }}
@@ -685,7 +685,7 @@ export default function SaasShowcase() {
         <div className="container mx-auto px-4 text-center relative z-10">
           <motion.div initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }} className="max-w-2xl mx-auto space-y-8">
-            <div className="flex justify-center"><img src="/logoworconnect.png" alt="UOR Connect" className="h-14" /></div>
+            <div className="flex justify-center"><img src="/uorconnect-logo-navbar.png" alt="UOR Connect" className="h-14" /></div>
             <h2 className="text-3xl md:text-5xl font-heading font-extrabold tracking-tight">Leva a UOR Connect ao teu evento.</h2>
             <p className="text-lg text-muted-foreground leading-relaxed">
               Entra em contacto via WhatsApp. A equipa avalia o teu projeto e dá-te uma proposta personalizada em menos de 48h.

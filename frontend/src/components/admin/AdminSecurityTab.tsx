@@ -217,7 +217,7 @@ export default function AdminSecurityTab({
                     <div className="flex flex-wrap gap-2">
                       <ContextualSmsAction
                         title="Avisar acesso administrativo"
-                        buttonLabel="Avisar por SMS"
+                        buttonLabel="Avisar"
                         recipient={{ studentNumber: student.studentNumber, name: `Estudante ${student.studentNumber}` }}
                         defaultMessage={`Olá {{nome}}, o teu acesso administrativo ao UOR Connect foi configurado para a equipa ${student.team}. Entra no painel para gerir as tuas áreas.`}
                       />
@@ -267,7 +267,7 @@ export default function AdminSecurityTab({
                       </div>
                       <div className="flex flex-wrap gap-2">
                         <ContextualSmsAction
-                          title="Enviar SMS ao estudante"
+                          title="Enviar comunicação ao estudante"
                           recipient={{
                             name: student.name,
                             studentNumber: student.studentNumber,

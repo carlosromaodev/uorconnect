@@ -37,6 +37,11 @@ import {
   canStudentEditSubmission,
 } from "./student-submission-presenter";
 import { recordAdminAudit } from "../../audit/application/audit.service";
+import {
+  sendWhatsAppAudienceAutomationEvent,
+  sendWhatsAppAutomationEvent,
+} from "../../whatsapp/http/whatsapp.routes";
+import { sendSmsAudienceAutomationEvent } from "../../sms/http/sms.routes";
 
 const submissionRepo = new PrismaSubmissionRepository();
 const submissionConfigRepo = new PrismaSubmissionConfigRepository();
@@ -298,6 +303,67 @@ function toAdminSubmissionResponse(s: any) {
   };
 }
 
+function formatSubmissionStatusLabel(status: "PENDING" | "APPROVED" | "REJECTED") {
+  switch (status) {
+    case "APPROVED":
+      return "aprovada";
+    case "REJECTED":
+      return "excluída";
+    default:
+      return "em análise";
+  }
+}
+
+function isDuplicateSubmissionError(error: unknown) {
+  return error instanceof Error && /submission already exists/i.test(error.message);
+}
+
+function isOwnedSubmissionDuplicate(
+  submission: { studentId?: number | null; studentNumberSnapshot?: string | null },
+  student: { id: number; studentNumber: string },
+) {
+  return submission.studentId === student.id || submission.studentNumberSnapshot === student.studentNumber;
+}
+
+function buildSubmissionCreateResponse(submission: {
+  id: number;
+  referenceCode: string;
+  status: string;
+  type: "PROJECT" | "BUSINESS" | "PRODUCT";
+}, config: {
+  projectCommunityUrl?: string | null;
+  businessCommunityUrl?: string | null;
+  productCommunityUrl?: string | null;
+}) {
+  const communityUrl = buildSubmissionCommunityUrl(submission.type, config);
+
+  return {
+    referenceCode: submission.referenceCode,
+    status: submission.status,
+    id: submission.id,
+    communityUrl,
+    boardingPassPath: `/submissions/${submission.id}/boarding-pass.pdf`,
+    paymentProofPath: `/submissions/${submission.id}/payment-proof`,
+    receiptPath: `/submissoes/${submission.id}`,
+  };
+}
+
+function formatSubmissionCommunityDetail(communityUrl: string | null) {
+  if (!communityUrl) {
+    return "Acompanha os próximos passos no teu recibo.";
+  }
+
+  if (/api\.whatsapp\.com\/send|wa\.me\//i.test(communityUrl)) {
+    return `WhatsApp da organização: ${communityUrl}`;
+  }
+
+  if (/chat\.whatsapp\.com|whatsapp\.com\/channel/i.test(communityUrl)) {
+    return `Comunidade: ${communityUrl}`;
+  }
+
+  return `Ligação de acompanhamento: ${communityUrl}`;
+}
+
 export async function submissionRoutes(app: FastifyInstance, { env }: { env: ReturnType<typeof loadEnv> }) {
   const createSubmission = new CreateSubmission(submissionRepo);
   const voteSubmission = new VoteSubmission(submissionRepo, voteRepo);
@@ -310,6 +376,7 @@ export async function submissionRoutes(app: FastifyInstance, { env }: { env: Ret
   const updateSubmissionStatus = new UpdateSubmissionStatus(submissionRepo);
   const updateSubmissionPresentation = new UpdateSubmissionPresentation(submissionRepo);
   const deleteSubmission = new DeleteSubmission(submissionRepo);
+  const publicAppUrl = env.PUBLIC_APP_URL?.replace(/\/$/, "") ?? "https://uorconnect.space";
 
   app.get("/config", {
     schema: {
@@ -332,6 +399,15 @@ export async function submissionRoutes(app: FastifyInstance, { env }: { env: Ret
       schema: {
         body: createSubmissionSchema,
         response: {
+          200: z.object({
+            referenceCode: z.string(),
+            status: z.string(),
+            id: z.number(),
+            communityUrl: z.string().nullable(),
+            boardingPassPath: z.string(),
+            paymentProofPath: z.string().nullable(),
+            receiptPath: z.string(),
+          }),
           201: z.object({
             referenceCode: z.string(),
             status: z.string(),
@@ -343,7 +419,8 @@ export async function submissionRoutes(app: FastifyInstance, { env }: { env: Ret
           }),
           400: z.object({ message: z.string() }),
           401: z.object({ message: z.string() }),
-          403: z.object({ message: z.string() })
+          403: z.object({ message: z.string() }),
+          409: z.object({ message: z.string(), receiptPath: z.string().optional() })
         }
       }
     }, async (request, reply) => {
@@ -374,27 +451,117 @@ export async function submissionRoutes(app: FastifyInstance, { env }: { env: Ret
         return reply.code(401).send({ message: "Missing or invalid token" });
       }
 
-      const result = await createSubmission.execute({
-        ...payload,
-        members: normalizedMembers,
-        primaryColor,
-        secondaryColor,
-        bannerUrl: payload.bannerUrl ?? null,
-        studentId: student.id,
-        studentNumberSnapshot: student.studentNumber,
-      });
+      let result;
+      try {
+        result = await createSubmission.execute({
+          ...payload,
+          members: normalizedMembers,
+          primaryColor,
+          secondaryColor,
+          bannerUrl: payload.bannerUrl ?? null,
+          studentId: student.id,
+          studentNumberSnapshot: student.studentNumber,
+        });
+      } catch (error) {
+        if (!isDuplicateSubmissionError(error)) {
+          throw error;
+        }
+
+        const existing = await prisma.submission.findFirst({
+          where: {
+            name: payload.name,
+            leaderPhone: payload.leaderPhone,
+          },
+          orderBy: { createdAt: "desc" },
+          select: {
+            id: true,
+            referenceCode: true,
+            status: true,
+            type: true,
+            studentId: true,
+            studentNumberSnapshot: true,
+          },
+        });
+
+        if (existing && isOwnedSubmissionDuplicate(existing, student)) {
+          return reply.code(200).send(buildSubmissionCreateResponse(existing, config));
+        }
+
+        return reply.code(409).send({
+          message: "Já existe uma candidatura com este nome e contacto. Usa outro título ou acompanha a candidatura já registada.",
+          ...(existing ? { receiptPath: `/submissoes/${existing.id}` } : {}),
+        });
+      }
 
       const communityUrl = buildSubmissionCommunityUrl(result.type, config);
+      const submissionCourse = "course" in payload ? payload.course : null;
 
-      return reply.code(201).send({
-        referenceCode: result.referenceCode,
-        status: result.status,
-        id: result.id,
-        communityUrl,
-        boardingPassPath: `/submissions/${result.id}/boarding-pass.pdf`,
-        paymentProofPath: `/submissions/${result.id}/payment-proof`,
-        receiptPath: `/submissoes/${result.id}`,
-      });
+      try {
+        await sendWhatsAppAutomationEvent(env, "SUBMISSION_CREATED", {
+          phone: payload.leaderPhone ?? student.phone,
+          studentId: student.id,
+          studentNumber: student.studentNumber,
+          recipientName: payload.leaderName ?? student.name,
+          recipientCourse: submissionCourse ?? student.course,
+          values: {
+            titulo: payload.name,
+            referencia: result.referenceCode,
+            detalhe: formatSubmissionCommunityDetail(communityUrl),
+            link: `${publicAppUrl}/submissoes/${result.id}`,
+          },
+        });
+      } catch (error) {
+        request.log.warn({ err: error }, "automatic submission WhatsApp notification failed");
+      }
+
+      try {
+        const contextualClassCodes = student.classCode?.trim() ? [student.classCode.trim()] : [];
+        const contextualCourses = (submissionCourse ?? student.course)?.trim() ? [(submissionCourse ?? student.course)!.trim()] : [];
+        if (contextualClassCodes.length > 0 || contextualCourses.length > 0) {
+          const contextualAudience = {
+            type: "STUDENT_CLASS_OR_COURSE" as const,
+            studentClassCodes: contextualClassCodes,
+            studentCourses: contextualCourses,
+          };
+          const contextualValues = {
+            titulo: payload.name,
+            referencia: result.referenceCode,
+            colega: payload.leaderName ?? student.name ?? `Estudante ${student.studentNumber}`,
+            turma: student.classCode,
+            curso: submissionCourse ?? student.course,
+            link: `${publicAppUrl}/submissoes/${result.id}`,
+          };
+
+          const [whatsAppResult, smsResult] = await Promise.allSettled([
+            sendWhatsAppAudienceAutomationEvent(env, "SUBMISSION_CONTEXT_AUDIENCE", {
+              audience: contextualAudience,
+              excludeStudentId: student.id,
+              recipientCourse: submissionCourse ?? student.course,
+              values: contextualValues,
+            }),
+            sendSmsAudienceAutomationEvent(env, "SUBMISSION_CONTEXT_AUDIENCE", {
+              audience: {
+                type: "STUDENT_CLASS_OR_COURSE",
+                studentClassCodes: contextualClassCodes,
+                studentCourses: contextualCourses,
+              },
+              excludeStudentId: student.id,
+              values: contextualValues,
+            }),
+          ]);
+
+          if (whatsAppResult.status === "rejected") {
+            request.log.warn({ err: whatsAppResult.reason }, "contextual submission WhatsApp audience notification failed");
+          }
+          if (smsResult.status === "rejected") {
+            request.log.warn({ err: smsResult.reason }, "contextual submission SMS audience notification failed");
+          }
+        }
+      } catch (error) {
+        request.log.warn({ err: error, submissionId: result.id }, "contextual submission notifications failed");
+      }
+
+      return reply.code(201).send(buildSubmissionCreateResponse(result, config));
     });
 
     protectedApp.get("/mine", {
@@ -728,6 +895,46 @@ export async function submissionRoutes(app: FastifyInstance, { env }: { env: Ret
 
         try {
           await updateSubmissionStatus.execute(id, status);
+          const updatedSubmission = await prisma.submission.findUnique({
+            where: { id },
+            include: {
+              student: {
+                select: {
+                  id: true,
+                  studentNumber: true,
+                  name: true,
+                  course: true,
+                  phone: true,
+                },
+              },
+            },
+          });
+
+          if (updatedSubmission) {
+            try {
+              await sendWhatsAppAutomationEvent(env, "SUBMISSION_STATUS_UPDATED", {
+                phone: updatedSubmission.leaderPhone ?? updatedSubmission.student?.phone,
+                studentId: updatedSubmission.studentId,
+                studentNumber: updatedSubmission.student?.studentNumber ?? updatedSubmission.studentNumberSnapshot,
+                recipientName: updatedSubmission.leaderName ?? updatedSubmission.student?.name,
+                recipientCourse: updatedSubmission.course ?? updatedSubmission.student?.course,
+                values: {
+                  titulo: updatedSubmission.name,
+                  referencia: updatedSubmission.referenceCode,
+                  estado: formatSubmissionStatusLabel(status),
+                  detalhe: status === "APPROVED"
+                    ? "A candidatura foi aprovada e está confirmada para a próxima etapa do UOR Connect."
+                    : status === "REJECTED"
+                      ? "A candidatura foi excluída desta fase e não seguirá para a etapa pública."
+                      : "A candidatura voltou para análise da equipa.",
+                  link: `${publicAppUrl}/submissoes/${updatedSubmission.id}`,
+                },
+              });
+            } catch (error) {
+              request.log.warn({ err: error, submissionId: id }, "automatic submission status WhatsApp notification failed");
+            }
+          }
+
           await recordAdminAudit({
             actorStudentNumber: request.student?.studentNumber,
             action: "submission.update_status",
@@ -758,6 +965,41 @@ export async function submissionRoutes(app: FastifyInstance, { env }: { env: Ret
 
       try {
         await selectWinnerSubmission.execute(id);
+        const winnerSubmission = await prisma.submission.findUnique({
+          where: { id },
+          include: {
+            student: {
+              select: {
+                id: true,
+                studentNumber: true,
+                name: true,
+                course: true,
+                phone: true,
+              },
+            },
+          },
+        });
+
+        if (winnerSubmission) {
+          try {
+            await sendWhatsAppAutomationEvent(env, "SUBMISSION_MARKED_WINNER", {
+              phone: winnerSubmission.leaderPhone ?? winnerSubmission.student?.phone,
+              studentId: winnerSubmission.studentId,
+              studentNumber: winnerSubmission.student?.studentNumber ?? winnerSubmission.studentNumberSnapshot,
+              recipientName: winnerSubmission.leaderName ?? winnerSubmission.student?.name,
+              recipientCourse: winnerSubmission.course ?? winnerSubmission.student?.course,
+              values: {
+                titulo: winnerSubmission.name,
+                referencia: winnerSubmission.referenceCode,
+                detalhe: "Parabéns. A equipa destacou a tua candidatura como vencedora.",
+                link: `${publicAppUrl}/submissoes/${winnerSubmission.id}`,
+              },
+            });
+          } catch (error) {
+            request.log.warn({ err: error, submissionId: id }, "automatic winner WhatsApp notification failed");
+          }
+        }
+
         await recordAdminAudit({
           actorStudentNumber: request.student?.studentNumber,
           action: "submission.select_winner",
@@ -869,6 +1111,44 @@ export async function submissionRoutes(app: FastifyInstance, { env }: { env: Ret
       }, async (request, reply) => {
         const { id } = request.params as { id: number };
         try {
+          const submissionToDelete = await prisma.submission.findUnique({
+            where: { id },
+            include: {
+              student: {
+                select: {
+                  id: true,
+                  studentNumber: true,
+                  name: true,
+                  course: true,
+                  phone: true,
+                },
+              },
+            },
+          });
+
+          if (!submissionToDelete) {
+            return reply.code(404).send({ message: "Submission not found" });
+          }
+
+          try {
+            await sendWhatsAppAutomationEvent(env, "SUBMISSION_STATUS_UPDATED", {
+              phone: submissionToDelete.leaderPhone ?? submissionToDelete.student?.phone,
+              studentId: submissionToDelete.studentId,
+              studentNumber: submissionToDelete.student?.studentNumber ?? submissionToDelete.studentNumberSnapshot,
+              recipientName: submissionToDelete.leaderName ?? submissionToDelete.student?.name,
+              recipientCourse: submissionToDelete.course ?? submissionToDelete.student?.course,
+              values: {
+                titulo: submissionToDelete.name,
+                referencia: submissionToDelete.referenceCode,
+                estado: "excluída",
+                detalhe: "A candidatura foi removida pela organização e já não ficará disponível no UOR Connect.",
+                link: publicAppUrl,
+              },
+            });
+          } catch (error) {
+            request.log.warn({ err: error, submissionId: id }, "automatic submission deletion WhatsApp notification failed");
+          }
+
           await deleteSubmission.execute(id);
           await recordAdminAudit({
             actorStudentNumber: request.student?.studentNumber,

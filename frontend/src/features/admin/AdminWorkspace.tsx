@@ -27,6 +27,7 @@ import {
   Palette,
   Loader2,
   MapPin,
+  MessageCircle,
   MessageSquare,
   Mic,
   Package,
@@ -76,6 +77,7 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { AdminBulkSmsAction } from "@/components/admin/AdminBulkSmsAction";
+import { CourseCertificateAction } from "@/components/admin/CourseCertificateAction";
 import { ContextualSmsAction } from "@/components/admin/ContextualSmsAction";
 import { defaultHomeSocialConfig } from "@/lib/home-content";
 import {
@@ -129,6 +131,9 @@ const AdminAnalyticsTab = lazy(() =>
 const AdminSmsTab = lazy(() =>
   import("@/components/admin/AdminSmsTab").then((module) => ({ default: module.AdminSmsTab })),
 );
+const AdminWhatsAppTab = lazy(() =>
+  import("@/components/admin/AdminWhatsAppTab").then((module) => ({ default: module.AdminWhatsAppTab })),
+);
 const AdminJuryTab = lazy(() =>
   import("@/components/admin/AdminJuryTab").then((module) => ({ default: module.AdminJuryTab })),
 );
@@ -143,6 +148,7 @@ const tabs = [
   { id: "overview", label: "Visão Geral", icon: BarChart3, permission: "OVERVIEW" },
   { id: "analytics", label: "Cookies & Analytics", icon: Cookie, permission: "ANALYTICS" },
   { id: "sms", label: "SMS", icon: MessageSquare, permission: "SMS" },
+  { id: "whatsapp", label: "WhatsApp", icon: MessageCircle, permission: "SMS" },
   { id: "jury", label: "Júri", icon: KeyRound, permission: "JURY" },
   { id: "attendance", label: "Check-in", icon: ClipboardCheck, permission: "ATTENDANCE" },
   { id: "certificates", label: "Certificados", icon: Award, permission: "CERTIFICATES" },
@@ -429,17 +435,6 @@ const defaultSocialConfigForm: HomeSocialConfigInput = {
   heroIconsOpacity: defaultHomeSocialConfig.heroIconsOpacity,
   heroBlobsIntensity: defaultHomeSocialConfig.heroBlobsIntensity,
   heroMeshEnabled: defaultHomeSocialConfig.heroMeshEnabled,
-  heroBadgeText: defaultHomeSocialConfig.heroBadgeText,
-  heroTitlePrefix: defaultHomeSocialConfig.heroTitlePrefix,
-  heroTitleHighlight: defaultHomeSocialConfig.heroTitleHighlight,
-  heroSubtitleText: defaultHomeSocialConfig.heroSubtitleText,
-  heroSubtitleColor: defaultHomeSocialConfig.heroSubtitleColor,
-  heroTitleMobileSize: defaultHomeSocialConfig.heroTitleMobileSize,
-  heroTitleTabletSize: defaultHomeSocialConfig.heroTitleTabletSize,
-  heroTitleDesktopSize: defaultHomeSocialConfig.heroTitleDesktopSize,
-  heroSubtitleMobileSize: defaultHomeSocialConfig.heroSubtitleMobileSize,
-  heroSubtitleTabletSize: defaultHomeSocialConfig.heroSubtitleTabletSize,
-  heroSubtitleDesktopSize: defaultHomeSocialConfig.heroSubtitleDesktopSize,
   heroFloatingIcons: defaultHomeSocialConfig.heroFloatingIcons,
   sponsors: defaultHomeSocialConfig.sponsors,
 };
@@ -460,17 +455,6 @@ function toSocialConfigForm(config: HomeSocialConfig): HomeSocialConfigInput {
     heroIconsOpacity: config.heroIconsOpacity,
     heroBlobsIntensity: config.heroBlobsIntensity,
     heroMeshEnabled: config.heroMeshEnabled,
-    heroBadgeText: config.heroBadgeText,
-    heroTitlePrefix: config.heroTitlePrefix,
-    heroTitleHighlight: config.heroTitleHighlight,
-    heroSubtitleText: config.heroSubtitleText,
-    heroSubtitleColor: config.heroSubtitleColor,
-    heroTitleMobileSize: config.heroTitleMobileSize,
-    heroTitleTabletSize: config.heroTitleTabletSize,
-    heroTitleDesktopSize: config.heroTitleDesktopSize,
-    heroSubtitleMobileSize: config.heroSubtitleMobileSize,
-    heroSubtitleTabletSize: config.heroSubtitleTabletSize,
-    heroSubtitleDesktopSize: config.heroSubtitleDesktopSize,
     heroFloatingIcons: config.heroFloatingIcons,
     sponsors: config.sponsors,
   };
@@ -701,6 +685,7 @@ const Admin = ({ adminAccess }: { adminAccess?: AdminAccessProfile | null }) => 
   const [submissions, setSubmissions] = useState<AdminSubmission[]>([]);
   const [submissionListRows, setSubmissionListRows] = useState<AdminSubmission[]>([]);
   const [submissionBannerDrafts, setSubmissionBannerDrafts] = useState<Record<number, string | null | undefined>>({});
+  const [expandedSubmissionIds, setExpandedSubmissionIds] = useState<Set<number>>(new Set());
   const [submissionConfig, setSubmissionConfig] = useState<Omit<SubmissionConfig, "key" | "createdAt" | "updatedAt">>(defaultSubmissionConfigForm);
   const [students, setStudents] = useState<StudentWithStats[]>([]);
   const [studentListRows, setStudentListRows] = useState<StudentWithStats[]>([]);
@@ -1226,6 +1211,7 @@ const Admin = ({ adminAccess }: { adminAccess?: AdminAccessProfile | null }) => 
       overview: ["base"],
       analytics: [],
       sms: ["courses"],
+      whatsapp: ["courses"],
       jury: [],
       submissions: ["base"],
       speakers: ["speakers"],
@@ -1497,6 +1483,18 @@ const Admin = ({ adminAccess }: { adminAccess?: AdminAccessProfile | null }) => 
     }),
     [submissionListRows, submissionPage, submissionsTotalPages]
   );
+
+  const toggleSubmissionDetails = (submissionId: number) => {
+    setExpandedSubmissionIds((current) => {
+      const next = new Set(current);
+      if (next.has(submissionId)) {
+        next.delete(submissionId);
+      } else {
+        next.add(submissionId);
+      }
+      return next;
+    });
+  };
 
   const groupedStudents = useMemo(() => {
     return studentListRows.reduce<Record<string, StudentWithStats[]>>((acc, student) => {
@@ -2500,23 +2498,12 @@ const Admin = ({ adminAccess }: { adminAccess?: AdminAccessProfile | null }) => 
         heroIconsOpacity: socialConfigForm.heroIconsOpacity,
         heroBlobsIntensity: socialConfigForm.heroBlobsIntensity,
         heroMeshEnabled: socialConfigForm.heroMeshEnabled,
-        heroBadgeText: socialConfigForm.heroBadgeText,
-        heroTitlePrefix: socialConfigForm.heroTitlePrefix,
-        heroTitleHighlight: socialConfigForm.heroTitleHighlight,
-        heroSubtitleText: socialConfigForm.heroSubtitleText,
-        heroSubtitleColor: socialConfigForm.heroSubtitleColor,
-        heroTitleMobileSize: socialConfigForm.heroTitleMobileSize,
-        heroTitleTabletSize: socialConfigForm.heroTitleTabletSize,
-        heroTitleDesktopSize: socialConfigForm.heroTitleDesktopSize,
-        heroSubtitleMobileSize: socialConfigForm.heroSubtitleMobileSize,
-        heroSubtitleTabletSize: socialConfigForm.heroSubtitleTabletSize,
-        heroSubtitleDesktopSize: socialConfigForm.heroSubtitleDesktopSize,
         heroFloatingIcons: socialConfigForm.heroFloatingIcons,
         sponsors: socialConfigForm.sponsors,
       });
 
       setSocialConfigForm(toSocialConfigForm(saved));
-      toast.success("Hero, patrocinadores e identidade visual atualizados.");
+      toast.success("Ícones e patrocinadores atualizados.");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Falha ao guardar configurações do evento");
     } finally {
@@ -2772,6 +2759,12 @@ const Admin = ({ adminAccess }: { adminAccess?: AdminAccessProfile | null }) => 
                 </Suspense>
               )}
 
+              {activeTab === "whatsapp" && (
+                <Suspense fallback={<AdminPanelFallback label="WhatsApp" />}>
+                  <AdminWhatsAppTab courses={courses} />
+                </Suspense>
+              )}
+
               {activeTab === "jury" && (
                 <Suspense fallback={<AdminPanelFallback label="Júri" />}>
                   <AdminJuryTab />
@@ -2990,6 +2983,7 @@ const Admin = ({ adminAccess }: { adminAccess?: AdminAccessProfile | null }) => 
                       const communityUrl = communityUrlBySubmissionType(submission.tipo, submissionConfig);
                       const bannerPreview = resolveSubmissionBannerPreview(submission);
                       const canManageBanner = submission.status === "aprovado";
+                      const detailsOpen = expandedSubmissionIds.has(submission.id);
                       return (
                         <Card key={submission.id} className="min-w-0 border-border/60">
                           <CardContent className="p-4">
@@ -3005,7 +2999,9 @@ const Admin = ({ adminAccess }: { adminAccess?: AdminAccessProfile | null }) => 
                                       {submission.isWinner && <Crown className="h-4 w-4 text-[hsl(var(--warning))]" />}
                                     </div>
                                     <p className="mt-1 text-xs text-muted-foreground">{submission.referenceCode} · {formatDateLabel(submission.data)}</p>
-                                    <p className="safe-break mt-3 text-sm leading-6 text-muted-foreground">{submission.descricao}</p>
+                                    <p className="safe-break mt-2 text-xs leading-5 text-muted-foreground">
+                                      {submission.area} · {submission.curso} · Responsável: {submission.responsavel}
+                                    </p>
                                   </div>
                                 </div>
                                 <div className="flex flex-wrap items-center gap-2">
@@ -3015,10 +3011,16 @@ const Admin = ({ adminAccess }: { adminAccess?: AdminAccessProfile | null }) => 
                                 </div>
                               </div>
 
+                              {detailsOpen ? (
+                                <>
                               <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                                 <div className="rounded-xl border border-border/70 bg-muted/20 p-3">
                                   <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Número de inscrição</p>
                                   <p className="mt-2 text-sm font-medium">{submission.referenceCode}</p>
+                                </div>
+                                <div className="rounded-xl border border-border/70 bg-muted/20 p-3 md:col-span-2 xl:col-span-3">
+                                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Resumo do projeto</p>
+                                  <p className="safe-break mt-2 text-sm leading-6 text-muted-foreground">{submission.descricao}</p>
                                 </div>
                                 <div className="rounded-xl border border-border/70 bg-muted/20 p-3">
                                   <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Área</p>
@@ -3119,8 +3121,19 @@ const Admin = ({ adminAccess }: { adminAccess?: AdminAccessProfile | null }) => 
                                   </Button>
                                 </div>
                               </div>
+                                </>
+                              ) : null}
 
                               <div className="flex flex-wrap items-center gap-2">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-auto whitespace-normal px-2.5 py-1.5 text-xs leading-tight"
+                                  onClick={() => toggleSubmissionDetails(submission.id)}
+                                >
+                                  <Eye className="mr-1 h-3.5 w-3.5" />
+                                  {detailsOpen ? "Ocultar detalhes" : "Ver detalhes"}
+                                </Button>
                                 <Button asChild size="sm" variant="outline" className="h-auto whitespace-normal px-2.5 py-1.5 text-xs leading-tight">
                                   <Link to={submission.detailPath}>
                                     <Eye className="mr-1 h-3.5 w-3.5" />
@@ -3136,7 +3149,7 @@ const Admin = ({ adminAccess }: { adminAccess?: AdminAccessProfile | null }) => 
                                   </Button>
                                 ) : null}
                                 <ContextualSmsAction
-                                  title="Enviar SMS ao responsável"
+                                  title="Enviar comunicação ao responsável"
                                   recipient={{
                                     name: submission.responsavel,
                                     phone: submission.telefone,
@@ -3251,17 +3264,6 @@ const Admin = ({ adminAccess }: { adminAccess?: AdminAccessProfile | null }) => 
                           <p className="text-sm text-muted-foreground">{speaker.bio}</p>
                           <p className="text-xs text-muted-foreground">{speaker.talk}</p>
                           <div className="flex flex-wrap gap-2">
-                            <AdminBulkSmsAction
-                              title={`Avisar inscritos: ${course.name}`}
-                              buttonLabel="Avisar inscritos por SMS"
-                              description={`Envia uma SMS para todos os contactos válidos inscritos no curso ${course.name}.`}
-                              disabled={course.studentCount === 0}
-                              audience={{
-                                type: "COURSE_ENROLLED",
-                                courseIds: [course.id],
-                              }}
-                              defaultMessage={`Olá, temos uma atualização importante sobre o curso ${course.name} no UOR Connect. Consulta a plataforma para acompanhar os detalhes.`}
-                            />
                             <Button
                               size="sm"
                               variant="outline"
@@ -3623,12 +3625,12 @@ const Admin = ({ adminAccess }: { adminAccess?: AdminAccessProfile | null }) => 
               )}
 
               {activeTab === "courses" && (
-                <div className="grid gap-6 xl:grid-cols-[1fr_1.4fr]">
-                  <Card>
-                    <CardHeader>
+                <div className="grid min-w-0 gap-4 lg:gap-6 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.35fr)]">
+                  <Card className="min-w-0 overflow-hidden">
+                    <CardHeader className="px-4 sm:px-6">
                       <CardTitle className="text-base">{editingCourseId ? "Editar curso" : "Novo curso"}</CardTitle>
                     </CardHeader>
-                    <CardContent className="space-y-4">
+                    <CardContent className="space-y-4 px-4 sm:px-6">
                       <FormField label="Nome">
                         <Input value={courseForm.name} onChange={(event) => setCourseForm((current) => ({ ...current, name: event.target.value }))} />
                       </FormField>
@@ -3671,21 +3673,21 @@ const Admin = ({ adminAccess }: { adminAccess?: AdminAccessProfile | null }) => 
                       </div>
                       <div className="grid gap-4 sm:grid-cols-3">
                         <FormField label="Gradiente inicial">
-                          <div className="flex items-center gap-3">
-                            <Input type="color" value={courseForm.accentColor} onChange={(event) => setCourseForm((current) => ({ ...current, accentColor: event.target.value }))} className="h-10 w-16 p-1" />
-                            <Input value={courseForm.accentColor} onChange={(event) => setCourseForm((current) => ({ ...current, accentColor: event.target.value }))} />
+                          <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+                            <Input type="color" value={courseForm.accentColor} onChange={(event) => setCourseForm((current) => ({ ...current, accentColor: event.target.value }))} className="h-10 w-16 shrink-0 p-1" />
+                            <Input value={courseForm.accentColor} onChange={(event) => setCourseForm((current) => ({ ...current, accentColor: event.target.value }))} className="min-w-0 flex-1" />
                           </div>
                         </FormField>
                         <FormField label="Gradiente final">
-                          <div className="flex items-center gap-3">
-                            <Input type="color" value={courseForm.accentColorSecondary} onChange={(event) => setCourseForm((current) => ({ ...current, accentColorSecondary: event.target.value }))} className="h-10 w-16 p-1" />
-                            <Input value={courseForm.accentColorSecondary} onChange={(event) => setCourseForm((current) => ({ ...current, accentColorSecondary: event.target.value }))} />
+                          <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+                            <Input type="color" value={courseForm.accentColorSecondary} onChange={(event) => setCourseForm((current) => ({ ...current, accentColorSecondary: event.target.value }))} className="h-10 w-16 shrink-0 p-1" />
+                            <Input value={courseForm.accentColorSecondary} onChange={(event) => setCourseForm((current) => ({ ...current, accentColorSecondary: event.target.value }))} className="min-w-0 flex-1" />
                           </div>
                         </FormField>
                         <FormField label="Cor do curso">
-                          <div className="flex items-center gap-3">
-                            <Input type="color" value={courseForm.courseColor} onChange={(event) => setCourseForm((current) => ({ ...current, courseColor: event.target.value }))} className="h-10 w-16 p-1" />
-                            <Input value={courseForm.courseColor} onChange={(event) => setCourseForm((current) => ({ ...current, courseColor: event.target.value }))} />
+                          <div className="flex min-w-0 items-center gap-2 sm:gap-3">
+                            <Input type="color" value={courseForm.courseColor} onChange={(event) => setCourseForm((current) => ({ ...current, courseColor: event.target.value }))} className="h-10 w-16 shrink-0 p-1" />
+                            <Input value={courseForm.courseColor} onChange={(event) => setCourseForm((current) => ({ ...current, courseColor: event.target.value }))} className="min-w-0 flex-1" />
                           </div>
                         </FormField>
                       </div>
@@ -3701,40 +3703,41 @@ const Admin = ({ adminAccess }: { adminAccess?: AdminAccessProfile | null }) => 
                         <p className="text-sm font-semibold" style={{ color: courseForm.courseColor }}>Prévia da identidade do curso</p>
                         <p className="text-xs text-muted-foreground mt-1">{courseForm.companyName || "Empresa"} · {courseForm.companyCategory || "Categoria"}</p>
                       </div>
-                      <div className="flex flex-wrap gap-2">
-                        <Button onClick={() => void handleCourseSubmit()} disabled={busyKey === "course"}>{editingCourseId ? "Atualizar" : "Criar"} curso</Button>
-                        {editingCourseId && <Button variant="outline" onClick={resetCourseForm}>Cancelar</Button>}
+                      <div className="grid gap-2 sm:flex sm:flex-wrap">
+                        <Button className="w-full sm:w-auto" onClick={() => void handleCourseSubmit()} disabled={busyKey === "course"}>{editingCourseId ? "Atualizar" : "Criar"} curso</Button>
+                        {editingCourseId && <Button className="w-full sm:w-auto" variant="outline" onClick={resetCourseForm}>Cancelar</Button>}
                       </div>
                     </CardContent>
                   </Card>
 
-                  <div className="space-y-3">
+                  <div className="min-w-0 space-y-3">
                     {courses.map((course) => (
-                      <Card key={course.id} className="border-border/60">
-                        <CardContent className="space-y-3 p-4">
-                          <div className="flex items-start justify-between gap-3">
-                            <div>
+                      <Card key={course.id} className="min-w-0 overflow-hidden border-border/60">
+                        <CardContent className="space-y-3 p-3 sm:p-4">
+                          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                            <div className="min-w-0">
                               <p className="text-sm font-medium">{course.name}</p>
                               <p className="text-xs text-muted-foreground">{course.companyName} · {course.companyCategory}</p>
                               <p className="text-xs text-muted-foreground">Ordem {course.sortOrder} · {course.studentCount} inscritos · {course.likesCount} curtidas</p>
                             </div>
-                            <Badge variant="outline">{course.isPublished ? "Publicado" : "Rascunho"}</Badge>
+                            <Badge variant="outline" className="w-fit shrink-0">{course.isPublished ? "Publicado" : "Rascunho"}</Badge>
                           </div>
-                          <p className="text-sm text-muted-foreground">{course.description}</p>
-                          {course.preview && <p className="text-xs text-muted-foreground">{course.preview}</p>}
+                          <p className="break-words text-sm text-muted-foreground">{course.description}</p>
+                          {course.preview && <p className="break-words text-xs text-muted-foreground">{course.preview}</p>}
                           <div className="rounded-xl border border-border/60 p-3" style={{ background: `linear-gradient(135deg, ${course.accentColor}22, ${course.accentColorSecondary}22)` }}>
                             <p className="text-xs font-semibold" style={{ color: course.courseColor }}>{course.isPaid ? course.priceLabel || "Pago" : "Gratuito"}</p>
-                            <p className="text-[11px] text-muted-foreground mt-1">{course.communityUrl || "Comunidade não definida"}</p>
+                            <p className="mt-1 break-all text-[11px] text-muted-foreground">{course.communityUrl || "Comunidade não definida"}</p>
                           </div>
-                          <div className="flex flex-wrap gap-2 text-[11px] text-muted-foreground">
-                            <span>{course.companyWebsite || "Sem website"}</span>
-                            <span>{course.companyInstagram || "Sem Instagram"}</span>
-                            <span>{course.companyLinkedin || "Sem LinkedIn"}</span>
+                          <div className="grid gap-1 text-[11px] text-muted-foreground sm:grid-cols-3">
+                            <span className="min-w-0 break-all rounded-lg bg-muted/30 px-2 py-1">{course.companyWebsite || "Sem website"}</span>
+                            <span className="min-w-0 break-all rounded-lg bg-muted/30 px-2 py-1">{course.companyInstagram || "Sem Instagram"}</span>
+                            <span className="min-w-0 break-all rounded-lg bg-muted/30 px-2 py-1">{course.companyLinkedin || "Sem LinkedIn"}</span>
                           </div>
-                          <div className="flex flex-wrap gap-2">
+                          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 2xl:flex 2xl:flex-wrap [&_button]:w-full [&_button]:justify-center 2xl:[&_button]:w-auto">
                             <Button
                               size="sm"
                               variant="outline"
+                              className="whitespace-normal"
                               onClick={() => void handleToggleCourseEnrollments(course)}
                               disabled={loadingCourseId === course.id}
                             >
@@ -3748,6 +3751,7 @@ const Admin = ({ adminAccess }: { adminAccess?: AdminAccessProfile | null }) => 
                             <Button
                               size="sm"
                               variant="outline"
+                              className="whitespace-normal"
                               onClick={() => void handleExportCourseEnrollments(course)}
                               disabled={exportingCourseId === course.id}
                             >
@@ -3758,7 +3762,23 @@ const Admin = ({ adminAccess }: { adminAccess?: AdminAccessProfile | null }) => 
                               )}
                               Exportar PDF
                             </Button>
-                            <Button size="sm" variant="outline" onClick={() => {
+                            <AdminBulkSmsAction
+                              title={`Enviar aviso: ${course.name}`}
+                              buttonLabel="Enviar aviso"
+                              description={`Envia SMS, WhatsApp ou ambos para os contactos válidos inscritos no curso ${course.name}.`}
+                              disabled={course.studentCount === 0}
+                              audience={{
+                                type: "COURSE_ENROLLED",
+                                courseIds: [course.id],
+                              }}
+                              defaultMessage={`Olá, temos uma atualização importante sobre o curso ${course.name} no UOR Connect. Consulta a plataforma para acompanhar os detalhes.`}
+                            />
+                            <CourseCertificateAction
+                              courseId={course.id}
+                              courseName={course.name}
+                              studentCount={course.studentCount}
+                            />
+                            <Button size="sm" variant="outline" className="whitespace-normal" onClick={() => {
                               setEditingCourseId(course.id);
                               setCourseForm({
                                 name: course.name,
@@ -3783,22 +3803,22 @@ const Admin = ({ adminAccess }: { adminAccess?: AdminAccessProfile | null }) => 
                               <Edit className="mr-1 h-3.5 w-3.5" />
                               Editar
                             </Button>
-                            <Button size="sm" variant="destructive" onClick={() => void handleCourseDelete(course.id)} disabled={busyKey === `course-delete-${course.id}`}>
+                            <Button size="sm" variant="destructive" className="whitespace-normal" onClick={() => void handleCourseDelete(course.id)} disabled={busyKey === `course-delete-${course.id}`}>
                               <Trash2 className="mr-1 h-3.5 w-3.5" />
                               Remover
                             </Button>
                           </div>
 
                           {expandedCourseId === course.id && (
-                            <div className="rounded-2xl border border-border/60 bg-muted/10 p-4">
-                              <div className="flex flex-wrap items-center justify-between gap-3">
-                                <div>
+                            <div className="overflow-hidden rounded-2xl border border-border/60 bg-muted/10 p-3 sm:p-4">
+                              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                                <div className="min-w-0">
                                   <p className="text-sm font-semibold">Inscritos no curso</p>
                                   <p className="text-xs text-muted-foreground">
                                     Lista administrativa com número de estudante, nome, curso e telefone.
                                   </p>
                                 </div>
-                                <Badge variant="outline">
+                                <Badge variant="outline" className="w-fit shrink-0">
                                   {(courseEnrollments[course.id]?.total ?? course.studentCount)} inscritos
                                 </Badge>
                               </div>
@@ -3819,26 +3839,26 @@ const Admin = ({ adminAccess }: { adminAccess?: AdminAccessProfile | null }) => 
                                     const isUpdating = updatingEnrollmentStatusId === entry.id;
 
                                     return (
-                                      <div key={entry.id} className="rounded-2xl border border-border/60 bg-background/90 p-4 shadow-sm">
+                                      <div key={entry.id} className="overflow-hidden rounded-2xl border border-border/60 bg-background/90 p-3 shadow-sm sm:p-4">
                                         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-                                          <div className="grid flex-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
-                                            <div>
+                                          <div className="grid min-w-0 flex-1 gap-3 sm:grid-cols-2 xl:grid-cols-5">
+                                            <div className="min-w-0">
                                               <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Número</p>
-                                              <p className="mt-1 text-sm font-medium">{entry.studentNumber}</p>
+                                              <p className="mt-1 break-words text-sm font-medium">{entry.studentNumber}</p>
                                             </div>
-                                            <div>
+                                            <div className="min-w-0">
                                               <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Nome</p>
-                                              <p className="mt-1 text-sm font-medium">{entry.fullName}</p>
+                                              <p className="mt-1 break-words text-sm font-medium">{entry.fullName}</p>
                                             </div>
-                                            <div>
+                                            <div className="min-w-0">
                                               <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Curso</p>
-                                              <p className="mt-1 text-sm font-medium">{entry.course || "Curso não informado"}</p>
+                                              <p className="mt-1 break-words text-sm font-medium">{entry.course || "Curso não informado"}</p>
                                             </div>
-                                            <div>
+                                            <div className="min-w-0">
                                               <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Telefone</p>
-                                              <p className="mt-1 text-sm font-medium">{entry.phone || "Sem telefone"}</p>
+                                              <p className="mt-1 break-words text-sm font-medium">{entry.phone || "Sem telefone"}</p>
                                             </div>
-                                            <div>
+                                            <div className="min-w-0">
                                               <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Estado</p>
                                               <Badge variant="outline" className={`mt-1 ${courseEnrollmentStatusBadge[enrollmentStatus]}`}>
                                                 {entry.statusLabel || courseEnrollmentStatusLabel[enrollmentStatus]}
@@ -3846,9 +3866,9 @@ const Admin = ({ adminAccess }: { adminAccess?: AdminAccessProfile | null }) => 
                                             </div>
                                           </div>
 
-                                          <div className="flex flex-wrap gap-2">
+                                          <div className="grid gap-2 sm:flex sm:flex-wrap lg:justify-end [&_button]:w-full sm:[&_button]:w-auto">
                                             {entry.whatsAppUrl || whatsappLink(entry.phone) ? (
-                                              <Button asChild size="sm" variant="outline">
+                                              <Button asChild size="sm" variant="outline" className="whitespace-normal">
                                                 <a href={entry.whatsAppUrl || whatsappLink(entry.phone) || "#"} target="_blank" rel="noreferrer">
                                                   <MessageSquare className="mr-1 h-3.5 w-3.5" />
                                                   Contactar via WhatsApp
@@ -3856,7 +3876,7 @@ const Admin = ({ adminAccess }: { adminAccess?: AdminAccessProfile | null }) => 
                                               </Button>
                                             ) : null}
                                             <ContextualSmsAction
-                                              title="Enviar SMS ao inscrito"
+                                              title="Enviar comunicação ao inscrito"
                                               recipient={{
                                                 name: entry.fullName,
                                                 studentNumber: entry.studentNumber,
@@ -3867,10 +3887,11 @@ const Admin = ({ adminAccess }: { adminAccess?: AdminAccessProfile | null }) => 
                                             />
                                           </div>
                                         </div>
-                                        <div className="mt-3 flex flex-wrap gap-2">
+                                        <div className="mt-3 grid gap-2 sm:grid-cols-3">
                                           <Button
                                             size="sm"
                                             variant={enrollmentStatus === "CONFIRMED" ? "default" : "outline"}
+                                            className="w-full"
                                             disabled={isUpdating}
                                             onClick={() => void handleEnrollmentStatusUpdate(course.id, entry.id, "CONFIRMED")}
                                           >
@@ -3880,6 +3901,7 @@ const Admin = ({ adminAccess }: { adminAccess?: AdminAccessProfile | null }) => 
                                           <Button
                                             size="sm"
                                             variant={enrollmentStatus === "PENDING" ? "default" : "outline"}
+                                            className="w-full"
                                             disabled={isUpdating}
                                             onClick={() => void handleEnrollmentStatusUpdate(course.id, entry.id, "PENDING")}
                                           >
@@ -3889,6 +3911,7 @@ const Admin = ({ adminAccess }: { adminAccess?: AdminAccessProfile | null }) => 
                                           <Button
                                             size="sm"
                                             variant={enrollmentStatus === "REJECTED" ? "destructive" : "outline"}
+                                            className="w-full"
                                             disabled={isUpdating}
                                             onClick={() => void handleEnrollmentStatusUpdate(course.id, entry.id, "REJECTED")}
                                           >
@@ -3909,10 +3932,11 @@ const Admin = ({ adminAccess }: { adminAccess?: AdminAccessProfile | null }) => 
                                   <p className="text-muted-foreground">
                                     Página {courseEnrollments[course.id].page} de {courseEnrollments[course.id].totalPages}
                                   </p>
-                                  <div className="flex gap-2">
+                                  <div className="grid w-full gap-2 sm:w-auto sm:grid-cols-2">
                                     <Button
                                       size="sm"
                                       variant="outline"
+                                      className="w-full"
                                       onClick={() => void loadCourseEnrollmentsPage(course.id, Math.max(1, courseEnrollments[course.id].page - 1))}
                                       disabled={loadingCourseId === course.id || courseEnrollments[course.id].page <= 1}
                                     >
@@ -3922,6 +3946,7 @@ const Admin = ({ adminAccess }: { adminAccess?: AdminAccessProfile | null }) => 
                                     <Button
                                       size="sm"
                                       variant="outline"
+                                      className="w-full"
                                       onClick={() => void loadCourseEnrollmentsPage(course.id, Math.min(courseEnrollments[course.id].totalPages, courseEnrollments[course.id].page + 1))}
                                       disabled={loadingCourseId === course.id || courseEnrollments[course.id].page >= courseEnrollments[course.id].totalPages}
                                     >
@@ -4475,7 +4500,7 @@ const Admin = ({ adminAccess }: { adminAccess?: AdminAccessProfile | null }) => 
                         Ao vivo
                       </p>
                       <h2 className="text-xl font-heading font-bold">Votação ao Vivo</h2>
-                      <p className="text-sm text-muted-foreground">Resultados em tempo real da 3ª Feira das Telecomunicações</p>
+                      <p className="text-sm text-muted-foreground">Resultados em tempo real do Workshop Alusivo ao Dia das Telecomunicações e da Sociedade da Informação</p>
                     </div>
                     <div className="flex flex-wrap items-center gap-2">
                       <Button variant="outline" size="sm" onClick={() => void handleRefreshVotes()} disabled={busyKey === "votes-refresh"}>

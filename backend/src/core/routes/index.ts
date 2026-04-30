@@ -17,6 +17,7 @@ import { analyticsRoutes } from "../../modules/analytics/http/analytics.routes";
 import { contestAuthRoutes } from "../../modules/contest/http/contest-auth.routes";
 import { contestAdminRoutes } from "../../modules/contest/http/contest-admin.routes";
 import { smsRoutes } from "../../modules/sms/http/sms.routes";
+import { whatsappRoutes } from "../../modules/whatsapp/http/whatsapp.routes";
 import { attendanceRoutes } from "../../modules/attendance/http/attendance.routes";
 import { certificatesRoutes } from "../../modules/certificates/http/certificates.routes";
 import { validationRoutes } from "../../modules/validation/http/validation.routes";
@@ -40,6 +41,7 @@ export function registerRoutes(app: FastifyInstance, env: Env, deps?: AppDepende
   app.register(reportsRoutes, { prefix: "/reports", env });
   app.register(analyticsRoutes, { prefix: "/analytics", env });
   app.register(smsRoutes, { prefix: "/sms", env });
+  app.register(whatsappRoutes, { prefix: "/whatsapp", env });
   app.register(attendanceRoutes, { prefix: "/attendance", env });
   app.register(certificatesRoutes, { prefix: "/certificates", env });
   app.register(validationRoutes, { prefix: "/validation", env });

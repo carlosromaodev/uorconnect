@@ -29,6 +29,12 @@ export class StudentRepository {
     });
   }
 
+  async findByPhone(phone: string): Promise<Student | null> {
+    return this.prisma.student.findFirst({
+      where: { phone }
+    });
+  }
+
   async create(studentNumber: string, profile?: StudentProfile): Promise<Student> {
     // Cria aluno já preenchendo o perfil capturado da secretaria, quando existir
     return this.prisma.student.create({
@@ -104,6 +110,7 @@ export class StudentRepository {
             { studentNumber: { contains: search } },
             { name: { contains: search } },
             { course: { contains: search } },
+            { classCode: { contains: search } },
           ],
         }
         : {}),
@@ -273,14 +280,19 @@ export class StudentRepository {
   private mapProfile(profile?: StudentProfile) {
     // Converte o DTO opcional para o formato aceito pelo Prisma
     if (!profile) return {};
-    return {
+    return Object.fromEntries(Object.entries({
       name: profile.name,
       email: profile.email,
       course: profile.course,
+      classCode: profile.classCode,
+      academicYear: profile.academicYear,
+      academicPeriod: profile.academicPeriod,
+      curricularYear: profile.curricularYear,
+      academicSyncedAt: profile.academicSyncedAt ? new Date(profile.academicSyncedAt) : undefined,
       nationality: profile.nationality,
       phone: profile.phone,
       birthDate: profile.birthDate ? new Date(profile.birthDate) : undefined
-    };
+    }).filter(([, value]) => value !== undefined));
   }
 
   private async touchLastLogin(studentId: number) {

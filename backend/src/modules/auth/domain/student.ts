@@ -6,6 +6,11 @@ export interface Student {
   name?: string | null;
   email?: string | null;
   course?: string | null;
+  classCode?: string | null;
+  academicYear?: string | null;
+  academicPeriod?: string | null;
+  curricularYear?: string | null;
+  academicSyncedAt?: Date | null;
   birthDate?: Date | null;
   nationality?: string | null;
   phone?: string | null;
@@ -41,6 +46,11 @@ export interface StudentProfile {
   name?: string;
   email?: string;
   course?: string;
+  classCode?: string;
+  academicYear?: string;
+  academicPeriod?: string;
+  curricularYear?: string;
+  academicSyncedAt?: Date;
   birthDate?: Date;
   nationality?: string;
   phone?: string;

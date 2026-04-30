@@ -41,6 +41,11 @@ export default defineConfig(({ mode }) => ({
     hmr: {
       overlay: false,
     },
+    watch: {
+      ignored: [
+        "**/vite.config.ts.timestamp-*",
+      ],
+    },
   },
   preview: {
     host: "0.0.0.0",

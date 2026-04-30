@@ -648,6 +648,7 @@ export default function Projetos() {
                         ? handleVote(item.id)
                         : handleLike(item.id)
                     )}
+                    onLikeAction={(item) => handleLike(item.id)}
                   />
                 ))}
               </div>

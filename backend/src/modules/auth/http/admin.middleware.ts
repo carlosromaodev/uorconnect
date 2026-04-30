@@ -26,6 +26,7 @@ function getRequiredAdminPermissions(url: string, method: string): AdminPermissi
   if (path.includes("/auth/students")) return ["STUDENTS"];
   if (path.includes("/analytics/")) return ["ANALYTICS"];
   if (path.includes("/sms/admin")) return ["SMS"];
+  if (path.includes("/whatsapp/admin")) return ["SMS"];
   if (path.includes("/attendance/admin")) return ["ATTENDANCE"];
   if (path.includes("/certificates/admin")) return ["CERTIFICATES"];
   if (path.includes("/audit/admin")) return ["AUDIT"];
@@ -50,7 +51,7 @@ function getRequiredAdminPermissions(url: string, method: string): AdminPermissi
 
 function getEmbeddedSmsPermissions(url: string, method: string, body: unknown): AdminPermission[] | null | undefined {
   const path = url.split("?")[0] ?? url;
-  if (method !== "POST" || !/\/sms\/admin\/(preview|send)$/.test(path)) return undefined;
+  if (method !== "POST" || !/\/(?:sms|whatsapp)\/admin\/(preview|send)$/.test(path)) return undefined;
   if (!body || typeof body !== "object") return undefined;
 
   const audience = (body as { audience?: unknown }).audience;
@@ -64,6 +65,22 @@ function getEmbeddedSmsPermissions(url: string, method: string, body: unknown): 
     && typedAudience.courseIds.length > 0
   ) {
     return ["COURSES"];
+  }
+
+  return undefined;
+}
+
+function getEmbeddedCertificatePermissions(url: string, method: string, body: unknown): AdminPermission[] | null | undefined {
+  const path = url.split("?")[0] ?? url;
+  if (method !== "POST" || !path.endsWith("/certificates/admin/issue-bulk")) return undefined;
+  if (!body || typeof body !== "object") return undefined;
+
+  const typedBody = body as { courseId?: unknown; mode?: unknown };
+  if (
+    typedBody.mode === "COURSE_ENROLLMENT"
+    && (typeof typedBody.courseId === "number" || typeof typedBody.courseId === "string")
+  ) {
+    return ["COURSES", "CERTIFICATES"];
   }
 
   return undefined;
@@ -181,9 +198,14 @@ export const adminGuard = fp(async (app) => {
     const student = request.student;
     const jury = request.jury;
     const embeddedSmsPermissions = getEmbeddedSmsPermissions(request.url, request.method, request.body);
-    const requiredPermissions = embeddedSmsPermissions === undefined
-      ? getRequiredAdminPermissions(request.url, request.method)
-      : embeddedSmsPermissions;
+    const embeddedCertificatePermissions = embeddedSmsPermissions === undefined
+      ? getEmbeddedCertificatePermissions(request.url, request.method, request.body)
+      : undefined;
+    const requiredPermissions = embeddedSmsPermissions !== undefined
+      ? embeddedSmsPermissions
+      : embeddedCertificatePermissions !== undefined
+        ? embeddedCertificatePermissions
+        : getRequiredAdminPermissions(request.url, request.method);
 
     if (jury) {
       const juryProfile = await getJuryAdminProfileById(jury.id);

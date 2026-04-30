@@ -69,6 +69,11 @@ const studentResponseSchema = z.object({
   name: z.string().nullable(),
   email: z.string().nullable(),
   course: z.string().nullable(),
+  classCode: z.string().nullable().optional(),
+  academicYear: z.string().nullable().optional(),
+  academicPeriod: z.string().nullable().optional(),
+  curricularYear: z.string().nullable().optional(),
+  academicSyncedAt: z.coerce.date().nullable().optional(),
   birthDate: z.coerce.date().nullable(),
   nationality: z.string().nullable(),
   phone: z.string().nullable(),
@@ -469,7 +474,7 @@ export async function authRoutes(app: FastifyInstance, opts: { env?: Env } = {})
           });
         }
         const errorMessage = result.error || "Número de estudante ou palavra-passe inválidos.";
-        const statusCode = isInvalidCredentialsErrorMessage(errorMessage) ? 401 : 500;
+        const statusCode = isInvalidCredentialsErrorMessage(errorMessage) ? 401 : 400;
         return reply.status(statusCode).send({
           success: false,
           error: errorMessage

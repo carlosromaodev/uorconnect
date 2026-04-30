@@ -37,7 +37,6 @@ describe("FeaturedCourseCard", () => {
         enrolled={false}
         enrollmentDisabled
         onEnroll={vi.fn()}
-        onCommunity={vi.fn()}
         onLike={vi.fn()}
         onOpenExternal={vi.fn()}
       />
@@ -57,7 +56,6 @@ describe("FeaturedCourseCard", () => {
         enrolled
         enrollmentStatusLabel="Confirmado"
         onEnroll={onEnroll}
-        onCommunity={vi.fn()}
         onLike={vi.fn()}
         onOpenExternal={vi.fn()}
       />

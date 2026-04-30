@@ -65,7 +65,7 @@ export default function PublicValidation() {
                   </p>
                 </div>
               </div>
-              <img src="/logoworconnect.png" alt="UOR Connect" className="h-12 w-auto object-contain" />
+              <img src="/uorconnect-logo-navbar.png" alt="UOR Connect" className="h-12 w-auto object-contain" />
             </div>
           </div>
 

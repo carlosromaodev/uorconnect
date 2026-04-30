@@ -363,16 +363,43 @@
     animation: fadeIn 0.5s ease-in-out forwards;
   }
 
+  .site-loading-bar {
+    @apply relative flex items-center gap-3 rounded-full border px-3 py-2 text-xs font-medium text-muted-foreground;
+    border-color: hsl(var(--border) / 0.72);
+    background:
+      linear-gradient(135deg, hsl(var(--background) / 0.94), hsl(var(--muted) / 0.45)),
+      hsl(var(--background));
+    box-shadow: 0 14px 36px rgb(15 23 42 / 0.08);
+  }
+
+  .site-loading-bar__track {
+    @apply relative h-2 min-w-0 flex-1 overflow-hidden rounded-full;
+    background: hsl(var(--muted));
+  }
+
+  .site-loading-bar__progress {
+    @apply absolute inset-y-0 left-0 rounded-full;
+    width: 42%;
+    background: linear-gradient(90deg, hsl(var(--primary)), rgb(34 61 66 / 0.92), hsl(var(--primary)));
+    background-size: 180% 100%;
+    box-shadow: 0 0 22px hsl(var(--primary) / 0.28);
+    animation: siteLoadingSweep 1.35s ease-in-out infinite;
+  }
+
+  .site-loading-bar__label {
+    @apply shrink-0 text-[11px] uppercase tracking-[0.14em];
+  }
+
   .Toastify__toast-container.uor-toast-container {
-    @apply px-3 sm:px-0;
+    @apply px-3 pb-4 sm:px-0 sm:pb-0;
     width: min(100vw - 1.25rem, 430px);
   }
 
   .Toastify__toast.uor-toast {
-    @apply relative rounded-2xl border px-4 py-3 shadow-xl backdrop-blur-sm;
+    @apply relative rounded-2xl border px-4 py-3 shadow-xl backdrop-blur-md;
     min-height: 64px;
     margin-bottom: 0.75rem;
-    box-shadow: 0 18px 45px rgb(15 23 42 / 0.24);
+    box-shadow: 0 18px 45px rgb(15 23 42 / 0.18);
     background-image: none;
   }
 
@@ -500,6 +527,19 @@
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes siteLoadingSweep {
+  0% { transform: translateX(-105%); background-position: 0% 50%; }
+  45% { transform: translateX(32%); background-position: 100% 50%; }
+  100% { transform: translateX(240%); background-position: 0% 50%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .site-loading-bar__progress {
+    animation: none;
+    transform: translateX(70%);
+  }
 }
 
 @keyframes autofillPop {

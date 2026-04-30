@@ -11,6 +11,10 @@ export const defaultHeroSponsors: HomeSponsor[] = [
   { id: "neic", name: "Núcleo de Engenharia Informática e Comunicações", imageUrl: "/logo-neic.jpeg", label: null },
 ];
 
+export const UOR_EVENT_TITLE_PREFIX = "3ª Edição do";
+export const UOR_EVENT_TITLE_HIGHLIGHT = "Workshop Alusivo ao Dia das Telecomunicações e da Sociedade da Informação";
+export const UOR_EVENT_LEMA = "Da sala de aula ao mercado de trabalho";
+
 export const defaultHomeSocialConfig: HomeSocialConfig = {
   key: "default",
   instagramUrl: null,
@@ -27,10 +31,10 @@ export const defaultHomeSocialConfig: HomeSocialConfig = {
   heroIconsOpacity: 18,
   heroBlobsIntensity: 68,
   heroMeshEnabled: true,
-  heroBadgeText: "Plataforma Académica Digital · Chave-na-Mão",
-  heroTitlePrefix: "3ª edição da",
-  heroTitleHighlight: "Feira do Dia das Telecomunicações",
-  heroSubtitleText: "Conectando o Conhecimento Académico ao Mercado Tecnológico com Energia e Empreendedorismo.",
+  heroBadgeText: "UOR Connect · Workshop",
+  heroTitlePrefix: UOR_EVENT_TITLE_PREFIX,
+  heroTitleHighlight: UOR_EVENT_TITLE_HIGHLIGHT,
+  heroSubtitleText: UOR_EVENT_LEMA,
   heroSubtitleColor: "#4b5563",
   heroTitleMobileSize: "2.8rem",
   heroTitleTabletSize: "4.2rem",

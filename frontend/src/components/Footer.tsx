@@ -2,7 +2,12 @@ import { Link } from "react-router-dom";
 import { Instagram, Linkedin, Facebook, Heart, Mail, MapPin } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
-import { defaultHomeSocialConfig } from "@/lib/home-content";
+import {
+  defaultHomeSocialConfig,
+  UOR_EVENT_LEMA,
+  UOR_EVENT_TITLE_HIGHLIGHT,
+  UOR_EVENT_TITLE_PREFIX,
+} from "@/lib/home-content";
 
 export default function Footer() {
   const { data } = useQuery({
@@ -20,10 +25,10 @@ export default function Footer() {
           {/* Brand */}
           <div className="space-y-4">
             <Link to="/" className="inline-block">
-              <img src="/logoworconnect.png" alt="UOR Connect" className="h-7" />
+              <img src="/uorconnect-logo-navbar.png" alt="UOR Connect" className="h-10 w-auto max-w-[170px] object-contain" />
             </Link>
             <p className="text-sm leading-relaxed text-muted-foreground">
-              Feira do Dia das Telecomunicações — 3.ª edição. Conectando o conhecimento académico ao mercado tecnológico.
+              {UOR_EVENT_TITLE_PREFIX} {UOR_EVENT_TITLE_HIGHLIGHT}. {UOR_EVENT_LEMA}.
             </p>
             <div className="flex items-center gap-2">
               {social.instagramUrl && (

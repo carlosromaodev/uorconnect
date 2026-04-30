@@ -2,7 +2,6 @@ import { motion } from "framer-motion";
 import {
   ArrowUpRight,
   Crown,
-  ExternalLink,
   Heart,
   MessageCircle,
   QrCode,
@@ -38,8 +37,16 @@ function StatPill({
   color?: string;
 }) {
   return (
-    <div className="flex flex-col items-center gap-0.5 rounded-xl border border-border/40 bg-muted/30 px-2.5 py-2 text-center">
-      <Icon className="h-3.5 w-3.5 text-muted-foreground/60" />
+    <div
+      className="relative overflow-hidden rounded-xl border bg-white px-2.5 py-2 text-center shadow-sm"
+      style={{ borderColor: color ? withAlpha(color, "18") : undefined }}
+    >
+      <div
+        className="mx-auto mb-1 flex h-7 w-7 items-center justify-center rounded-lg"
+        style={{ backgroundColor: color ? withAlpha(color, "10") : undefined, color }}
+      >
+        <Icon className="h-3.5 w-3.5" />
+      </div>
       <p className="text-sm font-bold leading-tight" style={color ? { color } : undefined}>
         {value}
       </p>
@@ -57,6 +64,7 @@ export function ProjectShowcaseCard({
   onShare,
   onOpenQr,
   onPrimaryAction,
+  onLikeAction,
 }: {
   project: ProjectCardItem;
   index?: number;
@@ -64,6 +72,7 @@ export function ProjectShowcaseCard({
   onShare: (project: ProjectCardItem) => void | Promise<void>;
   onOpenQr: (project: ProjectCardItem) => void;
   onPrimaryAction: (project: ProjectCardItem) => void | Promise<void>;
+  onLikeAction: (project: ProjectCardItem) => void | Promise<void>;
 }) {
   const areaUi = getProjectAreaClasses(project.area, project.type);
   const displayArea = getSubmissionAreaLabel(project.area, project.type);
@@ -79,6 +88,8 @@ export function ProjectShowcaseCard({
       ? "Gostei"
       : "Gostar";
   const isPrimaryActive = canVote ? project.userHasVoted : project.userHasLiked;
+  const showStandaloneLike = canVote && project.canLike;
+  const standaloneLikeLabel = project.userHasLiked ? "Gostei" : "Gostar";
 
   return (
     <motion.article
@@ -96,6 +107,18 @@ export function ProjectShowcaseCard({
         boxShadow: "var(--shadow-raised)",
       }}
     >
+      <div
+        className="pointer-events-none absolute inset-y-6 left-0 w-px"
+        style={{ background: `linear-gradient(180deg, transparent, ${withAlpha(project.primaryColor, "60")}, transparent)` }}
+      />
+      <div
+        className="pointer-events-none absolute right-0 top-48 h-32 w-32 opacity-[0.06]"
+        style={{
+          backgroundImage: `linear-gradient(135deg, ${project.primaryColor} 1px, transparent 1px)`,
+          backgroundSize: "12px 12px",
+        }}
+      />
+
       {/* ── Hero image / gradient ── */}
       <div className="relative h-44 overflow-hidden sm:h-48">
         {bannerSource ? (
@@ -124,8 +147,17 @@ export function ProjectShowcaseCard({
         {/* Dark vignette at bottom for readability */}
         <div className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/40 to-transparent" />
 
-        {/* Top bar accent */}
-        <div className={`absolute inset-x-0 top-0 h-1 ${areaUi.topBar}`} />
+        <div
+          className="absolute inset-y-4 left-0 w-1 rounded-r-full bg-white/80 shadow-sm"
+          style={{ boxShadow: `0 0 0 1px ${withAlpha(project.primaryColor, "30")}, 0 12px 28px ${withAlpha(project.primaryColor, "28")}` }}
+        />
+        <div
+          className="absolute right-0 top-0 h-20 w-20 opacity-20"
+          style={{
+            backgroundImage: `radial-gradient(${withAlpha(project.primaryColor, "ff")} 1px, transparent 1px)`,
+            backgroundSize: "10px 10px",
+          }}
+        />
 
         {/* Rank badge */}
         {(project.isWinner || index < 3) && (
@@ -155,7 +187,7 @@ export function ProjectShowcaseCard({
         )}
 
         {/* Badges overlay */}
-        <div className="absolute left-3 top-3 flex flex-wrap items-center gap-1.5 sm:left-4 sm:top-4">
+        <div className="absolute left-4 top-4 flex max-w-[calc(100%-4.25rem)] flex-wrap items-center gap-1.5">
           <span
             className={`rounded-md px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider shadow-sm sm:text-[11px] ${areaUi.badge}`}
           >
@@ -197,6 +229,26 @@ export function ProjectShowcaseCard({
               <span className="text-xs text-muted-foreground">{project.course}</span>
             </div>
           )}
+        </div>
+
+        <div
+          className="flex items-center gap-2 rounded-xl border px-3 py-2"
+          style={{ borderColor: withAlpha(project.primaryColor, "16"), backgroundColor: withAlpha(project.primaryColor, "06") }}
+        >
+          <div
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-white shadow-sm"
+            style={{ color: project.primaryColor }}
+          >
+            <Shield className="h-3.5 w-3.5" />
+          </div>
+          <div className="min-w-0">
+            <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
+              {canVote ? "Em votação pública" : "Expositor em destaque"}
+            </p>
+            <p className="truncate text-xs font-semibold text-foreground">
+              {project.course || displayArea}
+            </p>
+          </div>
         </div>
 
         {/* Description */}
@@ -242,7 +294,14 @@ export function ProjectShowcaseCard({
         {/* Actions */}
         <div className="mt-auto space-y-2 pt-1">
           {/* Primary action + detail link */}
-          <div className="grid grid-cols-2 gap-2">
+          <div
+            className={cn(
+              "grid gap-2",
+              showStandaloneLike
+                ? "grid-cols-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,0.9fr)_minmax(0,1fr)]"
+                : "grid-cols-2",
+            )}
+          >
             <Button
               size="sm"
               variant={isPrimaryActive ? "default" : "outline"}
@@ -262,10 +321,30 @@ export function ProjectShowcaseCard({
               <span className="truncate">{primaryLabel}</span>
             </Button>
 
+            {showStandaloneLike && (
+              <Button
+                size="sm"
+                variant={project.userHasLiked ? "default" : "outline"}
+                className={cn(
+                  "h-10 w-full rounded-xl text-xs font-bold sm:h-11 sm:text-sm",
+                  project.userHasLiked
+                    ? "bg-primary text-primary-foreground shadow-sm"
+                    : "border-border/60 hover:bg-muted/50",
+                )}
+                onClick={() => void onLikeAction(project)}
+              >
+                <Heart className={cn("mr-1.5 h-4 w-4", project.userHasLiked && "fill-current")} />
+                <span className="truncate">{standaloneLikeLabel}</span>
+              </Button>
+            )}
+
             <Button
               asChild
               size="sm"
-              className="h-10 w-full rounded-xl text-xs font-bold sm:h-11 sm:text-sm"
+              className={cn(
+                "h-10 w-full rounded-xl text-xs font-bold sm:h-11 sm:text-sm",
+                showStandaloneLike && "col-span-2 sm:col-span-1",
+              )}
               style={{
                 backgroundColor: project.primaryColor,
                 color: "#fff",

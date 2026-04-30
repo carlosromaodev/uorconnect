@@ -15,6 +15,7 @@ import { useNavigate, Link } from "react-router-dom";
 import { StudentLoginForm } from "@/components/auth/StudentLoginForm";
 import { JuryLoginForm } from "@/components/auth/JuryLoginForm";
 import { type JuryMember, type StudentProfile } from "@/lib/api";
+import { UOR_EVENT_TITLE_HIGHLIGHT, UOR_EVENT_TITLE_PREFIX } from "@/lib/home-content";
 
 const ease: [number, number, number, number] = [0.22, 1, 0.36, 1];
 
@@ -94,12 +95,9 @@ export function PortalLoginPage({ redirectTo }: { redirectTo: string }) {
           transition={{ duration: 0.4, ease }}
           className="mb-8 flex flex-col items-center gap-4 text-center"
         >
-          <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-border/50 bg-white shadow-sm">
-            <img src="/logoworconnect.png" alt="UOR Connect" className="h-8 w-8 object-contain" />
-          </div>
+          <img src="/uorconnect-logo-navbar.png" alt="UOR Connect" className="h-16 w-auto max-w-[210px] object-contain" />
           <div>
-            <h1 className="font-heading text-2xl font-bold tracking-tight">UOR Connect</h1>
-            <p className="mt-1 text-sm text-muted-foreground">3.ª Feira do Dia das Telecomunicações</p>
+            <p className="text-sm font-medium leading-5 text-muted-foreground">{UOR_EVENT_TITLE_PREFIX} {UOR_EVENT_TITLE_HIGHLIGHT}</p>
           </div>
         </motion.div>
 

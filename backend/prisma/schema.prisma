@@ -46,6 +46,11 @@ model Student {
   name              String?
   email             String?
   course            String?
+  classCode         String?
+  academicYear      String?
+  academicPeriod    String?
+  curricularYear    String?
+  academicSyncedAt  DateTime?
   birthDate         DateTime?
   nationality       String?
   phone             String?
@@ -64,9 +69,14 @@ model Student {
   consentRecords    ConsentRecord[]
   loginAudits       StudentLoginAudit[]
   smsRecipients     SmsCampaignRecipient[]
+  whatsappRecipients WhatsAppCampaignRecipient[]
   attendanceCredential AttendanceCredential?
   attendanceCheckIns AttendanceCheckIn[]
   certificates      Certificate[]
+  communityPosts        CommunityPost[]
+  communityPostLikes    CommunityPostLike[]
+  communityPostComments CommunityPostComment[]
+  communityChatMessages CommunityChatMessage[]
 }
 
 enum StudentLoginOrigin {
@@ -493,6 +503,107 @@ model SmsCampaignRecipient {
   @@index([status, createdAt])
 }
 
+model WhatsAppInstance {
+  id                     Int                    @id @default(autoincrement())
+  name                   String                 @unique
+  label                  String?
+  phoneNumber            String?
+  baseUrl                String?
+  apiKey                 String?
+  status                 String                 @default("DISCONNECTED")
+  qrCode                 String?
+  pairingCode            String?
+  isDefault              Boolean                @default(false)
+  isActive               Boolean                @default(true)
+  lastConnectedAt        DateTime?
+  lastCheckedAt          DateTime?
+  createdByStudentNumber String
+  createdAt              DateTime               @default(now())
+  updatedAt              DateTime               @updatedAt
+  campaigns              WhatsAppCampaign[]
+
+  @@index([isActive, isDefault])
+  @@index([status, updatedAt])
+}
+
+model WhatsAppCampaign {
+  id                     Int                         @id @default(autoincrement())
+  title                  String?
+  message                String
+  instance               WhatsAppInstance?           @relation(fields: [instanceId], references: [id], onDelete: SetNull)
+  instanceId             Int?
+  instanceName           String
+  audienceType           String
+  audienceFiltersJson    String?
+  mediaUrl               String?
+  mediaType              String?
+  mediaMimeType          String?
+  mediaFileName          String?
+  totalRecipients        Int                         @default(0)
+  successCount           Int                         @default(0)
+  failedCount            Int                         @default(0)
+  status                 String                      @default("PENDING")
+  createdByStudentNumber String
+  createdAt              DateTime                    @default(now())
+  sentAt                 DateTime?
+  recipients             WhatsAppCampaignRecipient[]
+
+  @@index([instanceId, createdAt])
+  @@index([createdAt])
+  @@index([status, createdAt])
+}
+
+model WhatsAppCampaignRecipient {
+  id                   Int              @id @default(autoincrement())
+  campaign             WhatsAppCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  campaignId           Int
+  student              Student?         @relation(fields: [studentId], references: [id])
+  studentId            Int?
+  studentNumber        String?
+  recipientName        String?
+  recipientCourse      String?
+  phone                String
+  providerTo           String
+  status               String           @default("QUEUED")
+  providerMessageId    String?
+  providerResponseJson String?
+  errorMessage         String?
+  sentAt               DateTime?
+  createdAt            DateTime         @default(now())
+
+  @@unique([campaignId, phone])
+  @@index([campaignId])
+  @@index([studentId])
+  @@index([status, createdAt])
+}
+
+model WhatsAppConversation {
+  id           Int      @id @default(autoincrement())
+  phone        String   @unique
+  step         String   @default("MENU")
+  data         String   @default("{}")
+  studentId    Int?
+  instanceName String?
+  updatedAt    DateTime @updatedAt
+  createdAt    DateTime @default(now())
+
+  @@index([updatedAt])
+}
+
+model WhatsAppAutomationSetting {
+  id            Int      @id @default(autoincrement())
+  eventKey      String   @unique
+  label         String
+  description   String
+  enabled       Boolean  @default(true)
+  customTitle   String?
+  customMessage String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([enabled, updatedAt])
+}
+
 model PanelTopic {
   id          Int      @id @default(autoincrement())
   title       String
@@ -709,4 +820,94 @@ model AdminAuditLog {
   @@index([actorStudentNumber, createdAt])
   @@index([entityType, createdAt])
   @@index([action, createdAt])
+}
+
+// ──────────────────────────────────────────────
+// Community
+// ──────────────────────────────────────────────
+
+enum CommunityPostType {
+  FREE
+  PROJECT_UPDATE
+  COURSE_UPDATE
+  ADMIN_ANNOUNCEMENT
+}
+
+enum CommunityChatContextType {
+  PROJECT
+  COURSE
+}
+
+model CommunityPost {
+  id        Int               @id @default(autoincrement())
+  studentId Int
+  student   Student           @relation(fields: [studentId], references: [id])
+  type      CommunityPostType @default(FREE)
+  content   String
+  imageUrl  String?
+  contextId Int?
+  hidden    Boolean           @default(false)
+  createdAt DateTime          @default(now())
+  updatedAt DateTime          @updatedAt
+
+  likes    CommunityPostLike[]
+  comments CommunityPostComment[]
+
+  @@index([createdAt])
+  @@index([studentId, createdAt])
+  @@index([type, createdAt])
+}
+
+model CommunityPostLike {
+  id        Int      @id @default(autoincrement())
+  postId    Int
+  post      CommunityPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  studentId Int
+  student   Student  @relation(fields: [studentId], references: [id])
+  createdAt DateTime @default(now())
+
+  @@unique([postId, studentId])
+  @@index([postId])
+  @@index([studentId])
+}
+
+model CommunityPostComment {
+  id        Int      @id @default(autoincrement())
+  postId    Int
+  post      CommunityPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  studentId Int
+  student   Student  @relation(fields: [studentId], references: [id])
+  content   String
+  hidden    Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([postId, createdAt])
+  @@index([studentId])
+}
+
+model CommunityChatThread {
+  id          Int                       @id @default(autoincrement())
+  contextType CommunityChatContextType
+  contextId   Int
+  title       String?
+  createdAt   DateTime                  @default(now())
+
+  messages CommunityChatMessage[]
+
+  @@unique([contextType, contextId])
+  @@index([contextType])
+}
+
+model CommunityChatMessage {
+  id        Int                 @id @default(autoincrement())
+  threadId  Int
+  thread    CommunityChatThread @relation(fields: [threadId], references: [id], onDelete: Cascade)
+  studentId Int
+  student   Student             @relation(fields: [studentId], references: [id])
+  content   String
+  hidden    Boolean             @default(false)
+  createdAt DateTime            @default(now())
+
+  @@index([threadId, createdAt])
+  @@index([studentId])
 }

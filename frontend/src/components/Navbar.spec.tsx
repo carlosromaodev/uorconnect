@@ -10,8 +10,10 @@ const {
   submissionsMineMock,
   enrollmentsMineMock,
   getTokenMock,
+  getSessionStudentMock,
   setTokenMock,
   isAuthErrorMock,
+  toastSuccessMock,
 } = vi.hoisted(() => ({
   agendaLiveMock: vi.fn(),
   activityFeedMock: vi.fn(),
@@ -19,14 +21,16 @@ const {
   submissionsMineMock: vi.fn(),
   enrollmentsMineMock: vi.fn(),
   getTokenMock: vi.fn(),
+  getSessionStudentMock: vi.fn(),
   setTokenMock: vi.fn(),
   isAuthErrorMock: vi.fn(() => false),
+  toastSuccessMock: vi.fn(),
 }));
 
 vi.mock("@/components/ui/sonner", () => ({
   Toaster: () => null,
   toast: {
-    success: vi.fn(),
+    success: toastSuccessMock,
     info: vi.fn(),
     error: vi.fn(),
   },
@@ -57,6 +61,7 @@ vi.mock("@/lib/api", () => ({
     },
   },
   getToken: getTokenMock,
+  getSessionStudent: getSessionStudentMock,
   setToken: setTokenMock,
   isAuthError: isAuthErrorMock,
 }));
@@ -64,7 +69,9 @@ vi.mock("@/lib/api", () => ({
 describe("Navbar notification center", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    window.localStorage.clear();
     getTokenMock.mockReturnValue(null);
+    getSessionStudentMock.mockReturnValue(null);
     agendaLiveMock.mockResolvedValue({
       current: {
         id: 1,
@@ -130,11 +137,10 @@ describe("Navbar notification center", () => {
 
     fireEvent.click(screen.getByRole("button", { name: /centro de notificações/i }));
 
-    expect(await screen.findByText("Centro de notificações")).toBeInTheDocument();
+    expect(await screen.findByText("Notificações")).toBeInTheDocument();
     expect(await screen.findByText("Painel de IA Aplicada")).toBeInTheDocument();
-    expect(await screen.findByText("Projeto Atlas")).toBeInTheDocument();
-    expect(await screen.findByText("Estamos a acompanhar o painel em direto.")).toBeInTheDocument();
-    expect(screen.getByText(/Inicia sessão para receber aqui aprovações/i)).toBeInTheDocument();
+    expect(await screen.findByText("Workshop de Produto")).toBeInTheDocument();
+    expect(screen.getByText(/Entra para ver aprovações/i)).toBeInTheDocument();
   });
 
   it("mostra candidaturas e cursos do utilizador autenticado no centro", async () => {
@@ -185,5 +191,58 @@ describe("Navbar notification center", () => {
 
     expect(await screen.findByText("Projeto Aurora")).toBeInTheDocument();
     expect(await screen.findByText("Curso de Produto")).toBeInTheDocument();
+  });
+
+  it("mantém a navbar sincronizada quando há token sem perfil local", async () => {
+    getTokenMock.mockReturnValue("token-demo");
+    getSessionStudentMock.mockReturnValue(null);
+
+    render(
+      <MemoryRouter>
+        <Navbar />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(submissionsMineMock).toHaveBeenCalled();
+      expect(enrollmentsMineMock).toHaveBeenCalled();
+    });
+
+    expect(screen.queryByRole("link", { name: /^Entrar$/i })).not.toBeInTheDocument();
+    expect(screen.getAllByRole("link", { name: /minha área/i }).every((link) => (
+      link.getAttribute("href") === "/minha-area"
+    ))).toBe(true);
+  });
+
+  it("não reemite anúncio de aprovação já visualizado", async () => {
+    getTokenMock.mockReturnValue("token-demo");
+    window.localStorage.setItem("uor-approved-submissions-announced", JSON.stringify([11]));
+    submissionsMineMock.mockResolvedValue([
+      {
+        id: 11,
+        referenceCode: "SUB-11",
+        name: "Projeto Aurora",
+        status: "APPROVED",
+        statusLabel: "Aprovado",
+        type: "PROJECT",
+        typeLabel: "Projeto",
+        createdAt: "2026-04-03T09:00:00.000Z",
+        detailPath: "/projeto/projeto-aurora-11",
+        bannerUrl: null,
+        receiptPath: "/submissoes/11",
+      },
+    ]);
+
+    render(
+      <MemoryRouter>
+        <Navbar />
+      </MemoryRouter>,
+    );
+
+    await waitFor(() => {
+      expect(submissionsMineMock).toHaveBeenCalled();
+    });
+
+    expect(toastSuccessMock).not.toHaveBeenCalled();
   });
 });

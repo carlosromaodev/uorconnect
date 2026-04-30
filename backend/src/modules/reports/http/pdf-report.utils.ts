@@ -20,8 +20,8 @@ export function formatDateLabel(value: Date) {
 
 export async function loadLogoDataUri() {
   const candidates = [
-    { filePath: path.resolve(process.cwd(), "../frontend/public/logoworconnect.png"), mimeType: "image/png" },
-    { filePath: path.resolve(process.cwd(), "public/logoworconnect.png"), mimeType: "image/png" },
+    { filePath: path.resolve(process.cwd(), "../frontend/public/uorconnect-logo-navbar.png"), mimeType: "image/png" },
+    { filePath: path.resolve(process.cwd(), "public/uorconnect-logo-navbar.png"), mimeType: "image/png" },
   ];
 
   for (const candidate of candidates) {

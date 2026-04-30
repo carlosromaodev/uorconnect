@@ -3,12 +3,12 @@ import { Link, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   CalendarDays, Send, Users, FolderOpen, Mic, ArrowRight,
-  Radio, Globe,
+  Radio,
   MessageSquare, Clock, MapPin, User, Presentation, BookOpen,
   Target, Award, TrendingUp, HelpCircle, ChevronRight,
   Sparkles, ThumbsUp, Star, ChevronLeft, Briefcase, Package, GraduationCap,
   Settings, Vote, Rocket, Play, Heart, Loader2,
-  Building2, Instagram, Lock
+  Linkedin, Lock
 } from "lucide-react";
 import { ProjectQrDialog, type ProjectCardItem } from "@/components/projects/ProjectQrDialog";
 import { ProjectShowcaseCard } from "@/components/projects/ProjectShowcaseCard";
@@ -23,7 +23,13 @@ import {
 import { toast } from "@/components/ui/sonner";
 import { api, type ActivityFeedItem, type AgendaItem, type AgendaLiveState, type Course, type CoursesContent, type FaqItem, type HomeContent, type LiveChatMessage, type ProjectPublicFeedItem, type Speaker, type Stats, type StudentEnrollmentListItem, getToken, isAuthError, setToken } from "@/lib/api";
 import { getContestAbsoluteUrl } from "@/lib/contest-lab";
-import { defaultHeroSponsors, defaultHomeSocialConfig } from "@/lib/home-content";
+import {
+  defaultHeroSponsors,
+  defaultHomeSocialConfig,
+  UOR_EVENT_LEMA,
+  UOR_EVENT_TITLE_HIGHLIGHT,
+  UOR_EVENT_TITLE_PREFIX,
+} from "@/lib/home-content";
 import { getHeroIconByName } from "@/lib/phosphor-icons";
 import { canVoteSubmission, getSubmissionAreaLabel, getSubmissionAudienceCopy, normalizeSubmissionType } from "@/lib/submission-meta";
 import { UserAvatar } from "@/components/social/UserAvatar";
@@ -423,6 +429,16 @@ function getActivityLabel(item: ActivityFeedItem) {
   return "comentou em";
 }
 
+function compareNewestByCreatedAt<T extends { id: number; createdAt?: string | null }>(left: T, right: T) {
+  const rightTime = right.createdAt ? new Date(right.createdAt).getTime() : 0;
+  const leftTime = left.createdAt ? new Date(left.createdAt).getTime() : 0;
+  const safeRightTime = Number.isFinite(rightTime) ? rightTime : 0;
+  const safeLeftTime = Number.isFinite(leftTime) ? leftTime : 0;
+
+  if (safeRightTime !== safeLeftTime) return safeRightTime - safeLeftTime;
+  return right.id - left.id;
+}
+
 function TopProjectsCarousel() {
   const scrollRef = useRef<HTMLDivElement>(null);
   const [projects, setProjects] = useState<ProjectCardItem[]>([]);
@@ -431,13 +447,10 @@ function TopProjectsCarousel() {
   const [qrProject, setQrProject] = useState<ProjectCardItem | null>(null);
   const navigate = useNavigate();
   const sorted = [...projects].sort((a, b) => {
-    const leftCanVote = canVoteSubmission(a.type, a.area, a.canVote);
-    const rightCanVote = canVoteSubmission(b.type, b.area, b.canVote);
+    if (mode === "winners") return compareNewestByCreatedAt(a, b);
 
-    if (leftCanVote !== rightCanVote) return leftCanVote ? -1 : 1;
-    if (mode === "now") return b.votesCount - a.votesCount;
-    if (a.isWinner !== b.isWinner) return a.isWinner ? -1 : 1;
-    return b.votesCount - a.votesCount;
+    if (b.votesCount !== a.votesCount) return b.votesCount - a.votesCount;
+    return compareNewestByCreatedAt(a, b);
   });
 
   useEffect(() => {
@@ -480,11 +493,41 @@ function TopProjectsCarousel() {
     }
   };
 
+  const handleLikeAction = async (project: ProjectCardItem) => {
+    if (!loggedIn) {
+      handleRequireLogin("Faz login para gostar deste expositor.");
+      return;
+    }
+
+    try {
+      const result = await api.interactions.like(project.id);
+      setProjects((current) => current.map((entry) => (
+        entry.id === project.id
+          ? { ...entry, userHasLiked: result.liked, likesCount: result.likesCount }
+          : entry
+      )));
+      toast.success(result.liked ? "Like registado." : "Like removido.");
+    } catch (err) {
+      if (isAuthError(err)) {
+        setToken(null);
+        setLoggedIn(false);
+        handleRequireLogin("A tua sessão expirou. Inicia novamente.");
+        return;
+      }
+      toast.error(err instanceof Error ? err.message : "Erro ao interagir com o expositor.");
+    }
+  };
+
   const handlePrimaryAction = async (project: ProjectCardItem) => {
     const canVote = canVoteSubmission(project.type, project.area, project.canVote);
 
+    if (!canVote) {
+      await handleLikeAction(project);
+      return;
+    }
+
     if (!loggedIn) {
-      handleRequireLogin(canVote ? "Faz login para votar." : "Faz login para gostar deste expositor.");
+      handleRequireLogin("Faz login para votar.");
       return;
     }
 
@@ -504,14 +547,6 @@ function TopProjectsCarousel() {
         toast.success("Voto registado.");
         return;
       }
-
-      const result = await api.interactions.like(project.id);
-      setProjects((current) => current.map((entry) => (
-        entry.id === project.id
-          ? { ...entry, userHasLiked: result.liked, likesCount: result.likesCount }
-          : entry
-      )));
-      toast.success(result.liked ? "Like registado." : "Like removido.");
     } catch (err) {
       if (isAuthError(err)) {
         setToken(null);
@@ -551,6 +586,7 @@ function TopProjectsCarousel() {
             onShare={handleShare}
             onOpenQr={(item) => setQrProject(item)}
             onPrimaryAction={handlePrimaryAction}
+            onLikeAction={handleLikeAction}
           />
         ))}
       </div>
@@ -564,17 +600,111 @@ function TopProjectsCarousel() {
   );
 }
 
-const defaultCourses = [
-  { id: 1, name: "Eng. Informática", description: "Formação prática orientada a software, arquitetura de sistemas e produtos digitais.", preview: "Curso gerido por parceiro tecnológico.", communityUrl: null, companyName: "Parceiro Tech AO", companyCategory: "Tecnologia", companyLogoUrl: null, companyWebsite: null, companyInstagram: null, companyLinkedin: null, isPaid: false, priceLabel: "Gratuito", studentCount: 0, likesCount: 0, accentColor: "#2563eb", accentColorSecondary: "#38bdf8", courseColor: "#2563eb", sortOrder: 0, isPublished: true },
-  { id: 2, name: "Eng. Telecomunicações", description: "Infraestrutura, redes modernas e operações digitais aplicadas ao mercado.", preview: "Curso gerido por parceiro de telecom.", communityUrl: null, companyName: "Parceiro Connect AO", companyCategory: "Telecomunicações", companyLogoUrl: null, companyWebsite: null, companyInstagram: null, companyLinkedin: null, isPaid: true, priceLabel: "Pago", studentCount: 0, likesCount: 0, accentColor: "#f97316", accentColorSecondary: "#fb923c", courseColor: "#d97706", sortOrder: 1, isPublished: true },
-];
+type TopCoursesCarouselProps = {
+  courses: Course[];
+  likedCourseIds: Set<number>;
+  enrolledCourseIds: Set<number>;
+  enrollmentsByCourse: Record<number, StudentEnrollmentListItem>;
+  onEnroll: (course: Course) => void;
+  onLike: (courseId: number) => void;
+  onOpenReceipt: (path: string) => void;
+  onOpenExternal: (url?: string | null, emptyMessage?: string) => void;
+};
 
-const speakers = [
-  { name: "Dr. Manuel Santos", role: "Especialista em Telecomunicações", talk: "Inovação nas Telecomunicações" },
-  { name: "Eng. Ana Ferreira", role: "Engenheira de Redes 5G", talk: "Introdução ao 5G e IoT" },
-  { name: "Dra. Carla Mendes", role: "Consultora de Marca Pessoal", talk: "Marca Pessoal na Era Digital" },
-  { name: "Eng. Pedro Lopes", role: "Developer & Mentor", talk: "GitHub, LinkedIn e Portfólio" },
-];
+function TopCoursesCarousel({
+  courses,
+  likedCourseIds,
+  enrolledCourseIds,
+  enrollmentsByCourse,
+  onEnroll,
+  onLike,
+  onOpenReceipt,
+  onOpenExternal,
+}: TopCoursesCarouselProps) {
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const [mode, setMode] = useState<"featured" | "voted">("featured");
+  const sortedCourses = useMemo(() => [...courses].sort((left, right) => {
+    if (mode === "featured") return compareNewestByCreatedAt(left, right);
+
+    const leftEngaged = hasCourseEngagement(left);
+    const rightEngaged = hasCourseEngagement(right);
+    if (leftEngaged !== rightEngaged) return leftEngaged ? -1 : 1;
+
+    const likesDiff = right.likesCount - left.likesCount;
+    if (likesDiff !== 0) return likesDiff;
+
+    const scoreDiff = getCourseEngagementScore(right) - getCourseEngagementScore(left);
+    if (scoreDiff !== 0) return scoreDiff;
+
+    return compareNewestByCreatedAt(left, right);
+  }).slice(0, 8), [courses, mode]);
+
+  const scroll = (dir: "left" | "right") => {
+    scrollRef.current?.scrollBy({ left: dir === "left" ? -380 : 380, behavior: "smooth" });
+  };
+
+  if (!sortedCourses.length) {
+    return (
+      <div className="rounded-2xl border border-dashed border-primary/25 bg-background/70 px-5 py-8 text-sm text-muted-foreground">
+        Ainda não existem cursos publicados para mostrar na home.
+      </div>
+    );
+  }
+
+  return (
+    <div className="relative">
+      <div className="mb-5 flex flex-wrap gap-2">
+        <Button size="sm" variant={mode === "featured" ? "default" : "outline"} onClick={() => setMode("featured")}>
+          Destaques
+        </Button>
+        <Button size="sm" variant={mode === "voted" ? "default" : "outline"} onClick={() => setMode("voted")}>
+          Mais votados agora
+        </Button>
+      </div>
+
+      <button onClick={() => scroll("left")} className="absolute -left-4 top-1/2 z-10 hidden h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-border bg-card shadow-md transition-colors hover:bg-muted md:flex">
+        <ChevronLeft className="h-5 w-5" />
+      </button>
+      <button onClick={() => scroll("right")} className="absolute -right-4 top-1/2 z-10 hidden h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-border bg-card shadow-md transition-colors hover:bg-muted md:flex">
+        <ChevronRight className="h-5 w-5" />
+      </button>
+
+      <div ref={scrollRef} className="-mx-1 flex snap-x snap-mandatory gap-5 overflow-x-auto px-1 pb-2 scrollbar-hide">
+        {sortedCourses.map((course, index) => {
+          const enrollment = enrollmentsByCourse[course.id];
+
+          return (
+            <motion.div
+              key={course.id}
+              initial={{ opacity: 0, scale: 0.96, y: 16 }}
+              whileInView={{ opacity: 1, scale: 1, y: 0 }}
+              viewport={{ once: true }}
+              transition={{ delay: index * 0.05, type: "spring", stiffness: 220, damping: 24 }}
+              className="min-w-[300px] max-w-[340px] snap-start sm:min-w-[340px] md:min-w-[380px] md:max-w-[400px]"
+            >
+              <FeaturedCourseCard
+                course={course}
+                liked={likedCourseIds.has(course.id)}
+                enrolled={enrolledCourseIds.has(course.id)}
+                enrollmentStatusLabel={enrollment?.statusLabel}
+                className="h-full"
+                onEnroll={() => {
+                  if (enrollment?.receiptPath) {
+                    onOpenReceipt(enrollment.receiptPath);
+                    return;
+                  }
+                  onEnroll(course);
+                }}
+                onLike={() => onLike(course.id)}
+                onOpenExternal={onOpenExternal}
+              />
+            </motion.div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
 
 const patternIconNames = [
   "WifiHigh",
@@ -745,6 +875,14 @@ function TypeBadge({ type }: { type: string }) {
       {type}
     </span>
   );
+}
+
+function hasCourseEngagement(course: Course) {
+  return course.likesCount > 0 || course.studentCount > 0;
+}
+
+function getCourseEngagementScore(course: Course) {
+  return course.studentCount + course.likesCount;
 }
 
 function HeroLabButton() {
@@ -958,8 +1096,7 @@ export default function Index() {
     { value: `${agendaItems.length}`, label: "Sessões na Agenda", icon: GraduationCap },
   ];
 
-  const homepageCourses = coursesContent.preview.length ? coursesContent.preview : defaultCourses;
-  const topCourses = coursesContent.topCourses.length ? coursesContent.topCourses : defaultCourses;
+  const topCourseSource = coursesContent.courses.length ? coursesContent.courses : coursesContent.topCourses;
   const recentActivity = activityFeed.slice(0, 3);
   const laboratorioHref = useMemo(() => getContestAbsoluteUrl("/"), []);
   const quickActions = useMemo(() => ([
@@ -975,6 +1112,9 @@ export default function Index() {
   const heroConfig = useMemo(() => ({
     ...defaultHomeSocialConfig,
     ...homeContent.socialConfig,
+    heroTitlePrefix: UOR_EVENT_TITLE_PREFIX,
+    heroTitleHighlight: UOR_EVENT_TITLE_HIGHLIGHT,
+    heroSubtitleText: UOR_EVENT_LEMA,
     heroFloatingIcons: homeContent.socialConfig?.heroFloatingIcons?.length ? homeContent.socialConfig.heroFloatingIcons : defaultHomeSocialConfig.heroFloatingIcons,
     sponsors: homeContent.socialConfig?.sponsors?.length ? homeContent.socialConfig.sponsors : defaultHeroSponsors,
   }), [homeContent.socialConfig]);
@@ -1118,7 +1258,7 @@ export default function Index() {
         preview: current.preview.map((item) => item.id === course.id ? { ...item, studentCount: result.studentCount } : item),
       }));
       await refreshHomeCourseEnrollments();
-      toast.success("Inscrição registada. A comunidade do curso foi desbloqueada.");
+      toast.success("Inscrição registada com sucesso.");
     } catch (error) {
       handleCourseAccessError(error, "Falha ao inscrever no curso");
     }
@@ -1137,18 +1277,7 @@ export default function Index() {
         <div className="absolute bottom-0 left-0 h-[350px] w-[350px] rounded-full blur-[100px] pointer-events-none" style={{ backgroundColor: withAlpha(heroConfig.accentColor, "12"), opacity: heroConfig.heroBlobsIntensity / 120 }} />
 
         <div className="relative z-10 mx-auto w-full max-w-screen-xl px-4 sm:px-6">
-          <div className="mx-auto flex max-w-2xl flex-col items-center text-center">
-
-            {/* Logo + instituição */}
-            <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.4 }}
-              className="mb-5 flex items-center gap-2.5"
-            >
-              <img src="/logoworconnect.png" alt="UOR Connect" className="h-9 shrink-0 drop-shadow-sm" />
-              <div className="h-4 w-px bg-border/60" />
-              <span className="text-[10px] font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                NEIC · Universidade Óscar Ribas
-              </span>
-            </motion.div>
+          <div className="mx-auto flex max-w-4xl flex-col items-center text-center">
 
             {/* Badge edição */}
             <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} transition={{ delay: 0.15, type: "spring" }}
@@ -1162,7 +1291,7 @@ export default function Index() {
             <motion.h1
               initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
               transition={{ delay: 0.25, duration: 0.5, ease: "easeOut" }}
-              className="mb-4 font-heading font-extrabold tracking-tight leading-[1.08] text-3xl sm:text-4xl md:text-[2.75rem] lg:text-5xl"
+              className="mb-4 max-w-4xl font-heading text-3xl font-extrabold leading-[1.08] tracking-tight sm:text-4xl md:text-[2.75rem] lg:text-5xl"
             >
               <span style={{ color: heroConfig.titleColor }}>{heroConfig.heroTitlePrefix} </span>
               <span style={{ color: heroConfig.accentColor }}>{heroConfig.heroTitleHighlight}</span>
@@ -1288,63 +1417,46 @@ export default function Index() {
       {/* ══════════════════════════════════════
           CURSOS
       ══════════════════════════════════════ */}
-      <section className="py-16 md:py-24 bg-muted/20">
-        <div className="container mx-auto px-4">
-          <motion.div initial={{ opacity: 0, y: 12 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="mb-10">
-            <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/5 px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-primary">
-              <GraduationCap className="h-3.5 w-3.5" />Formação
+      <section className="relative overflow-hidden bg-muted/20 py-16 md:py-24">
+        <div
+          className="pointer-events-none absolute inset-0 opacity-[0.06]"
+          style={{
+            backgroundImage: "linear-gradient(hsl(var(--foreground)) 1px, transparent 1px), linear-gradient(90deg, hsl(var(--foreground)) 1px, transparent 1px)",
+            backgroundSize: "38px 38px",
+          }}
+        />
+        <div className="container relative mx-auto px-4">
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            className="mb-10"
+          >
+            <div>
+              <div className="mb-3 inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/5 px-3 py-1.5 text-xs font-semibold uppercase tracking-wider text-primary">
+                <GraduationCap className="h-3.5 w-3.5" />Formação
+              </div>
+              <h2 className="font-heading text-3xl font-bold md:text-4xl">Top Cursos</h2>
+              <p className="mt-2 max-w-lg text-sm text-muted-foreground md:text-base">Os cursos mais procurados pela comunidade.</p>
             </div>
-            <h2 className="font-heading text-3xl font-bold md:text-4xl">Cursos em Destaque</h2>
-            <p className="mt-2 max-w-lg text-sm text-muted-foreground md:text-base">Os cursos mais populares desta edição.</p>
           </motion.div>
 
-          {/* Top 3 ranking */}
-          <div className="mb-8 flex flex-col gap-2 sm:flex-row sm:gap-3">
-            {topCourses.slice(0, 3).map((course, index) => (
-              <motion.div key={`${course.id}-${index}`}
-                initial={{ opacity: 0, y: 8 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}
-                transition={{ delay: index * 0.06 }}
-                className="flex flex-1 items-center gap-3 rounded-xl border bg-white p-3.5 shadow-sm"
-                style={{ borderColor: withAlpha(course.courseColor, "30") }}
-              >
-                <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-sm font-bold text-white" style={{ backgroundColor: course.courseColor }}>
-                  #{index + 1}
-                </div>
-                <div className="min-w-0">
-                  <p className="truncate font-heading text-sm font-bold">{course.name}</p>
-                  <p className="text-xs text-muted-foreground">{course.studentCount} inscritos</p>
-                </div>
-              </motion.div>
-            ))}
-          </div>
+          <TopCoursesCarousel
+            courses={topCourseSource}
+            likedCourseIds={likedCourseIds}
+            enrolledCourseIds={enrolledCourseIds}
+            enrollmentsByCourse={courseEnrollmentsByCourse}
+            onEnroll={(course) => void handleCourseEnroll(course)}
+            onLike={(courseId) => void handleCourseLike(courseId)}
+            onOpenReceipt={(path) => navigate(path)}
+            onOpenExternal={openExternal}
+          />
 
-          {/* Course cards carousel */}
-          <div className="flex gap-5 overflow-x-auto scrollbar-hide pb-2 snap-x snap-mandatory">
-            {homepageCourses.map((course, i) => (
-              <motion.div key={course.id ?? i}
-                initial={{ opacity: 0, scale: 0.96, y: 16 }} whileInView={{ opacity: 1, scale: 1, y: 0 }}
-                viewport={{ once: true }} transition={{ delay: i * 0.06, type: "spring", stiffness: 200 }}
-                className="snap-start min-w-[300px] max-w-[340px] sm:min-w-[340px] md:min-w-[380px] md:max-w-[400px]"
-              >
-                <FeaturedCourseCard
-                  course={course} liked={likedCourseIds.has(course.id)} enrolled={enrolledCourseIds.has(course.id)}
-                  enrollmentStatusLabel={courseEnrollmentsByCourse[course.id]?.statusLabel}
-                  className="h-full"
-                  onEnroll={() => {
-                    const enrollment = courseEnrollmentsByCourse[course.id];
-                    if (enrollment?.receiptPath) { navigate(enrollment.receiptPath); return; }
-                    void handleCourseEnroll(course);
-                  }}
-                  onCommunity={() => {
-                    if (!enrolledCourseIds.has(course.id)) { toast.warning("Precisas estar inscrito no curso antes de entrar na comunidade."); return; }
-                    openExternal(course.communityUrl, "A comunidade deste curso ainda não foi configurada.");
-                  }}
-                  onLike={() => void handleCourseLike(course.id)}
-                  onOpenExternal={openExternal}
-                />
-              </motion.div>
-            ))}
-          </div>
+          <motion.div initial={{ opacity: 0 }} whileInView={{ opacity: 1 }} viewport={{ once: true }} className="mt-10 text-center">
+            <Button asChild size="lg" variant="outline" className="h-12 rounded-xl font-semibold">
+              <Link to="/cursos">Ver Todos os Cursos <ArrowRight className="ml-2 h-5 w-5" /></Link>
+            </Button>
+          </motion.div>
         </div>
       </section>
 
@@ -1360,40 +1472,81 @@ export default function Index() {
               <Mic className="h-3.5 w-3.5" />Oradores
             </div>
             <h2 className="font-heading text-3xl font-bold md:text-4xl">Palestrantes</h2>
-            <p className="mt-2 max-w-lg text-sm text-muted-foreground md:text-base">Os profissionais que vão partilhar conhecimento.</p>
+            <p className="mt-2 max-w-lg text-sm text-muted-foreground md:text-base">Os profissionais e expositores que vão partilhar conhecimento aplicável.</p>
           </motion.div>
 
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {speakers.map((s, i) => (
-              <motion.div key={s.name}
-                initial={{ opacity: 0, y: 16 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}
-                transition={{ delay: i * 0.07, type: "spring", stiffness: 260, damping: 22 }}
-                whileHover={{ y: -4, transition: { type: "spring", stiffness: 300, damping: 24 } }}
-                className="group relative overflow-hidden rounded-2xl border border-border/50 bg-white shadow-sm transition-shadow hover:shadow-md hover:border-primary/20"
-              >
-                <div className="h-0.5 bg-gradient-to-r from-primary/70 via-primary/30 to-transparent" />
-                <div className="p-5">
-                  <div className="mb-4 flex items-center gap-3">
-                    <UserAvatar
-                      name={s.name}
-                      avatarUrl={(s as Record<string, unknown>).avatarUrl as string | undefined}
-                      size="lg" className="h-12 w-12 shrink-0 text-sm"
+          {speakers.length > 0 ? (
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+              {speakers.map((speaker, i) => {
+                const specialty = speaker.specialty || "Especialista convidado";
+                const normalizedDay = speaker.day?.trim();
+                const dayLabel = normalizedDay === "DAY2"
+                  ? "Dia 2"
+                  : normalizedDay === "DAY1"
+                    ? "Dia 1"
+                    : normalizedDay || "Evento";
+
+                return (
+                  <motion.div key={speaker.id}
+                    initial={{ opacity: 0, y: 16 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}
+                    transition={{ delay: i * 0.07, type: "spring", stiffness: 260, damping: 22 }}
+                    whileHover={{ y: -4, transition: { type: "spring", stiffness: 300, damping: 24 } }}
+                    className="group relative overflow-hidden rounded-2xl border border-border/60 bg-white p-5 shadow-sm transition-all duration-300 hover:border-primary/20 hover:shadow-md"
+                  >
+                    <div className="pointer-events-none absolute inset-y-5 left-0 w-px bg-[hsl(var(--area-negocio))]/50" />
+                    <div
+                      className="pointer-events-none absolute right-0 top-0 h-24 w-24 opacity-[0.06]"
+                      style={{
+                        backgroundImage: "linear-gradient(135deg, hsl(var(--area-negocio)) 1px, transparent 1px)",
+                        backgroundSize: "12px 12px",
+                      }}
                     />
-                    <div className="min-w-0">
-                      <h3 className="truncate font-heading text-sm font-bold leading-tight">{s.name}</h3>
-                      <p className="truncate text-xs font-semibold text-primary mt-0.5">{s.role}</p>
+
+                    <div className="relative mb-5 flex items-start justify-between gap-3">
+                      <UserAvatar
+                        name={speaker.name}
+                        avatarUrl={speaker.avatarUrl ?? undefined}
+                        size="lg" className="h-12 w-12 shrink-0 text-sm shadow-sm ring-4 ring-[hsl(var(--area-negocio))]/10"
+                      />
+                      <span className="rounded-full bg-[hsl(var(--area-negocio))]/10 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-[hsl(var(--area-negocio))]">
+                        {dayLabel}
+                      </span>
                     </div>
-                  </div>
-                  <div className="border-t border-border/40 pt-3">
-                    <div className="flex items-start gap-1.5">
-                      <Presentation className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground/50" />
-                      <p className="line-clamp-2 text-xs leading-relaxed text-muted-foreground">{s.talk}</p>
+
+                    <h3 className="relative line-clamp-2 font-heading text-base font-bold leading-tight">{speaker.name}</h3>
+                    <p className="relative mt-1 line-clamp-1 text-xs font-semibold text-[hsl(var(--area-negocio))]">{specialty}</p>
+
+                    <div className="relative mt-5 space-y-3 border-t border-border/50 pt-4">
+                      <div className="flex items-start gap-2">
+                        <Presentation className="mt-0.5 h-3.5 w-3.5 shrink-0 text-muted-foreground/60" />
+                        <p className="line-clamp-2 text-xs leading-relaxed text-muted-foreground">{speaker.talk}</p>
+                      </div>
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="inline-flex items-center gap-1.5 rounded-lg bg-muted/60 px-2.5 py-1.5 text-[11px] font-semibold text-muted-foreground">
+                          <Sparkles className="h-3 w-3" />
+                          Insights práticos
+                        </span>
+                        {speaker.linkedin ? (
+                          <button
+                            type="button"
+                            onClick={() => openExternal(speaker.linkedin, "LinkedIn não disponível.")}
+                            className="flex h-8 w-8 items-center justify-center rounded-lg border border-border/60 text-muted-foreground transition-colors hover:border-[#0A66C2]/30 hover:text-[#0A66C2]"
+                            aria-label={`Abrir LinkedIn de ${speaker.name}`}
+                          >
+                            <Linkedin className="h-3.5 w-3.5" />
+                          </button>
+                        ) : null}
+                      </div>
                     </div>
-                  </div>
-                </div>
-              </motion.div>
-            ))}
-          </div>
+                  </motion.div>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="rounded-2xl border border-dashed border-[hsl(var(--area-negocio))]/30 bg-white/70 px-5 py-8 text-sm text-muted-foreground">
+              Ainda não existem palestrantes publicados para mostrar na home.
+            </div>
+          )}
 
           <motion.div initial={{ opacity: 0 }} whileInView={{ opacity: 1 }} viewport={{ once: true }} className="mt-10 text-center">
             <Button asChild size="lg" variant="outline" className="h-12 rounded-xl font-semibold">
@@ -1502,13 +1655,11 @@ export default function Index() {
 
           {/* Chat + Activity grid */}
           <div className="mt-8 grid gap-5 lg:grid-cols-2">
-            {/* Chat card */}
             <motion.div
               initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}
               transition={{ delay: 0.1 }}
               className="group relative overflow-hidden rounded-2xl border border-border/50 bg-white shadow-sm transition-shadow hover:shadow-md"
             >
-              {/* Top accent bar */}
               <div className="h-1 bg-gradient-to-r from-primary via-primary/60 to-transparent" />
               <div className="p-5">
                 <div className="mb-4 flex items-center justify-between">
@@ -1516,52 +1667,57 @@ export default function Index() {
                     <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
                       <MessageSquare className="h-4 w-4 text-primary" />
                     </div>
-                    <h3 className="font-heading text-sm font-bold">Chat Ao Vivo</h3>
+                    <h3 className="font-heading text-sm font-bold">Chat ao vivo</h3>
                   </div>
                   <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{liveChat.length} msg</span>
                 </div>
-                <div className="mb-4 max-h-60 space-y-1 overflow-y-auto pr-1 scrollbar-thin">
-                  {liveChat.length ? liveChat.map((msg, i) => (
-                    <motion.div
-                      key={msg.id}
-                      initial={{ opacity: 0, x: -10 }}
-                      animate={{ opacity: 1, x: 0 }}
-                      transition={{ delay: i * 0.04, duration: 0.25 }}
-                      className="group/msg flex gap-2 rounded-xl px-2 py-2 transition-colors hover:bg-muted/50"
-                    >
-                      <UserAvatar name={msg.studentName} size="sm" className="mt-0.5 shrink-0" />
-                      <div className="min-w-0 flex-1">
-                        {/* Name row — name always visible, course wraps below on mobile */}
-                        <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                          <span className="text-[13px] font-bold leading-tight text-foreground">{msg.studentName}</span>
-                          <span className="text-[10px] leading-tight text-muted-foreground/70">
-                            {new Date(msg.createdAt).toLocaleTimeString("pt-PT", { hour: "2-digit", minute: "2-digit" })}
-                          </span>
+
+                <div className="mb-4 rounded-2xl border border-border/70 bg-muted/20 p-3">
+                  <div className="max-h-72 min-h-[260px] space-y-2 overflow-y-auto pr-1 scrollbar-thin">
+                    {liveChat.length ? liveChat.map((msg, i) => (
+                      <motion.div
+                        key={msg.id}
+                        initial={{ opacity: 0, x: -8 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: i * 0.04, duration: 0.25 }}
+                        className="flex gap-2 rounded-xl border border-border/45 bg-white/90 px-2.5 py-2.5 shadow-sm"
+                      >
+                        <UserAvatar name={msg.studentName} size="sm" className="mt-0.5 shrink-0" />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                            <span className="text-[13px] font-bold leading-tight text-foreground">{msg.studentName}</span>
+                            <span className="text-[10px] leading-tight text-muted-foreground/70">
+                              {new Date(msg.createdAt).toLocaleTimeString("pt-PT", { hour: "2-digit", minute: "2-digit" })}
+                            </span>
+                          </div>
+                          {msg.course ? (
+                            <span
+                              className="mt-1 inline-flex max-w-full items-center rounded-md px-1.5 py-0.5 text-[9px] font-semibold leading-none"
+                              style={{ backgroundColor: withAlpha(msg.courseColor, "12"), color: msg.courseColor || "#64748b" }}
+                            >
+                              <span className="truncate">{msg.course}</span>
+                            </span>
+                          ) : null}
+                          <p className="mt-1 text-[13px] leading-snug text-foreground/80">{msg.content}</p>
                         </div>
-                        {msg.course && (
-                          <span className="mt-0.5 inline-flex items-center rounded-md px-1.5 py-0.5 text-[9px] font-semibold leading-none"
-                            style={{ backgroundColor: withAlpha(msg.courseColor, "12"), color: msg.courseColor || "#64748b" }}>
-                            {msg.course}
-                          </span>
-                        )}
-                        {/* Message content */}
-                        <p className="mt-1 text-[13px] leading-snug text-foreground/80">{msg.content}</p>
+                      </motion.div>
+                    )) : (
+                      <div className="flex min-h-[260px] flex-col items-center justify-center text-center">
+                        <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-white shadow-sm">
+                          <MessageSquare className="h-5 w-5 text-muted-foreground/30" />
+                        </div>
+                        <p className="text-sm font-medium text-muted-foreground/80">Nenhuma mensagem ainda</p>
+                        <p className="mt-0.5 text-[11px] text-muted-foreground/55">As mensagens aparecem aqui durante o evento.</p>
                       </div>
-                    </motion.div>
-                  )) : (
-                    <div className="flex flex-col items-center justify-center py-10 text-center">
-                      <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-muted/60">
-                        <MessageSquare className="h-5 w-5 text-muted-foreground/30" />
-                      </div>
-                      <p className="text-sm font-medium text-muted-foreground/70">Nenhuma mensagem ainda</p>
-                      <p className="mt-0.5 text-[11px] text-muted-foreground/50">Sê o primeiro a participar na conversa!</p>
-                    </div>
-                  )}
+                    )}
+                  </div>
                 </div>
-                {/* Input area with user avatar */}
+
                 <div className="flex items-center gap-2 rounded-xl border border-border/60 bg-muted/20 p-1.5 transition-all focus-within:border-primary/30 focus-within:bg-white focus-within:shadow-sm">
-                  <UserAvatar name={studentProfile?.name || "?"} size="sm" className="shrink-0 ml-0.5" />
-                  <input value={chatInput} onChange={(e) => setChatInput(e.target.value)}
+                  <UserAvatar name={studentProfile?.name || "?"} size="sm" className="ml-0.5 shrink-0" />
+                  <input
+                    value={chatInput}
+                    onChange={(e) => setChatInput(e.target.value)}
                     onKeyDown={(e) => { if (e.key === "Enter" && chatInput.trim()) void handleLiveChatSend(); }}
                     placeholder={studentProfile ? "Escreve uma mensagem..." : "Inicia sessão para participar"}
                     disabled={!studentProfile}
@@ -1579,29 +1735,30 @@ export default function Index() {
               </div>
             </motion.div>
 
-            {/* Activity card */}
             <motion.div
               initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}
               transition={{ delay: 0.2 }}
-              className="group relative overflow-hidden rounded-2xl border border-border/50 bg-white shadow-sm transition-shadow hover:shadow-md"
+              className="relative overflow-hidden rounded-2xl border border-border/60 bg-white shadow-sm"
             >
-              {/* Top accent bar */}
-              <div className="h-1 bg-gradient-to-r from-transparent via-primary/60 to-primary" />
-              <div className="p-5">
-                <div className="mb-4 flex items-center justify-between">
+              <div className="p-5 sm:p-6">
+                <div className="mb-5 flex items-center justify-between gap-3">
                   <div className="flex items-center gap-2.5">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10">
                       <TrendingUp className="h-4 w-4 text-primary" />
                     </div>
-                    <h3 className="font-heading text-sm font-bold">Atividade Recente</h3>
+                    <div>
+                      <h3 className="font-heading text-base font-bold">Atividade recente</h3>
+                      <p className="text-xs text-muted-foreground">Votos, comentários e submissões</p>
+                    </div>
                   </div>
                   {recentActivity.length > 0 && (
-                    <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-primary/10 px-1.5 text-[10px] font-bold text-primary">
+                    <span className="flex h-7 min-w-7 items-center justify-center rounded-full bg-primary/10 px-2 text-xs font-bold text-primary">
                       {recentActivity.length}
                     </span>
                   )}
                 </div>
-                <div className="max-h-56 space-y-2 overflow-y-auto pr-1 scrollbar-thin">
+
+                <div className="max-h-[420px] space-y-3 overflow-y-auto pr-1 scrollbar-thin">
                   {recentActivity.length ? recentActivity.map((item, i) => (
                     <motion.div
                       key={item.id}
@@ -1609,17 +1766,17 @@ export default function Index() {
                       whileInView={{ opacity: 1, x: 0 }}
                       viewport={{ once: true }}
                       transition={{ delay: i * 0.06 }}
-                      className="flex items-start gap-2.5 rounded-lg bg-muted/40 p-2.5"
+                      className="flex items-start gap-3 rounded-2xl border border-border/50 bg-muted/25 p-3.5"
                     >
                       <UserAvatar name={item.actorName} size="sm" />
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center justify-between gap-2">
-                          <span className="truncate text-xs font-bold text-foreground">{item.actorName}</span>
+                          <span className="truncate text-sm font-semibold text-foreground">{item.actorName}</span>
                           <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground">
                             {new Date(item.createdAt).toLocaleTimeString("pt-PT", { hour: "2-digit", minute: "2-digit" })}
                           </span>
                         </div>
-                        <p className="mt-0.5 text-xs text-muted-foreground">
+                        <p className="mt-1 text-xs leading-5 text-muted-foreground">
                           {getActivityLabel(item)} <span className="font-semibold text-foreground/80">{item.subject}</span>
                         </p>
                         <span className="mt-1 inline-flex rounded-full px-1.5 py-0.5 text-[9px] font-semibold"
@@ -1629,12 +1786,14 @@ export default function Index() {
                       </div>
                     </motion.div>
                   )) : (
-                    <div className="flex flex-col items-center justify-center py-8 text-center">
-                      <TrendingUp className="mb-2 h-8 w-8 text-muted-foreground/20" />
-                      <p className="text-xs text-muted-foreground">Nenhuma atividade registada ainda.</p>
+                    <div className="flex min-h-[220px] flex-col items-center justify-center text-center">
+                      <TrendingUp className="mb-3 h-8 w-8 text-muted-foreground/25" />
+                      <p className="text-sm font-semibold text-foreground">Sem atividade recente</p>
+                      <p className="mt-1 max-w-xs text-xs leading-5 text-muted-foreground">Os movimentos do evento aparecem assim que forem registados.</p>
                     </div>
                   )}
                 </div>
+
                 {recentActivity.length > 0 && (
                   <div className="mt-4 text-center">
                     <Button asChild variant="ghost" size="sm" className="h-8 rounded-lg text-xs text-muted-foreground hover:text-foreground">

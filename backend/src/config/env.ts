@@ -15,6 +15,8 @@ const envSchema = z.object({
   OMBALA_API_BASE_URL: z.string().url().default("https://api.useombala.ao"),
   OMBALA_API_TOKEN: z.string().min(1).optional(),
   OMBALA_SMS_DEFAULT_SENDER: z.string().min(3).max(16).default("UOR CONNECT"),
+  EVOLUTION_API_BASE_URL: z.string().url().default("http://localhost:8081"),
+  EVOLUTION_API_KEY: z.string().min(1).optional(),
   RATE_LIMIT_MAX: z.coerce.number().int().min(20).max(5000).default(400),
   RATE_LIMIT_WINDOW_MS: z.coerce.number().int().min(10_000).max(3_600_000).default(60_000),
 }).superRefine((value, ctx) => {

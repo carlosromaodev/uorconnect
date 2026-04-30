@@ -1,11 +1,12 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { BrowserRouter, Route, Routes, useLocation } from "react-router-dom";
-import { Suspense, lazy, type ReactNode, useEffect } from "react";
+import { Suspense, lazy, type ReactNode, useEffect, useLayoutEffect } from "react";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import {
   getContestAbsoluteUrl,
   getSaasShowcaseHref,
+  isCommunityAppHost,
   isContestLabHost,
   isContestRoutePath,
   isSaasShowcaseHost,
@@ -40,15 +41,22 @@ const MinhaArea = lazy(() => import("./pages/MinhaArea"));
 const SubmissionReceipt = lazy(() => import("./pages/SubmissionReceipt"));
 const PublicValidation = lazy(() => import("./pages/PublicValidation"));
 
+// Community app
+const CommunityShell = lazy(() => import("./community/components/CommunityShell").then((m) => ({ default: m.CommunityShell })));
+const CommunityFeed = lazy(() => import("./community/pages/CommunityFeed"));
+const CommunityMessages = lazy(() => import("./community/pages/CommunityMessages"));
+const CommunityProfile = lazy(() => import("./community/pages/CommunityProfile"));
+
 function RouteFallback() {
   return (
-    <div className="flex min-h-[60vh] items-center justify-center px-4">
-      <div className="surface-card w-full max-w-md px-6 py-8 text-center">
-        <p className="premium-kicker">A carregar módulo</p>
-        <h2 className="mt-3 text-2xl font-semibold text-slate-900">Preparando a área solicitada</h2>
-        <p className="mt-3 text-sm leading-6 text-muted-foreground">
-          O frontend está a carregar apenas o necessário para esta rota.
-        </p>
+    <div className="min-h-[42vh] px-4 pt-6">
+      <div className="mx-auto w-full max-w-5xl">
+        <div className="site-loading-bar" role="status" aria-label="A carregar página">
+          <span className="site-loading-bar__track">
+            <span className="site-loading-bar__progress" />
+          </span>
+          <span className="site-loading-bar__label">A carregar UOR Connect</span>
+        </div>
       </div>
     </div>
   );
@@ -68,6 +76,47 @@ function AnalyticsShell({ children }: { children: ReactNode }) {
       <LazyAnalyticsProvider>{children}</LazyAnalyticsProvider>
     </Suspense>
   );
+}
+
+function ScrollToTopOnRouteChange() {
+  const { pathname, search } = useLocation();
+
+  useEffect(() => {
+    if (typeof window === "undefined" || !("scrollRestoration" in window.history)) return;
+
+    const previousScrollRestoration = window.history.scrollRestoration;
+    window.history.scrollRestoration = "manual";
+
+    return () => {
+      window.history.scrollRestoration = previousScrollRestoration;
+    };
+  }, []);
+
+  useLayoutEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const scrollToTop = () => {
+      document.documentElement.scrollTop = 0;
+      document.body.scrollTop = 0;
+
+      try {
+        window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+      } catch {
+        try {
+          window.scrollTo(0, 0);
+        } catch (error) {
+          void error;
+        }
+      }
+    };
+
+    scrollToTop();
+    const frameId = window.requestAnimationFrame(scrollToTop);
+
+    return () => window.cancelAnimationFrame(frameId);
+  }, [pathname, search]);
+
+  return null;
 }
 
 function SaasShowcaseRedirect() {
@@ -104,14 +153,45 @@ function ContestExperienceRedirect() {
   return null;
 }
 
+function CommunityApp({ basePath = "" }: { basePath?: string }) {
+  const b = basePath;
+  return (
+    <Suspense fallback={<RouteFallback />}>
+      <CommunityShell basePath={b}>
+        <Routes>
+          <Route path={`${b}/`} element={<CommunityFeed />} />
+          <Route path={`${b}/projetos`} element={<Projetos />} />
+          <Route path={`${b}/projeto/:slug`} element={<ProjetoDetalhe />} />
+          <Route path={`${b}/cursos`} element={<Cursos />} />
+          <Route path={`${b}/mensagens`} element={<CommunityMessages />} />
+          <Route path={`${b}/perfil`} element={<CommunityProfile />} />
+          <Route path={`${b}/minha-area`} element={<MinhaArea />} />
+          <Route path={`${b}/login`} element={<Login />} />
+          <Route path="*" element={<CommunityFeed />} />
+        </Routes>
+      </CommunityShell>
+    </Suspense>
+  );
+}
+
 const AppContent = () => {
   const location = useLocation();
   const hostname = typeof window !== "undefined" ? window.location.hostname : "";
+  const communityAppHost = isCommunityAppHost(hostname);
+  const communityRoute = location.pathname.startsWith("/comunidade");
   const saasShowcaseHost = isSaasShowcaseHost(hostname);
   const contestLabHost = isContestLabHost(hostname);
   const isSaas = saasShowcaseHost || location.pathname.startsWith("/plataforma");
   const isContestExperience = contestLabHost || isContestRoutePath(location.pathname, hostname);
-  const showChrome = !isSaas && !isContestExperience;
+  const showChrome = !isSaas && !isContestExperience && !communityAppHost && !communityRoute;
+
+  if (communityAppHost) {
+    return <CommunityApp />;
+  }
+
+  if (communityRoute) {
+    return <CommunityApp basePath="/comunidade" />;
+  }
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -180,6 +260,7 @@ const App = () => (
     <TooltipProvider>
       <Sonner />
       <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+        <ScrollToTopOnRouteChange />
         <AnalyticsShell>
           <AppContent />
         </AnalyticsShell>

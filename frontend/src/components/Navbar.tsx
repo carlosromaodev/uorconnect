@@ -1,8 +1,7 @@
 import { Link, useLocation, useNavigate } from "react-router-dom";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Bell, CalendarClock, ChevronDown, LogOut, Menu, Radio, Search, User, Wifi, WifiOff, X } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Bell, CalendarClock, ChevronDown, LogOut, Menu, Search, User, X } from "lucide-react";
 import { toast } from "@/components/ui/sonner";
-import { NotificationInline } from "@/components/ui/notification";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import {
   api,
@@ -10,9 +9,7 @@ import {
   getToken,
   isAuthError,
   setToken,
-  type ActivityFeedItem,
   type AgendaLiveState,
-  type LiveChatMessage,
   type StudentEnrollmentListItem,
   type StudentOwnedSubmissionListItem,
 } from "@/lib/api";
@@ -22,7 +19,8 @@ import { getSaasShowcaseHref } from "@/lib/contest-lab";
 
 const SUBMISSION_APPROVAL_SEEN_STORAGE_KEY = "uor-approved-submissions-seen";
 const ENROLLMENT_APPROVAL_SEEN_STORAGE_KEY = "uor-approved-enrollments-seen";
-const INTERNAL_BANNER_DISMISS_SIGNATURE_KEY = "uor-internal-approval-banner-dismissed-signature";
+const SUBMISSION_APPROVAL_ANNOUNCED_STORAGE_KEY = "uor-approved-submissions-announced";
+const ENROLLMENT_APPROVAL_ANNOUNCED_STORAGE_KEY = "uor-approved-enrollments-announced";
 
 const primaryNavItems = [
   { label: "Início", path: "/" },
@@ -62,27 +60,6 @@ function writeSeenIds(storageKey: string, ids: Set<number>) {
   }
 }
 
-function readDismissedBannerSignature() {
-  try {
-    return window.localStorage.getItem(INTERNAL_BANNER_DISMISS_SIGNATURE_KEY);
-  } catch {
-    return null;
-  }
-}
-
-function writeDismissedBannerSignature(signature: string | null) {
-  try {
-    if (!signature) {
-      window.localStorage.removeItem(INTERNAL_BANNER_DISMISS_SIGNATURE_KEY);
-      return;
-    }
-
-    window.localStorage.setItem(INTERNAL_BANNER_DISMISS_SIGNATURE_KEY, signature);
-  } catch {
-    // noop
-  }
-}
-
 function dateLabel(value: string) {
   return new Intl.DateTimeFormat("pt-PT", {
     day: "2-digit",
@@ -91,60 +68,9 @@ function dateLabel(value: string) {
   }).format(new Date(value));
 }
 
-function dateTimeLabel(value: string) {
-  return new Intl.DateTimeFormat("pt-PT", {
-    day: "2-digit",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-  }).format(new Date(value));
-}
-
 function agendaWindowLabel(item: AgendaLiveState["current"] | AgendaLiveState["next"]) {
   if (!item) return "Sem bloco definido";
   return `${item.startTime} - ${item.endTime}`;
-}
-
-function activityTypeLabel(type: ActivityFeedItem["type"]) {
-  switch (type) {
-    case "comment":
-      return "Comentário";
-    case "vote":
-      return "Voto";
-    case "submission":
-      return "Projeto";
-    default:
-      return "Atualização";
-  }
-}
-
-function submissionStatusInfo(status: string) {
-  switch (status) {
-    case "APPROVED":
-      return { label: "Aprovado", color: "bg-green-500" };
-    case "REJECTED":
-      return { label: "Rejeitado", color: "bg-red-500" };
-    case "PENDING":
-      return { label: "Pendente", color: "bg-yellow-500" };
-    default:
-      return { label: status, color: "bg-gray-500" };
-  }
-}
-
-function enrollmentStatusInfo(status: string) {
-  switch (status) {
-    case "CONFIRMED":
-    case "APPROVED":
-      return { label: "Confirmado", color: "bg-green-500" };
-    case "REJECTED":
-      return { label: "Rejeitado", color: "bg-red-500" };
-    case "CANCELED":
-      return { label: "Cancelado", color: "bg-gray-500" };
-    case "PENDING":
-      return { label: "Pendente", color: "bg-yellow-500" };
-    default:
-      return { label: status, color: "bg-gray-500" };
-  }
 }
 
 function buildUnreadSignature(
@@ -168,21 +94,15 @@ export default function Navbar() {
   const moreRef = useRef<HTMLDivElement>(null);
   const userMenuRef = useRef<HTMLDivElement>(null);
   const [liveState, setLiveState] = useState<AgendaLiveState | null>(null);
-  const [activityFeed, setActivityFeed] = useState<ActivityFeedItem[]>([]);
-  const [liveChatPreview, setLiveChatPreview] = useState<LiveChatMessage[]>([]);
   const [notificationCenterLoading, setNotificationCenterLoading] = useState(false);
   const [notificationCenterError, setNotificationCenterError] = useState<string | null>(null);
-  const [isOnline, setIsOnline] = useState(() => (typeof navigator === "undefined" ? true : navigator.onLine));
   const approvalToastSignatureRef = useRef<string | null>(null);
 
   const [approvedSubmissions, setApprovedSubmissions] = useState<StudentOwnedSubmissionListItem[]>([]);
   const [confirmedEnrollments, setConfirmedEnrollments] = useState<StudentEnrollmentListItem[]>([]);
-  const [allSubmissions, setAllSubmissions] = useState<StudentOwnedSubmissionListItem[]>([]);
-  const [allEnrollments, setAllEnrollments] = useState<StudentEnrollmentListItem[]>([]);
   const [unreadApprovedSubmissions, setUnreadApprovedSubmissions] = useState<StudentOwnedSubmissionListItem[]>([]);
   const [unreadConfirmedEnrollments, setUnreadConfirmedEnrollments] = useState<StudentEnrollmentListItem[]>([]);
   const [hasUnreadApprovals, setHasUnreadApprovals] = useState(false);
-  const [dismissedBannerSignature, setDismissedBannerSignature] = useState<string | null>(() => readDismissedBannerSignature());
   const token = getToken();
 
   const hasSubmissionApprovals = approvedSubmissions.length > 0;
@@ -194,14 +114,11 @@ export default function Navbar() {
     let active = true;
 
     if (!token) {
-      setAllSubmissions([]);
-      setAllEnrollments([]);
       setApprovedSubmissions([]);
       setConfirmedEnrollments([]);
       setUnreadApprovedSubmissions([]);
       setUnreadConfirmedEnrollments([]);
       setHasUnreadApprovals(false);
-      setDismissedBannerSignature(readDismissedBannerSignature());
       approvalToastSignatureRef.current = null;
       return () => {
         active = false;
@@ -212,9 +129,6 @@ export default function Navbar() {
       .then(([submissionItems, enrollmentItems]) => {
         if (!active) return;
 
-        setAllSubmissions(submissionItems);
-        setAllEnrollments(enrollmentItems);
-
         const approved = submissionItems.filter((item) => item.status === "APPROVED");
         const confirmed = enrollmentItems.filter((item) => item.paymentStatus === "CONFIRMED" || item.paymentStatus === "APPROVED");
 
@@ -223,40 +137,52 @@ export default function Navbar() {
 
         const seenSubmissions = readSeenIds(SUBMISSION_APPROVAL_SEEN_STORAGE_KEY);
         const seenEnrollments = readSeenIds(ENROLLMENT_APPROVAL_SEEN_STORAGE_KEY);
+        const announcedSubmissions = readSeenIds(SUBMISSION_APPROVAL_ANNOUNCED_STORAGE_KEY);
+        const announcedEnrollments = readSeenIds(ENROLLMENT_APPROVAL_ANNOUNCED_STORAGE_KEY);
         const unreadSubmissions = approved.filter((item) => !seenSubmissions.has(item.id));
         const unreadEnrollments = confirmed.filter((item) => !seenEnrollments.has(item.id));
+        const announceableSubmissions = unreadSubmissions.filter((item) => !announcedSubmissions.has(item.id));
+        const announceableEnrollments = unreadEnrollments.filter((item) => !announcedEnrollments.has(item.id));
 
         setUnreadApprovedSubmissions(unreadSubmissions);
         setUnreadConfirmedEnrollments(unreadEnrollments);
         setHasUnreadApprovals(unreadSubmissions.length + unreadEnrollments.length > 0);
-        setDismissedBannerSignature(readDismissedBannerSignature());
 
-        const unreadSignature = buildUnreadSignature(unreadSubmissions, unreadEnrollments);
-        if (!unreadSignature || unreadSignature === approvalToastSignatureRef.current) {
-          if (!unreadSignature) {
+        const announcementSignature = buildUnreadSignature(announceableSubmissions, announceableEnrollments);
+        if (!announcementSignature || announcementSignature === approvalToastSignatureRef.current) {
+          if (!announcementSignature) {
             approvalToastSignatureRef.current = null;
           }
           return;
         }
 
-        approvalToastSignatureRef.current = unreadSignature;
+        approvalToastSignatureRef.current = announcementSignature;
 
-        if (unreadSubmissions.length === 1 && unreadEnrollments.length === 0) {
-          const item = unreadSubmissions[0];
-          toast.success(`A tua candidatura "${item.name}" foi aprovada. Já podes gerir alterações na Minha Área.`);
+        for (const submission of announceableSubmissions) {
+          announcedSubmissions.add(submission.id);
+        }
+
+        for (const enrollment of announceableEnrollments) {
+          announcedEnrollments.add(enrollment.id);
+        }
+
+        writeSeenIds(SUBMISSION_APPROVAL_ANNOUNCED_STORAGE_KEY, announcedSubmissions);
+        writeSeenIds(ENROLLMENT_APPROVAL_ANNOUNCED_STORAGE_KEY, announcedEnrollments);
+
+        if (announceableSubmissions.length === 1 && announceableEnrollments.length === 0) {
+          const item = announceableSubmissions[0];
+          toast.success(`Candidatura aprovada: ${item.name}`);
           return;
         }
 
-        if (unreadSubmissions.length === 0 && unreadEnrollments.length === 1) {
-          const item = unreadEnrollments[0];
-          toast.success(`A tua inscrição no curso "${item.courseName}" foi confirmada. Abre a Minha Área para continuar.`);
+        if (announceableSubmissions.length === 0 && announceableEnrollments.length === 1) {
+          const item = announceableEnrollments[0];
+          toast.success(`Inscrição confirmada: ${item.courseName}`);
           return;
         }
 
-        if (unreadSubmissions.length + unreadEnrollments.length > 1) {
-          toast.success(
-            `Tens ${unreadSubmissions.length + unreadEnrollments.length} novas aprovações. Acede à Minha Área para gerir submissões e inscrições.`,
-          );
+        if (announceableSubmissions.length + announceableEnrollments.length > 1) {
+          toast.success(`${announceableSubmissions.length + announceableEnrollments.length} novas aprovações.`);
         }
       })
       .catch((error) => {
@@ -264,8 +190,6 @@ export default function Navbar() {
 
         if (isAuthError(error)) {
           setToken(null);
-          setAllSubmissions([]);
-          setAllEnrollments([]);
           setApprovedSubmissions([]);
           setConfirmedEnrollments([]);
           setUnreadApprovedSubmissions([]);
@@ -281,43 +205,23 @@ export default function Navbar() {
   }, [location.hash, location.pathname, location.search, token]);
 
   useEffect(() => {
-    const syncNetworkState = () => {
-      setIsOnline(window.navigator.onLine);
-    };
-
-    window.addEventListener("online", syncNetworkState);
-    window.addEventListener("offline", syncNetworkState);
-
-    return () => {
-      window.removeEventListener("online", syncNetworkState);
-      window.removeEventListener("offline", syncNetworkState);
-    };
-  }, []);
-
-  useEffect(() => {
     if (!notificationOpen) return;
 
     let active = true;
     setNotificationCenterLoading(true);
     setNotificationCenterError(null);
 
-    Promise.all([
-      api.agenda.live(),
-      api.interactions.activityFeed(),
-      api.interactions.liveChat(),
-    ])
-      .then(([live, activityItems, liveChatItems]) => {
+    api.agenda.live()
+      .then((live) => {
         if (!active) return;
         setLiveState(live);
-        setActivityFeed(activityItems.slice(0, 6));
-        setLiveChatPreview(liveChatItems.slice(0, 5));
       })
       .catch((error) => {
         if (!active) return;
         setNotificationCenterError(
           error instanceof Error
             ? error.message
-            : "Não foi possível atualizar a agenda ao vivo e as interações agora.",
+            : "Não foi possível atualizar as notificações agora.",
         );
       })
       .finally(() => {
@@ -330,7 +234,12 @@ export default function Navbar() {
     };
   }, [notificationOpen]);
 
-  const student = useMemo(() => getSessionStudent(), [token]);
+  const student = getSessionStudent();
+  const isAuthenticated = Boolean(token);
+  const accountHref = isAuthenticated ? "/minha-area" : "/login";
+  const accountLabel = isAuthenticated ? "Minha Área" : "Entrar";
+  const accountName = student?.name?.split(" ")[0] || student?.studentNumber || "Minha Área";
+  const accountAvatarName = student?.name || student?.studentNumber || "Conta UOR";
 
   useEffect(() => {
     setOpen(false);
@@ -348,13 +257,6 @@ export default function Navbar() {
     return () => document.removeEventListener("mousedown", handleClickOutside);
   }, []);
 
-  const unreadSignature = useMemo(
-    () => buildUnreadSignature(unreadApprovedSubmissions, unreadConfirmedEnrollments),
-    [unreadApprovedSubmissions, unreadConfirmedEnrollments],
-  );
-
-  const showInternalApprovalBanner = unreadSignature.length > 0 && dismissedBannerSignature !== unreadSignature;
-
   const markApprovalNotificationsAsRead = () => {
     if (!approvedSubmissions.length && !confirmedEnrollments.length) return;
 
@@ -371,8 +273,6 @@ export default function Navbar() {
 
     writeSeenIds(SUBMISSION_APPROVAL_SEEN_STORAGE_KEY, seenSubmissions);
     writeSeenIds(ENROLLMENT_APPROVAL_SEEN_STORAGE_KEY, seenEnrollments);
-    writeDismissedBannerSignature(null);
-    setDismissedBannerSignature(null);
     setUnreadApprovedSubmissions([]);
     setUnreadConfirmedEnrollments([]);
     setHasUnreadApprovals(false);
@@ -388,299 +288,122 @@ export default function Navbar() {
     });
   };
 
-  const handleDismissInternalBanner = () => {
-    if (!unreadSignature) return;
-    writeDismissedBannerSignature(unreadSignature);
-    setDismissedBannerSignature(unreadSignature);
-  };
-
-  const internalBannerMessage = useMemo(() => {
-    const submissionsCount = unreadApprovedSubmissions.length;
-    const enrollmentsCount = unreadConfirmedEnrollments.length;
-
-    if (submissionsCount && !enrollmentsCount) {
-      return submissionsCount === 1
-        ? "Uma candidatura tua foi aprovada. Já podes atualizar os elementos permitidos na tua área."
-        : `${submissionsCount} candidaturas tuas foram aprovadas. Já podes gerir alterações permitidas na tua área.`;
-    }
-
-    if (!submissionsCount && enrollmentsCount) {
-      return enrollmentsCount === 1
-        ? "Uma inscrição de curso foi confirmada. Já podes continuar a gestão na tua área."
-        : `${enrollmentsCount} inscrições de curso foram confirmadas. Já podes continuar a gestão na tua área.`;
-    }
-
-	    return `Tens ${submissionsCount + enrollmentsCount} aprovações novas entre candidaturas e cursos.`;
-	  }, [unreadApprovedSubmissions.length, unreadConfirmedEnrollments.length]);
-
   return (
     <>
       <Sheet open={notificationOpen} onOpenChange={setNotificationOpen}>
-        <SheetContent side="right" className="w-full border-l border-border/60 bg-[linear-gradient(180deg,rgba(255,255,255,0.98),rgba(248,250,252,0.96))] p-0 sm:max-w-xl">
+        <SheetContent side="right" className="w-full border-l border-border/60 bg-white p-0 sm:max-w-md">
           <div className="flex h-full flex-col">
-            <SheetHeader className="border-b border-border/60 bg-white/90 px-6 py-5 text-left">
+            <SheetHeader className="border-b border-border/60 px-5 py-5 text-left">
               <div className="flex items-start gap-3 pr-8">
-                <div className="inline-flex h-11 w-11 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+                <div className="inline-flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
                   <Bell className="h-5 w-5" />
                 </div>
                 <div className="min-w-0">
-                  <SheetTitle className="text-left text-xl font-semibold text-slate-950">Centro de notificações</SheetTitle>
-                  <SheetDescription className="mt-1 text-left text-sm text-slate-600">
-                    Estado ao vivo do evento, movimento da comunidade e os teus fluxos académicos.
-                  </SheetDescription>
+                  <SheetTitle className="text-left text-xl font-semibold text-slate-950">Notificações</SheetTitle>
+                  <SheetDescription className="mt-1 text-left text-sm text-slate-600">Atualizações essenciais.</SheetDescription>
                 </div>
               </div>
             </SheetHeader>
 
-            <div className="flex-1 space-y-5 overflow-y-auto px-6 py-5">
-              {!isOnline ? (
-                <NotificationInline
-                  tone="warning"
-                  title="Ligação instável ou indisponível"
-                  message="O centro continua acessível, mas a atualização de agenda, chat e atividade pode ficar atrasada até a rede estabilizar."
-                />
-              ) : null}
-
-              {unreadApprovalsCount > 0 ? (
-                <NotificationInline
-                  tone="success"
-                  title={unreadApprovalsCount === 1 ? "Tens 1 aprovação nova" : `Tens ${unreadApprovalsCount} aprovações novas`}
-                  message="As candidaturas aprovadas e as confirmações de curso já podem ser geridas na tua área pessoal."
-                />
-              ) : null}
-
-              {liveState?.current ? (
-                <NotificationInline
-                  tone="info"
-                  title={`Ao vivo agora: ${liveState.current.title}`}
-                  message={`${liveState.current.local} • ${agendaWindowLabel(liveState.current)}`}
-                />
+            <div className="flex-1 space-y-5 overflow-y-auto px-5 py-5">
+              {notificationCenterLoading ? (
+                <p className="text-xs font-medium text-slate-500">A atualizar...</p>
               ) : null}
 
               {notificationCenterError ? (
-                <NotificationInline
-                  tone="warning"
-                  title="Nem todas as notificações puderam ser atualizadas"
-                  message={notificationCenterError}
-                />
+                <div className="rounded-xl border border-amber-500/25 bg-amber-500/10 px-3 py-2 text-sm text-amber-800">
+                  {notificationCenterError}
+                </div>
               ) : null}
 
               <section className="space-y-3">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-semibold text-slate-950">Resumo rápido</p>
-                    <p className="text-xs text-slate-500">O que está a acontecer agora no ecossistema.</p>
-                  </div>
-                  {notificationCenterLoading ? (
-                    <span className="text-xs font-medium text-slate-500">A atualizar...</span>
-                  ) : null}
+                <div className="flex items-center gap-2">
+                  <CalendarClock className="h-4 w-4 text-primary" />
+                  <p className="text-sm font-semibold text-slate-950">Agenda</p>
                 </div>
 
-                <div className="grid gap-3 sm:grid-cols-3">
-                  <div className="rounded-2xl border border-border/60 bg-white/90 p-4 shadow-sm">
-                    <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
-                      {isOnline ? <Wifi className="h-4 w-4 text-emerald-600" /> : <WifiOff className="h-4 w-4 text-amber-600" />}
-                      Ligação
-                    </div>
-                    <p className="mt-3 text-sm font-semibold text-slate-900">{isOnline ? "Online e sincronizado" : "Offline ou intermitente"}</p>
-                    <p className="mt-1 text-xs leading-5 text-slate-500">
-                      {isOnline
-                        ? "Os dados do backend podem ser atualizados sem recarregar a aplicação."
-                        : "A interface mantém-se, mas algumas ações podem aguardar reconexão."}
-                    </p>
-                  </div>
-
-                  <div className="rounded-2xl border border-border/60 bg-white/90 p-4 shadow-sm">
-                    <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
-                      <Radio className="h-4 w-4 text-rose-600" />
-                      Agora
-                    </div>
-                    <p className="mt-3 text-sm font-semibold text-slate-900">
-                      {liveState?.current ? liveState.current.title : "Sem sessão ao vivo neste instante"}
-                    </p>
-                    <p className="mt-1 text-xs leading-5 text-slate-500">
-                      {liveState?.current
-                        ? `${liveState.current.local} • ${agendaWindowLabel(liveState.current)}`
-                        : "Abre a área Ao Vivo para acompanhar assim que o próximo bloco arrancar."}
-                    </p>
-                  </div>
-
-                  <div className="rounded-2xl border border-border/60 bg-white/90 p-4 shadow-sm">
-                    <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
-                      <CalendarClock className="h-4 w-4 text-sky-600" />
-                      Próximo
-                    </div>
-                    <p className="mt-3 text-sm font-semibold text-slate-900">
-                      {liveState?.next ? liveState.next.title : "Sem próximo bloco definido"}
-                    </p>
-                    <p className="mt-1 text-xs leading-5 text-slate-500">
-                      {liveState?.next
-                        ? `${liveState.next.local} • ${agendaWindowLabel(liveState.next)}`
-                        : "A agenda ao vivo volta a preencher este espaço quando houver nova programação."}
-                    </p>
-                  </div>
-                </div>
-              </section>
-
-              <section className="space-y-3">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-semibold text-slate-950">Atividade da comunidade</p>
-                    <p className="text-xs text-slate-500">Comentários, votos e projetos aprovados recentemente.</p>
-                  </div>
-                  <Link
-                    to="/projetos"
-                    onClick={() => setNotificationOpen(false)}
-                    className="text-xs font-semibold text-primary transition-colors hover:text-primary/80"
-                  >
-                    Ver projetos
-                  </Link>
-                </div>
-
-                {activityFeed.length > 0 ? (
-                  <div className="space-y-3">
-                    {activityFeed.map((item) => (
-                      <div key={item.id} className="rounded-2xl border border-border/60 bg-white/90 p-4 shadow-sm">
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <p className="text-sm font-semibold text-slate-900">{item.actorName}</p>
-                            <p className="mt-1 text-xs font-medium uppercase tracking-[0.14em] text-slate-500">
-                              {activityTypeLabel(item.type)} • {dateTimeLabel(item.createdAt)}
-                            </p>
-                          </div>
-                          <span className="rounded-full border border-border/70 bg-muted/40 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-600">
-                            {item.subject}
-                          </span>
-                        </div>
-                        <p className="mt-3 text-sm leading-6 text-slate-700">{item.message}</p>
+                {liveState?.current || liveState?.next ? (
+                  <div className="space-y-2">
+                    {liveState.current ? (
+                      <div className="rounded-xl border border-border/60 bg-muted/20 p-3">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-primary">Agora</p>
+                        <p className="mt-1 text-sm font-semibold text-slate-950">{liveState.current.title}</p>
+                        <p className="mt-1 text-xs text-slate-500">{liveState.current.local} · {agendaWindowLabel(liveState.current)}</p>
                       </div>
-                    ))}
+                    ) : null}
+
+                    {liveState.next ? (
+                      <div className="rounded-xl border border-border/60 bg-white p-3">
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-slate-500">Próximo</p>
+                        <p className="mt-1 text-sm font-semibold text-slate-950">{liveState.next.title}</p>
+                        <p className="mt-1 text-xs text-slate-500">{liveState.next.local} · {agendaWindowLabel(liveState.next)}</p>
+                      </div>
+                    ) : null}
                   </div>
                 ) : (
-                  <div className="rounded-2xl border border-dashed border-border/70 bg-white/80 p-4 text-sm text-slate-500">
-                    Ainda não existem interações recentes para mostrar nesta sessão.
+                  <div className="rounded-xl border border-dashed border-border/70 p-3 text-sm text-slate-500">
+                    Sem agenda ativa.
                   </div>
                 )}
               </section>
 
               <section className="space-y-3">
                 <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-semibold text-slate-950">Chat ao vivo</p>
-                    <p className="text-xs text-slate-500">Mensagens recentes da comunidade enquanto o evento decorre.</p>
-                  </div>
-                  <Link
-                    to="/ao-vivo"
-                    onClick={() => setNotificationOpen(false)}
-                    className="text-xs font-semibold text-primary transition-colors hover:text-primary/80"
-                  >
-                    Abrir ao vivo
-                  </Link>
-                </div>
-
-                {liveChatPreview.length > 0 ? (
-                  <div className="space-y-3">
-                    {liveChatPreview.map((message) => (
-                      <div key={message.id} className="rounded-2xl border border-border/60 bg-white/90 p-4 shadow-sm">
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0">
-                            <p className="text-sm font-semibold text-slate-900">{message.studentName}</p>
-                            <p className="mt-1 text-xs text-slate-500">{dateTimeLabel(message.createdAt)}</p>
-                          </div>
-                          {message.course ? (
-                            <span className="rounded-full border border-border/70 bg-muted/40 px-2 py-1 text-[10px] font-semibold uppercase tracking-[0.12em] text-slate-600">
-                              {message.course}
-                            </span>
-                          ) : null}
-                        </div>
-                        <p className="mt-3 text-sm leading-6 text-slate-700">{message.content}</p>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="rounded-2xl border border-dashed border-border/70 bg-white/80 p-4 text-sm text-slate-500">
-                    Ainda não há mensagens recentes do chat ao vivo para mostrar.
-                  </div>
-                )}
-              </section>
-
-              <section className="space-y-3">
-                <div className="flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-semibold text-slate-950">Minha área</p>
-                    <p className="text-xs text-slate-500">Candidaturas e cursos ligados à tua conta.</p>
-                  </div>
-                  {token ? (
+                  <p className="text-sm font-semibold text-slate-950">Conta</p>
+                  {isAuthenticated ? (
                     <Link
-                      to="/minha-area"
+                      to={accountHref}
                       onClick={() => setNotificationOpen(false)}
                       className="text-xs font-semibold text-primary transition-colors hover:text-primary/80"
                     >
-                      Abrir Minha Área
+                      Abrir
                     </Link>
                   ) : null}
                 </div>
 
-                {token ? (
-                  <div className="space-y-3">
-                    {allSubmissions.length === 0 && allEnrollments.length === 0 ? (
-                      <div className="rounded-2xl border border-dashed border-border/70 bg-white/80 p-4 text-sm text-slate-500">
-                        Ainda não tens candidaturas ou inscrições registadas para mostrar aqui.
+                {isAuthenticated ? (
+                  <div className="space-y-2">
+                    {!hasApprovalNotifications ? (
+                      <div className="rounded-xl border border-dashed border-border/70 p-3 text-sm text-slate-500">
+                        Sem aprovações novas.
                       </div>
                     ) : null}
 
-                    {allSubmissions.slice(0, 4).map((submission) => {
-                      const status = submissionStatusInfo(submission.status);
-                      return (
-                        <div key={`sheet-submission-${submission.id}`} className="rounded-2xl border border-border/60 bg-white/90 p-4 shadow-sm">
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="min-w-0">
-                              <p className="text-sm font-semibold text-slate-900">{submission.name}</p>
-                              <p className="mt-1 text-xs text-slate-500">
-                                {submission.typeLabel} • {dateLabel(submission.createdAt)}
-                              </p>
-                            </div>
-                            <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${status.color}`} />
-                          </div>
-                          <p className="mt-3 text-xs font-medium uppercase tracking-[0.14em] text-slate-500">Estado: {status.label}</p>
-                        </div>
-                      );
-                    })}
+                    {approvedSubmissions.slice(0, 4).map((submission) => (
+                      <Link
+                        key={`sheet-submission-${submission.id}`}
+                        to={submission.receiptPath || "/minha-area"}
+                        onClick={() => setNotificationOpen(false)}
+                        className="block rounded-xl border border-emerald-500/20 bg-emerald-500/[0.04] p-3 transition-colors hover:bg-emerald-500/[0.08]"
+                      >
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-emerald-700">Candidatura aprovada</p>
+                        <p className="mt-1 text-sm font-semibold text-slate-950">{submission.name}</p>
+                        <p className="mt-1 text-xs text-slate-500">{submission.typeLabel} · {dateLabel(submission.createdAt)}</p>
+                      </Link>
+                    ))}
 
-                    {allEnrollments.slice(0, 4).map((enrollment) => {
-                      const status = enrollmentStatusInfo(enrollment.paymentStatus);
-                      return (
-                        <div key={`sheet-enrollment-${enrollment.id}`} className="rounded-2xl border border-border/60 bg-white/90 p-4 shadow-sm">
-                          <div className="flex items-start justify-between gap-3">
-                            <div className="min-w-0">
-                              <p className="text-sm font-semibold text-slate-900">{enrollment.courseName}</p>
-                              <p className="mt-1 text-xs text-slate-500">
-                                {enrollment.companyName} • {dateLabel(enrollment.enrolledAt)}
-                              </p>
-                            </div>
-                            <span className={`h-2.5 w-2.5 shrink-0 rounded-full ${status.color}`} />
-                          </div>
-                          <p className="mt-3 text-xs font-medium uppercase tracking-[0.14em] text-slate-500">Estado: {status.label}</p>
-                        </div>
-                      );
-                    })}
+                    {confirmedEnrollments.slice(0, 4).map((enrollment) => (
+                      <Link
+                        key={`sheet-enrollment-${enrollment.id}`}
+                        to={enrollment.receiptPath || "/minha-area"}
+                        onClick={() => setNotificationOpen(false)}
+                        className="block rounded-xl border border-emerald-500/20 bg-emerald-500/[0.04] p-3 transition-colors hover:bg-emerald-500/[0.08]"
+                      >
+                        <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-emerald-700">Inscrição confirmada</p>
+                        <p className="mt-1 text-sm font-semibold text-slate-950">{enrollment.courseName}</p>
+                        <p className="mt-1 text-xs text-slate-500">{enrollment.companyName} · {dateLabel(enrollment.enrolledAt)}</p>
+                      </Link>
+                    ))}
                   </div>
                 ) : (
-                  <div className="rounded-2xl border border-dashed border-border/70 bg-white/80 p-4 text-sm text-slate-500">
-                    Inicia sessão para receber aqui aprovações de cursos, candidaturas e permissões de edição na tua conta.
+                  <div className="rounded-xl border border-dashed border-border/70 p-3 text-sm text-slate-500">
+                    Entra para ver aprovações.
                   </div>
                 )}
               </section>
             </div>
 
-            <div className="grid gap-2 border-t border-border/60 bg-white/90 px-6 py-4 sm:grid-cols-3">
-              <Link
-                to="/ao-vivo"
-                onClick={() => setNotificationOpen(false)}
-                className="inline-flex items-center justify-center rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
-              >
-                Ao vivo
-              </Link>
+            <div className="grid gap-2 border-t border-border/60 px-5 py-4 sm:grid-cols-2">
               <Link
                 to="/agenda"
                 onClick={() => setNotificationOpen(false)}
@@ -689,11 +412,11 @@ export default function Navbar() {
                 Agenda
               </Link>
               <Link
-                to={token ? "/minha-area" : "/login"}
+                to={accountHref}
                 onClick={() => setNotificationOpen(false)}
-                className="inline-flex items-center justify-center rounded-xl border border-border/70 bg-card px-4 py-2.5 text-sm font-semibold text-foreground transition-colors hover:bg-muted/30"
+                className="inline-flex items-center justify-center rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
               >
-                {token ? "Minha Área" : "Entrar"}
+                {accountLabel}
               </Link>
             </div>
           </div>
@@ -704,7 +427,7 @@ export default function Navbar() {
         <div className="container mx-auto flex h-16 items-center justify-between px-4">
           <div className="flex items-center gap-2.5">
             <Link to="/" className="flex items-center gap-2.5">
-              <img src="/logoworconnect.png" alt="UOR Connect" className="h-9 md:h-10" />
+              <img src="/uorconnect-logo-navbar.png" alt="UOR Connect" className="h-9 w-auto max-w-[112px] object-contain sm:h-10 sm:max-w-[150px] md:h-12 md:max-w-[180px]" />
             </Link>
           </div>
 
@@ -758,7 +481,7 @@ export default function Navbar() {
 
             <a
               href={getSaasShowcaseHref("/")}
-              className="ml-1 inline-flex shrink-0 items-center whitespace-nowrap rounded-lg bg-primary px-3 py-1.5 text-sm font-semibold text-primary-foreground shadow-sm transition-all duration-200 hover:-translate-y-px hover:bg-primary/90"
+              className="inline-flex shrink-0 items-center whitespace-nowrap rounded-lg bg-primary px-3 py-1.5 text-sm font-semibold text-primary-foreground shadow-sm transition-all duration-200 hover:-translate-y-px hover:bg-primary/90"
             >
               Marcar evento
             </a>
@@ -784,24 +507,42 @@ export default function Navbar() {
               ) : null}
             </button>
 
+            <Link
+              to={accountHref}
+              className={`inline-flex h-8 items-center gap-1.5 rounded-full px-2.5 text-[11px] font-semibold shadow-sm transition-colors sm:hidden ${
+                location.pathname === "/minha-area"
+                  ? "bg-primary text-primary-foreground"
+                  : "border border-primary/20 bg-primary/10 text-primary hover:bg-primary/15"
+              }`}
+            >
+              <User className="h-3.5 w-3.5" />
+              <span>{accountLabel}</span>
+            </Link>
+
             {/* User avatar / login */}
-            {token && student ? (
+            {isAuthenticated ? (
               <div ref={userMenuRef} className="relative hidden sm:block">
                 <button
                   onClick={() => setUserMenuOpen(!userMenuOpen)}
                   className="flex items-center gap-2 rounded-lg px-2 py-1.5 transition-colors hover:bg-secondary"
                 >
-                  <UserAvatar name={student.name || student.studentNumber} size="sm" />
+                  {student ? (
+                    <UserAvatar name={accountAvatarName} size="sm" />
+                  ) : (
+                    <span className="grid h-7 w-7 place-items-center rounded-full bg-primary/10 text-primary">
+                      <User className="h-3.5 w-3.5" />
+                    </span>
+                  )}
                   <span className="hidden text-sm font-medium text-foreground lg:block">
-                    {student.name?.split(" ")[0] || student.studentNumber}
+                    {accountName}
                   </span>
                   <ChevronDown className={`hidden h-3.5 w-3.5 text-muted-foreground transition-transform lg:block ${userMenuOpen ? "rotate-180" : ""}`} />
                 </button>
                 {userMenuOpen && (
                   <div className="absolute right-0 top-full mt-1.5 w-52 rounded-xl border border-border/60 bg-white p-1.5 shadow-lg">
                     <div className="mb-1.5 border-b border-border/50 px-3 py-2">
-                      <p className="text-sm font-semibold text-foreground">{student.name || "Estudante"}</p>
-                      <p className="text-xs text-muted-foreground">{student.studentNumber}</p>
+                      <p className="text-sm font-semibold text-foreground">{student?.name || "Sessão ativa"}</p>
+                      <p className="text-xs text-muted-foreground">{student?.studentNumber || "Conta autenticada"}</p>
                     </div>
                     <Link
                       to="/minha-area"
@@ -841,30 +582,6 @@ export default function Navbar() {
           </div>
         </div>
 
-        {showInternalApprovalBanner ? (
-          <div className="border-t border-primary/20 bg-[linear-gradient(90deg,rgba(253,131,5,0.14),rgba(0,184,148,0.12))] px-4 py-2.5">
-            <div className="container mx-auto flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-              <p className="text-xs font-medium text-slate-800 sm:text-sm">{internalBannerMessage}</p>
-              <div className="flex items-center gap-2">
-                <Link
-                  to="/minha-area"
-                  className="inline-flex items-center rounded-lg border border-primary/25 bg-white/70 px-3 py-1.5 text-xs font-semibold text-primary transition-colors hover:bg-white"
-                >
-                  Abrir Minha Área
-                </Link>
-                <button
-                  type="button"
-                  onClick={handleDismissInternalBanner}
-                  className="inline-flex h-7 w-7 items-center justify-center rounded-md text-slate-600 transition-colors hover:bg-black/5 hover:text-slate-900"
-                  aria-label="Dispensar aviso interno"
-                >
-                  <X className="h-4 w-4" />
-                </button>
-              </div>
-            </div>
-          </div>
-        ) : null}
-
         {open ? (
           <div className="xl:hidden border-t border-border/60 bg-white/90 px-4 pb-3 pt-2 backdrop-blur-2xl">
             {primaryNavItems.map((item) => (
@@ -898,9 +615,9 @@ export default function Navbar() {
               </Link>
             ))}
             <div className="my-1.5 h-px bg-border/50" />
-            {token ? (
+            {isAuthenticated ? (
               <Link
-                to="/minha-area"
+                to={accountHref}
                 onClick={() => setOpen(false)}
                 className={`flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm font-medium ${
                   location.pathname === "/minha-area"
@@ -908,8 +625,8 @@ export default function Navbar() {
                     : "text-muted-foreground hover:bg-secondary"
                 }`}
               >
-                {student ? <UserAvatar name={student.name || student.studentNumber} size="sm" /> : <User className="h-4 w-4" />}
-                Minha Área
+                {student ? <UserAvatar name={accountAvatarName} size="sm" /> : <User className="h-4 w-4" />}
+                {accountLabel}
               </Link>
             ) : (
               <Link

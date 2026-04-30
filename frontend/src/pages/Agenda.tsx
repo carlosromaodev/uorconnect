@@ -28,7 +28,7 @@ const typeColors: Record<string, string> = {
 };
 
 const staticDays: { day: string; date: string; dayTheme: string }[] = [
-  { day: "Dia 1", date: "17 Mai", dayTheme: "Da sala de aula ao mercado: como transformar projetos académicos em oportunidades reais" },
+  { day: "Dia 1", date: "17 Mai", dayTheme: "Da sala de aula ao mercado de trabalho" },
   { day: "Dia 2", date: "18 Mai", dayTheme: "Marca pessoal, networking e posicionamento profissional" },
 ];
 

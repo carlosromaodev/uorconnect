@@ -22,7 +22,7 @@ it("renderiza a variante de projeto sem email e com secções esperadas", async 
   expect(screen.getByLabelText("Nome da candidatura")).toBeInTheDocument();
   expect(screen.getByLabelText("Descrição")).toBeInTheDocument();
   expect(screen.getByLabelText("Docente orientador")).toBeInTheDocument();
-  expect(screen.getByText("Tudo dentro de limites consistentes")).toBeInTheDocument();
+  expect(screen.getByText("Dados da candidatura")).toBeInTheDocument();
   expect(screen.queryByLabelText("Email")).not.toBeInTheDocument();
   expect(screen.getByLabelText("Descrição")).not.toBeRequired();
   expect(screen.queryByLabelText("Entidade responsável")).not.toBeInTheDocument();

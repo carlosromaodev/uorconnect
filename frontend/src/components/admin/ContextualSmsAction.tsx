@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Loader2, Send, Smartphone } from "lucide-react";
+import { Loader2, MessageCircle, Send, Smartphone } from "lucide-react";
 import { toast } from "@/components/ui/sonner";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -42,7 +42,7 @@ function personalize(message: string, recipient: SmsRecipient) {
 }
 
 export function ContextualSmsAction({
-  buttonLabel = "Enviar SMS",
+  buttonLabel = "Enviar mensagem",
   buttonVariant = "outline",
   defaultMessage,
   recipient,
@@ -50,6 +50,7 @@ export function ContextualSmsAction({
 }: ContextualSmsActionProps) {
   const [open, setOpen] = useState(false);
   const [message, setMessage] = useState(defaultMessage);
+  const [channel, setChannel] = useState<"SMS" | "WHATSAPP" | "BOTH">("SMS");
   const [preview, setPreview] = useState<SmsRecipientPreviewPayload | null>(null);
   const [previewing, setPreviewing] = useState(false);
   const [sending, setSending] = useState(false);
@@ -73,13 +74,15 @@ export function ContextualSmsAction({
 
     setPreviewing(true);
     try {
-      const payload = await api.sms.previewRecipients({ audience, limit: 20 });
+      const payload = channel === "WHATSAPP"
+        ? await api.whatsapp.previewRecipients({ audience, limit: 20 })
+        : await api.sms.previewRecipients({ audience, limit: 20 });
       setPreview(payload);
       if (payload.totalRecipients === 0) {
         toast.warning("Nenhum contacto válido encontrado para este destinatário.");
       }
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Falha ao validar destinatário SMS.");
+      toast.error(error instanceof Error ? error.message : "Falha ao validar destinatário.");
     } finally {
       setPreviewing(false);
     }
@@ -87,23 +90,35 @@ export function ContextualSmsAction({
 
   const handleSend = async () => {
     if (!message.trim()) {
-      toast.error("Escreve o texto da SMS antes de enviar.");
+      toast.error("Escreve o texto da mensagem antes de enviar.");
       return;
     }
 
     setSending(true);
     try {
-      const payload = await api.sms.sendCampaign({
-        title,
-        sender: "UOR CONNECT",
-        message,
-        audience,
-      });
+      const results: string[] = [];
+      if (channel === "SMS" || channel === "BOTH") {
+        const payload = await api.sms.sendCampaign({
+          title,
+          sender: "UOR CONNECT",
+          message,
+          audience,
+        });
+        results.push(`SMS: ${payload.successCount}/${payload.totalRecipients}`);
+      }
+      if (channel === "WHATSAPP" || channel === "BOTH") {
+        const payload = await api.whatsapp.sendCampaign({
+          title,
+          message,
+          audience,
+        });
+        results.push(`WhatsApp: ${payload.successCount}/${payload.totalRecipients}`);
+      }
       setPreview(null);
       setOpen(false);
-      toast.success(`SMS processada: ${payload.successCount} enviada(s), ${payload.failedCount} falhada(s).`);
+      toast.success(`Envio processado. ${results.join(" · ")}`);
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : "Falha ao enviar SMS.");
+      toast.error(error instanceof Error ? error.message : "Falha ao enviar comunicação.");
     } finally {
       setSending(false);
     }
@@ -143,6 +158,31 @@ export function ContextualSmsAction({
 
           <Textarea value={message} onChange={(event) => setMessage(event.target.value)} className="min-h-28" />
 
+          <div className="grid gap-2 rounded-xl border border-border/70 bg-muted/20 p-3 sm:grid-cols-3">
+            {([
+              { id: "SMS", label: "SMS", icon: Smartphone },
+              { id: "WHATSAPP", label: "WhatsApp", icon: MessageCircle },
+              { id: "BOTH", label: "Ambos", icon: Send },
+            ] as const).map((item) => {
+              const Icon = item.icon;
+              return (
+                <Button
+                  key={item.id}
+                  type="button"
+                  variant={channel === item.id ? "default" : "outline"}
+                  className="justify-start rounded-xl"
+                  onClick={() => {
+                    setChannel(item.id);
+                    setPreview(null);
+                  }}
+                >
+                  <Icon className="mr-2 h-4 w-4" />
+                  {item.label}
+                </Button>
+              );
+            })}
+          </div>
+
           <div className="rounded-xl border border-border/70 bg-background p-3">
             <p className="text-xs font-semibold text-muted-foreground">Prévia personalizada</p>
             <p className="mt-2 text-sm leading-6">{previewText}</p>
@@ -170,7 +210,7 @@ export function ContextualSmsAction({
           </Button>
           <Button onClick={handleSend} disabled={sending || !canResolveRecipient}>
             {sending ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Send className="mr-2 h-4 w-4" />}
-            Enviar SMS
+            {channel === "BOTH" ? "Enviar ambos" : channel === "WHATSAPP" ? "Enviar WhatsApp" : "Enviar SMS"}
           </Button>
         </DialogFooter>
       </DialogContent>

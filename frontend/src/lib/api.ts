@@ -19,6 +19,11 @@ export interface StudentProfile {
   name: string | null;
   email: string | null;
   course: string | null;
+  classCode?: string | null;
+  academicYear?: string | null;
+  academicPeriod?: string | null;
+  curricularYear?: string | null;
+  academicSyncedAt?: string | null;
   birthDate: string | null;
   nationality: string | null;
   phone: string | null;
@@ -465,7 +470,9 @@ export interface CourseEnrollmentPayload {
 
 export type SmsAudienceType =
   | "ALL_STUDENTS"
+  | "STUDENT_CLASS"
   | "STUDENT_COURSE"
+  | "STUDENT_CLASS_OR_COURSE"
   | "COURSE_ENROLLED"
   | "SUBMISSION_ENROLLED"
   | "COURSE_OR_SUBMISSION_ENROLLED"
@@ -476,6 +483,7 @@ export type SmsAudienceType =
 
 export interface SmsAudienceInput {
   type: SmsAudienceType;
+  studentClassCodes?: string[];
   studentCourses?: string[];
   courseIds?: number[];
   submissionStatuses?: Array<"PENDING" | "APPROVED" | "REJECTED">;
@@ -491,6 +499,7 @@ export interface SmsRecipientPreviewItem {
   studentNumber: string | null;
   name: string | null;
   course: string | null;
+  classCode: string | null;
   phone: string;
   providerTo: string;
   sources: string[];
@@ -507,6 +516,7 @@ export interface SmsRecipientPreviewPayload {
     studentNumber: string | null;
     name: string | null;
     course: string | null;
+    classCode: string | null;
     phone: string | null;
     source: string;
     reason: string;
@@ -540,6 +550,7 @@ export interface SmsOverviewPayload {
   };
   audiences: {
     allStudents: { total: number; sendable: number };
+    studentClass?: { total: number; sendable: number };
     courseEnrolled: { total: number; sendable: number };
     exhibitors: { total: number; sendable: number };
     winners: { total: number; sendable: number };
@@ -562,8 +573,15 @@ export interface SmsStudentCourseButton {
   sendable: number;
 }
 
+export interface SmsStudentClassButton {
+  classCode: string;
+  total: number;
+  sendable: number;
+}
+
 export interface SmsFilterOptionsPayload {
   audienceButtons: SmsAudienceButton[];
+  studentClassButtons: SmsStudentClassButton[];
   studentCourseButtons: SmsStudentCourseButton[];
   updatedAt: string;
 }
@@ -597,6 +615,150 @@ export interface SmsSendResult {
     providerTo: string;
     reason: string;
   }>;
+}
+
+export interface CampaignFailureItem {
+  phone: string;
+  providerTo: string;
+  errorMessage: string | null;
+  studentNumber: string | null;
+}
+
+export interface SmsCampaignFailuresPayload {
+  campaignId: number;
+  title: string | null;
+  message: string;
+  sender: string;
+  failures: CampaignFailureItem[];
+}
+
+export interface WhatsAppCampaignFailuresPayload {
+  campaignId: number;
+  title: string | null;
+  message: string;
+  instanceName: string;
+  failures: CampaignFailureItem[];
+}
+
+export type WhatsAppAudienceInput = SmsAudienceInput;
+export type WhatsAppRecipientPreviewItem = SmsRecipientPreviewItem;
+export type WhatsAppRecipientPreviewPayload = SmsRecipientPreviewPayload;
+
+export interface WhatsAppInstanceSummary {
+  id: number;
+  name: string;
+  label: string | null;
+  phoneNumber: string | null;
+  status: string;
+  qrCode: string | null;
+  pairingCode: string | null;
+  baseUrl: string | null;
+  hasCustomApiKey: boolean;
+  isDefault: boolean;
+  isActive: boolean;
+  lastConnectedAt: string | null;
+  lastCheckedAt: string | null;
+  createdByStudentNumber: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface WhatsAppCampaignSummary {
+  id: number;
+  title: string | null;
+  instanceId: number | null;
+  instanceName: string;
+  audienceType: string;
+  status: string;
+  totalRecipients: number;
+  successCount: number;
+  failedCount: number;
+  mediaUrl: string | null;
+  createdByStudentNumber: string;
+  createdAt: string;
+  sentAt: string | null;
+}
+
+export interface WhatsAppAutomationSetting {
+  eventKey:
+    | "COURSE_ENROLLMENT_CREATED"
+    | "COURSE_ENROLLMENT_STATUS_UPDATED"
+    | "SUBMISSION_CREATED"
+    | "SUBMISSION_CONTEXT_AUDIENCE"
+    | "SUBMISSION_STATUS_UPDATED"
+    | "SUBMISSION_ENGAGEMENT_MILESTONE"
+    | "SUBMISSION_MARKED_WINNER"
+    | "CERTIFICATE_ISSUED"
+    | "ATTENDANCE_CHECKED_IN"
+    | "LIVE_CHAT_CONTEXT_AUDIENCE";
+  label: string;
+  description: string;
+  enabled: boolean;
+  title: string;
+  message: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface WhatsAppOverviewPayload {
+  integration: {
+    configured: boolean;
+    baseUrl: string;
+    providerStatus: string;
+    providerMessage: string | null;
+    publicAppUrl: string | null;
+  };
+  automations: WhatsAppAutomationSetting[];
+  instances: WhatsAppInstanceSummary[];
+  audiences: SmsOverviewPayload["audiences"];
+  campaigns: WhatsAppCampaignSummary[];
+}
+
+export interface WhatsAppInstanceInput {
+  name: string;
+  label?: string;
+  phoneNumber?: string;
+  baseUrl?: string;
+  apiKey?: string;
+  token?: string;
+  isDefault?: boolean;
+}
+
+export interface WhatsAppSendPayload {
+  title?: string;
+  message: string;
+  audience: WhatsAppAudienceInput;
+  instanceId?: number;
+  delay?: number;
+  media?: {
+    url: string;
+    fileName?: string;
+    mimeType?: string;
+    type?: "image" | "video" | "document";
+    caption?: string;
+  };
+}
+
+export interface WhatsAppSendResult {
+  campaignId: number;
+  status: string;
+  totalCandidates: number;
+  totalRecipients: number;
+  skippedCount: number;
+  successCount: number;
+  failedCount: number;
+  instanceName: string;
+  failures: Array<{
+    phone: string;
+    providerTo: string;
+    reason: string;
+  }>;
+}
+
+export interface WhatsAppAutomationUpdatePayload {
+  enabled: boolean;
+  title?: string;
+  message?: string;
 }
 
 export interface PdfJobQueued {
@@ -1366,6 +1528,7 @@ export const api = {
         communityUrl: string | null;
         boardingPassPath: string;
         paymentProofPath: string | null;
+        receiptPath: string;
       }>("/submissions", {
         method: "POST",
         body: JSON.stringify(data),
@@ -1647,6 +1810,55 @@ export const api = {
       request<SmsProviderProxyResponse>(`/sms/admin/provider/senders/${encodeURIComponent(senderId)}`, {
         method: "DELETE",
       }),
+    campaignFailures: (id: number) =>
+      request<SmsCampaignFailuresPayload>(`/sms/admin/campaigns/${id}/failures`),
+  },
+
+  whatsapp: {
+    filters: () =>
+      request<SmsFilterOptionsPayload>("/whatsapp/admin/filters"),
+    overview: () =>
+      request<WhatsAppOverviewPayload>("/whatsapp/admin/overview"),
+    updateAutomation: (eventKey: WhatsAppAutomationSetting["eventKey"], data: WhatsAppAutomationUpdatePayload) =>
+      request<WhatsAppAutomationSetting>(`/whatsapp/admin/automations/${eventKey}`, {
+        method: "PUT",
+        body: JSON.stringify(data),
+      }),
+    campaigns: (page = 0, pageSize = 20) =>
+      request<{ page: number; pageSize: number; total: number; campaigns: WhatsAppCampaignSummary[] }>(`/whatsapp/admin/campaigns${toQueryString({ page, pageSize })}`),
+    createInstance: (data: WhatsAppInstanceInput) =>
+      request<{ instance: WhatsAppInstanceSummary; provider: { ok: boolean; status: number; message: string | null } }>("/whatsapp/admin/instances", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+    connectInstance: (id: number) =>
+      request<{ instance: WhatsAppInstanceSummary; provider: { ok: boolean; status: number; message: string | null } }>(`/whatsapp/admin/instances/${id}/connect`, {
+        method: "POST",
+      }),
+    refreshInstanceStatus: (id: number) =>
+      request<{ instance: WhatsAppInstanceSummary; provider: { ok: boolean; status: number; message: string | null } }>(`/whatsapp/admin/instances/${id}/status`, {
+        method: "POST",
+      }),
+    setDefaultInstance: (id: number) =>
+      request<WhatsAppInstanceSummary>(`/whatsapp/admin/instances/${id}/default`, {
+        method: "POST",
+      }),
+    disableInstance: (id: number) =>
+      request<WhatsAppInstanceSummary>(`/whatsapp/admin/instances/${id}`, {
+        method: "DELETE",
+      }),
+    previewRecipients: (data: { audience: WhatsAppAudienceInput; search?: string; limit?: number }) =>
+      request<WhatsAppRecipientPreviewPayload>("/whatsapp/admin/preview", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+    sendCampaign: (data: WhatsAppSendPayload) =>
+      request<WhatsAppSendResult>("/whatsapp/admin/send", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+    campaignFailures: (id: number) =>
+      request<WhatsAppCampaignFailuresPayload>(`/whatsapp/admin/campaigns/${id}/failures`),
   },
 
   stats: {
@@ -1750,6 +1962,36 @@ export const api = {
       request<ProjectPublicFeedItem[]>(`/interactions/projects`),
     projectBySlug: (slug: string) =>
       request<ProjectPublicFeedItem>(`/interactions/projects/${slug}`)
+  },
+
+  community: {
+    feed: (cursor?: number) =>
+      request<CommunityPost[]>(`/community/feed${cursor ? `?before=${cursor}` : ""}`),
+    createPost: (content: string, imageUrl?: string) =>
+      request<CommunityPost>("/community/posts", {
+        method: "POST",
+        body: JSON.stringify({ content, imageUrl }),
+      }),
+    likePost: (postId: number) =>
+      request<{ liked: boolean; likesCount: number }>(`/community/posts/${postId}/like`, { method: "POST" }),
+    comments: (postId: number) =>
+      request<CommunityComment[]>(`/community/posts/${postId}/comments`),
+    addComment: (postId: number, content: string) =>
+      request<CommunityComment>(`/community/posts/${postId}/comments`, {
+        method: "POST",
+        body: JSON.stringify({ content }),
+      }),
+    threads: () =>
+      request<CommunityChatThread[]>("/community/threads"),
+    threadMessages: (threadId: number, cursor?: number) =>
+      request<CommunityChatMessage[]>(`/community/threads/${threadId}/messages${cursor ? `?before=${cursor}` : ""}`),
+    sendThreadMessage: (threadId: number, content: string) =>
+      request<CommunityChatMessage>(`/community/threads/${threadId}/messages`, {
+        method: "POST",
+        body: JSON.stringify({ content }),
+      }),
+    profile: () =>
+      request<CommunityProfile>("/community/profile"),
   },
 };
 
@@ -1992,4 +2234,62 @@ export interface Stats {
   approved: number;
   votes: number;
   avgRating: number;
+}
+
+// ── Community types ──
+
+export interface CommunityPostAuthor {
+  id: number;
+  name: string;
+  course: string | null;
+  courseColor: string | null;
+}
+
+export interface CommunityPost {
+  id: number;
+  type: "FREE" | "PROJECT_UPDATE" | "COURSE_UPDATE" | "ADMIN_ANNOUNCEMENT";
+  content: string;
+  imageUrl: string | null;
+  contextId: number | null;
+  author: CommunityPostAuthor;
+  likesCount: number;
+  commentsCount: number;
+  liked: boolean;
+  createdAt: string;
+}
+
+export interface CommunityComment {
+  id: number;
+  postId: number;
+  content: string;
+  author: CommunityPostAuthor;
+  createdAt: string;
+}
+
+export interface CommunityChatThread {
+  id: number;
+  contextType: "PROJECT" | "COURSE";
+  contextId: number;
+  title: string | null;
+  lastMessage: string | null;
+  lastMessageAt: string | null;
+  messageCount: number;
+}
+
+export interface CommunityChatMessage {
+  id: number;
+  threadId: number;
+  content: string;
+  author: CommunityPostAuthor;
+  createdAt: string;
+}
+
+export interface CommunityProfile {
+  id: number;
+  name: string;
+  course: string | null;
+  courseColor: string | null;
+  postsCount: number;
+  likesReceived: number;
+  joinedAt: string;
 }

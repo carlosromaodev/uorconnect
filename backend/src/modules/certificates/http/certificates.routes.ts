@@ -10,6 +10,7 @@ import { recordAdminAudit } from "../../audit/application/audit.service";
 import { escapeHtml, formatDateLabel, loadLogoDataUri, renderPdfFromHtml } from "../../reports/http/pdf-report.utils";
 import { renderQrDataUri } from "../../../shared/qr";
 import { buildValidationQrUrl, buildValidationUrl } from "../../validation/application/validation-links";
+import { sendWhatsAppAutomationEvent } from "../../whatsapp/http/whatsapp.routes";
 
 const certificateIssueBodySchema = z.object({
   studentNumber: z.string().trim().min(4).max(40),
@@ -173,6 +174,46 @@ function serializeCertificate(env: Env, certificate: {
   };
 }
 
+async function notifyCertificateIssued(env: Env, certificate: {
+  id: number;
+  validationToken: string;
+  title: string;
+  recipientName: string;
+  recipientNumber: string | null;
+  recipientCourse: string | null;
+  studentId: number | null;
+}) {
+  const student = certificate.studentId
+    ? await prisma.student.findUnique({
+      where: { id: certificate.studentId },
+      select: { phone: true },
+    })
+    : certificate.recipientNumber
+      ? await prisma.student.findUnique({
+        where: { studentNumber: certificate.recipientNumber },
+        select: { phone: true },
+      })
+      : null;
+
+  if (!student?.phone || !certificate.recipientNumber) return;
+
+  const validationUrl = buildValidationUrl(env, certificate.validationToken);
+  const pdfUrl = `${env.PUBLIC_API_URL?.replace(/\/$/, "") ?? ""}/certificates/${certificate.id}/pdf`;
+
+  await sendWhatsAppAutomationEvent(env, "CERTIFICATE_ISSUED", {
+    phone: student.phone,
+    studentId: certificate.studentId,
+    studentNumber: certificate.recipientNumber,
+    recipientName: certificate.recipientName,
+    recipientCourse: certificate.recipientCourse,
+    values: {
+      certificado: certificate.title,
+      validacao_url: validationUrl,
+      pdf_url: pdfUrl,
+    },
+  });
+}
+
 async function canReadCertificate(request: FastifyRequest, studentId: number | null, env: Env) {
   if (request.jury) return true;
   if (request.student?.id === studentId) return true;
@@ -195,157 +236,451 @@ function buildCertificateHtml(params: {
     ? `<img src="${params.logoDataUri}" alt="UOR Connect" />`
     : `<strong>UOR Connect</strong>`;
 
+  const formattedDate = new Intl.DateTimeFormat("pt-PT", {
+    day: "2-digit",
+    month: "long",
+    year: "numeric",
+  }).format(params.issuedAt);
+
   return `<!DOCTYPE html>
     <html lang="pt">
       <head>
         <meta charset="utf-8" />
         <title>${escapeHtml(params.title)} · ${escapeHtml(params.code)}</title>
         <style>
-          @page { size: A4 landscape; margin: 14mm; }
-          * { box-sizing: border-box; }
+          @page { size: A4 landscape; margin: 0; }
+          * { box-sizing: border-box; margin: 0; padding: 0; }
           body {
-            margin: 0;
-            font-family: "Segoe UI", Arial, sans-serif;
-            color: #102132;
-            background: #f4f6f8;
+            font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+            color: #0f172a;
+            background: #ffffff;
+            -webkit-print-color-adjust: exact;
+            print-color-adjust: exact;
           }
-          .certificate {
-            min-height: calc(210mm - 28mm);
-            border: 1px solid #d8e0e8;
-            border-radius: 14px;
-            background: #fff;
-            padding: 18mm;
+
+          .page {
+            width: 297mm;
+            height: 210mm;
             position: relative;
+            overflow: hidden;
+            background: #ffffff;
           }
-          .certificate::before {
-            content: "";
+
+          /* Gold accent bar at top */
+          .accent-bar {
             position: absolute;
-            inset: 8mm;
-            border: 2px solid #fd8305;
-            border-radius: 10px;
+            top: 0; left: 0; right: 0;
+            height: 5mm;
+            background: linear-gradient(90deg, #b8860b 0%, #daa520 35%, #ffd700 50%, #daa520 65%, #b8860b 100%);
+          }
+
+          /* Subtle background pattern */
+          .bg-pattern {
+            position: absolute;
+            inset: 0;
+            background:
+              radial-gradient(circle at 15% 25%, rgba(218,165,32,0.06), transparent 40%),
+              radial-gradient(circle at 85% 75%, rgba(10,61,98,0.04), transparent 40%);
             pointer-events: none;
           }
+
+          /* Decorative border frame */
+          .frame-outer {
+            position: absolute;
+            inset: 8mm;
+            border: 1.5px solid #daa520;
+            pointer-events: none;
+          }
+          .frame-inner {
+            position: absolute;
+            inset: 11mm;
+            border: 0.5px solid rgba(218,165,32,0.35);
+            pointer-events: none;
+          }
+
+          /* Corner ornaments */
+          .ornament {
+            position: absolute;
+            width: 18mm;
+            height: 18mm;
+            pointer-events: none;
+          }
+          .ornament::before, .ornament::after {
+            content: "";
+            position: absolute;
+            background: #daa520;
+          }
+          .ornament-tl { top: 8mm; left: 8mm; }
+          .ornament-tl::before { top: 0; left: 0; width: 18mm; height: 1.5px; }
+          .ornament-tl::after { top: 0; left: 0; width: 1.5px; height: 18mm; }
+          .ornament-tr { top: 8mm; right: 8mm; }
+          .ornament-tr::before { top: 0; right: 0; width: 18mm; height: 1.5px; }
+          .ornament-tr::after { top: 0; right: 0; width: 1.5px; height: 18mm; }
+          .ornament-bl { bottom: 8mm; left: 8mm; }
+          .ornament-bl::before { bottom: 0; left: 0; width: 18mm; height: 1.5px; }
+          .ornament-bl::after { bottom: 0; left: 0; width: 1.5px; height: 18mm; }
+          .ornament-br { bottom: 8mm; right: 8mm; }
+          .ornament-br::before { bottom: 0; right: 0; width: 18mm; height: 1.5px; }
+          .ornament-br::after { bottom: 0; right: 0; width: 1.5px; height: 18mm; }
+
+          /* Watermark */
+          .watermark {
+            position: absolute;
+            top: 50%; left: 50%;
+            transform: translate(-50%, -50%) rotate(-12deg);
+            font-size: 78px;
+            font-weight: 900;
+            letter-spacing: 0.08em;
+            color: rgba(218,165,32,0.04);
+            text-transform: uppercase;
+            white-space: nowrap;
+            pointer-events: none;
+          }
+
+          /* Content layout */
+          .certificate-body {
+            position: relative;
+            z-index: 2;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 16mm 22mm 14mm;
+            height: 210mm;
+          }
+
+          /* Header */
           .header {
+            width: 100%;
             display: flex;
             justify-content: space-between;
-            gap: 18mm;
             align-items: flex-start;
-            position: relative;
-            z-index: 1;
           }
           .brand img {
-            width: 46mm;
+            width: 40mm;
             height: auto;
             display: block;
           }
-          .meta {
-            text-align: right;
-            font-size: 10px;
-            line-height: 1.7;
-            color: #61707f;
-            text-transform: uppercase;
-            letter-spacing: 0.12em;
+          .brand strong {
+            color: #0a3d62;
+            font-size: 20px;
+            font-weight: 800;
           }
-          .content {
-            position: relative;
-            z-index: 1;
-            max-width: 210mm;
-            margin: 16mm auto 0;
+          .doc-type {
+            text-align: right;
+          }
+          .doc-type-label {
+            font-size: 8px;
+            font-weight: 700;
+            letter-spacing: 0.28em;
+            text-transform: uppercase;
+            color: #daa520;
+          }
+          .doc-type-code {
+            margin-top: 2mm;
+            font-family: "Courier New", monospace;
+            font-size: 9px;
+            font-weight: 700;
+            color: #64748b;
+            letter-spacing: 0.04em;
+          }
+
+          /* Divider */
+          .gold-divider {
+            width: 60mm;
+            height: 0.5px;
+            background: linear-gradient(90deg, transparent, #daa520, transparent);
+            margin: 7mm auto 0;
+          }
+
+          /* Main content */
+          .main-content {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            max-width: 220mm;
+            margin-top: -2mm;
+          }
+
+          .institution {
+            font-size: 9px;
+            font-weight: 700;
+            letter-spacing: 0.3em;
+            text-transform: uppercase;
+            color: #0a3d62;
+          }
+
+          .cert-title {
+            margin-top: 5mm;
+            font-size: 28px;
+            font-weight: 800;
+            line-height: 1.15;
+            color: #0f172a;
+            letter-spacing: -0.01em;
+          }
+
+          .body-text {
+            margin-top: 5mm;
+            max-width: 185mm;
+            font-size: 11.5px;
+            line-height: 1.75;
+            color: #475569;
+          }
+
+          .awarded-to {
+            margin-top: 7mm;
+            font-size: 8.5px;
+            font-weight: 700;
+            letter-spacing: 0.25em;
+            text-transform: uppercase;
+            color: #94a3b8;
+          }
+
+          .recipient-name {
+            margin-top: 2mm;
+            font-family: Georgia, "Times New Roman", serif;
+            font-size: 32px;
+            font-weight: 700;
+            color: #0f172a;
+            padding: 0 12mm 2.5mm;
+            border-bottom: 2px solid #daa520;
+            display: inline-block;
+          }
+
+          .recipient-details {
+            margin-top: 4mm;
+            display: flex;
+            justify-content: center;
+            gap: 4mm;
+            flex-wrap: wrap;
+          }
+          .detail-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 2mm;
+            padding: 1.5mm 4mm;
+            border: 1px solid rgba(218,165,32,0.25);
+            border-radius: 3mm;
+            background: rgba(218,165,32,0.05);
+            font-size: 9px;
+            color: #475569;
+          }
+          .detail-chip strong {
+            font-weight: 700;
+            color: #0a3d62;
+          }
+
+          /* Footer area */
+          .footer-area {
+            width: 100%;
+            display: flex;
+            align-items: flex-end;
+            justify-content: space-between;
+            gap: 8mm;
+            margin-top: auto;
+          }
+
+          /* Signatures */
+          .signatures {
+            display: flex;
+            gap: 12mm;
+          }
+          .sig-block {
+            width: 50mm;
             text-align: center;
           }
-          .kicker {
-            margin: 0;
-            color: #fd8305;
-            font-size: 12px;
-            font-weight: 800;
-            letter-spacing: 0.22em;
+          .sig-line {
+            border-top: 1px solid #334155;
+            margin-bottom: 2mm;
+          }
+          .sig-name {
+            font-size: 9px;
+            font-weight: 600;
+            color: #334155;
+          }
+          .sig-role {
+            font-size: 7.5px;
+            color: #94a3b8;
+            letter-spacing: 0.06em;
+            margin-top: 0.5mm;
+          }
+
+          /* Date */
+          .issue-date {
+            text-align: center;
+            flex: 1;
+          }
+          .issue-date-label {
+            font-size: 7.5px;
+            font-weight: 700;
+            letter-spacing: 0.18em;
             text-transform: uppercase;
+            color: #94a3b8;
           }
-          h1 {
-            margin: 7mm 0 0;
-            font-size: 34px;
-            line-height: 1.1;
-            color: #14212f;
-          }
-          .body-copy {
-            margin: 10mm auto 0;
-            max-width: 175mm;
-            color: #4b5b6c;
-            font-size: 15px;
-            line-height: 1.8;
-          }
-          .recipient {
-            margin: 8mm 0 0;
-            font-size: 30px;
-            font-weight: 800;
-            color: #14212f;
-          }
-          .details {
-            margin-top: 6mm;
-            color: #61707f;
-            font-size: 12px;
-            line-height: 1.8;
-          }
-          .footer {
-            position: absolute;
-            z-index: 1;
-            left: 18mm;
-            right: 18mm;
-            bottom: 16mm;
-            display: flex;
-            align-items: end;
-            justify-content: space-between;
-            gap: 14mm;
-          }
-          .code {
-            font-family: "Courier New", monospace;
-            font-size: 12px;
-            color: #14212f;
-          }
-          .qr {
-            width: 30mm;
-            border: 1px solid #d8e0e8;
-            border-radius: 8px;
-            padding: 2mm;
-          }
-          .validation {
-            max-width: 140mm;
-            color: #61707f;
+          .issue-date-value {
+            margin-top: 1mm;
             font-size: 10px;
-            line-height: 1.6;
-            word-break: break-word;
+            color: #334155;
+            font-weight: 600;
+          }
+
+          /* Verification block */
+          .verification {
+            display: flex;
+            align-items: flex-end;
+            gap: 3mm;
+          }
+          .qr-box {
+            width: 24mm;
+            height: 24mm;
+            border: 1px solid #e2e8f0;
+            border-radius: 2.5mm;
+            padding: 1.5mm;
+            background: #ffffff;
+            flex-shrink: 0;
+          }
+          .qr-box img {
+            width: 100%;
+            height: 100%;
+            display: block;
+          }
+          .verify-info {
+            max-width: 60mm;
+          }
+          .verify-label {
+            font-size: 7px;
+            font-weight: 700;
+            letter-spacing: 0.2em;
+            text-transform: uppercase;
+            color: #daa520;
+          }
+          .verify-code {
+            margin-top: 1mm;
+            font-family: "Courier New", monospace;
+            font-size: 9.5px;
+            font-weight: 700;
+            color: #0f172a;
+          }
+          .verify-url {
+            margin-top: 1mm;
+            font-size: 7px;
+            color: #94a3b8;
+            word-break: break-all;
+            line-height: 1.3;
+          }
+
+          /* Seal */
+          .seal {
+            position: absolute;
+            z-index: 3;
+            right: 32mm;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 32mm;
+            height: 32mm;
+            border-radius: 50%;
+            border: 2px solid rgba(218,165,32,0.5);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            text-align: center;
+            background: rgba(255,255,255,0.85);
+            box-shadow: 0 0 0 1mm rgba(218,165,32,0.12);
+          }
+          .seal-icon {
+            font-size: 16px;
+            line-height: 1;
+            margin-bottom: 1mm;
+          }
+          .seal-text {
+            font-size: 6px;
+            font-weight: 800;
+            letter-spacing: 0.14em;
+            text-transform: uppercase;
+            color: #b8860b;
+            line-height: 1.4;
           }
         </style>
       </head>
       <body>
-        <main class="certificate">
-          <header class="header">
-            <div class="brand">${logoMarkup}</div>
-            <div class="meta">
-              <div>Emitido em ${escapeHtml(formatDateLabel(params.issuedAt))}</div>
-              <div>${escapeHtml(params.code)}</div>
-            </div>
-          </header>
+        <div class="page">
+          <div class="accent-bar"></div>
+          <div class="bg-pattern"></div>
+          <div class="frame-outer"></div>
+          <div class="frame-inner"></div>
+          <div class="ornament ornament-tl"></div>
+          <div class="ornament ornament-tr"></div>
+          <div class="ornament ornament-bl"></div>
+          <div class="ornament ornament-br"></div>
+          <div class="watermark">UOR Connect</div>
 
-          <section class="content">
-            <p class="kicker">Universidade Óscar Ribas · UOR Connect</p>
-            <h1>${escapeHtml(params.title)}</h1>
-            <p class="body-copy">Certificamos, para os devidos efeitos, que o(a) estudante abaixo identificado(a) participou nas atividades registadas pelo sistema UOR Connect.</p>
-            <div class="recipient">${escapeHtml(params.recipientName)}</div>
-            <div class="details">
-              ${params.recipientNumber ? `Número: ${escapeHtml(params.recipientNumber)}<br />` : ""}
-              ${params.recipientCourse ? `Curso: ${escapeHtml(params.recipientCourse)}` : ""}
-            </div>
-          </section>
+          <div class="seal">
+            <div class="seal-icon">&#9733;</div>
+            <div class="seal-text">Validação<br/>Digital<br/>UOR Connect</div>
+          </div>
 
-          <footer class="footer">
-            <div>
-              <div class="code">${escapeHtml(params.code)}</div>
-              <div class="validation">${escapeHtml(params.validationUrl)}</div>
-            </div>
-            <img class="qr" src="${params.qrImageUrl}" alt="QR de validação" />
-          </footer>
-        </main>
+          <div class="certificate-body">
+            <header class="header">
+              <div class="brand">${logoMarkup}</div>
+              <div class="doc-type">
+                <div class="doc-type-label">Certificado Oficial</div>
+                <div class="doc-type-code">${escapeHtml(params.code)}</div>
+              </div>
+            </header>
+
+            <div class="gold-divider"></div>
+
+            <section class="main-content">
+              <p class="institution">Universidade Óscar Ribas &middot; UOR Connect</p>
+              <h1 class="cert-title">${escapeHtml(params.title)}</h1>
+              <p class="body-text">
+                Certificamos, para os devidos efeitos, que o(a) estudante abaixo identificado(a) participou
+                nas atividades registadas pelo sistema UOR Connect, demonstrando presença, compromisso
+                e contribuição no percurso académico e profissional promovido pela plataforma.
+              </p>
+              <p class="awarded-to">Concedido a</p>
+              <div class="recipient-name">${escapeHtml(params.recipientName)}</div>
+              <div class="recipient-details">
+                ${params.recipientNumber ? `<span class="detail-chip"><strong>N.º</strong> ${escapeHtml(params.recipientNumber)}</span>` : ""}
+                ${params.recipientCourse ? `<span class="detail-chip"><strong>Curso</strong> ${escapeHtml(params.recipientCourse)}</span>` : ""}
+              </div>
+            </section>
+
+            <footer class="footer-area">
+              <div class="signatures">
+                <div class="sig-block">
+                  <div class="sig-line"></div>
+                  <div class="sig-name">Coordenação UOR Connect</div>
+                  <div class="sig-role">Plataforma Académica</div>
+                </div>
+                <div class="sig-block">
+                  <div class="sig-line"></div>
+                  <div class="sig-name">Direção Académica</div>
+                  <div class="sig-role">Universidade Óscar Ribas</div>
+                </div>
+              </div>
+
+              <div class="issue-date">
+                <div class="issue-date-label">Emitido em</div>
+                <div class="issue-date-value">${escapeHtml(formattedDate)}</div>
+              </div>
+
+              <div class="verification">
+                <div class="verify-info">
+                  <div class="verify-label">Verificação Digital</div>
+                  <div class="verify-code">${escapeHtml(params.code)}</div>
+                  <div class="verify-url">${escapeHtml(params.validationUrl)}</div>
+                </div>
+                <div class="qr-box">
+                  <img src="${params.qrImageUrl}" alt="QR de validação" />
+                </div>
+              </div>
+            </footer>
+          </div>
+        </div>
       </body>
     </html>`;
 }
@@ -530,6 +865,12 @@ export async function certificatesRoutes(app: FastifyInstance, opts: { env: Env 
           metadata: { code: certificate.code, type: certificate.type },
         });
 
+        try {
+          await notifyCertificateIssued(opts.env, certificate);
+        } catch (error) {
+          request.log.warn({ err: error, certificateId: certificate.id }, "automatic certificate WhatsApp notification failed");
+        }
+
         return reply.code(201).send(serializeCertificate(opts.env, certificate));
       });
 
@@ -600,6 +941,14 @@ export async function certificatesRoutes(app: FastifyInstance, opts: { env: Env 
           summary: `${certificates.length} certificado(s) emitido(s) para presenças.`,
           metadata: { eventKey: body.eventKey, issued: certificates.length, skipped },
         });
+
+        for (const certificate of certificates) {
+          try {
+            await notifyCertificateIssued(opts.env, certificate);
+          } catch (error) {
+            request.log.warn({ err: error, certificateId: certificate.id }, "automatic attendees certificate WhatsApp notification failed");
+          }
+        }
 
         return {
           issued: certificates.length,
@@ -762,6 +1111,14 @@ export async function certificatesRoutes(app: FastifyInstance, opts: { env: Env 
           summary: `${certificates.length} certificado(s) emitido(s) em lote.`,
           metadata: { mode: body.mode, issued: certificates.length, skipped },
         });
+
+        for (const certificate of certificates) {
+          try {
+            await notifyCertificateIssued(opts.env, certificate);
+          } catch (error) {
+            request.log.warn({ err: error, certificateId: certificate.id }, "automatic bulk certificate WhatsApp notification failed");
+          }
+        }
 
         return {
           issued: certificates.length,

@@ -16,8 +16,6 @@ import {
   ShieldCheck,
   Store,
   Trash2,
-  Upload,
-  X,
   Info,
 } from "lucide-react";
 import { toast } from "@/components/ui/sonner";
@@ -86,21 +84,21 @@ const submissionKinds: Array<{
   {
     id: "projeto",
     label: "Expor Projeto",
-    description: "Projeto académico ou tecnológico com acesso a votação pública e prémio.",
+    description: "Projeto académico ou tecnológico.",
     icon: Lightbulb,
     gradient: "from-[hsl(var(--area-iot))]/20 to-primary/10",
   },
   {
     id: "negocio",
     label: "Expor Negócio",
-    description: "Startup, empresa ou ideia de negócio em categoria de exposição.",
+    description: "Startup, empresa ou ideia de negócio.",
     icon: Store,
     gradient: "from-[hsl(var(--area-negocio))]/20 to-[hsl(var(--area-negocio))]/10",
   },
   {
     id: "produto",
     label: "Expor Produto",
-    description: "Produto físico ou digital em categoria de exposição.",
+    description: "Produto físico ou digital.",
     icon: Package,
     gradient: "from-[hsl(var(--area-produto))]/20 to-[hsl(var(--area-produto))]/10",
   },
@@ -344,6 +342,9 @@ export default function Submeter() {
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [touchedFields, setTouchedFields] = useState<Partial<Record<SubmissionFieldKey, boolean>>>({});
   const [isDragging, setIsDragging] = useState(false);
+  const [proofReading, setProofReading] = useState(false);
+  const latestPaymentProofRef = useRef("");
+  const selectedPaymentProofFileRef = useRef<File | null>(null);
 
   useEffect(() => {
     const previousTitle = document.title;
@@ -370,14 +371,22 @@ export default function Submeter() {
 
         if (receipt) {
           const nextKind = typeFromReceipt(receipt.type);
+          const nextForm = hydrateFromStudent(mapReceiptToForm(receipt), currentStudent);
           setKind(nextKind);
-          setForm(hydrateFromStudent(mapReceiptToForm(receipt), currentStudent));
+          latestPaymentProofRef.current = nextForm.paymentProof;
+          selectedPaymentProofFileRef.current = null;
+          setForm(nextForm);
           setTouchedFields({});
           setErrors({});
           return;
         }
 
-        setForm((current) => hydrateFromStudent(current, currentStudent));
+        setForm((current) => {
+          const nextForm = hydrateFromStudent(current, currentStudent);
+          latestPaymentProofRef.current = nextForm.paymentProof;
+          selectedPaymentProofFileRef.current = null;
+          return nextForm;
+        });
         setTouchedFields({});
         setErrors({});
       })
@@ -449,6 +458,10 @@ export default function Submeter() {
   };
 
   const updateField = <K extends SubmissionFieldKey>(key: K, value: SubmissionFormState[K]) => {
+    if (key === "paymentProof") {
+      latestPaymentProofRef.current = typeof value === "string" ? value : "";
+    }
+
     setForm((current) => {
       const nextForm = { ...current, [key]: value };
       const fieldError = validateField(key, nextForm);
@@ -488,22 +501,53 @@ export default function Submeter() {
 
   const handleProofSelected = async (file?: File | null) => {
     if (!file) {
+      selectedPaymentProofFileRef.current = null;
       updateField("paymentProof", "");
       updateField("paymentProofName", "");
       return;
     }
 
     if (file.size > 5 * 1024 * 1024) {
+      selectedPaymentProofFileRef.current = null;
       toast.error("O comprovativo deve ter no máximo 5 MB.");
       return;
     }
 
+    selectedPaymentProofFileRef.current = file;
+
     try {
+      setProofReading(true);
       const dataUrl = await readFileAsDataUrl(file);
+      if (!dataUrl.startsWith("data:")) {
+        throw new Error("O ficheiro selecionado não gerou um comprovativo válido.");
+      }
       updateField("paymentProof", dataUrl);
       updateField("paymentProofName", file.name);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Falha ao ler o comprovativo.");
+    } finally {
+      setProofReading(false);
+    }
+  };
+
+  const resolvePaymentProofForSubmit = async () => {
+    const currentProof = form.paymentProof || latestPaymentProofRef.current;
+    if (currentProof) return currentProof;
+
+    const selectedFile = selectedPaymentProofFileRef.current;
+    if (!selectedFile) return "";
+
+    try {
+      setProofReading(true);
+      const dataUrl = await readFileAsDataUrl(selectedFile);
+      if (!dataUrl.startsWith("data:")) {
+        throw new Error("O ficheiro selecionado não gerou um comprovativo válido.");
+      }
+      updateField("paymentProof", dataUrl);
+      updateField("paymentProofName", selectedFile.name);
+      return dataUrl;
+    } finally {
+      setProofReading(false);
     }
   };
 
@@ -549,7 +593,23 @@ export default function Submeter() {
     event.preventDefault();
     if (!kind) return;
 
-    const parsed = buildSubmeterSchema(kind).safeParse(form);
+    if (proofReading) {
+      toast.info("Aguarda o carregamento do comprovativo terminar.");
+      return;
+    }
+
+    let resolvedPaymentProof = form.paymentProof || latestPaymentProofRef.current;
+    if (!resolvedPaymentProof && selectedPaymentProofFileRef.current) {
+      try {
+        resolvedPaymentProof = await resolvePaymentProofForSubmit();
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Falha ao ler o comprovativo.");
+        return;
+      }
+    }
+
+    const submissionForm = { ...form, paymentProof: resolvedPaymentProof };
+    const parsed = buildSubmeterSchema(kind).safeParse(submissionForm);
     if (!parsed.success) {
       const nextErrors = parsed.error.issues.reduce<Record<string, string>>((acc, issue) => {
         const key = String(issue.path[0] ?? "form");
@@ -573,41 +633,41 @@ export default function Submeter() {
 
     try {
       setSaving(true);
-      const normalizedCourse = getOfficialCourseFieldValue(form.academicCourse);
+      const normalizedCourse = getOfficialCourseFieldValue(submissionForm.academicCourse);
 
       const syncedStudent = await syncStudentProfileIfNeeded(student, {
-        name: form.leaderName,
+        name: submissionForm.leaderName,
         course: normalizedCourse || undefined,
-        phone: formatSubmissionPhone(form.phoneDigits),
+        phone: formatSubmissionPhone(submissionForm.phoneDigits),
       });
       setStudent(syncedStudent ?? student);
 
       const observations = [
-        form.observations.trim(),
-        kind === "projeto" && form.advisor.trim() ? `Docente orientador: ${form.advisor.trim()}` : "",
-        kind !== "projeto" && form.organizationName.trim() ? `Entidade: ${form.organizationName.trim()}` : "",
-        kind === "produto" && form.priceAverage.trim() ? `Média de preço estimado: ${form.priceAverage.trim()}` : "",
+        submissionForm.observations.trim(),
+        kind === "projeto" && submissionForm.advisor.trim() ? `Docente orientador: ${submissionForm.advisor.trim()}` : "",
+        kind !== "projeto" && submissionForm.organizationName.trim() ? `Entidade: ${submissionForm.organizationName.trim()}` : "",
+        kind === "produto" && submissionForm.priceAverage.trim() ? `Média de preço estimado: ${submissionForm.priceAverage.trim()}` : "",
       ].filter(Boolean).join("\n");
 
       const payload: CreateSubmissionInput = {
-        name: form.name.trim(),
-        description: form.description.trim() || undefined,
-        members: form.members,
-        leaderName: form.leaderName.trim(),
-        leaderPhone: formatSubmissionPhone(form.phoneDigits),
-        needs: form.needs,
-        paymentProof: form.paymentProof,
+        name: submissionForm.name.trim(),
+        description: submissionForm.description.trim() || undefined,
+        members: submissionForm.members,
+        leaderName: submissionForm.leaderName.trim(),
+        leaderPhone: formatSubmissionPhone(submissionForm.phoneDigits),
+        needs: submissionForm.needs,
+        paymentProof: submissionForm.paymentProof,
         paymentConfirmed: true,
-        repoUrl: form.repoUrl.trim() || undefined,
-        websiteUrl: form.websiteUrl.trim() || undefined,
+        repoUrl: submissionForm.repoUrl.trim() || undefined,
+        websiteUrl: submissionForm.websiteUrl.trim() || undefined,
         observations: observations || undefined,
         agreeRules: true,
         type: submissionTypeToApi(kind),
-        area: form.area,
+        area: submissionForm.area,
         course: kind === "projeto" ? normalizedCourse : undefined,
-        stage: kind === "negocio" ? form.stage : undefined,
-        category: kind === "produto" ? form.category : undefined,
-        productType: kind === "produto" ? form.productType : undefined,
+        stage: kind === "negocio" ? submissionForm.stage : undefined,
+        category: kind === "produto" ? submissionForm.category : undefined,
+        productType: kind === "produto" ? submissionForm.productType : undefined,
       };
 
       if (isEditMode) {
@@ -658,33 +718,25 @@ export default function Submeter() {
             initial={{ opacity: 0, y: 14 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.28, ease: "easeOut" }}
-            className="mb-10 text-center"
+            className="mb-8 text-center"
           >
-            <h1 className="mb-2 text-3xl font-bold sm:text-4xl">Submeter Exposição</h1>
-            <p className="text-sm text-muted-foreground sm:text-base">
-              Escolhe o tipo de candidatura e confirma o estado atual antes de avançar.
-            </p>
+            <h1 className="text-3xl font-bold sm:text-4xl">Submeter expositor</h1>
           </motion.section>
 
-          <div className="mb-8 grid gap-4 md:grid-cols-[1.2fr_0.8fr]">
-            <section className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+          <div className="mb-8 grid gap-3 md:grid-cols-[1fr_0.9fr]">
+            <section className="rounded-2xl border border-border bg-card p-4 shadow-sm">
               <div className="flex items-center gap-3">
-                <div className={`flex h-12 w-12 items-center justify-center rounded-2xl ${config.isOpen ? "bg-primary/10 text-primary" : "bg-destructive/10 text-destructive"}`}>
-                  {config.isOpen ? <ShieldCheck className="h-6 w-6" /> : <ShieldX className="h-6 w-6" />}
+                <div className={`flex h-10 w-10 items-center justify-center rounded-xl ${config.isOpen ? "bg-primary/10 text-primary" : "bg-destructive/10 text-destructive"}`}>
+                  {config.isOpen ? <ShieldCheck className="h-5 w-5" /> : <ShieldX className="h-5 w-5" />}
                 </div>
                 <div>
                   <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Status</p>
-                  <h2 className="font-heading text-xl font-bold">{config.isOpen ? "Candidaturas abertas" : "Candidaturas fechadas"}</h2>
+                  <h2 className="font-heading text-lg font-bold">{config.isOpen ? "Aberto" : "Fechado"}</h2>
                 </div>
               </div>
-              <p className="mt-3 text-sm leading-6 text-muted-foreground">
-                {config.isOpen
-                  ? "As submissões estão disponíveis neste momento. Podes avançar com a tua candidatura."
-                  : "As submissões estão temporariamente desativadas. Volta mais tarde ou consulta a organização."}
-              </p>
             </section>
 
-            <section className="rounded-2xl border border-border bg-card p-5 shadow-sm">
+            <section className="rounded-2xl border border-border bg-card p-4 shadow-sm">
               <div className="flex items-start gap-3">
                 <Info className="mt-1 h-5 w-5 text-primary" />
                 <div>
@@ -708,13 +760,13 @@ export default function Submeter() {
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: index * 0.06, duration: 0.24, ease: "easeOut" }}
                   onClick={() => handlePickKind(entry.id)}
-                  className={`overflow-hidden rounded-2xl border border-border bg-gradient-to-br ${entry.gradient} p-6 text-left shadow-sm transition-all hover:-translate-y-1 hover:border-primary/40 hover:shadow-lg`}
+                  className={`overflow-hidden rounded-2xl border border-border bg-gradient-to-br ${entry.gradient} p-5 text-left shadow-sm transition-all hover:-translate-y-1 hover:border-primary/40 hover:shadow-lg`}
                 >
-                  <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-white/80">
-                    <Icon className="h-6 w-6 text-primary" />
+                  <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-xl bg-white/80">
+                    <Icon className="h-5 w-5 text-primary" />
                   </div>
                   <h2 className="font-heading text-lg font-bold text-foreground">{entry.label}</h2>
-                  <p className="mt-2 text-sm leading-7 text-muted-foreground">{entry.description}</p>
+                  <p className="mt-2 text-sm leading-6 text-muted-foreground">{entry.description}</p>
                 </motion.button>
               );
             })}
@@ -725,9 +777,9 @@ export default function Submeter() {
   }
 
   return (
-    <div className="uor-page-bg min-h-screen py-12 md:py-20">
+    <div className="uor-page-bg min-h-screen py-10 md:py-16">
       <div className="page-shell-narrow">
-        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="mb-8">
+        <motion.div initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} className="mb-6">
           <button type="button" onClick={() => !isEditMode && setKind(null)} className="mb-4 flex items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-primary">
             <ArrowLeft className="h-4 w-4" />
             {isEditMode ? "Ajustar submissão atual" : "Voltar à seleção"}
@@ -738,22 +790,14 @@ export default function Submeter() {
             </div>
             <h1 className="text-3xl font-bold md:text-4xl">{selectedKind?.label}</h1>
           </div>
-          <p className="mt-2 max-w-2xl text-sm leading-7 text-muted-foreground md:text-base">
-            {selectedKind?.description}
-          </p>
         </motion.div>
 
-        <div className="surface-card mb-6 overflow-hidden border-border/70 bg-card p-5">
+        <div className="surface-card mb-6 overflow-hidden border-border/70 bg-card p-4">
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div>
               <p className="text-sm font-medium text-foreground">
                 <span className={`mr-2 inline-block h-2 w-2 rounded-full ${config.isOpen ? "bg-primary" : "bg-destructive"}`}></span>
                 {config.isOpen ? "Candidaturas abertas" : "Candidaturas fechadas"}
-              </p>
-              <p className="mt-1 text-sm text-muted-foreground">
-                {kind === "projeto"
-                  ? "Projetos aprovados entram na votação pública."
-                  : "Exposições aprovadas ficam visíveis na plataforma."}
               </p>
             </div>
             <div className="flex items-center gap-3 rounded-xl border border-border/60 bg-muted/20 px-4 py-2">
@@ -779,25 +823,8 @@ export default function Submeter() {
                 <h2 className="text-xl font-semibold">Representante da equipa</h2>
               </div>
 
-              <div className="grid gap-3 sm:grid-cols-3">
-                <div className="premium-stat-card">
-                  <p className="premium-kicker">Perfil</p>
-                  <p className="mt-2 safe-break text-sm font-semibold text-slate-900">{student?.name || "Nome indisponível"}</p>
-                </div>
-                <div className="premium-stat-card">
-                  <p className="premium-kicker">Curso</p>
-                  <p className="mt-2 safe-break text-sm font-semibold text-slate-900">{student?.course || "Curso não informado"}</p>
-                </div>
-                <div className="premium-stat-card">
-                  <p className="premium-kicker">Contacto</p>
-                  <p className="mt-2 safe-break text-sm font-semibold text-slate-900">{student?.phone || "Sem telefone sincronizado"}</p>
-                </div>
-              </div>
-
               <div className="responsive-two-col">
                 <div className={studentFieldCardClassName(matchesStudentField("leaderName"))}>
-                  <p className="field-shell__kicker">Nome oficial</p>
-                  <p className="field-shell__title">Nome completo do responsável</p>
                   <Label htmlFor="leaderName">Nome completo</Label>
                   <Input
                     id="leaderName"
@@ -813,8 +840,6 @@ export default function Submeter() {
                 </div>
 
                 <div className={studentFieldCardClassName(matchesStudentField("phoneDigits"))}>
-                  <p className="field-shell__kicker">Canal de contacto</p>
-                  <p className="field-shell__title">Número principal para retorno</p>
                   <Label htmlFor="phoneDigits">Contacto</Label>
                   <Input
                     id="phoneDigits"
@@ -831,8 +856,6 @@ export default function Submeter() {
               </div>
 
               <div className={studentFieldCardClassName(matchesStudentField("academicCourse"))}>
-                <p className="field-shell__kicker">Curso académico</p>
-                <p className="field-shell__title">Ligação institucional da candidatura</p>
                 <Label htmlFor="academicCourse">Curso académico</Label>
                   <Select value={form.academicCourse} onValueChange={(value) => updateField("academicCourse", value)}>
                     <SelectTrigger
@@ -857,11 +880,10 @@ export default function Submeter() {
 
             <div className="surface-card space-y-5 p-6">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Detalhes da candidatura</p>
-                <h2 className="mt-2 text-xl font-semibold">Tudo dentro de limites consistentes</h2>
+                <h2 className="text-xl font-semibold">Dados da candidatura</h2>
               </div>
 
-            <div className="space-y-2">
+              <div className="space-y-2">
                 <Label htmlFor="submissionName">Nome da candidatura</Label>
                 <Input id="submissionName" value={form.name} onChange={(event) => updateField("name", event.target.value)} className={inputCls(errors, "name", form.name)} />
                 {fieldError(errors, "name")}
@@ -871,7 +893,7 @@ export default function Submeter() {
                 <Label htmlFor="description">Descrição</Label>
                 <Textarea id="description" value={form.description} onChange={(event) => updateField("description", event.target.value.slice(0, 500))} className={`min-h-[140px] rounded-xl px-4 py-3 text-base md:text-sm ${errors.description ? 'input-invalid' : form.description.length >= 20 ? 'input-valid' : ''}`} />
                 <div className="field-note flex items-center justify-between">
-                  <span>Máximo de 500 caracteres.</span>
+                  <span>Opcional</span>
                   <span className={form.description.length > 450 ? 'text-[hsl(var(--warning))]' : ''}>{form.description.length}/500</span>
                 </div>
                 {fieldError(errors, "description")}
@@ -1013,7 +1035,7 @@ export default function Submeter() {
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="observations">Observações adicionais</Label>
+                <Label htmlFor="observations">Observações (opcional)</Label>
                 <Textarea id="observations" value={form.observations} onChange={(event) => updateField("observations", event.target.value.slice(0, 500))} className="min-h-[120px] rounded-xl px-4 py-3 text-base md:text-sm" />
                 {fieldError(errors, "observations")}
               </div>
@@ -1022,8 +1044,7 @@ export default function Submeter() {
             <div className="surface-card space-y-5 p-6">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Equipa</p>
-                  <h2 className="mt-2 text-xl font-semibold">Membros visíveis só no detalhe</h2>
+                  <h2 className="text-xl font-semibold">Equipa</h2>
                 </div>
                 <span className="rounded-full border border-primary/20 bg-primary/5 px-3 py-1 text-xs font-semibold text-primary">
                   {form.members.length} membro(s)
@@ -1041,7 +1062,7 @@ export default function Submeter() {
 
               <div className="surface-scroll-y max-h-[32dvh] rounded-3xl border border-border/60 bg-background/80 p-4">
                 {form.members.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">Ainda não adicionaste nenhum membro.</p>
+                  <p className="text-sm text-muted-foreground">Sem membros adicionais.</p>
                 ) : (
                   <div className="grid gap-3 sm:grid-cols-2">
                     {form.members.map((member, index) => (
@@ -1059,7 +1080,7 @@ export default function Submeter() {
 
             <div className="surface-card space-y-5 p-6">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Pagamento e necessidades</p>
+                <h2 className="text-xl font-semibold">Pagamento e necessidades</h2>
               </div>
 
               <label
@@ -1072,7 +1093,7 @@ export default function Submeter() {
               >
                 <div className="min-w-0">
                   <p className="text-sm font-semibold">{form.paymentProofName || "Selecionar PDF ou imagem do comprovativo"}</p>
-                  <p className="mt-1 text-xs leading-6 text-muted-foreground">PDF, PNG, JPG ou WEBP. O preview fica dentro de um viewport limitado com scroll interno.</p>
+                  <p className="mt-1 text-xs leading-6 text-muted-foreground">PDF, PNG, JPG ou WEBP.</p>
                 </div>
                 <div className="inline-flex h-11 w-fit items-center justify-center rounded-xl bg-primary/10 px-4 text-sm font-semibold text-primary">
                   <Paperclip className="mr-2 h-4 w-4" />
@@ -1082,10 +1103,21 @@ export default function Submeter() {
                   type="file"
                   accept="application/pdf,image/png,image/jpeg,image/webp"
                   className="hidden"
-                  onChange={(event) => void handleProofSelected(event.target.files?.[0])}
+                  onChange={(event) => {
+                    const input = event.currentTarget;
+                    const file = input.files?.[0] ?? null;
+                    void handleProofSelected(file).finally(() => {
+                      input.value = "";
+                    });
+                  }}
                 />
               </label>
               {fieldError(errors, "paymentProof")}
+              {proofReading ? (
+                <p className="text-xs font-medium text-primary">A carregar o comprovativo selecionado...</p>
+              ) : form.paymentProof ? (
+                <p className="text-xs font-medium text-emerald-600">Comprovativo carregado e pronto para envio.</p>
+              ) : null}
 
               {form.paymentProof ? (
                 <div className="flex justify-end">
@@ -1097,7 +1129,6 @@ export default function Submeter() {
 
               <ResponsiveDocumentViewer
                 title="Comprovativo anexado"
-                description="PDFs e imagens usam um container com altura máxima e scroll interno, sem rebentar mobile nem tablet."
                 source={previewDocumentSource}
                 fileName={form.paymentProofName || (editingReceipt?.paymentProofPath ? "Comprovativo atual" : null)}
               />
@@ -1128,12 +1159,11 @@ export default function Submeter() {
           <aside className="space-y-6">
             <div className="surface-card space-y-4 p-6">
               <div className="flex items-center gap-3">
-                <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-primary/10 text-primary">
-                  <FileBadge2 className="h-6 w-6" />
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                  <FileBadge2 className="h-5 w-5" />
                 </div>
                 <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Resumo</p>
-                  <p className="text-lg font-semibold">{isEditMode ? "Atualização da submissão" : "Nova submissão"}</p>
+                  <p className="text-lg font-semibold">Resumo</p>
                 </div>
               </div>
 
@@ -1149,12 +1179,6 @@ export default function Submeter() {
                 <div className="rounded-2xl border border-border/60 bg-muted/20 p-4">
                   <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Montante</p>
                   <p className="mt-2 text-sm font-semibold">{config.paymentAmount}</p>
-                  <p className="mt-1 text-xs leading-6 text-muted-foreground">{config.paymentInstructions || "Confirma o pagamento antes de submeter."}</p>
-                </div>
-                <div className="rounded-2xl border border-border/60 bg-muted/20 p-4">
-                  <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Experiência</p>
-                  <p className="mt-2 text-sm font-semibold">Mobile-first e orientada a sessão</p>
-                  <p className="mt-1 text-xs leading-6 text-muted-foreground">O formulário foi pensado para uso recorrente, toque confortável e reabertura posterior no recibo.</p>
                 </div>
                 {editingReceipt ? (
                   <div className="rounded-2xl border border-border/60 bg-muted/20 p-4">
@@ -1175,9 +1199,9 @@ export default function Submeter() {
 
             <div className="surface-card p-6">
               <div className="flex flex-col gap-3">
-                <Button type="submit" disabled={saving || editingLocked} className="h-11 rounded-xl">
-                  {saving ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
-                  {isEditMode ? "Atualizar e voltar ao recibo" : "Submeter e abrir recibo"}
+                <Button type="submit" disabled={saving || proofReading || editingLocked} className="h-11 rounded-xl">
+                  {saving || proofReading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
+                  {proofReading ? "A carregar comprovativo" : isEditMode ? "Atualizar e voltar ao recibo" : "Submeter e abrir recibo"}
                 </Button>
                 <Button asChild variant="outline" className="h-11 rounded-xl">
                   <Link to="/minha-area">Ir para Minha Área</Link>

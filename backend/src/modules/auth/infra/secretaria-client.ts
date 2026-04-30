@@ -2,9 +2,22 @@ import { Headers } from "undici";
 import { type StudentProfile } from "../domain/student";
 import { normalizeCourse, normalizeStudentName } from "../domain/student-format";
 
-// Endpoints/stage usados pela secretaria (Boletim da Matrícula contém os dados do aluno)
-const LOGIN_URL = "http://secretaria.uor.edu.ao/netpa/page?stage=loginstage";
+// Endpoints/stage usados pela secretaria (Boletim da Matrícula contém os dados do aluno).
+// A etapa ConsultaNotasAluno é reaproveitada do protótipo apiUor para obter turma/contexto.
+const BASE_URL = "http://secretaria.uor.edu.ao";
+const LOGIN_URL = `${BASE_URL}/netpa/page?stage=loginstage`;
 const TARGET_STAGE = "BoletimMatricula";
+
+type NormalizedRecord = Record<string, unknown>;
+
+interface AcademicEnrollment {
+  academicYear: string | null;
+  period: string | null;
+  curricularYear: string | null;
+  subjectName: string | null;
+  classCode: string | null;
+  status: string | null;
+}
 
 export type SecretariaResult =
   | { success: true; profile: StudentProfile }
@@ -103,6 +116,270 @@ async function fetchWithCookies(url: string, cookie: string) {
   });
 }
 
+function stripAccents(value: string): string {
+  return value.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+}
+
+function cleanString(value: unknown): string | null {
+  if (value === null || value === undefined) return null;
+  const text = String(value)
+    .replace(/\u00a0/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  const normalized = stripAccents(text).toLowerCase();
+  if (!text || normalized === "-" || normalized === "null" || normalized === "undefined" || normalized === "nbsp") {
+    return null;
+  }
+  return text;
+}
+
+function normalizeFieldName(key: string): string {
+  const cleaned = stripAccents(key)
+    .replace(/([a-z0-9])([A-Z])/g, "$1_$2")
+    .replace(/[^a-zA-Z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .toLowerCase();
+  const parts = cleaned.split("_").filter(Boolean);
+  if (parts.length === 0) return key;
+  return parts[0] + parts.slice(1).map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join("");
+}
+
+function normalizeRecord(record: unknown): NormalizedRecord {
+  if (!record || typeof record !== "object") return {};
+  const normalized: NormalizedRecord = {};
+  for (const [key, value] of Object.entries(record as Record<string, unknown>)) {
+    if (key.startsWith("__") || key === "id" || key === "ROWNUM") continue;
+    normalized[normalizeFieldName(key)] = value;
+  }
+  return normalized;
+}
+
+function unwrapResult(rawData: unknown): unknown[] {
+  if (Array.isArray(rawData)) return rawData;
+  if (!rawData || typeof rawData !== "object") return [];
+  const raw = rawData as Record<string, unknown>;
+  for (const key of ["result", "data", "rows", "items"]) {
+    if (Array.isArray(raw[key])) return raw[key] as unknown[];
+  }
+  return [];
+}
+
+function read(record: NormalizedRecord, aliases: string[]): unknown {
+  for (const alias of aliases) {
+    const value = record[normalizeFieldName(alias)];
+    if (cleanString(value) !== null || typeof value === "number" || typeof value === "boolean") return value;
+  }
+  return undefined;
+}
+
+function readString(record: NormalizedRecord, aliases: string[]): string | null {
+  return cleanString(read(record, aliases));
+}
+
+function pickTableLayout(record: NormalizedRecord): Record<string, string> | null {
+  const layouts = [
+    {
+      period: "col3",
+      curricularYear: "col4",
+      subject: "col5",
+      classCode: "col6",
+      status: "col8",
+    },
+    {
+      period: "col4",
+      curricularYear: "col5",
+      subject: "col6",
+      classCode: "col7",
+      status: "col9",
+    },
+  ];
+
+  for (const layout of layouts) {
+    const subject = cleanString(record[layout.subject]);
+    const status = cleanString(record[layout.status]);
+    const period = cleanString(record[layout.period]);
+    if (subject && (subject.includes("]") || status || period)) return layout;
+  }
+
+  return null;
+}
+
+function parseSubjectName(value: unknown): string | null {
+  const subject = cleanString(value);
+  if (!subject) return null;
+  const bracketMatch = subject.match(/^\[[^\]]+\]\s*(.+)$/);
+  return cleanString(bracketMatch?.[1]) ?? subject;
+}
+
+function mapConsultaNotasInscricoes(rawData: unknown): AcademicEnrollment[] {
+  return unwrapResult(rawData)
+    .map((rawItem) => {
+      const record = normalizeRecord(rawItem);
+      const tableLayout = pickTableLayout(record);
+      const subjectValue = tableLayout
+        ? record[tableLayout.subject]
+        : read(record, [
+          "disciplinaCalcField",
+          "dsDiscip",
+          "paginaUCCalcField",
+          "disciplina",
+          "nomeDisciplina",
+          "dsDisciplina",
+          "unidadeCurricular",
+          "col5",
+        ]);
+
+      return {
+        academicYear: readString(record, [
+          "anoLectivoCalcField",
+          "anoLectivo",
+          "anoLetivo",
+          "dsLectivo",
+          "cdLectivo",
+          "lectivo",
+          "year",
+          "col0",
+        ]),
+        period: tableLayout
+          ? cleanString(record[tableLayout.period])
+          : readString(record, ["dsDuracao", "periodo", "semestre", "dsPeriodo", "periodoFilter", "cdDuracao"]),
+        curricularYear: tableLayout
+          ? cleanString(record[tableLayout.curricularYear])
+          : readString(record, ["CD_A_S_CUR", "cdASCur", "anoCurricular", "anoCur", "curricularYear", "yearCurricular"]),
+        subjectName: readString(record, [
+          "dsDiscip",
+          "paginaUCCalcField",
+          "disciplinaCalcField",
+          "nomeDisciplina",
+          "dsDisciplina",
+          "disciplinaNome",
+          "unidadeCurricular",
+        ]) ?? parseSubjectName(subjectValue),
+        classCode: tableLayout
+          ? cleanString(record[tableLayout.classCode])
+          : readString(record, ["turmasCalcField", "turma", "cdTurma", "codigoTurma", "nomeTurma", "dsTurma", "classCode"]),
+        status: tableLayout
+          ? cleanString(record[tableLayout.status])
+          : readString(record, ["estadoCalcField", "estado", "estadoInscricao", "situacao", "status", "dsEstado", "estadoFilter"]),
+      };
+    })
+    .filter((item) => Boolean(item.subjectName || item.classCode));
+}
+
+function uniqueSorted(values: Array<string | null>): string[] {
+  return Array.from(new Set(values.filter((value): value is string => Boolean(value)))).sort((a, b) => a.localeCompare(b));
+}
+
+function statusContains(status: string | null, text: string): boolean {
+  return stripAccents(status ?? "").toLowerCase().includes(stripAccents(text).toLowerCase());
+}
+
+function academicYearScore(value: string | null): number {
+  const text = value ?? "";
+  const match = text.match(/20\d{2}/);
+  if (match) return Number(match[0]);
+  const compact = text.match(/^(\d{4})\d{2}$/);
+  return compact ? Number(compact[1]) : 0;
+}
+
+function resolveCurrentAcademicYear(enrollments: AcademicEnrollment[]): string | null {
+  const activeYears = uniqueSorted(enrollments
+    .filter((item) => statusContains(item.status, "Inscrito"))
+    .map((item) => item.academicYear));
+  if (activeYears.length > 0) {
+    return activeYears.sort((a, b) => academicYearScore(b) - academicYearScore(a))[0];
+  }
+
+  const years = uniqueSorted(enrollments.map((item) => item.academicYear));
+  return years.sort((a, b) => academicYearScore(b) - academicYearScore(a))[0] ?? null;
+}
+
+function mostFrequent(values: Array<string | null>): string | undefined {
+  const counts = new Map<string, number>();
+  for (const value of values) {
+    if (!value) continue;
+    counts.set(value, (counts.get(value) ?? 0) + 1);
+  }
+  return Array.from(counts.entries()).sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0]?.[0];
+}
+
+function hasAjaxAuthFailure(data: unknown): boolean {
+  const text = typeof data === "string" ? data.toLowerCase() : "";
+  return text.includes("stage=loginstage")
+    || text.includes("notauthenticated")
+    || text.includes("autenticação")
+    || text.includes("autenticacao")
+    || text.includes("não tem acesso")
+    || text.includes("nao tem acesso");
+}
+
+async function fetchJsonWithCookies(path: string, cookie: string, params: Record<string, string | number>) {
+  const url = new URL(path, BASE_URL);
+  for (const [key, value] of Object.entries(params)) {
+    url.searchParams.set(key, String(value));
+  }
+
+  const response = await fetch(url, {
+    method: "GET",
+    headers: {
+      Cookie: cookie,
+      "X-Requested-With": "XMLHttpRequest",
+      "User-Agent":
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+      Accept: "text/json, application/json, text/plain, */*",
+      Referer: `${BASE_URL}/netpa/page?stage=ConsultaNotasAluno`
+    },
+    redirect: "manual"
+  });
+
+  const text = await response.text();
+  if (response.status >= 400 || hasAjaxAuthFailure(text)) {
+    throw new Error(`consulta-notas status ${response.status}`);
+  }
+
+  try {
+    return JSON.parse(text);
+  } catch {
+    return text;
+  }
+}
+
+async function extractAcademicContext(cookieHeader: string): Promise<Partial<StudentProfile>> {
+  const stageResponse = await fetchWithCookies(`${BASE_URL}/netpa/page?stage=ConsultaNotasAluno&submitaction=null`, cookieHeader);
+  const stageHtml = await stageResponse.text();
+  if (stageResponse.status >= 400 || hasAuthFailureMarker(stageHtml)) return {};
+
+  const inscricoes = await fetchJsonWithCookies("/netpa/ajax/consultanotasaluno/inscricoes", cookieHeader, {
+    _dc: Date.now(),
+    limit: 200,
+    page: 1,
+    start: 0,
+    cdLectivoFilter: "null",
+    periodoFilter: "null",
+    anoCurricular: "null",
+    estadoFilter: "null",
+    disciplinaFilter: "null",
+    group: JSON.stringify([{ property: "CD_LECTIVO", direction: "desc" }]),
+    sort: JSON.stringify([{ property: "CD_LECTIVO", direction: "DESC" }])
+  });
+
+  const enrollments = mapConsultaNotasInscricoes(inscricoes);
+  const academicYear = resolveCurrentAcademicYear(enrollments);
+  const currentEnrollments = enrollments.filter((item) => {
+    if (academicYear && item.academicYear !== academicYear) return false;
+    return statusContains(item.status, "Inscrito") || Boolean(item.classCode);
+  });
+  const usableEnrollments = currentEnrollments.length > 0 ? currentEnrollments : enrollments;
+
+  return {
+    classCode: mostFrequent(usableEnrollments.map((item) => item.classCode)),
+    academicYear: academicYear ?? mostFrequent(usableEnrollments.map((item) => item.academicYear)),
+    academicPeriod: mostFrequent(usableEnrollments.map((item) => item.period)),
+    curricularYear: mostFrequent(usableEnrollments.map((item) => item.curricularYear)),
+    academicSyncedAt: new Date()
+  };
+}
+
 export async function loginSecretaria(studentNumber: string, password: string): Promise<SecretariaResult> {
   try {
     // 1) GET inicial para obter cookies de sessão
@@ -190,9 +467,9 @@ export async function loginSecretaria(studentNumber: string, password: string): 
       }
 
       if (hasProfilePageMarker(followBody)) {
-        // Extrai campos principais do HTML da secretaria
         const profile = extractProfile(followBody);
-        return { success: true, profile };
+        const academicContext = await extractAcademicContext(cookieHeader).catch(() => ({}));
+        return { success: true, profile: { ...profile, ...academicContext } };
       }
 
       if (hasRedirect && !hasLoginForm(followBody)) {
@@ -205,7 +482,8 @@ export async function loginSecretaria(studentNumber: string, password: string): 
     if (hasAuthenticatedSessionHint) {
       // Login aparentemente válido, mas sem página de perfil estável.
       // Mantemos o acesso e sincronizamos o perfil numa próxima sessão bem-sucedida.
-      return { success: true, profile: {} };
+      const academicContext = await extractAcademicContext(cookieHeader).catch(() => ({}));
+      return { success: true, profile: academicContext };
     }
 
     return { success: false, reason: lastFollowReason };

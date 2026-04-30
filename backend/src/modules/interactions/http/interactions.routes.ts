@@ -20,8 +20,16 @@ import {
   formatTeamMembersLabel,
   normalizeTeamMembersInput
 } from "../../submission/domain/submission-format";
+import {
+  sendWhatsAppAudienceAutomationEvent,
+  sendWhatsAppAutomationEvent,
+} from "../../whatsapp/http/whatsapp.routes";
+import { sendSmsAudienceAutomationEvent } from "../../sms/http/sms.routes";
 
 let optsEnvCache: Env;
+const ENGAGEMENT_MILESTONE_THRESHOLD = 3;
+
+type SubmissionEngagementMetric = "likes" | "comments";
 
 function normalizeCourseName(value?: string | null) {
   return (value ?? "").trim().toLowerCase();
@@ -95,6 +103,62 @@ function buildProjectShareMetadata(request: FastifyRequest, env: Env, submission
   };
 }
 
+async function maybeSendSubmissionEngagementMilestoneNotification(
+  env: Env,
+  request: FastifyRequest,
+  submissionId: number,
+  metric: SubmissionEngagementMetric,
+  count: number,
+) {
+  if (count !== ENGAGEMENT_MILESTONE_THRESHOLD + 1) return;
+
+  const submission = await prisma.submission.findUnique({
+    where: { id: submissionId },
+    include: {
+      student: {
+        select: {
+          id: true,
+          studentNumber: true,
+          name: true,
+          course: true,
+          phone: true,
+        },
+      },
+    },
+  });
+
+  if (!submission) return;
+
+  const share = buildProjectShareMetadata(request, env, submission);
+  const metricLabel = metric === "likes" ? "curtidas" : "comentários";
+  const detalhe = metric === "likes"
+    ? `O projeto ultrapassou ${ENGAGEMENT_MILESTONE_THRESHOLD} curtidas e já soma ${count} curtidas na página pública.`
+    : `O projeto ultrapassou ${ENGAGEMENT_MILESTONE_THRESHOLD} comentários e já soma ${count} comentários na página pública.`;
+
+  try {
+    await sendWhatsAppAutomationEvent(env, "SUBMISSION_ENGAGEMENT_MILESTONE", {
+      phone: submission.leaderPhone ?? submission.student?.phone,
+      studentId: submission.studentId,
+      studentNumber: submission.student?.studentNumber ?? submission.studentNumberSnapshot,
+      recipientName: submission.leaderName ?? submission.student?.name,
+      recipientCourse: submission.course ?? submission.student?.course,
+      values: {
+        titulo: submission.name,
+        referencia: submission.referenceCode,
+        detalhe,
+        link: share.shareUrl,
+        total: String(count),
+        interacoes: metricLabel,
+      },
+    });
+  } catch (error) {
+    request.log.warn(
+      { err: error, submissionId, metric, count },
+      "automatic submission engagement WhatsApp notification failed",
+    );
+  }
+}
+
 function formatProjectLike(like: any) {
   const profile = normalizeStudentProfile(like.student);
   return {
@@ -144,7 +208,7 @@ function buildProjectResponse(submission: any, request: FastifyRequest) {
     createdAt: submission.createdAt.toISOString(),
     isWinner: competitionEligible ? submission.isWinner : false,
     canVote: competitionEligible,
-    canLike: competitionEligible,
+    canLike: submission.status === "APPROVED",
     eligibleForAward: competitionEligible,
     primaryColor: submission.primaryColor,
     secondaryColor: submission.secondaryColor,
@@ -673,6 +737,45 @@ export async function interactionsRoutes(app: FastifyInstance, opts: { env: Env 
 
         const profile = normalizeStudentProfile(created.student);
         const courseColorMap = await getCourseColorMap();
+        const contextualClassCodes = created.student.classCode?.trim() ? [created.student.classCode.trim()] : [];
+        const contextualCourses = profile.course?.trim() ? [profile.course.trim()] : [];
+
+        if (contextualClassCodes.length > 0 || contextualCourses.length > 0) {
+          const contextualAudience = {
+            type: "STUDENT_CLASS_OR_COURSE" as const,
+            studentClassCodes: contextualClassCodes,
+            studentCourses: contextualCourses,
+          };
+          const contextualValues = {
+            evento: "Ao Vivo",
+            detalhe: "Um colega publicou uma nova interação no Ao Vivo.",
+            colega: profile.name ?? `Estudante ${created.student.studentNumber}`,
+            turma: created.student.classCode,
+            curso: profile.course,
+            link: resolvePublicOrigin(request, optsEnvCache),
+          };
+
+          const [whatsAppResult, smsResult] = await Promise.allSettled([
+            sendWhatsAppAudienceAutomationEvent(optsEnvCache, "LIVE_CHAT_CONTEXT_AUDIENCE", {
+              audience: contextualAudience,
+              excludeStudentId: created.student.id,
+              recipientCourse: profile.course,
+              values: contextualValues,
+            }),
+            sendSmsAudienceAutomationEvent(optsEnvCache, "LIVE_CHAT_CONTEXT_AUDIENCE", {
+              audience: contextualAudience,
+              excludeStudentId: created.student.id,
+              values: contextualValues,
+            }),
+          ]);
+
+          if (whatsAppResult.status === "rejected") {
+            request.log.warn({ err: whatsAppResult.reason }, "contextual live chat WhatsApp audience notification failed");
+          }
+          if (smsResult.status === "rejected") {
+            request.log.warn({ err: smsResult.reason }, "contextual live chat SMS audience notification failed");
+          }
+        }
 
         return reply.code(201).send({
           id: created.id,
@@ -721,8 +824,8 @@ export async function interactionsRoutes(app: FastifyInstance, opts: { env: Env 
         if (!submission) {
           return reply.status(404).send({ message: "Submission not found" });
         }
-        if (submission.status !== "APPROVED" || !isCompetitionEligible(submission.type, submission.area)) {
-          return reply.status(403).send({ message: "A votação pública está disponível apenas para projetos académicos aprovados." });
+        if (submission.status !== "APPROVED") {
+          return reply.status(403).send({ message: "Só é possível curtir expositores aprovados." });
         }
 
         const existing = await prisma.studentLike.findUnique({
@@ -740,9 +843,13 @@ export async function interactionsRoutes(app: FastifyInstance, opts: { env: Env 
         await prisma.studentLike.create({
           data: { studentId: student.id, submissionId }
         });
+
+        const likesCount = await prisma.studentLike.count({ where: { submissionId } });
+        await maybeSendSubmissionEngagementMilestoneNotification(opts.env, request, submissionId, "likes", likesCount);
+
         return reply.send({
           liked: true,
-          likesCount: await prisma.studentLike.count({ where: { submissionId } })
+          likesCount
         });
       }
     );
@@ -860,6 +967,8 @@ export async function interactionsRoutes(app: FastifyInstance, opts: { env: Env 
 
         const courseColorMap = await getCourseColorMap();
         const profile = normalizeStudentProfile(comment.student);
+        const commentsCount = await prisma.studentComment.count({ where: { submissionId } });
+        await maybeSendSubmissionEngagementMilestoneNotification(opts.env, request, submissionId, "comments", commentsCount);
 
         return reply.code(201).send({
           id: comment.id,
