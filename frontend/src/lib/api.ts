@@ -823,6 +823,61 @@ export interface AttendanceOverview {
   recentCheckIns: AttendanceCheckIn[];
 }
 
+export interface QrActionItem {
+  id: number;
+  token: string;
+  type: string;
+  label: string;
+  description: string | null;
+  targetId: number | null;
+  targetMeta: string | null;
+  eventKey: string | null;
+  eventLabel: string | null;
+  active: boolean;
+  maxScans: number | null;
+  expiresAt: string | null;
+  smsOnScan: boolean;
+  smsTemplate: string | null;
+  smsSender: string | null;
+  scansCount: number;
+  qrImageUrl: string;
+  createdAt: string;
+}
+
+export interface QrActionScanItem {
+  id: number;
+  studentNumber: string;
+  studentName: string | null;
+  result: string;
+  message: string | null;
+  scannedAt: string;
+}
+
+export interface QrScanResult {
+  success: boolean;
+  result: string;
+  message: string;
+  actionType: string;
+  actionLabel: string;
+}
+
+export interface QrActionsOverview {
+  totalActions: number;
+  activeActions: number;
+  totalScans: number;
+  todayScans: number;
+  byType: Array<{ type: string; count: number; scans: number }>;
+}
+
+export interface StudentScanHistoryItem {
+  id: number;
+  actionType: string;
+  actionLabel: string;
+  result: string;
+  message: string | null;
+  scannedAt: string;
+}
+
 export interface CertificateItem {
   id: number;
   code: string;
@@ -1705,6 +1760,13 @@ export const api = {
   attendance: {
     me: () =>
       request<AttendanceMePayload>("/attendance/me"),
+    scan: (data: { token: string }) =>
+      request<QrScanResult>("/attendance/scan", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+    myScans: () =>
+      request<StudentScanHistoryItem[]>("/attendance/my-scans"),
     overview: () =>
       request<AttendanceOverview>("/attendance/admin/overview"),
     checkIns: (params?: { page?: number; limit?: number; search?: string }) =>
@@ -1713,6 +1775,26 @@ export const api = {
       request<{ checkIn: AttendanceCheckIn; credential: AttendanceCredential; alreadyCheckedIn: boolean }>("/attendance/admin/check-in", {
         method: "POST",
         body: JSON.stringify(data),
+      }),
+    qrActionsOverview: () =>
+      request<QrActionsOverview>("/attendance/admin/qr-actions-overview"),
+    qrActions: (params?: { page?: number; limit?: number; type?: string; search?: string }) =>
+      request<PagedResult<QrActionItem>>(`/attendance/admin/qr-actions${toQueryString(params)}`),
+    qrActionDetail: (id: number) =>
+      request<{ action: QrActionItem; scans: QrActionScanItem[] }>(`/attendance/admin/qr-actions/${id}`),
+    createQrAction: (data: { type: string; label: string; description?: string | null; targetId?: number | null; eventKey?: string | null; eventLabel?: string | null; maxScans?: number | null; expiresAt?: string | null; smsOnScan?: boolean; smsTemplate?: string | null; smsSender?: string | null }) =>
+      request<QrActionItem>("/attendance/admin/qr-actions", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+    updateQrAction: (id: number, data: Record<string, unknown>) =>
+      request<{ message: string }>(`/attendance/admin/qr-actions/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(data),
+      }),
+    deleteQrAction: (id: number) =>
+      request<{ message: string }>(`/attendance/admin/qr-actions/${id}`, {
+        method: "DELETE",
       }),
   },
 

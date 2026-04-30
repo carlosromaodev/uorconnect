@@ -77,6 +77,7 @@ model Student {
   communityPostLikes    CommunityPostLike[]
   communityPostComments CommunityPostComment[]
   communityChatMessages CommunityChatMessage[]
+  qrActionScans         QrActionScan[]
 }
 
 enum StudentLoginOrigin {
@@ -910,4 +911,47 @@ model CommunityChatMessage {
 
   @@index([threadId, createdAt])
   @@index([studentId])
+}
+
+model QrAction {
+  id          Int            @id @default(autoincrement())
+  token       String         @unique
+  type        String         // CHECKIN, COURSE_ENROLL, EXHIBITOR_VOTE
+  label       String
+  description String?
+  targetId    Int?           // courseId, submissionId, eventKey reference
+  targetMeta  String?        // JSON: extra context (courseName, eventLabel, etc.)
+  eventKey    String?
+  eventLabel  String?
+  active      Boolean        @default(true)
+  maxScans    Int?           // null = unlimited
+  expiresAt   DateTime?
+  smsOnScan   Boolean        @default(false)
+  smsTemplate String?        // template with {{nome}}, {{numero}}, etc.
+  smsSender   String?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  scans       QrActionScan[]
+
+  @@index([type])
+  @@index([active])
+  @@index([createdAt])
+}
+
+model QrActionScan {
+  id            Int      @id @default(autoincrement())
+  qrAction      QrAction @relation(fields: [qrActionId], references: [id], onDelete: Cascade)
+  qrActionId    Int
+  student       Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  studentId     Int
+  studentNumber String
+  studentName   String?
+  result        String   // SUCCESS, ALREADY_DONE, EXPIRED, INACTIVE, ERROR
+  message       String?
+  scannedAt     DateTime @default(now())
+
+  @@unique([qrActionId, studentId])
+  @@index([qrActionId])
+  @@index([studentId])
+  @@index([scannedAt])
 }

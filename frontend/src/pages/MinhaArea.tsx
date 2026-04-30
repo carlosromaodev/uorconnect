@@ -1,12 +1,14 @@
 import { useEffect, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
-import { motion } from "framer-motion";
-import { AlertTriangle, Award, BadgeCheck, BookOpenCheck, BriefcaseBusiness, CalendarClock, CheckCircle2, ChevronRight, Download, ExternalLink, FileText, GraduationCap, ImagePlus, Layers3, Loader2, QrCode, Rocket, ShieldCheck, Sparkles, Trash2, Trophy, User } from "lucide-react";
+import { motion, AnimatePresence } from "framer-motion";
+import { AlertTriangle, Award, BadgeCheck, BookOpenCheck, BriefcaseBusiness, CalendarClock, Camera, CheckCircle2, ChevronRight, Download, ExternalLink, FileText, GraduationCap, History, ImagePlus, Layers3, Loader2, QrCode, Rocket, ScanLine, ShieldCheck, Sparkles, Trash2, Trophy, User, X } from "lucide-react";
 import { UserAvatar } from "@/components/social/UserAvatar";
 import { toast } from "@/components/ui/sonner";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
-import { api, type AttendanceMePayload, type CertificateItem, type StudentEnrollmentListItem, type StudentOwnedSubmissionListItem, getSessionStudent, isAuthError, setToken } from "@/lib/api";
+import { Input } from "@/components/ui/input";
+import { QrCameraScanner } from "@/components/admin/QrCameraScanner";
+import { api, type AttendanceMePayload, type CertificateItem, type QrScanResult, type StudentEnrollmentListItem, type StudentOwnedSubmissionListItem, type StudentScanHistoryItem, getSessionStudent, isAuthError, setToken } from "@/lib/api";
 import { getProjectBannerSource, readImageFileAsDataUrl } from "@/lib/project-media";
 import { downloadBlobFile } from "@/lib/student-documents";
 
@@ -54,6 +56,11 @@ export default function MinhaArea() {
   const [submissionBannerDrafts, setSubmissionBannerDrafts] = useState<Record<number, string | null | undefined>>({});
   const [savingBannerId, setSavingBannerId] = useState<number | null>(null);
   const [downloadingCertificateId, setDownloadingCertificateId] = useState<number | null>(null);
+  const [scannerOpen, setScannerOpen] = useState(false);
+  const [manualToken, setManualToken] = useState("");
+  const [scanning, setScanning] = useState(false);
+  const [scanResult, setScanResult] = useState<QrScanResult | null>(null);
+  const [scanHistory, setScanHistory] = useState<StudentScanHistoryItem[]>([]);
   const [activeTab, setActiveTab] = useState<"jornada" | "submissoes" | "inscricoes">(
     searchParams.get("tab") === "submissoes" || searchParams.get("tab") === "inscricoes"
       ? searchParams.get("tab") as "submissoes" | "inscricoes"
@@ -76,8 +83,9 @@ export default function MinhaArea() {
       api.courses.enrollmentsMine(),
       api.attendance.me(),
       api.certificates.mine(),
+      api.attendance.myScans().catch(() => [] as StudentScanHistoryItem[]),
     ])
-      .then(([submissionItems, enrollmentItems, attendancePayload, certificateItems]) => {
+      .then(([submissionItems, enrollmentItems, attendancePayload, certificateItems, scanItems]) => {
         if (!active) return;
         setSubmissions(submissionItems);
         setSubmissionBannerDrafts(
@@ -89,6 +97,7 @@ export default function MinhaArea() {
         setEnrollments(enrollmentItems);
         setAttendance(attendancePayload);
         setCertificates(certificateItems);
+        setScanHistory(scanItems);
       })
       .catch((error) => {
         if (!active) return;
@@ -222,6 +231,39 @@ export default function MinhaArea() {
     const nextParams = new URLSearchParams(searchParams);
     nextParams.set("tab", normalized);
     setSearchParams(nextParams);
+  };
+
+  const handleScan = async (tokenValue: string) => {
+    const trimmed = tokenValue.trim();
+    if (!trimmed) return;
+
+    setScanning(true);
+    setScanResult(null);
+    try {
+      const result = await api.attendance.scan({ token: trimmed });
+      setScanResult(result);
+      if (result.success) {
+        toast.success(result.message);
+        // Reload data to reflect the change
+        const [newAttendance, newEnrollments, newScans] = await Promise.all([
+          api.attendance.me().catch(() => attendance),
+          api.courses.enrollmentsMine().catch(() => enrollments),
+          api.attendance.myScans().catch(() => scanHistory),
+        ]);
+        if (newAttendance) setAttendance(newAttendance);
+        if (newEnrollments) setEnrollments(newEnrollments);
+        if (newScans) setScanHistory(newScans);
+      } else {
+        toast.info(result.message);
+      }
+      setManualToken("");
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : "Falha ao processar o QR.";
+      toast.error(msg);
+      setScanResult({ success: false, result: "ERROR", message: msg, actionType: "", actionLabel: "" });
+    } finally {
+      setScanning(false);
+    }
   };
 
   const handleDownloadCertificate = async (certificate: CertificateItem) => {
@@ -588,6 +630,142 @@ export default function MinhaArea() {
                     </div>
                   </motion.section>
                 </div>
+
+                {/* QR Scanner Section */}
+                <motion.section
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.3, delay: 0.12 }}
+                  className="overflow-hidden rounded-3xl border border-border/50 bg-card"
+                >
+                  <div className="border-b border-border/50 bg-gradient-to-r from-primary/5 to-transparent px-6 py-4">
+                    <div className="flex items-center gap-3">
+                      <span className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 text-primary">
+                        <ScanLine className="h-5 w-5" />
+                      </span>
+                      <div>
+                        <h2 className="text-base font-semibold">Escanear QR da organização</h2>
+                        <p className="text-xs text-muted-foreground">Check-in, inscrição em cursos ou votação em expositores</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="p-6">
+                    <QrCameraScanner
+                      open={scannerOpen}
+                      onClose={() => setScannerOpen(false)}
+                      onRead={(value) => {
+                        void handleScan(value);
+                      }}
+                    />
+
+                    <div className="grid gap-4 sm:grid-cols-[1fr_auto]">
+                      <div className="flex gap-2">
+                        <Input
+                          value={manualToken}
+                          onChange={(e) => setManualToken(e.target.value)}
+                          placeholder="Cola aqui o código ou link do QR..."
+                          className="rounded-xl"
+                          onKeyDown={(e) => { if (e.key === "Enter") void handleScan(manualToken); }}
+                          disabled={scanning}
+                        />
+                        <Button
+                          variant="outline"
+                          className="shrink-0 rounded-xl"
+                          onClick={() => setScannerOpen(true)}
+                          disabled={scanning}
+                        >
+                          <Camera className="mr-2 h-4 w-4" />
+                          Câmara
+                        </Button>
+                      </div>
+                      <Button
+                        className="rounded-xl bg-primary text-white"
+                        onClick={() => void handleScan(manualToken)}
+                        disabled={scanning || !manualToken.trim()}
+                      >
+                        {scanning ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ScanLine className="mr-2 h-4 w-4" />}
+                        Escanear
+                      </Button>
+                    </div>
+
+                    {/* Scan result feedback */}
+                    <AnimatePresence>
+                      {scanResult ? (
+                        <motion.div
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: "auto" }}
+                          exit={{ opacity: 0, height: 0 }}
+                          className="mt-4 overflow-hidden"
+                        >
+                          <div className={`flex items-start gap-3 rounded-2xl border p-4 ${
+                            scanResult.success
+                              ? "border-emerald-200 bg-emerald-50"
+                              : scanResult.result === "ALREADY_DONE"
+                                ? "border-amber-200 bg-amber-50"
+                                : "border-rose-200 bg-rose-50"
+                          }`}>
+                            <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${
+                              scanResult.success
+                                ? "bg-emerald-500/10 text-emerald-600"
+                                : scanResult.result === "ALREADY_DONE"
+                                  ? "bg-amber-500/10 text-amber-600"
+                                  : "bg-rose-500/10 text-rose-600"
+                            }`}>
+                              {scanResult.success ? <CheckCircle2 className="h-5 w-5" /> : <AlertTriangle className="h-5 w-5" />}
+                            </span>
+                            <div className="min-w-0 flex-1">
+                              <p className={`text-sm font-semibold ${
+                                scanResult.success ? "text-emerald-800" : scanResult.result === "ALREADY_DONE" ? "text-amber-800" : "text-rose-800"
+                              }`}>
+                                {scanResult.success ? "Sucesso" : scanResult.result === "ALREADY_DONE" ? "Já registado" : "Erro"}
+                              </p>
+                              <p className={`mt-0.5 text-xs ${
+                                scanResult.success ? "text-emerald-700" : scanResult.result === "ALREADY_DONE" ? "text-amber-700" : "text-rose-700"
+                              }`}>
+                                {scanResult.message}
+                              </p>
+                              {scanResult.actionLabel ? (
+                                <p className="mt-1 text-[10px] font-medium text-muted-foreground">
+                                  {scanResult.actionType === "CHECKIN" ? "Check-in" : scanResult.actionType === "COURSE_ENROLL" ? "Inscrição" : "Votação"} · {scanResult.actionLabel}
+                                </p>
+                              ) : null}
+                            </div>
+                            <button type="button" onClick={() => setScanResult(null)} className="shrink-0 text-muted-foreground hover:text-foreground">
+                              <X className="h-4 w-4" />
+                            </button>
+                          </div>
+                        </motion.div>
+                      ) : null}
+                    </AnimatePresence>
+
+                    {/* Recent scan history */}
+                    {scanHistory.length > 0 ? (
+                      <div className="mt-5">
+                        <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                          <History className="h-3.5 w-3.5" />
+                          Últimas leituras
+                        </div>
+                        <div className="mt-2 space-y-1.5">
+                          {scanHistory.slice(0, 5).map((scan) => (
+                            <div key={scan.id} className="flex items-center justify-between rounded-xl border border-border/40 bg-muted/10 px-3 py-2">
+                              <div className="flex items-center gap-2.5">
+                                <span className={`h-2 w-2 rounded-full ${scan.result === "SUCCESS" ? "bg-emerald-500" : scan.result === "ALREADY_DONE" ? "bg-amber-500" : "bg-rose-500"}`} />
+                                <div>
+                                  <p className="text-xs font-medium">{scan.actionLabel}</p>
+                                  <p className="text-[10px] text-muted-foreground">{scan.message}</p>
+                                </div>
+                              </div>
+                              <span className="shrink-0 text-[10px] text-muted-foreground">
+                                {new Intl.DateTimeFormat("pt-PT", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" }).format(new Date(scan.scannedAt))}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    ) : null}
+                  </div>
+                </motion.section>
 
                 {/* Certificates Section */}
                 <motion.section

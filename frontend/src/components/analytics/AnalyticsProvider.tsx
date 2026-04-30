@@ -9,12 +9,12 @@ import {
 } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useLocation } from "react-router-dom";
-import { BarChart3, Cookie, ShieldCheck, Sparkles } from "lucide-react";
+import { BarChart3, CheckCircle2, Cookie, Eye, Lock, Megaphone, Shield, Sparkles, X } from "lucide-react";
 import { api, type AnalyticsConsentState, type AnalyticsTrackEvent, getToken } from "@/lib/api";
 import { deleteCookie, getCookie, setCookie } from "@/lib/browser-cookies";
 import { resolveAbsoluteApiUrl } from "@/lib/runtime-config";
 import { Button } from "@/components/ui/button";
-import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
 
 const CONSENT_COOKIE = "uor_consent_state";
@@ -141,6 +141,41 @@ function classifyClick(target: HTMLElement, pathname: string): AnalyticsTrackEve
 
   return null;
 }
+
+const consentCategories = [
+  {
+    key: "essential" as const,
+    title: "Essenciais",
+    description: "Sessão, autenticação e segurança do portal. Sempre ativos.",
+    icon: Lock,
+    color: "text-slate-600 bg-slate-100 border-slate-200",
+    alwaysOn: true,
+  },
+  {
+    key: "analytics" as const,
+    title: "Analytics",
+    description: "Visitas, interesse em cursos, conversões e desempenho do evento.",
+    icon: BarChart3,
+    color: "text-blue-600 bg-blue-50 border-blue-200",
+    alwaysOn: false,
+  },
+  {
+    key: "functional" as const,
+    title: "Funcionalidade",
+    description: "Preferências, filtros e estado da navegação para uma experiência fluida.",
+    icon: Sparkles,
+    color: "text-violet-600 bg-violet-50 border-violet-200",
+    alwaysOn: false,
+  },
+  {
+    key: "marketing" as const,
+    title: "Marketing",
+    description: "Medir campanhas, origem das visitas e impacto das partilhas.",
+    icon: Megaphone,
+    color: "text-amber-600 bg-amber-50 border-amber-200",
+    alwaysOn: false,
+  },
+];
 
 export function AnalyticsProvider({ children }: { children: ReactNode }) {
   const location = useLocation();
@@ -438,120 +473,179 @@ export function AnalyticsProvider({ children }: { children: ReactNode }) {
     <AnalyticsContext.Provider value={contextValue}>
       {children}
 
+      {/* ── Cookie Consent Banner ── */}
       <AnimatePresence>
         {!consent && (
           <motion.div
-            initial={{ opacity: 0, y: 24 }}
+            initial={{ opacity: 0, y: 40 }}
             animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: 24 }}
-            className="fixed bottom-4 left-4 right-4 z-[80] mx-auto max-w-5xl rounded-[18px] border border-[#0A3D62]/20 bg-[linear-gradient(145deg,rgba(255,255,255,0.98),rgba(240,255,250,0.96))] p-5 shadow-[0_18px_50px_rgba(10,61,98,0.16)] backdrop-blur"
+            exit={{ opacity: 0, y: 40 }}
+            transition={{ type: "spring", damping: 24, stiffness: 260 }}
+            className="fixed bottom-0 left-0 right-0 z-[80] sm:bottom-4 sm:left-4 sm:right-4"
           >
-            <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
-              <div className="space-y-3">
-                <div className="inline-flex items-center gap-2 rounded-full border border-[#0A3D62]/15 bg-[#0A3D62]/5 px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.18em] text-[#0A3D62]">
-                  <Cookie className="h-3.5 w-3.5" />
-                  Preferências de cookies UOR Connect
-                </div>
-                <div>
-                  <h3 className="font-heading text-xl font-bold text-[#0A3D62]">Controla a tua privacidade e melhora a experiência no portal.</h3>
-                  <p className="mt-2 max-w-3xl text-sm leading-7 text-slate-600">
-                    Usamos cookies essenciais para segurança e sessão. Com a tua autorização, ativamos analytics, personalização e medição de campanhas para melhorar inscrições, tickets e experiência do evento.
-                  </p>
-                </div>
-              </div>
+            <div className="mx-auto max-w-4xl overflow-hidden rounded-t-2xl border border-border/60 bg-white shadow-[0_-8px_40px_rgba(0,0,0,0.12)] sm:rounded-2xl sm:shadow-[0_16px_48px_rgba(0,0,0,0.14)]">
+              {/* Top accent bar */}
+              <div className="h-1 bg-gradient-to-r from-primary via-emerald-500 to-violet-500" />
 
-              <div className="flex flex-wrap items-center gap-3 lg:justify-end">
-                <Button variant="outline" className="rounded-xl border-[#0A3D62]/20 text-[#0A3D62]" onClick={() => updateConsent({ analytics: false, functional: false, marketing: false })}>
-                  Recusar opcionais
-                </Button>
-                <Button variant="outline" className="rounded-xl border-[#0A3D62]/20 text-[#0A3D62]" onClick={() => setPreferencesOpen(true)}>
-                  Gerir preferências
-                </Button>
-                <Button className="rounded-xl bg-[#00B894] text-white hover:bg-[#00a382]" onClick={() => updateConsent({ analytics: true, functional: true, marketing: true })}>
-                  Aceitar tudo
-                </Button>
+              <div className="p-5 sm:p-6">
+                {/* Header */}
+                <div className="flex items-start gap-4">
+                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-slate-800 to-slate-900 text-white shadow-sm">
+                    <Shield className="h-6 w-6" />
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <h3 className="text-lg font-bold text-slate-900">Privacidade e Cookies</h3>
+                    <p className="mt-1.5 text-sm leading-relaxed text-slate-500">
+                      Usamos cookies essenciais para segurança e sessão. Com a tua autorização, ativamos analytics, personalização e medição de campanhas para melhorar a experiência.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Cookie types mini-grid */}
+                <div className="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-4">
+                  {consentCategories.map((cat) => {
+                    const Icon = cat.icon;
+                    return (
+                      <div key={cat.key} className={`flex items-center gap-2 rounded-xl border px-3 py-2 ${cat.color}`}>
+                        <Icon className="h-3.5 w-3.5 shrink-0" />
+                        <span className="text-xs font-medium">{cat.title}</span>
+                        {cat.alwaysOn ? (
+                          <CheckCircle2 className="ml-auto h-3 w-3 shrink-0" />
+                        ) : null}
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {/* Actions */}
+                <div className="mt-5 flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
+                  <button
+                    type="button"
+                    onClick={() => setPreferencesOpen(true)}
+                    className="text-sm font-medium text-slate-500 underline decoration-slate-300 underline-offset-2 transition-colors hover:text-slate-700"
+                  >
+                    Personalizar preferências
+                  </button>
+                  <div className="flex gap-2.5">
+                    <Button
+                      variant="outline"
+                      className="flex-1 rounded-xl border-slate-200 text-slate-700 sm:flex-none"
+                      onClick={() => updateConsent({ analytics: false, functional: false, marketing: false })}
+                    >
+                      Apenas essenciais
+                    </Button>
+                    <Button
+                      className="flex-1 rounded-xl bg-slate-900 text-white shadow-sm hover:bg-slate-800 sm:flex-none"
+                      onClick={() => updateConsent({ analytics: true, functional: true, marketing: true })}
+                    >
+                      Aceitar todos
+                    </Button>
+                  </div>
+                </div>
               </div>
             </div>
           </motion.div>
         )}
       </AnimatePresence>
 
+      {/* ── Preferences Dialog ── */}
       <Dialog open={preferencesOpen} onOpenChange={setPreferencesOpen}>
-        <DialogContent className="w-[96vw] max-w-2xl rounded-[24px] border-border/70 p-0 overflow-hidden">
-          <div className="max-h-[min(86vh,760px)] overflow-y-auto bg-[linear-gradient(180deg,rgba(10,61,98,0.06),rgba(0,184,148,0.04))] p-5 sm:p-6">
-            <DialogHeader className="text-left">
-              <DialogTitle className="flex items-center gap-2 font-heading text-2xl">
-                <ShieldCheck className="h-5 w-5 text-[#0A3D62]" />
-                Centro de Privacidade UOR Connect
-              </DialogTitle>
-              <DialogDescription className="text-sm leading-7 text-slate-600">
-                Escolhe apenas o que faz sentido para ti. Os cookies essenciais mantêm o login e a segurança do portal.
-              </DialogDescription>
-            </DialogHeader>
+        <DialogContent className="w-[96vw] max-w-xl gap-0 overflow-hidden rounded-3xl border-0 p-0 shadow-2xl">
+          {/* Header */}
+          <div className="relative bg-gradient-to-br from-slate-800 via-slate-900 to-slate-800 px-6 py-6">
+            <div className="pointer-events-none absolute inset-0">
+              <div className="absolute -right-8 -top-8 h-32 w-32 rounded-full bg-primary/15 blur-2xl" />
+              <div className="absolute -bottom-4 -left-8 h-24 w-24 rounded-full bg-violet-500/10 blur-xl" />
+            </div>
+            <div className="relative">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-white/10 backdrop-blur-sm">
+                    <Shield className="h-5 w-5 text-white" />
+                  </div>
+                  <div>
+                    <h2 className="text-lg font-bold text-white">Centro de Privacidade</h2>
+                    <p className="text-xs text-slate-400">UOR Connect v{CONSENT_VERSION}</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setPreferencesOpen(false)}
+                  className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/10 text-white/70 transition-colors hover:bg-white/20 hover:text-white"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+              <p className="mt-3 text-sm leading-relaxed text-slate-300">
+                Escolhe quais cookies queres ativar. Os essenciais mantêm o login e a segurança.
+              </p>
+            </div>
+          </div>
 
-            <div className="mt-6 grid gap-4">
-              {[
-                {
-                  key: "analytics" as const,
-                  title: "Analytics",
-                  subtitle: "Ajuda-nos a perceber visitas, interesse, conversões e pontos fortes do evento.",
-                  icon: BarChart3,
-                  enabled: draftConsent.analytics,
-                },
-                {
-                  key: "functional" as const,
-                  title: "Funcionalidade",
-                  subtitle: "Guarda preferências úteis, filtros e estados da tua navegação para uma experiência mais fluida.",
-                  icon: Sparkles,
-                  enabled: draftConsent.functional,
-                },
-                {
-                  key: "marketing" as const,
-                  title: "Marketing",
-                  subtitle: "Permite medir campanhas, origem das visitas e impacto das partilhas.",
-                  icon: Cookie,
-                  enabled: draftConsent.marketing,
-                },
-              ].map((item) => {
-                const Icon = item.icon;
+          {/* Categories */}
+          <div className="max-h-[min(60vh,480px)] overflow-y-auto bg-slate-50/50 p-4 sm:p-5">
+            <div className="space-y-3">
+              {consentCategories.map((cat) => {
+                const Icon = cat.icon;
+                const isOn = cat.alwaysOn || draftConsent[cat.key as keyof typeof draftConsent];
                 return (
-                  <div key={item.key} className="rounded-2xl border border-border/70 bg-white/90 p-4 shadow-sm">
-                    <div className="flex items-start justify-between gap-4">
-                      <div className="flex items-start gap-3">
-                        <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-[#0A3D62]/8 text-[#0A3D62]">
-                          <Icon className="h-5 w-5" />
-                        </div>
-                        <div>
-                          <p className="font-semibold text-slate-900">{item.title}</p>
-                          <p className="mt-1 text-sm leading-6 text-slate-600">{item.subtitle}</p>
-                        </div>
+                  <div
+                    key={cat.key}
+                    className={`rounded-2xl border bg-white p-4 transition-shadow ${isOn ? "border-slate-200 shadow-sm" : "border-slate-100"}`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border ${cat.color}`}>
+                        <Icon className="h-5 w-5" />
                       </div>
-                      <Switch
-                        checked={draftConsent[item.key]}
-                        onCheckedChange={(checked) => setDraftConsent((current) => ({ ...current, [item.key]: checked }))}
-                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center gap-2">
+                          <p className="text-sm font-semibold text-slate-900">{cat.title}</p>
+                          {cat.alwaysOn ? (
+                            <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Sempre ativo</span>
+                          ) : null}
+                        </div>
+                        <p className="mt-0.5 text-xs leading-relaxed text-slate-500">{cat.description}</p>
+                      </div>
+                      {cat.alwaysOn ? (
+                        <div className="flex h-6 w-10 items-center justify-end rounded-full bg-slate-200 px-0.5">
+                          <div className="h-5 w-5 rounded-full bg-slate-400" />
+                        </div>
+                      ) : (
+                        <Switch
+                          checked={draftConsent[cat.key as keyof typeof draftConsent]}
+                          onCheckedChange={(checked) => setDraftConsent((current) => ({ ...current, [cat.key]: checked }))}
+                        />
+                      )}
                     </div>
                   </div>
                 );
               })}
-
-              <div className="rounded-2xl border border-[#00B894]/15 bg-[#00B894]/6 p-4 text-sm leading-7 text-slate-700">
-                <p className="font-semibold text-[#0A3D62]">Resumo rápido</p>
-                <p>Sem a tua autorização, só ficam ativos os cookies essenciais para segurança e sessão. As restantes categorias só entram se escolheres ativá-las.</p>
-              </div>
-
-              <div className="flex flex-col-reverse gap-3 pt-2 sm:flex-row sm:justify-end">
-                <Button variant="outline" className="rounded-xl" onClick={() => setPreferencesOpen(false)}>
-                  Fechar
-                </Button>
-                <Button variant="outline" className="rounded-xl border-[#0A3D62]/20 text-[#0A3D62]" onClick={() => updateConsent({ analytics: false, functional: false, marketing: false })}>
-                  Apenas essenciais
-                </Button>
-                <Button className="rounded-xl bg-[#0A3D62] text-white hover:bg-[#082f4b]" onClick={() => updateConsent(draftConsent)}>
-                  Guardar preferências
-                </Button>
-              </div>
             </div>
+
+            {/* Info box */}
+            <div className="mt-4 flex items-start gap-3 rounded-xl border border-emerald-200/60 bg-emerald-50/50 p-3.5">
+              <Eye className="mt-0.5 h-4 w-4 shrink-0 text-emerald-600" />
+              <p className="text-xs leading-relaxed text-emerald-800">
+                Sem autorização, apenas os cookies essenciais ficam ativos para segurança e sessão. Podes alterar a qualquer momento no rodapé do site.
+              </p>
+            </div>
+          </div>
+
+          {/* Footer actions */}
+          <div className="flex flex-col-reverse gap-2 border-t border-slate-100 bg-white px-5 py-4 sm:flex-row sm:justify-end">
+            <Button
+              variant="outline"
+              className="rounded-xl border-slate-200 text-slate-600"
+              onClick={() => updateConsent({ analytics: false, functional: false, marketing: false })}
+            >
+              Apenas essenciais
+            </Button>
+            <Button
+              className="rounded-xl bg-slate-900 text-white hover:bg-slate-800"
+              onClick={() => updateConsent(draftConsent)}
+            >
+              Guardar preferências
+            </Button>
           </div>
         </DialogContent>
       </Dialog>
