@@ -1,4 +1,4 @@
-@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700&family=Sora:wght@400;500;600;700;800&family=Space+Mono:wght@400;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,wght@0,400;0,500;0,600;0,700&family=Funnel+Sans:wght@400;500;600;700;800&family=IBM+Plex+Mono:wght@400;500;600;700&family=Sora:wght@400;500;600;700;800&family=Space+Mono:wght@400;700&display=swap');
 
 @tailwind base;
 @tailwind components;
@@ -99,7 +99,7 @@
   }
 
   .sponsor-marquee-track {
-    animation: sponsor-marquee 24s linear infinite;
+    animation: sponsor-marquee 18s linear infinite;
     width: max-content;
     will-change: transform;
   }
@@ -159,6 +159,235 @@
   .surface-card:hover {
     box-shadow: var(--shadow-raised-hover);
     border-color: hsl(var(--primary) / 0.18);
+  }
+
+  .admin-workspace {
+    --admin-surface: hsl(var(--card));
+    --admin-surface-subtle: hsl(var(--muted) / 0.32);
+    --admin-line: hsl(var(--border) / 0.68);
+    --admin-copy: hsl(var(--muted-foreground));
+    --admin-brand-ink: #050505;
+    --admin-brand-soft: #f7f7f5;
+    --admin-brand-sun: #ff7a1a;
+  }
+
+  .admin-shell {
+    background:
+      radial-gradient(circle at 10% 8%, rgb(255 122 26 / 0.08), transparent 28%),
+      linear-gradient(135deg, rgb(250 250 249), rgb(244 244 245) 52%, rgb(255 247 237));
+  }
+
+  .admin-shell::before {
+    content: "";
+    @apply pointer-events-none fixed inset-0 opacity-60;
+    background-image:
+      linear-gradient(rgb(15 23 42 / 0.035) 1px, transparent 1px),
+      linear-gradient(90deg, rgb(15 23 42 / 0.035) 1px, transparent 1px);
+    background-size: 32px 32px;
+    mask-image: linear-gradient(135deg, rgb(0 0 0 / 0.72), transparent 68%);
+  }
+
+  .admin-mobile-sidebar-scrim {
+    background: rgb(15 23 42 / 0.06);
+    border: 0;
+    padding: 0;
+  }
+
+  .admin-shell__sidebar {
+    background:
+      linear-gradient(180deg, rgb(255 255 255 / 0.98), rgb(250 250 249 / 0.96)),
+      linear-gradient(135deg, rgb(255 122 26 / 0.06), transparent);
+    box-shadow: 18px 0 44px rgb(5 5 5 / 0.08);
+    border-right: 1px solid rgb(226 232 240 / 0.72);
+  }
+
+  .admin-shell__brand {
+    background:
+      linear-gradient(135deg, rgb(255 255 255 / 0.98), rgb(250 250 249 / 0.92));
+  }
+
+  .admin-brand-mark {
+    background: white;
+    box-shadow: 0 10px 24px rgb(5 5 5 / 0.08), inset 0 0 0 1px rgb(229 231 235);
+  }
+
+  .admin-shell__nav {
+    -webkit-overflow-scrolling: touch;
+    touch-action: pan-y;
+    overscroll-behavior-y: contain;
+    scrollbar-width: thin;
+    scrollbar-color: rgb(148 163 184 / 0.5) transparent;
+  }
+
+  @media (max-width: 1023px) {
+    .admin-workspace.admin-shell {
+      height: 100svh;
+      min-height: 100svh;
+      max-height: 100svh;
+    }
+
+    .admin-shell__layout,
+    .admin-main-panel {
+      height: 100%;
+      min-height: 0;
+    }
+
+    .admin-shell__sidebar {
+      height: 100svh;
+      max-height: 100svh;
+      contain: layout paint;
+    }
+
+    .admin-shell__nav {
+      overscroll-behavior-y: contain;
+      scroll-behavior: auto;
+    }
+  }
+
+  .admin-nav-group__label {
+    color: rgb(71 85 105 / 0.78);
+  }
+
+  .admin-nav-item {
+    min-height: 40px;
+    border: 1px solid transparent;
+    position: relative;
+    overflow: hidden;
+    transition: transform 0.18s ease, background-color 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+  }
+
+  .admin-nav-item:hover {
+    transform: translateX(2px);
+    border-color: rgb(255 122 26 / 0.12);
+    background: rgb(255 255 255 / 0.72);
+  }
+
+  .admin-nav-icon {
+    background: rgb(15 23 42 / 0.04);
+    color: rgb(71 85 105);
+    transition: transform 0.18s ease, background-color 0.18s ease, color 0.18s ease;
+  }
+
+  .admin-nav-item:hover .admin-nav-icon {
+    transform: translateX(1px);
+    background: rgb(255 122 26 / 0.1);
+    color: var(--admin-brand-ink);
+  }
+
+  .admin-nav-item--active {
+    background:
+      linear-gradient(135deg, rgb(255 122 26 / 0.11), rgb(5 5 5 / 0.035)),
+      rgb(255 255 255 / 0.82);
+    box-shadow: inset 3px 0 0 var(--admin-brand-sun), 0 10px 24px rgb(5 5 5 / 0.06);
+    border-color: rgb(255 122 26 / 0.18);
+  }
+
+  .admin-nav-item--active::after {
+    content: "";
+    @apply pointer-events-none absolute inset-y-2 right-2 w-1 rounded-full;
+    background: linear-gradient(180deg, #ff7a1a, #050505);
+  }
+
+  .admin-nav-item--active .admin-nav-icon {
+    background: var(--admin-brand-ink);
+    color: white;
+  }
+
+  .admin-user-card {
+    background:
+      linear-gradient(135deg, rgb(255 255 255 / 0.9), rgb(250 250 249 / 0.76)),
+      linear-gradient(90deg, rgb(255 122 26 / 0.08), transparent);
+  }
+
+  .admin-topbar {
+    background:
+      linear-gradient(135deg, rgb(255 255 255 / 0.96), rgb(250 250 249 / 0.9)),
+      linear-gradient(90deg, rgb(255 122 26 / 0.05), transparent);
+    backdrop-filter: blur(14px);
+    box-shadow: 0 12px 34px rgb(15 23 42 / 0.05);
+  }
+
+  .admin-content {
+    background:
+      radial-gradient(circle at 0% 18%, rgb(255 122 26 / 0.06), transparent 26%),
+      transparent;
+  }
+
+  .admin-export-button {
+    background:
+      linear-gradient(135deg, var(--admin-brand-ink), #1f1f1f),
+      linear-gradient(90deg, var(--admin-brand-sun), #111111);
+    box-shadow: 0 12px 28px rgb(5 5 5 / 0.18);
+  }
+
+  .admin-export-button:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 16px 34px rgb(10 47 69 / 0.24);
+  }
+
+  .admin-loading-card {
+    background:
+      linear-gradient(135deg, rgb(255 255 255 / 0.92), rgb(250 250 249 / 0.72)),
+      linear-gradient(90deg, rgb(255 122 26 / 0.08), transparent);
+  }
+
+  .admin-workspace .bg-white {
+    background-color: var(--admin-surface);
+  }
+
+  .admin-workspace .border-border\/50,
+  .admin-workspace .border-border\/60,
+  .admin-workspace .border-border\/70 {
+    border-color: var(--admin-line);
+  }
+
+  .admin-workspace .rounded-2xl {
+    border-radius: 0.5rem;
+  }
+
+  .admin-workspace .shadow-sm {
+    box-shadow: var(--shadow-flat);
+  }
+
+  .admin-workspace h2,
+  .admin-workspace h3,
+  .admin-workspace [class*="CardTitle"] {
+    color: hsl(var(--foreground));
+  }
+
+  .admin-report-hero {
+    @apply relative;
+    background:
+      linear-gradient(135deg, rgb(255 255 255 / 0.98), rgb(250 250 249 / 0.94)),
+      linear-gradient(120deg, rgb(255 122 26 / 0.09), rgb(5 5 5 / 0.035));
+    box-shadow: 0 18px 42px rgb(15 23 42 / 0.08);
+  }
+
+  .admin-report-hero::before {
+    content: "";
+    @apply pointer-events-none absolute inset-0;
+    border-radius: inherit;
+    box-shadow: inset 0 0 0 1px rgb(255 122 26 / 0.13);
+  }
+
+  .admin-report-hero::after {
+    content: "";
+    @apply pointer-events-none absolute inset-0 opacity-70;
+    background-image:
+      linear-gradient(rgb(15 23 42 / 0.035) 1px, transparent 1px),
+      linear-gradient(90deg, rgb(15 23 42 / 0.035) 1px, transparent 1px);
+    background-size: 28px 28px;
+    mask-image: linear-gradient(120deg, rgb(0 0 0 / 0.34), transparent 62%);
+  }
+
+  .admin-report-metric {
+    box-shadow: 0 10px 28px rgb(15 23 42 / 0.06);
+    transition: transform 0.18s ease, box-shadow 0.18s ease, border-color 0.18s ease;
+  }
+
+  .admin-report-metric:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 16px 34px rgb(15 23 42 / 0.1);
   }
 
   .responsive-two-col {
@@ -326,6 +555,2961 @@
 
   .quick-action-card:hover {
     box-shadow: var(--shadow-raised-hover);
+  }
+
+  .uor-vital-panel {
+    @apply relative min-w-0 overflow-hidden rounded-2xl border bg-white transition-all duration-300;
+    border-color: hsl(var(--border) / 0.62);
+    background:
+      linear-gradient(135deg, rgb(255 255 255 / 0.98), rgb(248 250 252 / 0.92)),
+      linear-gradient(120deg, rgb(255 94 0 / 0.08), rgb(0 184 148 / 0.08), rgb(109 40 217 / 0.05));
+    box-shadow: var(--shadow-raised);
+  }
+
+  .uor-vital-panel::before {
+    content: "";
+    @apply pointer-events-none absolute inset-0;
+    border-radius: inherit;
+    box-shadow: inset 0 0 0 1px rgb(255 94 0 / 0.12);
+  }
+
+  .uor-vital-panel::after {
+    content: "";
+    @apply pointer-events-none absolute inset-y-0 left-0 w-1/3 opacity-0;
+    background: linear-gradient(115deg, transparent, rgb(255 255 255 / 0.46), transparent);
+    transform: translateX(-140%) skewX(-10deg);
+  }
+
+  .uor-vital-panel:hover {
+    border-color: rgb(255 122 26 / 0.28);
+    box-shadow: var(--shadow-raised-hover);
+  }
+
+  .uor-vital-panel:hover::after {
+    animation: uorSheen 1.15s ease;
+  }
+
+  .minha-area-hero {
+    border-color: rgb(255 122 26 / 0.22);
+    background:
+      linear-gradient(135deg, rgb(255 250 244 / 0.98) 0%, rgb(255 255 255 / 0.95) 48%, rgb(245 242 236 / 0.96) 100%),
+      linear-gradient(115deg, rgb(255 122 26 / 0.16), rgb(5 5 5 / 0.045), rgb(255 122 26 / 0.07));
+  }
+
+  .minha-area-hero::before {
+    background: transparent;
+    box-shadow: inset 0 0 0 1px rgb(255 122 26 / 0.18);
+  }
+
+  .minha-area-hero:hover {
+    border-color: rgb(255 122 26 / 0.34);
+  }
+
+  .minha-area-hero .uor-vital-stat {
+    background:
+      linear-gradient(135deg, rgb(255 255 255 / 0.92), rgb(255 250 244 / 0.78)),
+      linear-gradient(120deg, rgb(255 122 26 / 0.09), rgb(5 5 5 / 0.025));
+    backdrop-filter: blur(10px);
+  }
+
+  .passport-panel {
+    @apply relative min-w-0 text-slate-950;
+    --passport-ink: #050505;
+    --passport-orange: #ff7a1a;
+    --passport-paper: #fffaf4;
+    --passport-muted: #f5f2ec;
+    background:
+      linear-gradient(135deg, rgb(255 250 244 / 0.96), rgb(255 255 255 / 0.98) 44%, rgb(248 250 252 / 0.92)),
+      linear-gradient(120deg, rgb(255 122 26 / 0.045), transparent 48%, rgb(5 5 5 / 0.025));
+    box-shadow: 0 18px 52px rgb(15 23 42 / 0.07);
+  }
+
+  .passport-panel::before {
+    content: "";
+    @apply pointer-events-none absolute inset-0;
+    border-radius: inherit;
+    box-shadow: inset 0 0 0 1px rgb(255 122 26 / 0.11);
+  }
+
+  .passport-studio {
+    @apply relative overflow-hidden px-4 py-5 sm:px-6 sm:py-6 lg:px-7 lg:py-7;
+    background-image:
+      radial-gradient(circle at 8% 0%, rgb(255 122 26 / 0.08), transparent 28%),
+      linear-gradient(135deg, rgb(255 255 255 / 0.3), transparent 48%, rgb(15 23 42 / 0.025));
+    background-size: 100% 100%;
+  }
+
+  .passport-studio__grain {
+    @apply pointer-events-none absolute inset-0 opacity-[0.22];
+    background:
+      linear-gradient(135deg, rgb(255 122 26 / 0.08), transparent 36%, rgb(5 5 5 / 0.03));
+    mask-image: linear-gradient(135deg, rgb(0 0 0 / 0.84), transparent 72%);
+  }
+
+  .passport-command {
+    @apply relative z-10 flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between;
+  }
+
+  .passport-kicker {
+    @apply inline-flex w-fit items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-extrabold uppercase text-slate-700 shadow-sm;
+    letter-spacing: 0;
+  }
+
+  .passport-command__actions {
+    @apply flex w-full flex-col gap-3 sm:w-auto sm:min-w-[148px] sm:flex-row sm:items-stretch lg:justify-end;
+  }
+
+  .passport-total-card {
+    @apply min-h-20 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm;
+    min-width: 128px;
+  }
+
+  .passport-total-card span {
+    @apply block text-[11px] font-bold uppercase text-slate-500;
+    letter-spacing: 0;
+  }
+
+  .passport-total-card strong {
+    @apply mt-1 block text-3xl font-extrabold leading-none text-slate-950;
+  }
+
+  .passport-total-card em {
+    @apply mt-1 block text-xs not-italic text-slate-500;
+  }
+
+  .passport-experience-grid {
+    @apply relative z-10 mt-5 grid gap-4 xl:grid-cols-[minmax(0,1.35fr)_minmax(300px,0.65fr)];
+  }
+
+  .passport-map-board,
+  .passport-side-panel,
+  .passport-surprise-card,
+  .passport-achievement-card {
+    @apply rounded-[24px] border border-slate-200 bg-white shadow-sm;
+  }
+
+  .passport-map-board {
+    @apply relative overflow-hidden p-4 sm:p-5;
+    background:
+      linear-gradient(180deg, rgb(255 255 255 / 0.98), rgb(255 255 255 / 0.94)),
+      linear-gradient(135deg, rgb(255 122 26 / 0.045), transparent 42%, rgb(15 23 42 / 0.025));
+  }
+
+  .passport-map-board::before {
+    content: none;
+  }
+
+  .passport-board-header {
+    @apply relative z-10 flex flex-col gap-4 border-b border-slate-100 pb-4 sm:flex-row sm:items-center sm:justify-between;
+  }
+
+  .passport-board-eyebrow,
+  .passport-section-label {
+    @apply inline-flex items-center gap-2 text-xs font-extrabold uppercase text-slate-500;
+    letter-spacing: 0;
+  }
+
+  .passport-board-header h3 {
+    @apply mt-2 text-xl font-extrabold leading-tight text-slate-950;
+  }
+
+  .passport-board-header p {
+    @apply mt-1 max-w-xl text-sm leading-6 text-slate-600;
+  }
+
+  .passport-progress-ring {
+    @apply relative flex h-[72px] w-[72px] shrink-0 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-950 shadow-sm;
+    background:
+      linear-gradient(white, white) padding-box,
+      conic-gradient(var(--passport-orange) var(--passport-progress), rgb(226 232 240) 0) border-box;
+    border: 5px solid transparent;
+  }
+
+  .passport-progress-ring span {
+    @apply text-base font-extrabold;
+  }
+
+  .passport-quest-route {
+    @apply relative z-10 mt-5 grid gap-4 overflow-hidden rounded-[22px] px-1 py-3 sm:px-2;
+    background:
+      radial-gradient(circle at 18% 10%, rgb(255 122 26 / 0.08), transparent 28%),
+      radial-gradient(circle at 82% 52%, rgb(34 197 94 / 0.07), transparent 30%),
+      linear-gradient(180deg, rgb(248 250 252 / 0.62), rgb(255 255 255 / 0));
+  }
+
+  .passport-quest-route::before {
+    content: "";
+    @apply pointer-events-none absolute inset-0 rounded-[22px];
+    background-image:
+      linear-gradient(rgb(15 23 42 / 0.035) 1px, transparent 1px),
+      linear-gradient(90deg, rgb(15 23 42 / 0.035) 1px, transparent 1px);
+    background-size: 34px 34px;
+    mask-image: linear-gradient(180deg, transparent, black 12%, black 88%, transparent);
+  }
+
+  .passport-quest-route::after {
+    content: none;
+  }
+
+  .passport-route-curve {
+    @apply pointer-events-none absolute inset-y-4 left-0 right-0 z-0 h-[calc(100%-2rem)] w-full;
+    overflow: visible;
+  }
+
+  .passport-route-curve path {
+    fill: none;
+    vector-effect: non-scaling-stroke;
+  }
+
+  .passport-route-curve__shadow {
+    stroke: rgb(15 23 42 / 0.08);
+    stroke-width: 10;
+    stroke-linecap: round;
+  }
+
+  .passport-route-curve__base {
+    stroke: rgb(255 122 26 / 0.26);
+    stroke-width: 4;
+    stroke-linecap: round;
+    stroke-dasharray: 7 13;
+  }
+
+  .passport-route-curve__pulse {
+    stroke: rgb(255 122 26 / 0.78);
+    stroke-width: 5;
+    stroke-linecap: round;
+    stroke-dasharray: 36 190;
+    filter: drop-shadow(0 0 10px rgb(255 122 26 / 0.36));
+    animation: passportRouteDash 3.2s linear infinite;
+  }
+
+  .passport-quest {
+    @apply relative z-10 grid min-h-0 w-full gap-3;
+    max-width: min(100%, 86%);
+    transition: transform 0.2s ease, filter 0.2s ease;
+  }
+
+  .passport-quest.is-left {
+    @apply justify-self-start;
+    grid-template-columns: 52px minmax(0, 1fr);
+    padding-right: clamp(0.5rem, 7vw, 4rem);
+  }
+
+  .passport-quest.is-right {
+    @apply justify-self-end;
+    grid-template-columns: minmax(0, 1fr) 52px;
+    padding-left: clamp(0.5rem, 7vw, 4rem);
+  }
+
+  .passport-quest.is-right .passport-quest__pin {
+    order: 2;
+  }
+
+  .passport-quest.is-right .passport-quest__body {
+    order: 1;
+  }
+
+  .passport-quest:hover {
+    transform: translateY(-2px);
+  }
+
+  .passport-quest__pin {
+    @apply relative z-10 flex h-12 w-12 items-center justify-center rounded-2xl border border-slate-200 bg-white text-slate-500 shadow-sm;
+    transition: transform 0.2s ease, background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+  }
+
+  .passport-quest__piece {
+    @apply absolute -right-2 -top-3 inline-flex h-7 w-7 items-center justify-center rounded-full border border-orange-200 bg-white text-base font-black text-slate-950 shadow-lg;
+    box-shadow: 0 10px 22px rgb(15 23 42 / 0.16), 0 0 0 5px rgb(255 122 26 / 0.12);
+  }
+
+  .passport-quest__body {
+    @apply relative z-10 min-w-0 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease, background-color 0.2s ease;
+  }
+
+  .passport-quest__meta {
+    @apply flex flex-wrap items-center gap-2;
+  }
+
+  .passport-quest__meta span {
+    @apply text-[10px] font-extrabold uppercase text-slate-400;
+    letter-spacing: 0;
+  }
+
+  .passport-quest__meta strong {
+    @apply rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-extrabold uppercase text-slate-500;
+    letter-spacing: 0;
+  }
+
+  .passport-quest h4 {
+    @apply mt-2 text-sm font-extrabold leading-5 text-slate-950;
+  }
+
+  .passport-quest p {
+    @apply mt-1 text-xs leading-5 text-slate-600;
+  }
+
+  .passport-quest__footer {
+    @apply mt-3 flex flex-wrap items-center gap-2 text-[11px] font-bold text-slate-500;
+  }
+
+  .passport-quest__footer span:first-child {
+    @apply rounded-full bg-slate-950 px-2.5 py-1 text-white;
+  }
+
+  .passport-quest.is-done {
+    @apply text-slate-950;
+  }
+
+  .passport-quest.is-done .passport-quest__pin {
+    @apply border-slate-950 bg-slate-950 text-white;
+  }
+
+  .passport-quest.is-done .passport-quest__body {
+    border-color: rgb(15 23 42 / 0.16);
+    background: linear-gradient(135deg, rgb(248 250 252 / 0.92), rgb(255 255 255));
+  }
+
+  .passport-quest.is-current {
+    @apply text-slate-950;
+    filter: saturate(1.05);
+  }
+
+  .passport-quest.is-current .passport-quest__pin {
+    @apply border-orange-300 bg-orange-500 text-white;
+    animation: passportCurrentPulse 1.9s ease-in-out infinite;
+  }
+
+  .passport-quest.is-current .passport-quest__body {
+    border-color: rgb(255 122 26 / 0.34);
+    background:
+      linear-gradient(135deg, rgb(255 250 244 / 0.96), rgb(255 255 255)),
+      linear-gradient(90deg, rgb(255 122 26 / 0.08), transparent);
+    box-shadow: 0 14px 38px rgb(255 122 26 / 0.11);
+  }
+
+  .passport-quest.is-current .passport-quest__piece {
+    animation: passportPieceFloat 1.8s ease-in-out infinite;
+  }
+
+  .passport-quest.is-current .passport-quest__meta strong {
+    @apply border-orange-200 bg-white text-orange-700;
+  }
+
+  .passport-quest.is-ready .passport-quest__pin {
+    @apply border-orange-200 bg-orange-50 text-orange-700;
+  }
+
+  .passport-quest.is-locked {
+    @apply text-slate-400;
+  }
+
+  .passport-quest.is-locked .passport-quest__pin,
+  .passport-quest.is-locked h4,
+  .passport-quest.is-locked p {
+    @apply text-slate-400;
+  }
+
+  .passport-quest.is-locked .passport-quest__body {
+    @apply bg-slate-50;
+    box-shadow: none;
+  }
+
+  .passport-side-panel {
+    @apply flex flex-col gap-3 p-3 sm:p-4;
+  }
+
+  .passport-next-card,
+  .passport-network-card,
+  .passport-checklist-card {
+    @apply rounded-2xl border border-slate-200 bg-white p-3 shadow-sm;
+  }
+
+  .passport-next-card {
+    @apply grid grid-cols-[44px_minmax(0,1fr)] gap-3;
+    background:
+      linear-gradient(135deg, rgb(255 250 244), rgb(255 255 255)),
+      linear-gradient(120deg, rgb(255 122 26 / 0.08), transparent);
+    color: rgb(15 23 42);
+  }
+
+  .passport-next-card__icon {
+    @apply flex h-11 w-11 items-center justify-center rounded-xl border border-orange-100 bg-orange-50 text-orange-700;
+  }
+
+  .passport-next-card span,
+  .passport-network-card span {
+    @apply inline-flex items-center gap-1.5 text-[11px] font-extrabold uppercase;
+    letter-spacing: 0;
+  }
+
+  .passport-next-card strong {
+    @apply mt-1 block text-sm font-extrabold leading-5;
+  }
+
+  .passport-next-card p {
+    @apply mt-1 text-xs leading-5 text-slate-600;
+  }
+
+  .passport-network-card {
+    @apply grid gap-3 sm:grid-cols-[104px_minmax(0,1fr)] xl:grid-cols-1;
+    background: linear-gradient(135deg, rgb(255 250 244), rgb(255 255 255));
+  }
+
+  .passport-network-card__qr {
+    @apply mx-auto flex h-[104px] w-[104px] items-center justify-center rounded-2xl border border-slate-200 bg-white p-2 shadow-sm sm:mx-0;
+  }
+
+  .passport-network-card__qr img {
+    @apply h-full w-full rounded-xl object-contain;
+  }
+
+  .passport-network-card span {
+    @apply text-orange-700;
+  }
+
+  .passport-network-card h4 {
+    @apply mt-1 text-sm font-extrabold text-slate-950;
+  }
+
+  .passport-network-card p {
+    @apply mt-1 text-xs leading-5 text-slate-600;
+  }
+
+  .passport-copy-button {
+    @apply mt-3 rounded-xl border-slate-200 bg-white text-slate-950 hover:bg-orange-50 hover:text-orange-800;
+  }
+
+  .passport-checklist-card__header {
+    @apply flex items-center gap-3 border-b border-slate-100 pb-3;
+  }
+
+  .passport-checklist-card__header span {
+    @apply flex h-10 w-10 items-center justify-center rounded-xl border border-orange-100 bg-orange-50 text-orange-700;
+  }
+
+  .passport-checklist-card__header h4 {
+    @apply text-sm font-extrabold text-slate-950;
+  }
+
+  .passport-checklist-card__header p {
+    @apply text-xs text-slate-500;
+  }
+
+  .passport-checklist {
+    @apply mt-3 grid gap-2;
+  }
+
+  .passport-check-item {
+    @apply grid grid-cols-[30px_minmax(0,1fr)] items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-2.5 py-2 text-xs font-bold text-slate-500;
+  }
+
+  .passport-check-item span {
+    @apply flex h-7 w-7 items-center justify-center rounded-lg bg-white text-slate-400;
+  }
+
+  .passport-check-item.is-done {
+    @apply border-slate-900 bg-slate-950/[0.04] text-slate-950;
+    border-color: rgb(15 23 42 / 0.15);
+  }
+
+  .passport-check-item.is-done span {
+    @apply bg-slate-950 text-white;
+  }
+
+  .passport-check-item.is-current {
+    @apply border-orange-200 bg-orange-50 text-orange-800;
+  }
+
+  .passport-check-item.is-current span {
+    @apply bg-orange-500 text-white;
+  }
+
+  .passport-check-item p {
+    @apply truncate;
+  }
+
+  .passport-bottom-grid {
+    @apply relative z-10 mt-4 grid gap-4 lg:grid-cols-[minmax(0,0.95fr)_minmax(0,1.05fr)];
+  }
+
+  .passport-surprise-card,
+  .passport-achievement-card {
+    @apply p-4;
+  }
+
+  .passport-surprise-card h3,
+  .passport-achievement-card h3 {
+    @apply mt-1 text-base font-extrabold text-slate-950;
+  }
+
+  .passport-surprise-card p {
+    @apply mt-1 text-xs leading-5 text-slate-600;
+  }
+
+  .passport-surprise-card > div:first-child > strong {
+    @apply shrink-0 rounded-full bg-slate-950 px-3 py-1.5 text-sm font-extrabold text-white;
+  }
+
+  .passport-surprise-list {
+    @apply mt-3 grid gap-2 sm:grid-cols-2;
+  }
+
+  .passport-surprise-item {
+    @apply grid grid-cols-[36px_minmax(0,1fr)_auto] items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2;
+  }
+
+  .passport-surprise-item > span {
+    @apply flex h-9 w-9 items-center justify-center rounded-xl;
+  }
+
+  .passport-surprise-item > span.is-positive {
+    @apply bg-emerald-100 text-emerald-700;
+  }
+
+  .passport-surprise-item > span.is-negative {
+    @apply bg-rose-100 text-rose-700;
+  }
+
+  .passport-surprise-item p {
+    @apply m-0 truncate text-xs font-extrabold text-slate-950;
+  }
+
+  .passport-surprise-item small {
+    @apply block truncate text-[10px] text-slate-500;
+  }
+
+  .passport-empty-hunt {
+    @apply mt-3 flex items-center gap-2 rounded-2xl border border-dashed border-orange-200 bg-orange-50 px-3 py-3 text-xs font-bold text-orange-800;
+  }
+
+  .passport-achievement-strip {
+    @apply mt-3 flex flex-wrap gap-2;
+  }
+
+  .passport-achievement-strip span {
+    @apply inline-flex min-h-9 items-center gap-1.5 rounded-full border border-slate-200 bg-slate-50 px-3 py-1.5 text-[11px] font-bold text-slate-500;
+  }
+
+  .passport-achievement-strip span.is-active {
+    @apply border-orange-200 bg-orange-50 text-orange-800;
+  }
+
+  .organization-scanner-card {
+    @apply relative rounded-[24px] border border-slate-200 bg-white shadow-sm;
+    background:
+      linear-gradient(135deg, rgb(255 255 255 / 0.98), rgb(255 250 244 / 0.9)),
+      linear-gradient(120deg, rgb(255 122 26 / 0.07), rgb(5 5 5 / 0.025));
+    box-shadow: 0 18px 52px rgb(15 23 42 / 0.08);
+  }
+
+  .organization-scanner-card::before {
+    content: "";
+    @apply pointer-events-none absolute inset-0;
+    border-radius: inherit;
+    box-shadow: inset 0 0 0 1px rgb(255 122 26 / 0.12);
+  }
+
+  .organization-scanner-card__header {
+    @apply relative flex flex-col gap-4 border-b border-slate-100 px-4 py-4 sm:px-6 lg:flex-row lg:items-center lg:justify-between;
+  }
+
+  .organization-scanner-card__icon {
+    @apply flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-orange-200 bg-orange-50 text-orange-700;
+    box-shadow: 0 12px 26px rgb(255 122 26 / 0.11);
+  }
+
+  .organization-scanner-card__eyebrow {
+    @apply text-[11px] font-black uppercase text-orange-700;
+    letter-spacing: 0;
+  }
+
+  .organization-scanner-card__header h2 {
+    @apply mt-0.5 text-lg font-black leading-tight text-slate-950;
+  }
+
+  .organization-scanner-card__header p {
+    @apply mt-1 max-w-2xl text-xs leading-5 text-slate-600 sm:text-sm;
+  }
+
+  .organization-scanner-card__chips {
+    @apply flex flex-wrap gap-2;
+  }
+
+  .organization-scanner-card__chips span {
+    @apply rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-bold text-slate-700 shadow-sm;
+  }
+
+  .organization-scanner-card__body {
+    @apply p-4 sm:p-6;
+  }
+
+  .organization-scanner-form {
+    @apply grid gap-3 lg:grid-cols-[minmax(0,1fr)_auto];
+  }
+
+  .organization-scanner-form__input {
+    @apply grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto];
+  }
+
+  .organization-scanner-input {
+    @apply h-12 rounded-2xl border-slate-200 bg-white text-sm shadow-sm focus-visible:ring-orange-200;
+  }
+
+  .organization-camera-button {
+    @apply min-h-12 shrink-0 rounded-2xl border-slate-200 bg-white px-4 text-slate-950 hover:border-orange-200 hover:bg-orange-50 hover:text-orange-800;
+  }
+
+  .organization-scan-button {
+    @apply min-h-12 w-full rounded-2xl border border-slate-950 bg-slate-950 px-5 font-bold text-white hover:bg-slate-800 disabled:border-orange-200 disabled:bg-orange-200 disabled:text-orange-800 lg:w-auto;
+  }
+
+  .organization-scan-history {
+    @apply mt-5 rounded-2xl border border-slate-200 bg-white/80 p-3;
+  }
+
+  .organization-scan-history__title {
+    @apply flex items-center gap-2 text-xs font-black uppercase text-slate-500;
+    letter-spacing: 0;
+  }
+
+  .organization-scan-history__item {
+    @apply flex items-center justify-between gap-3 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2;
+  }
+
+  @media (max-width: 639px) {
+    .passport-studio {
+      @apply px-3 py-4;
+    }
+
+    .passport-command__actions {
+      @apply grid grid-cols-1;
+    }
+
+    .passport-total-card {
+      min-width: 0;
+    }
+
+    .passport-quest-route {
+      @apply gap-3 rounded-2xl px-0 py-2;
+    }
+
+    .passport-route-curve {
+      left: -42%;
+      right: auto;
+      width: 84%;
+      opacity: 0.62;
+    }
+
+    .passport-quest {
+      @apply min-h-0 grid-cols-[42px_minmax(0,1fr)];
+      max-width: 100%;
+      padding-left: 0;
+      padding-right: 0;
+      justify-self: stretch;
+    }
+
+    .passport-quest.is-left,
+    .passport-quest.is-right {
+      grid-template-columns: 42px minmax(0, 1fr);
+    }
+
+    .passport-quest.is-right .passport-quest__pin,
+    .passport-quest.is-right .passport-quest__body {
+      order: initial;
+    }
+
+    .passport-quest__pin {
+      @apply h-10 w-10 rounded-xl;
+    }
+
+    .passport-quest__piece {
+      @apply -right-2 -top-2 h-6 w-6 text-sm;
+    }
+  }
+
+  .passport-admin-hero {
+    @apply relative;
+    background:
+      linear-gradient(135deg, rgb(255 255 255 / 0.98), rgb(255 250 244 / 0.94) 54%, rgb(248 250 252 / 0.94)),
+      linear-gradient(120deg, rgb(255 122 26 / 0.08), transparent 42%, rgb(5 5 5 / 0.035));
+    box-shadow: 0 22px 70px rgb(15 23 42 / 0.08);
+  }
+
+  .passport-admin-hero::before {
+    content: "";
+    @apply pointer-events-none absolute inset-0;
+    border-radius: inherit;
+    box-shadow: inset 0 0 0 1px rgb(255 122 26 / 0.12);
+  }
+
+  .passport-admin-hero__grid {
+    @apply pointer-events-none absolute inset-0 opacity-70;
+    background-image:
+      linear-gradient(rgb(15 23 42 / 0.045) 1px, transparent 1px),
+      linear-gradient(90deg, rgb(15 23 42 / 0.045) 1px, transparent 1px),
+      radial-gradient(circle at 12% 24%, rgb(255 122 26 / 0.16), transparent 34%);
+    background-size: 28px 28px, 28px 28px, 100% 100%;
+    animation: passportGridDrift 20s linear infinite;
+    mask-image: linear-gradient(120deg, rgb(0 0 0 / 0.86), transparent 72%);
+  }
+
+  /* ═══════════════════════════════════════════════════════
+     DESAFIO TAB v2 — Premium Passport Experience
+     ═══════════════════════════════════════════════════════ */
+
+  /* ── Travel Ticket / Boarding Pass Design ── */
+  .desafio-tab-panel {
+    min-width: 0;
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+
+  .desafio-main-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1.5rem;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .desafio-main-grid > * {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .desafio-secondary-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 1.5rem;
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .desafio-secondary-grid > * {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  @media (min-width: 640px) {
+    .desafio-secondary-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .desafio-main-grid {
+      grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+    }
+  }
+
+  .desafio-hero {
+    @apply relative overflow-visible text-white;
+    min-width: 0;
+    max-width: 100%;
+    border-radius: 20px;
+    border: none;
+    background:
+      radial-gradient(ellipse 50% 60% at 82% 8%, rgb(255 122 26 / 0.18), transparent 50%),
+      radial-gradient(ellipse 35% 45% at 8% 92%, rgb(139 92 246 / 0.1), transparent 50%),
+      linear-gradient(145deg, #0c0c0e 0%, #111115 40%, #0d1117 100%);
+    box-shadow:
+      0 24px 64px rgb(0 0 0 / 0.32),
+      inset 0 1px 0 rgb(255 255 255 / 0.06);
+    filter: drop-shadow(0 2px 4px rgb(0 0 0 / 0.12));
+  }
+
+  /* Subtle grid texture */
+  .desafio-hero::before {
+    content: "";
+    @apply pointer-events-none absolute inset-0 opacity-[0.28];
+    border-radius: inherit;
+    background-image:
+      linear-gradient(rgb(255 255 255 / 0.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgb(255 255 255 / 0.04) 1px, transparent 1px);
+    background-size: 28px 28px;
+    mask-image: linear-gradient(135deg, rgb(0 0 0 / 0.6), transparent 60%);
+  }
+
+  /* Inner border glow */
+  .desafio-hero::after {
+    content: "";
+    @apply pointer-events-none absolute inset-0;
+    border-radius: inherit;
+    box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.06);
+  }
+
+  /* Ambient glow */
+  .desafio-hero__glow {
+    @apply pointer-events-none absolute -right-12 -top-12 h-48 w-48 rounded-full blur-[70px];
+    background: rgb(255 122 26 / 0.18);
+    animation: desafioGlow 5s ease-in-out infinite alternate;
+  }
+
+  @keyframes desafioGlow {
+    0% { opacity: 0.45; transform: translate(0, 0) scale(1); }
+    100% { opacity: 0.75; transform: translate(-10px, 10px) scale(1.12); }
+  }
+
+  /* Ticket perforation line — vertical separator */
+  .desafio-hero__perforation {
+    @apply pointer-events-none absolute top-4 bottom-4 hidden sm:block;
+    left: 130px;
+    width: 2px;
+    background: repeating-linear-gradient(
+      180deg,
+      rgb(255 255 255 / 0.12) 0px,
+      rgb(255 255 255 / 0.12) 6px,
+      transparent 6px,
+      transparent 12px
+    );
+  }
+
+  /* Notch cutouts on the perforation line */
+  .desafio-hero__notch {
+    @apply pointer-events-none absolute hidden sm:block;
+    left: 122px;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: var(--background, #09090b);
+    z-index: 20;
+  }
+
+  .desafio-hero__notch--top {
+    top: -9px;
+  }
+
+  .desafio-hero__notch--bottom {
+    bottom: -9px;
+  }
+
+  /* Ticket header strip — airline-style */
+  .desafio-hero__ticket-header {
+    @apply relative z-10 flex items-center justify-between gap-3 px-5 pt-5 pb-2 sm:pl-[158px] sm:pr-6;
+  }
+
+  .desafio-hero__ticket-label {
+    @apply flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-white/40;
+    letter-spacing: 0.18em;
+  }
+
+  .desafio-hero__ticket-serial {
+    @apply font-mono text-[10px] font-bold text-white/25;
+    letter-spacing: 0.08em;
+  }
+
+  .desafio-hero__content {
+    @apply relative z-10 flex flex-col gap-4 px-5 pb-5 pt-2 sm:pl-[158px] sm:pr-6 sm:pb-6;
+    min-width: 0;
+  }
+
+  /* Ticket stub — left side with points ring */
+  .desafio-hero__stub {
+    @apply absolute left-0 top-0 bottom-0 hidden w-[130px] flex-col items-center justify-center gap-1 sm:flex;
+    z-index: 12;
+  }
+
+  .desafio-hero__top {
+    @apply flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between;
+    min-width: 0;
+  }
+
+  .desafio-hero__identity {
+    @apply flex items-center gap-4;
+    min-width: 0;
+  }
+
+  /* Points ring — styled as a stamp */
+  .desafio-hero__ring {
+    @apply relative flex h-[76px] w-[76px] shrink-0 items-center justify-center;
+    border-radius: 50%;
+    background:
+      linear-gradient(rgb(255 255 255 / 0.06), rgb(255 255 255 / 0.02)) padding-box,
+      conic-gradient(#ff7a1a var(--hero-progress, 0deg), rgb(255 255 255 / 0.08) 0) border-box;
+    border: 4px solid transparent;
+    box-shadow: 0 0 0 3px rgb(255 122 26 / 0.08), 0 0 24px rgb(255 122 26 / 0.1);
+  }
+
+  .desafio-hero__ring span {
+    @apply text-2xl font-black leading-none tracking-tight;
+    color: #ff7a1a;
+  }
+
+  .desafio-hero__ring em {
+    @apply absolute -bottom-2 left-1/2 -translate-x-1/2 rounded-full border border-white/10 bg-slate-950 px-2 py-0.5 text-[9px] font-bold not-italic text-white/60;
+    white-space: nowrap;
+  }
+
+  .desafio-hero__titles h2 {
+    @apply text-lg font-black leading-tight sm:text-xl;
+    letter-spacing: -0.01em;
+    overflow-wrap: anywhere;
+  }
+
+  .desafio-hero__titles p {
+    @apply mt-1 text-[13px] text-white/50;
+    overflow-wrap: anywhere;
+  }
+
+  /* Flight info strip — FROM → TO */
+  .desafio-hero__flight-info {
+    @apply relative z-10 flex items-center gap-3 rounded-xl border border-white/[0.06] bg-white/[0.03] px-4 py-2.5 sm:gap-5;
+    min-width: 0;
+  }
+
+  .desafio-hero__flight-point {
+    @apply flex flex-col items-center text-center;
+    min-width: 56px;
+  }
+
+  .desafio-hero__flight-point span:first-child {
+    @apply text-[9px] font-bold uppercase tracking-wider text-white/35;
+  }
+
+  .desafio-hero__flight-point strong {
+    @apply mt-0.5 text-sm font-black;
+    color: #ff7a1a;
+  }
+
+  .desafio-hero__flight-route {
+    @apply relative flex flex-1 items-center;
+    min-width: 40px;
+    height: 2px;
+    background: linear-gradient(90deg, rgb(255 122 26 / 0.3), rgb(255 122 26 / 0.6), rgb(255 122 26 / 0.3));
+  }
+
+  .desafio-hero__flight-route::before {
+    content: "✈";
+    @apply absolute left-1/2 -translate-x-1/2 -translate-y-1/2 text-sm;
+    color: #ff7a1a;
+    filter: drop-shadow(0 0 4px rgb(255 122 26 / 0.4));
+    animation: ticketPlaneFloat 3s ease-in-out infinite;
+  }
+
+  @keyframes ticketPlaneFloat {
+    0%, 100% { transform: translate(-50%, -50%) translateX(0); }
+    50% { transform: translate(-50%, -50%) translateX(6px); }
+  }
+
+  .desafio-hero__rank {
+    @apply inline-flex items-center gap-2 rounded-xl border border-white/10 bg-white/[0.05] px-3.5 py-2;
+    backdrop-filter: blur(8px);
+  }
+
+  .desafio-hero__rank strong {
+    @apply text-lg font-black text-orange-400;
+  }
+
+  .desafio-hero__rank span {
+    @apply text-[11px] text-white/45;
+  }
+
+  .desafio-hero__progress-bar {
+    @apply relative h-1.5 w-full overflow-hidden rounded-full;
+    background: rgb(255 255 255 / 0.07);
+  }
+
+  .desafio-hero__progress-fill {
+    @apply absolute inset-y-0 left-0 rounded-full;
+    background: linear-gradient(90deg, #ff7a1a, #ff9e52);
+    box-shadow: 0 0 12px rgb(255 122 26 / 0.45);
+    transition: width 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  .desafio-hero__progress-label {
+    @apply mt-1.5 flex items-center justify-between text-[11px] font-bold;
+  }
+
+  .desafio-hero__progress-label span:first-child {
+    @apply text-white/45;
+  }
+
+  .desafio-hero__progress-label span:last-child {
+    @apply text-orange-400;
+  }
+
+  /* Telemetry strip — ticket details row */
+  .desafio-telemetry {
+    @apply grid grid-cols-4 gap-1.5 rounded-xl border border-white/[0.05] bg-white/[0.025] p-1.5;
+  }
+
+  .desafio-telemetry__item {
+    @apply flex flex-col items-center gap-0.5 rounded-lg px-2 py-2 text-center;
+    background: rgb(255 255 255 / 0.025);
+    transition: background 0.2s ease;
+  }
+
+  .desafio-telemetry__item:hover {
+    background: rgb(255 255 255 / 0.06);
+  }
+
+  .desafio-telemetry__item span:first-child {
+    @apply text-[9px] font-bold uppercase tracking-wider text-white/35;
+  }
+
+  .desafio-telemetry__item strong {
+    @apply text-sm font-black leading-none;
+  }
+
+  .desafio-telemetry__item:nth-child(1) strong { color: #ff7a1a; }
+  .desafio-telemetry__item:nth-child(2) strong { color: #34d399; }
+  .desafio-telemetry__item:nth-child(3) strong { color: #818cf8; }
+  .desafio-telemetry__item:nth-child(4) strong { color: #38bdf8; }
+
+  /* Barcode strip at bottom */
+  .desafio-hero__barcode {
+    @apply relative z-10 flex items-center justify-between gap-3 border-t border-white/[0.06] px-5 py-3 sm:pl-[158px] sm:pr-6;
+  }
+
+  .desafio-hero__barcode-lines {
+    @apply flex items-end gap-px h-6;
+  }
+
+  .desafio-hero__barcode-lines span {
+    @apply block rounded-sm;
+    background: rgb(255 255 255 / 0.2);
+    animation: barcodeShimmer 3s ease-in-out infinite;
+  }
+
+  @keyframes barcodeShimmer {
+    0%, 100% { opacity: 0.5; }
+    50% { opacity: 1; }
+  }
+
+  .desafio-hero__barcode-text {
+    @apply font-mono text-[9px] font-bold text-white/20;
+    letter-spacing: 0.12em;
+  }
+
+  /* Stamp watermark */
+  .desafio-hero__stamp {
+    @apply pointer-events-none absolute z-[5] hidden sm:block;
+    right: 24px;
+    top: 50%;
+    transform: translateY(-50%) rotate(-14deg);
+    width: 100px;
+    height: 100px;
+    border-radius: 50%;
+    border: 3px solid rgb(255 122 26 / 0.08);
+    box-shadow: inset 0 0 0 2px rgb(255 122 26 / 0.05);
+    opacity: 0.5;
+  }
+
+  .desafio-hero__stamp::before {
+    content: "UOR";
+    @apply absolute inset-0 flex items-center justify-center text-2xl font-black;
+    color: rgb(255 122 26 / 0.06);
+    letter-spacing: 0.15em;
+  }
+
+  /* CTA area */
+  .desafio-hero__cta {
+    @apply flex flex-col gap-3 sm:flex-row sm:items-center;
+    min-width: 0;
+  }
+
+  .desafio-hero__join-btn {
+    @apply flex h-10 flex-1 items-center justify-center gap-2 rounded-xl border text-xs font-bold transition-colors;
+    display: flex;
+    height: 2.5rem;
+    min-height: 2.5rem;
+    padding-inline: 1rem;
+    align-items: center;
+    justify-content: center;
+    border-color: rgb(52 211 153 / 0.4);
+    background: rgb(16 185 129 / 0.1);
+    color: rgb(110 231 183);
+  }
+
+  .desafio-hero__join-btn:hover {
+    border-color: rgb(52 211 153 / 0.6);
+    background: rgb(16 185 129 / 0.2);
+    color: rgb(167 243 208);
+  }
+
+  .desafio-hero__join-btn:disabled {
+    opacity: 0.6;
+  }
+
+  .desafio-hero__accepted {
+    @apply flex items-center gap-2 rounded-xl border border-emerald-500/20 bg-emerald-500/10 px-4 py-2.5 text-sm font-bold text-emerald-400;
+    min-width: 0;
+    white-space: normal;
+  }
+
+  @media (max-width: 639px) {
+    .desafio-hero__stub {
+      display: none;
+    }
+    .desafio-hero__content,
+    .desafio-hero__ticket-header,
+    .desafio-hero__barcode {
+      padding-left: 1.25rem;
+    }
+  }
+
+  @media (max-width: 480px) {
+    .desafio-hero {
+      overflow: hidden;
+      border-radius: 18px;
+    }
+
+    .desafio-hero__ticket-header {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 0.35rem;
+      padding-left: 1rem;
+      padding-right: 1rem;
+    }
+
+    .desafio-hero__ticket-serial {
+      max-width: 100%;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .desafio-hero__content {
+      gap: 0.875rem;
+      padding-left: 1rem;
+      padding-right: 1rem;
+      padding-bottom: 1rem;
+    }
+
+    .desafio-hero__top {
+      gap: 0.75rem;
+    }
+
+    .desafio-hero__identity {
+      align-items: flex-start;
+      gap: 0.75rem;
+      min-width: 0;
+    }
+
+    .desafio-hero__ring {
+      height: 64px;
+      width: 64px;
+      border-width: 3px;
+    }
+
+    .desafio-hero__ring span {
+      @apply text-xl;
+    }
+
+    .desafio-hero__titles {
+      min-width: 0;
+    }
+
+    .desafio-hero__titles h2 {
+      font-size: 1rem;
+      overflow-wrap: anywhere;
+    }
+
+    .desafio-hero__titles p {
+      font-size: 11px;
+      line-height: 1.45;
+    }
+
+    .desafio-hero__rank {
+      width: 100%;
+      justify-content: space-between;
+    }
+
+    .desafio-hero__flight-info {
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) 36px minmax(0, 1fr);
+      gap: 0.7rem;
+      padding: 0.75rem;
+    }
+
+    .desafio-hero__flight-route {
+      min-width: 0;
+      width: 100%;
+    }
+
+    .desafio-hero__flight-point {
+      min-width: 0;
+    }
+
+    .desafio-hero__flight-point:last-child {
+      grid-column: 1 / -1;
+      width: 100%;
+      margin-left: 0 !important;
+      flex-direction: row;
+      justify-content: space-between;
+      border-top: 1px solid rgb(255 255 255 / 0.08);
+      padding-top: 0.6rem;
+      text-align: left;
+    }
+
+    .desafio-telemetry {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 0.5rem;
+    }
+
+    .desafio-telemetry__item {
+      min-width: 0;
+      padding-inline: 0.5rem;
+    }
+
+    .desafio-hero__cta > * {
+      width: 100%;
+      justify-content: center;
+    }
+
+    .desafio-hero__accepted {
+      text-align: center;
+    }
+
+    .desafio-hero__barcode {
+      flex-direction: column;
+      align-items: flex-start;
+      overflow: hidden;
+      padding-left: 1rem;
+      padding-right: 1rem;
+    }
+
+    .desafio-hero__barcode-lines {
+      max-width: 100%;
+      overflow: hidden;
+    }
+
+    .desafio-hero__barcode-text {
+      max-width: 100%;
+      overflow-wrap: anywhere;
+      line-height: 1.4;
+    }
+
+  }
+
+  /* Scanner section v2 */
+  .desafio-scanner {
+    @apply relative overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm;
+    min-width: 0;
+    max-width: 100%;
+    background:
+      linear-gradient(180deg, rgb(255 255 255), rgb(250 250 252)),
+      linear-gradient(135deg, rgb(255 122 26 / 0.04), transparent 40%);
+    box-shadow: 0 16px 48px rgb(15 23 42 / 0.06);
+  }
+
+  .desafio-scanner__header {
+    @apply flex items-center gap-3 border-b border-slate-100 px-5 py-4;
+  }
+
+  .desafio-scanner__icon {
+    @apply flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl;
+    background: linear-gradient(135deg, #0a0a0a, #1a1a2e);
+    color: #ff7a1a;
+    box-shadow: 0 6px 16px rgb(0 0 0 / 0.12);
+  }
+
+  .desafio-scanner__body {
+    @apply space-y-3 px-5 py-5;
+  }
+
+  .desafio-scanner__input-row {
+    @apply flex gap-2;
+  }
+
+  .desafio-scanner__scan-btn {
+    @apply h-12 w-full rounded-xl text-sm font-bold transition-all;
+    min-width: 0;
+    white-space: normal;
+    line-height: 1.25;
+    background: linear-gradient(135deg, #0a0a0a, #1a1a2e);
+    color: white;
+    box-shadow: 0 8px 24px rgb(15 23 42 / 0.14);
+  }
+
+  .desafio-scanner__scan-btn:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 12px 32px rgb(15 23 42 / 0.2);
+  }
+
+  .desafio-scanner__scan-btn:disabled {
+    opacity: 0.5;
+  }
+
+  .desafio-scanner__history {
+    @apply mt-4 border-t border-slate-100 px-5 pb-5 pt-4;
+  }
+
+  /* Journey map v2 — Enhanced */
+  .desafio-journey {
+    @apply overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm;
+    min-width: 0;
+    max-width: 100%;
+    box-shadow: 0 16px 48px rgb(15 23 42 / 0.06);
+  }
+
+  .desafio-journey__header {
+    @apply flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-4;
+  }
+
+  .desafio-journey__header-left {
+    @apply flex items-center gap-3;
+  }
+
+  .desafio-journey__header-icon {
+    @apply flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-orange-200 bg-orange-50 text-orange-700;
+  }
+
+  /* Legend strip */
+  .desafio-journey__legend {
+    @apply flex items-center justify-center gap-5 border-b border-slate-100 px-5 py-2.5;
+    background: rgb(248 250 252 / 0.6);
+  }
+
+  .desafio-journey__legend-item {
+    @apply flex items-center gap-1.5 text-[10px] font-bold text-slate-500;
+  }
+
+  .desafio-journey__legend-dot {
+    @apply block h-2.5 w-2.5 rounded-full;
+  }
+
+  .desafio-journey__legend-dot.is-done {
+    background: #0a0a0a;
+  }
+
+  .desafio-journey__legend-dot.is-current {
+    background: #ff7a1a;
+    box-shadow: 0 0 6px rgb(255 122 26 / 0.4);
+  }
+
+  .desafio-journey__legend-dot.is-locked {
+    background: rgb(203 213 225);
+  }
+
+  .desafio-journey__list {
+    @apply grid gap-0.5 px-4 py-4 sm:px-5;
+  }
+
+  .desafio-mission {
+    @apply grid items-center gap-2.5 rounded-xl px-3 py-3 transition-all;
+    grid-template-columns: 28px 36px minmax(0, 1fr) auto;
+    border: 1px solid transparent;
+  }
+
+  .desafio-mission:hover {
+    background: rgb(248 250 252);
+  }
+
+  /* Step number + connector */
+  .desafio-mission__step {
+    @apply relative flex flex-col items-center;
+  }
+
+  .desafio-mission__step-num {
+    @apply text-[10px] font-bold text-slate-300;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .desafio-mission__connector {
+    @apply absolute left-1/2 w-px;
+    top: 18px;
+    height: calc(100% + 8px);
+    transform: translateX(-50%);
+    background: linear-gradient(180deg, rgb(226 232 240), rgb(226 232 240 / 0.3));
+  }
+
+  .desafio-mission__pin {
+    @apply flex h-9 w-9 items-center justify-center rounded-xl text-slate-400;
+    background: rgb(248 250 252);
+    border: 1px solid rgb(226 232 240);
+    transition: all 0.2s ease;
+  }
+
+  .desafio-mission__info p {
+    @apply text-sm font-bold text-slate-900;
+  }
+
+  .desafio-mission__info span {
+    @apply text-[11px] text-slate-500;
+  }
+
+  .desafio-mission__earned {
+    @apply mt-0.5 inline-flex items-center gap-1 rounded-full text-[10px] font-bold text-emerald-700;
+  }
+
+  .desafio-mission__score {
+    @apply flex flex-col items-center;
+  }
+
+  .desafio-mission__points {
+    @apply text-sm font-black leading-none;
+    color: rgb(100 116 139);
+  }
+
+  .desafio-mission__points-label {
+    @apply text-[9px] font-bold uppercase text-slate-400;
+    letter-spacing: 0.05em;
+  }
+
+  .desafio-mission.is-done {
+    background: rgb(240 253 244 / 0.5);
+    border-color: rgb(187 247 208 / 0.5);
+  }
+
+  .desafio-mission.is-done .desafio-mission__step-num {
+    @apply text-emerald-400;
+  }
+
+  .desafio-mission.is-done .desafio-mission__connector {
+    background: linear-gradient(180deg, rgb(16 185 129 / 0.3), rgb(16 185 129 / 0.08));
+  }
+
+  .desafio-mission.is-done .desafio-mission__pin {
+    background: #0a0a0a;
+    border-color: #0a0a0a;
+    color: white;
+  }
+
+  .desafio-mission.is-done .desafio-mission__points {
+    color: rgb(5 150 105);
+  }
+
+  .desafio-mission.is-done .desafio-mission__points-label {
+    color: rgb(5 150 105 / 0.6);
+  }
+
+  .desafio-mission.is-current {
+    background: rgb(255 247 237 / 0.7);
+    border-color: rgb(253 186 116 / 0.4);
+  }
+
+  .desafio-mission.is-current .desafio-mission__step-num {
+    @apply text-orange-500;
+  }
+
+  .desafio-mission.is-current .desafio-mission__connector {
+    background: linear-gradient(180deg, rgb(255 122 26 / 0.3), rgb(255 122 26 / 0.08));
+  }
+
+  .desafio-mission.is-current .desafio-mission__pin {
+    background: #ff7a1a;
+    border-color: #ff7a1a;
+    color: white;
+    animation: passportCurrentPulse 1.9s ease-in-out infinite;
+  }
+
+  .desafio-mission.is-current .desafio-mission__points {
+    color: #c2410c;
+  }
+
+  .desafio-mission.is-current .desafio-mission__points-label {
+    color: rgb(194 65 12 / 0.6);
+  }
+
+  .desafio-mission.is-locked {
+    opacity: 0.45;
+  }
+
+  .desafio-mission.is-locked .desafio-mission__info p {
+    @apply text-slate-400;
+  }
+
+  /* Summary footer */
+  .desafio-journey__summary {
+    @apply border-t border-slate-100 px-5 py-4;
+    background: rgb(248 250 252 / 0.5);
+  }
+
+  .desafio-journey__summary-row {
+    @apply flex items-center justify-center gap-3;
+  }
+
+  .desafio-journey__summary-item {
+    @apply flex flex-col items-center text-center;
+  }
+
+  .desafio-journey__summary-item span {
+    @apply text-[10px] font-bold uppercase tracking-wider text-slate-400;
+  }
+
+  .desafio-journey__summary-item strong {
+    @apply mt-0.5 text-base font-black text-slate-900;
+  }
+
+  .desafio-journey__summary-item strong.is-earned {
+    color: #ff7a1a;
+  }
+
+  .desafio-journey__summary-divider {
+    @apply h-8 w-px;
+    background: rgb(226 232 240);
+  }
+
+  .desafio-round-flow {
+    @apply px-5 py-4 sm:px-6 sm:py-5;
+    background:
+      linear-gradient(180deg, rgb(255 255 255 / 0.96), rgb(248 250 252 / 0.92)),
+      linear-gradient(135deg, rgb(15 23 42 / 0.02), rgb(249 115 22 / 0.04));
+  }
+
+  .desafio-round-flow--home {
+    @apply overflow-hidden rounded-2xl border border-slate-200 shadow-sm;
+    box-shadow: 0 16px 42px rgb(15 23 42 / 0.07);
+  }
+
+  .desafio-round-flow__header {
+    @apply flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between;
+  }
+
+  .desafio-round-flow__title {
+    @apply flex min-w-0 items-start gap-3;
+  }
+
+  .desafio-round-flow__title-icon {
+    @apply mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-orange-600 shadow-sm;
+  }
+
+  .desafio-round-flow__title p {
+    @apply text-[12px] font-black uppercase tracking-[0.16em] text-slate-950;
+  }
+
+  .desafio-round-flow__title span {
+    @apply mt-1 block text-[11px] font-semibold leading-relaxed text-slate-500;
+  }
+
+  .desafio-round-flow__current {
+    @apply grid w-fit grid-cols-[auto_auto] items-center gap-x-2 gap-y-0.5 rounded-2xl border border-orange-200 bg-white px-3.5 py-2 text-right shadow-sm;
+    box-shadow: 0 10px 24px rgb(249 115 22 / 0.10);
+  }
+
+  .desafio-round-flow__current > span {
+    @apply text-[9px] font-black uppercase tracking-[0.18em] text-orange-600;
+  }
+
+  .desafio-round-flow__current strong {
+    @apply row-span-2 text-2xl font-black leading-none text-slate-950;
+  }
+
+  .desafio-round-flow__current small {
+    @apply text-[10px] font-bold uppercase tracking-wider text-slate-500;
+  }
+
+  .desafio-round-flow__track {
+    @apply relative mt-5 grid auto-cols-[minmax(142px,1fr)] grid-flow-col items-end gap-3 overflow-x-auto px-1 pb-2 pt-10;
+    scrollbar-width: thin;
+  }
+
+  .desafio-round-flow__track::before {
+    content: "";
+    @apply pointer-events-none absolute left-1 right-1 top-[2.55rem] h-px;
+    background: linear-gradient(90deg, transparent, rgb(148 163 184 / 0.42), transparent);
+  }
+
+  .desafio-round-flow__slot {
+    @apply relative min-w-[142px];
+  }
+
+  .desafio-round-flow__slot::before {
+    content: attr(data-multiplier);
+    @apply absolute left-1/2 top-[-1.9rem] z-[1] -translate-x-1/2 rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-black text-slate-500 shadow-sm;
+  }
+
+  .desafio-round-flow__timer {
+    @apply absolute -top-10 left-1/2 z-[2] -translate-x-1/2 whitespace-nowrap rounded-full border border-orange-200 bg-orange-600 px-3 py-1 text-sm font-black text-white shadow-lg shadow-orange-200/70;
+  }
+
+  .desafio-round-flow__timer::after {
+    content: "";
+    @apply absolute left-1/2 top-full h-3 w-px -translate-x-1/2 bg-orange-300;
+  }
+
+  .desafio-round-flow__bar {
+    @apply overflow-hidden rounded-2xl border border-slate-200 bg-slate-100;
+    position: relative;
+    height: var(--round-height, 64px);
+    box-shadow: inset 0 1px 0 rgb(255 255 255 / 0.9);
+  }
+
+  .desafio-round-flow__bar::before {
+    content: "";
+    @apply absolute inset-x-2 top-2 h-px;
+    background: rgb(255 255 255 / 0.58);
+  }
+
+  .desafio-round-flow__bar span {
+    @apply absolute bottom-0 left-0 right-0 block;
+    height: var(--round-progress);
+    min-height: 0;
+    background: linear-gradient(180deg, rgb(251 191 36 / 0.96), rgb(249 115 22 / 0.88));
+    transition: height 0.25s ease;
+  }
+
+  .desafio-round-flow__slot.is-current .desafio-round-flow__bar {
+    border-color: rgb(251 146 60);
+    background: linear-gradient(180deg, rgb(255 247 237), rgb(254 243 199 / 0.72));
+    box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.88), 0 18px 34px rgb(249 115 22 / 0.18);
+  }
+
+  .desafio-round-flow__slot.is-next .desafio-round-flow__bar {
+    border-color: rgb(45 212 191);
+    background: linear-gradient(180deg, rgb(240 253 250), rgb(204 251 241 / 0.54));
+  }
+
+  .desafio-round-flow__slot.is-past .desafio-round-flow__bar {
+    background: linear-gradient(180deg, rgb(241 245 249), rgb(226 232 240));
+  }
+
+  .desafio-round-flow__slot.is-past .desafio-round-flow__bar span {
+    background: linear-gradient(180deg, rgb(148 163 184), rgb(100 116 139));
+  }
+
+  .desafio-round-flow__slot-meta {
+    @apply mt-2 rounded-xl border border-slate-200 bg-white px-3 py-2 shadow-sm;
+  }
+
+  .desafio-round-flow__slot-meta span {
+    @apply text-[9px] font-black uppercase tracking-[0.16em] text-slate-400;
+  }
+
+  .desafio-round-flow__slot-meta strong {
+    @apply mt-0.5 block truncate text-[11px] font-black text-slate-900;
+  }
+
+  .desafio-round-flow__slot-meta small {
+    @apply mt-0.5 block text-[10px] font-bold text-slate-500;
+  }
+
+  .desafio-round-flow__slot.is-current .desafio-round-flow__slot-meta {
+    border-color: rgb(253 186 116);
+    background: rgb(255 247 237 / 0.78);
+  }
+
+  .desafio-round-flow__slot.is-current::before {
+    @apply border-orange-200 bg-orange-50 text-orange-700;
+  }
+
+  .desafio-round-flow__slot.is-next::before {
+    @apply border-teal-200 bg-teal-50 text-teal-700;
+  }
+
+  .desafio-round-flow__streaks {
+    @apply mt-4 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3;
+  }
+
+  .desafio-round-flow__streak-label {
+    @apply text-[10px] font-black uppercase tracking-wider text-slate-400;
+  }
+
+  .desafio-round-flow__streak-pill {
+    @apply rounded-full border border-slate-200 bg-white px-2.5 py-1 text-[10px] font-bold text-slate-600 shadow-sm;
+  }
+
+  .desafio-team-activity {
+    @apply overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5;
+  }
+
+  .desafio-team-activity__header {
+    @apply flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between;
+  }
+
+  .desafio-team-activity__title {
+    @apply flex min-w-0 items-center gap-3;
+  }
+
+  .desafio-team-activity__title > span {
+    @apply flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-orange-100 bg-orange-50 text-orange-700;
+  }
+
+  .desafio-team-activity__title p {
+    @apply text-xs font-black uppercase tracking-wider text-slate-900;
+  }
+
+  .desafio-team-activity__title small {
+    @apply mt-0.5 block text-[11px] font-semibold text-slate-500;
+  }
+
+  .desafio-team-activity__leader {
+    @apply inline-flex w-fit items-center gap-1.5 rounded-full border border-amber-200 bg-amber-50 px-3 py-1.5 text-[11px] font-black text-amber-800;
+  }
+
+  .desafio-team-activity__list {
+    @apply mt-4 grid gap-2;
+  }
+
+  .desafio-team-activity__row {
+    @apply grid grid-cols-[2rem_minmax(0,1fr)_auto] items-center gap-3 rounded-xl border border-slate-100 bg-slate-50/70 px-3 py-2.5;
+  }
+
+  .desafio-team-activity__row.is-leader {
+    @apply border-orange-200 bg-orange-50/70;
+  }
+
+  .desafio-team-activity__rank {
+    @apply flex h-8 w-8 items-center justify-center rounded-lg bg-white text-xs font-black text-slate-500 shadow-sm;
+  }
+
+  .desafio-team-activity__member {
+    @apply min-w-0;
+  }
+
+  .desafio-team-activity__member strong {
+    @apply block truncate text-sm font-black text-slate-900;
+  }
+
+  .desafio-team-activity__member span {
+    @apply mt-0.5 block truncate text-[11px] font-semibold text-slate-500;
+  }
+
+  .desafio-team-activity__stats {
+    @apply text-right;
+  }
+
+  .desafio-team-activity__stats strong {
+    @apply block text-sm font-black text-slate-900;
+  }
+
+  .desafio-team-activity__stats span {
+    @apply mt-0.5 block whitespace-nowrap text-[10px] font-bold uppercase tracking-wide text-slate-500;
+  }
+
+  /* Next mission card */
+  .desafio-journey__next {
+    @apply border-t border-slate-100 px-5 py-4;
+  }
+
+  .desafio-journey__next-card {
+    @apply flex items-center gap-3 rounded-xl border border-orange-100 bg-orange-50/50 px-4 py-3;
+    transition: background 0.2s ease, border-color 0.2s ease;
+  }
+
+  .desafio-journey__next-card:hover {
+    background: rgb(255 237 213 / 0.6);
+    border-color: rgb(253 186 116 / 0.6);
+  }
+
+  /* Module cards v2 */
+  .desafio-module {
+    @apply overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm;
+    min-width: 0;
+    max-width: 100%;
+    box-shadow: 0 12px 36px rgb(15 23 42 / 0.05);
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+  }
+
+  .desafio-module:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 18px 48px rgb(15 23 42 / 0.08);
+  }
+
+  .desafio-module__header {
+    @apply flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-4;
+  }
+
+  .desafio-module__header-left {
+    @apply flex items-center gap-3;
+  }
+
+  .desafio-module__icon {
+    @apply flex h-10 w-10 shrink-0 items-center justify-center rounded-xl;
+  }
+
+  .desafio-module__icon.is-network {
+    @apply border border-indigo-200 bg-indigo-50 text-indigo-600;
+  }
+
+  .desafio-module__icon.is-reward {
+    @apply border border-amber-200 bg-amber-50 text-amber-600;
+  }
+
+  .desafio-module__icon.is-badge {
+    @apply border border-violet-200 bg-violet-50 text-violet-600;
+  }
+
+  .desafio-module__body {
+    @apply p-5;
+  }
+
+  /* Badge ribbon v2 */
+  .desafio-badges {
+    @apply flex flex-wrap gap-2;
+  }
+
+  .desafio-badge {
+    @apply inline-flex items-center gap-1.5 rounded-full border px-3 py-2 text-[11px] font-bold transition-all;
+  }
+
+  .desafio-badge.is-earned {
+    border-color: rgb(255 122 26 / 0.25);
+    background: linear-gradient(135deg, rgb(255 247 237 / 0.8), rgb(255 251 245));
+    color: #9a3412;
+    box-shadow: 0 2px 8px rgb(255 122 26 / 0.1);
+  }
+
+  .desafio-badge.is-locked {
+    border-color: rgb(226 232 240);
+    background: rgb(248 250 252);
+    color: rgb(148 163 184);
+  }
+
+  /* Prize banner */
+  .desafio-prize {
+    @apply relative overflow-hidden rounded-[24px] border;
+    min-width: 0;
+    max-width: 100%;
+    border-color: rgb(255 122 26 / 0.2);
+    background:
+      radial-gradient(ellipse 50% 80% at 90% 20%, rgb(255 122 26 / 0.08), transparent),
+      linear-gradient(135deg, rgb(255 252 248), rgb(255 255 255));
+    box-shadow: 0 12px 36px rgb(15 23 42 / 0.05);
+  }
+
+  .desafio-prize__content {
+    @apply flex flex-col gap-4 p-5 sm:flex-row sm:items-center sm:justify-between;
+  }
+
+  .desafio-prize__icon {
+    @apply flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl;
+    background: linear-gradient(135deg, #ff7a1a, #e55d00);
+    color: white;
+    box-shadow: 0 8px 20px rgb(255 122 26 / 0.2);
+  }
+
+  @media (max-width: 480px) {
+    .desafio-scanner__header,
+    .desafio-module__header {
+      align-items: flex-start;
+      padding-inline: 1rem;
+    }
+
+    .desafio-scanner__body,
+    .desafio-module__body,
+    .desafio-journey__summary,
+    .desafio-journey__next {
+      padding-inline: 1rem;
+    }
+
+    .desafio-journey__header {
+      align-items: flex-start;
+      padding-inline: 1rem;
+    }
+
+    .desafio-journey__header-left,
+    .desafio-module__header-left {
+      min-width: 0;
+    }
+
+    .desafio-journey__legend {
+      flex-wrap: wrap;
+      justify-content: flex-start;
+      gap: 0.5rem 0.9rem;
+      padding-inline: 1rem;
+    }
+
+    .desafio-journey__list {
+      padding-inline: 0.75rem;
+    }
+
+    .desafio-mission {
+      align-items: start;
+      grid-template-columns: 24px 34px minmax(0, 1fr);
+      gap: 0.5rem;
+      padding: 0.75rem;
+    }
+
+    .desafio-mission__pin {
+      height: 34px;
+      width: 34px;
+    }
+
+    .desafio-mission__info {
+      min-width: 0;
+    }
+
+    .desafio-mission__info p,
+    .desafio-mission__info span {
+      overflow-wrap: anywhere;
+    }
+
+    .desafio-mission__score {
+      grid-column: 3;
+      flex-direction: row;
+      align-items: baseline;
+      gap: 0.25rem;
+      justify-self: start;
+    }
+
+    .desafio-mission__points-label {
+      line-height: 1;
+    }
+
+    .desafio-journey__summary-row {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 0.75rem;
+      align-items: start;
+    }
+
+    .desafio-journey__summary-divider {
+      display: none;
+    }
+
+    .desafio-journey__summary-item {
+      min-width: 0;
+    }
+
+    .desafio-journey__summary-item span,
+    .desafio-journey__summary-item strong {
+      overflow-wrap: anywhere;
+    }
+
+    .desafio-journey__next-card {
+      align-items: flex-start;
+      padding: 0.75rem;
+    }
+
+    .desafio-badge {
+      min-width: 0;
+      overflow-wrap: anywhere;
+    }
+
+    .desafio-prize__content {
+      padding: 1rem;
+    }
+  }
+
+  @media (max-width: 360px) {
+    .desafio-journey__summary-row {
+      grid-template-columns: 1fr;
+      gap: 0.5rem;
+    }
+
+    .desafio-journey__summary-item {
+      flex-direction: row;
+      align-items: center;
+      justify-content: space-between;
+      border: 1px solid rgb(226 232 240 / 0.85);
+      border-radius: 0.75rem;
+      background: white;
+      padding: 0.65rem 0.75rem;
+      text-align: left;
+    }
+
+    .desafio-journey__summary-item strong {
+      margin-top: 0;
+      white-space: nowrap;
+    }
+  }
+
+  /* Keep old challenge-entry-card and challenge-entry-rank for backwards compat */
+  .challenge-entry-card {
+    @apply relative text-slate-950;
+    background:
+      linear-gradient(135deg, rgb(255 255 255 / 0.98), rgb(255 250 244 / 0.94) 52%, rgb(248 250 252 / 0.96)),
+      linear-gradient(120deg, rgb(255 122 26 / 0.1), transparent 42%, rgb(5 5 5 / 0.04));
+    box-shadow: 0 22px 62px rgb(15 23 42 / 0.08);
+  }
+
+  .challenge-entry-card::before {
+    content: "";
+    @apply pointer-events-none absolute inset-0;
+    border-radius: inherit;
+    box-shadow: inset 0 0 0 1px rgb(255 122 26 / 0.1);
+  }
+
+  .challenge-entry-card::after {
+    content: "";
+    @apply pointer-events-none absolute bottom-5 left-5 right-5 h-px opacity-70;
+    background: linear-gradient(90deg, transparent, rgb(15 23 42 / 0.14), transparent);
+  }
+
+  .challenge-entry-card__glow {
+    @apply pointer-events-none absolute -right-20 -top-20 h-64 w-64 rounded-full opacity-70 blur-3xl;
+    background: radial-gradient(circle, rgb(255 122 26 / 0.16), transparent 64%);
+    animation: challengeGlow 6s ease-in-out infinite;
+  }
+
+  .challenge-entry-card__prizes {
+    @apply flex flex-wrap gap-2;
+  }
+
+  .challenge-entry-card__prizes span {
+    @apply inline-flex min-h-9 items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-extrabold text-slate-700 shadow-sm;
+  }
+
+  .challenge-entry-card__prizes span:first-child {
+    @apply border-orange-200 bg-orange-50 text-orange-800;
+  }
+
+  .challenge-entry-rank {
+    background:
+      linear-gradient(135deg, rgb(248 250 252 / 0.92), rgb(255 255 255 / 0.96)),
+      linear-gradient(120deg, rgb(255 122 26 / 0.07), transparent);
+  }
+
+  .challenge-avatar-card {
+    @apply overflow-hidden rounded-[32px] border bg-white p-2 text-slate-950;
+    border-color: rgb(255 255 255 / 0.28);
+    box-shadow: 0 28px 80px rgb(0 0 0 / 0.32), inset 0 0 0 1px rgb(255 255 255 / 0.76);
+  }
+
+  .challenge-avatar-card__visual {
+    @apply relative grid min-h-[240px] place-items-center overflow-hidden rounded-[26px];
+    background:
+      radial-gradient(circle at 50% 52%, rgb(32 224 162 / 0.86), transparent 16%),
+      radial-gradient(circle at 50% 50%, rgb(16 185 129 / 0.22), transparent 42%),
+      linear-gradient(145deg, #020706, #06251a 50%, #0a0613);
+  }
+
+  .challenge-avatar-card__visual::before {
+    content: "";
+    @apply absolute inset-0;
+    background:
+      repeating-linear-gradient(90deg, transparent 0 22px, rgb(32 224 162 / 0.65) 23px 26px, transparent 27px 46px),
+      linear-gradient(180deg, transparent 48%, rgb(32 224 162 / 0.36) 49%, transparent 50%);
+    transform: perspective(320px) rotateX(64deg) translateY(42px) scale(1.3);
+    transform-origin: bottom;
+    mask-image: linear-gradient(transparent, black 34%, transparent 88%);
+  }
+
+  .challenge-avatar-card__visual::after {
+    content: "";
+    @apply absolute inset-0;
+    background:
+      linear-gradient(90deg, transparent 0 34%, rgb(139 92 246 / 0.8) 35% 36%, transparent 37% 100%),
+      linear-gradient(120deg, transparent 0 62%, rgb(32 224 162 / 0.7) 63% 64%, transparent 65% 100%);
+    background-size: 150px 100%, 190px 100%;
+    animation: challengePortalSweep 5.4s linear infinite;
+  }
+
+  .challenge-avatar-card__portal {
+    @apply relative z-10 grid h-24 w-24 place-items-center rounded-full;
+    background: radial-gradient(circle, #20e0a2 0%, #10b981 36%, rgb(16 185 129 / 0.08) 68%, transparent 69%);
+    box-shadow: 0 0 42px rgb(32 224 162 / 0.74);
+  }
+
+  .challenge-avatar-card__portal span {
+    @apply absolute rounded-full border;
+    inset: calc(var(--ring, 0) * -10px);
+    border-color: rgb(167 243 208 / 0.38);
+    animation: challengePortalPulse 1.9s ease-out infinite;
+  }
+
+  .challenge-avatar-card__portal span:nth-child(1) { --ring: 1; }
+  .challenge-avatar-card__portal span:nth-child(2) { --ring: 2; animation-delay: 0.22s; }
+  .challenge-avatar-card__portal span:nth-child(3) { --ring: 3; animation-delay: 0.44s; }
+
+  .challenge-avatar-card__prompt {
+    @apply absolute z-20 text-4xl font-black text-slate-950;
+    text-shadow: 0 0 18px rgb(255 255 255 / 0.55);
+  }
+
+  .challenge-avatar-card__body {
+    @apply space-y-4 px-4 py-4;
+  }
+
+  .challenge-avatar-card__name {
+    @apply text-xl font-black leading-tight text-slate-950;
+  }
+
+  .challenge-avatar-card__copy {
+    @apply mt-1 text-sm leading-5 text-slate-600;
+  }
+
+  .challenge-avatar-card__footer {
+    @apply flex items-center justify-between gap-2;
+  }
+
+  .challenge-avatar-card__footer span {
+    @apply inline-flex min-h-9 items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-black text-slate-700;
+    background: rgb(241 245 249);
+  }
+
+  .challenge-avatar-card__footer .challenge-avatar-card__live {
+    background: #050505;
+    color: white;
+  }
+
+  .challenge-answer-modal {
+    border: 1px solid rgb(16 185 129 / 0.22);
+    box-shadow: 0 34px 90px rgb(2 6 23 / 0.28), 0 0 0 1px rgb(255 255 255 / 0.74) inset;
+  }
+
+  .challenge-answer-modal__grid {
+    @apply pointer-events-none absolute inset-0 opacity-40;
+    background-image:
+      linear-gradient(rgb(16 185 129 / 0.12) 1px, transparent 1px),
+      linear-gradient(90deg, rgb(139 92 246 / 0.1) 1px, transparent 1px);
+    background-size: 26px 26px;
+    mask-image: linear-gradient(180deg, black, transparent 58%);
+  }
+
+  .challenge-answer-modal__header {
+    @apply relative overflow-hidden;
+    background:
+      radial-gradient(circle at 78% 18%, rgb(32 224 162 / 0.42), transparent 27%),
+      radial-gradient(circle at 18% 0%, rgb(139 92 246 / 0.36), transparent 34%),
+      linear-gradient(135deg, #020706, #071b14 52%, #0b0716);
+  }
+
+  .challenge-answer-modal__pulse {
+    @apply pointer-events-none absolute right-5 top-5 h-20 w-20 rounded-full;
+    border: 1px solid rgb(52 211 153 / 0.42);
+    box-shadow: 0 0 32px rgb(32 224 162 / 0.34);
+    animation: challengeModalPulse 1.8s ease-in-out infinite;
+  }
+
+  .challenge-answer-modal__question {
+    @apply rounded-2xl border p-4;
+    border-color: rgb(16 185 129 / 0.18);
+    background:
+      radial-gradient(circle at 100% 0%, rgb(16 185 129 / 0.12), transparent 34%),
+      rgb(240 253 244 / 0.86);
+  }
+
+  .challenge-answer-option {
+    position: relative;
+    overflow: hidden;
+  }
+
+  .challenge-answer-option::after {
+    content: "";
+    @apply pointer-events-none absolute inset-y-2 left-2 w-1 rounded-full opacity-0;
+    background: linear-gradient(180deg, #20e0a2, #8b5cf6);
+    transition: opacity 0.18s ease;
+  }
+
+  .challenge-answer-option:hover::after,
+  .challenge-answer-option.is-selected::after {
+    opacity: 1;
+  }
+
+  .scan-celebration-overlay {
+    @apply fixed inset-0 z-[80] flex items-center justify-center px-4 py-6;
+    background:
+      radial-gradient(circle at 50% 30%, rgb(255 122 26 / 0.14), transparent 38%),
+      radial-gradient(circle at 20% 70%, rgb(139 92 246 / 0.08), transparent 30%),
+      rgb(2 6 23 / 0.55);
+    backdrop-filter: blur(12px);
+  }
+
+  .scan-celebration-card {
+    @apply relative w-full max-w-[440px] overflow-hidden bg-white text-center;
+    border-radius: 24px;
+    border: 1px solid rgb(226 232 240 / 0.6);
+    box-shadow:
+      0 40px 100px rgb(15 23 42 / 0.32),
+      0 0 0 1px rgb(255 255 255 / 0.8) inset,
+      0 1px 2px rgb(0 0 0 / 0.06);
+  }
+
+  /* Ticket notch cutouts on sides */
+  .scan-celebration-card::before {
+    content: "";
+    @apply pointer-events-none absolute left-0 right-0;
+    top: 140px;
+    height: 2px;
+    background: repeating-linear-gradient(
+      90deg,
+      rgb(226 232 240 / 0.5) 0px,
+      rgb(226 232 240 / 0.5) 8px,
+      transparent 8px,
+      transparent 14px
+    );
+  }
+
+  .scan-celebration-card::after {
+    content: "";
+    @apply pointer-events-none absolute;
+    top: 132px;
+    left: -8px;
+    right: -8px;
+    height: 18px;
+    background:
+      radial-gradient(circle at 0% 50%, var(--background, #09090b) 8px, transparent 8px),
+      radial-gradient(circle at 100% 50%, var(--background, #09090b) 8px, transparent 8px);
+  }
+
+  /* Holographic sweep shine */
+  .scan-celebration-card__shine {
+    @apply pointer-events-none absolute inset-0;
+    background:
+      radial-gradient(ellipse 60% 40% at 20% 0%, rgb(255 122 26 / 0.1), transparent 40%),
+      linear-gradient(105deg, transparent 0%, rgb(255 255 255 / 0.5) 25%, rgb(255 255 255 / 0.8) 48%, rgb(255 255 255 / 0.5) 52%, transparent 75%);
+    background-size: 100% 100%, 280% 100%;
+    animation: celebrationSweep 1.8s ease-out both;
+    opacity: 0.6;
+  }
+
+  .scan-celebration-card__close {
+    @apply absolute right-4 top-4 z-20 flex h-9 w-9 items-center justify-center rounded-full border border-slate-200 bg-white text-slate-500 shadow-sm transition hover:bg-slate-50 hover:text-slate-950;
+  }
+
+  /* Medal / icon area — top section (ticket header) */
+  .scan-celebration-card__medal {
+    @apply relative z-10 mx-auto mt-6 flex h-[72px] w-[72px] items-center justify-center rounded-full text-white;
+    background: linear-gradient(145deg, #0f172a, #1e293b);
+    box-shadow:
+      0 12px 32px rgb(15 23 42 / 0.25),
+      0 0 0 4px rgb(255 255 255 / 0.1),
+      0 0 0 8px rgb(255 122 26 / 0.06);
+    animation: celebrationMedal 1.8s ease-in-out infinite;
+  }
+
+  /* Stamp ring around medal */
+  .scan-celebration-card__medal::before {
+    content: "";
+    @apply absolute rounded-full;
+    inset: -12px;
+    border: 2px dashed rgb(255 122 26 / 0.15);
+    animation: celebrationStampSpin 20s linear infinite;
+  }
+
+  @keyframes celebrationStampSpin {
+    from { transform: rotate(0deg); }
+    to { transform: rotate(360deg); }
+  }
+
+  .scan-celebration-card__kicker {
+    @apply relative z-10 mt-5 text-[11px] font-black uppercase text-orange-600;
+    letter-spacing: 0.14em;
+  }
+
+  .scan-celebration-card h2 {
+    @apply relative z-10 mt-2 text-2xl font-black leading-tight text-slate-950;
+  }
+
+  .scan-celebration-card p:not(.scan-celebration-card__kicker) {
+    @apply relative z-10 mt-2 text-sm leading-6 text-slate-500;
+  }
+
+  /* Points badge — ticket-stub style */
+  .scan-celebration-card strong {
+    @apply relative z-10 mt-5 inline-flex min-w-32 items-center justify-center px-5 py-3.5 text-3xl font-black;
+    border-radius: 16px;
+    background: linear-gradient(135deg, rgb(240 253 244), rgb(236 253 245));
+    border: 2px solid rgb(16 185 129 / 0.2);
+    color: #059669;
+    box-shadow: 0 4px 12px rgb(16 185 129 / 0.1);
+  }
+
+  .scan-celebration-card strong.is-negative {
+    background: linear-gradient(135deg, rgb(255 241 242), rgb(254 226 226));
+    border-color: rgb(244 63 94 / 0.2);
+    color: #e11d48;
+    box-shadow: 0 4px 12px rgb(244 63 94 / 0.1);
+  }
+
+  /* Tone-specific medal colors */
+  .scan-celebration-card--success .scan-celebration-card__medal {
+    background: linear-gradient(145deg, #059669, #047857);
+    box-shadow: 0 12px 32px rgb(5 150 105 / 0.3), 0 0 0 4px rgb(255 255 255 / 0.1), 0 0 0 8px rgb(16 185 129 / 0.1);
+  }
+
+  .scan-celebration-card--surprise .scan-celebration-card__medal {
+    background: linear-gradient(145deg, #ff7a1a, #ea580c);
+    box-shadow: 0 12px 32px rgb(255 122 26 / 0.3), 0 0 0 4px rgb(255 255 255 / 0.1), 0 0 0 8px rgb(255 122 26 / 0.1);
+  }
+
+  .scan-celebration-card--surprise .scan-celebration-card__kicker {
+    color: #ea580c;
+  }
+
+  .scan-celebration-card--challenge .scan-celebration-card__medal {
+    background: linear-gradient(145deg, #0284c7, #0369a1);
+    box-shadow: 0 12px 32px rgb(2 132 199 / 0.3), 0 0 0 4px rgb(255 255 255 / 0.1), 0 0 0 8px rgb(14 165 233 / 0.1);
+  }
+
+  .scan-celebration-card--challenge .scan-celebration-card__kicker {
+    color: #0284c7;
+  }
+
+  .scan-celebration-card--warning .scan-celebration-card__medal {
+    background: linear-gradient(145deg, #d97706, #b45309);
+    box-shadow: 0 12px 32px rgb(217 119 6 / 0.3), 0 0 0 4px rgb(255 255 255 / 0.1), 0 0 0 8px rgb(245 158 11 / 0.1);
+  }
+
+  .scan-celebration-card--warning .scan-celebration-card__kicker {
+    color: #b45309;
+  }
+
+  .scan-celebration-card--blocked .scan-celebration-card__medal {
+    background: linear-gradient(145deg, #e11d48, #be123c);
+    box-shadow: 0 12px 32px rgb(225 29 72 / 0.3), 0 0 0 4px rgb(255 255 255 / 0.1), 0 0 0 8px rgb(244 63 94 / 0.1);
+  }
+
+  .scan-celebration-card--blocked .scan-celebration-card__kicker {
+    color: #be123c;
+  }
+
+  .scan-celebration-card--educational .scan-celebration-card__medal {
+    background: linear-gradient(145deg, #0891b2, #0e7490);
+    box-shadow: 0 12px 32px rgb(8 145 178 / 0.3), 0 0 0 4px rgb(255 255 255 / 0.1), 0 0 0 8px rgb(6 182 212 / 0.1);
+  }
+
+  .scan-celebration-card--educational .scan-celebration-card__kicker {
+    color: #0e7490;
+  }
+
+  /* Effect-specific overrides */
+  .scan-celebration-card--effect-loss .scan-celebration-card__medal {
+    background: linear-gradient(145deg, #9f1239, #881337);
+    animation: celebrationLossMedal 0.8s ease-in-out infinite;
+  }
+
+  .scan-celebration-card--effect-loss .scan-celebration-card__medal::before {
+    border-color: rgb(244 63 94 / 0.2);
+  }
+
+  .scan-celebration-card--effect-sad .scan-celebration-card__medal {
+    background: linear-gradient(145deg, #475569, #334155);
+    animation: celebrationSadMedal 1.4s ease-in-out infinite;
+  }
+
+  .scan-celebration-card--effect-sad .scan-celebration-card__medal::before {
+    border-color: rgb(100 116 139 / 0.15);
+  }
+
+  .scan-confetti-field,
+  .scan-point-drain,
+  .scan-sad-ripple {
+    @apply pointer-events-none absolute inset-0 overflow-hidden;
+  }
+
+  .scan-confetti-field span {
+    @apply absolute top-[-10%] block h-3 w-2 rounded-sm;
+    left: var(--x);
+    background: hsl(var(--hue) 88% 56%);
+    transform: rotate(var(--rotate));
+    animation: scanConfettiFall 1.55s cubic-bezier(0.17, 0.67, 0.28, 1.02) forwards;
+    animation-delay: var(--delay);
+  }
+
+  .scan-confetti-field span:nth-child(3n) {
+    @apply h-2 w-4 rounded-full;
+    background: #22c55e;
+  }
+
+  .scan-confetti-field span:nth-child(4n) {
+    @apply h-4 w-1.5;
+    background: #06b6d4;
+  }
+
+  .scan-point-drain span {
+    @apply absolute top-[18%] rounded-full border border-rose-200 bg-rose-50 px-3 py-1 text-sm font-black text-rose-700 shadow-lg;
+    left: var(--x);
+    animation: scanPointDrop 1.3s ease-in forwards;
+    animation-delay: var(--delay);
+  }
+
+  .scan-sad-ripple::before,
+  .scan-sad-ripple::after {
+    content: "";
+    @apply absolute left-1/2 top-1/2 h-24 w-24 -translate-x-1/2 -translate-y-1/2 rounded-full border border-slate-300/70;
+    animation: scanSadRipple 1.7s ease-out infinite;
+  }
+
+  .scan-sad-ripple::after {
+    animation-delay: 0.45s;
+  }
+
+  .admin-votes-studio {
+    @apply space-y-5;
+  }
+
+  .admin-votes-hero {
+    @apply relative overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm;
+    background:
+      linear-gradient(135deg, rgb(255 255 255 / 0.98), rgb(255 250 244 / 0.94) 52%, rgb(248 250 252 / 0.96)),
+      linear-gradient(120deg, rgb(255 122 26 / 0.08), transparent 44%, rgb(5 5 5 / 0.03));
+    box-shadow: 0 22px 70px rgb(15 23 42 / 0.08);
+  }
+
+	  .admin-votes-hero::before {
+	    content: "";
+	    @apply pointer-events-none absolute inset-0;
+	    border-radius: inherit;
+	    box-shadow: inset 0 0 0 1px rgb(255 122 26 / 0.12);
+	  }
+
+	  .admin-votes-live-dot {
+	    @apply inline-flex h-2.5 w-2.5 shrink-0 rounded-full bg-orange-500;
+	    box-shadow: 0 0 0 4px rgb(255 122 26 / 0.12), 0 0 18px rgb(255 122 26 / 0.52);
+	    animation: voteLivePulse 1.55s ease-in-out infinite;
+	  }
+
+	  .admin-votes-leader-card {
+	    @apply relative overflow-hidden rounded-3xl border border-orange-200 p-4 shadow-sm;
+	    background:
+	      radial-gradient(circle at 15% 18%, rgb(255 255 255 / 0.84), transparent 32%),
+	      linear-gradient(135deg, rgb(255 237 213 / 0.96), rgb(255 255 255 / 0.9) 46%, rgb(240 253 244 / 0.82));
+	    box-shadow: 0 20px 42px rgb(15 23 42 / 0.08), inset 0 1px 0 rgb(255 255 255 / 0.72);
+	  }
+
+	  .admin-votes-leader-card::after {
+	    content: "";
+	    @apply pointer-events-none absolute -right-8 -top-8 h-24 w-24 rounded-full;
+	    background: radial-gradient(circle, rgb(255 122 26 / 0.24), transparent 68%);
+	    animation: voteSoftFloat 4.8s ease-in-out infinite;
+	  }
+
+	  .admin-votes-course-card {
+	    @apply rounded-3xl border border-slate-200 bg-slate-50/80 p-4;
+	    background:
+	      linear-gradient(180deg, rgb(248 250 252 / 0.94), rgb(255 255 255 / 0.98)),
+	      radial-gradient(circle at 0 0, rgb(255 122 26 / 0.08), transparent 34%);
+	  }
+
+	  .admin-votes-course-row {
+	    @apply rounded-2xl border border-white bg-white p-3 shadow-sm transition;
+	  }
+
+	  .admin-votes-course-row:hover {
+	    transform: translateY(-1px);
+	    box-shadow: 0 12px 28px rgb(15 23 42 / 0.07);
+	  }
+
+	  .admin-votes-moment {
+	    @apply flex items-start gap-3 rounded-2xl border border-slate-200 bg-white p-3 shadow-sm transition;
+	  }
+
+	  .admin-votes-moment:hover {
+	    border-color: rgb(255 122 26 / 0.34);
+	    box-shadow: 0 14px 32px rgb(15 23 42 / 0.08);
+	  }
+
+	  .admin-votes-project-card {
+	    @apply relative overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition;
+	  }
+
+  .admin-votes-project-card:hover {
+    transform: translateY(-2px);
+    border-color: rgb(255 122 26 / 0.26);
+    box-shadow: 0 18px 42px rgb(15 23 42 / 0.09);
+  }
+
+	  .admin-votes-project-card::before {
+	    content: "";
+	    @apply pointer-events-none absolute inset-y-0 left-0 w-1;
+	    background: linear-gradient(180deg, #ff7a1a, #050505);
+	  }
+
+	  .admin-votes-sparkline {
+	    @apply mt-4 flex h-12 items-end gap-1.5 rounded-2xl border border-slate-100 bg-slate-50 px-3 py-2;
+	  }
+
+	  .admin-votes-sparkline span {
+	    @apply block min-h-2 flex-1 rounded-t-full bg-orange-500/80;
+	    animation: voteBarRise 0.72s ease-out both;
+	  }
+
+	  .admin-votes-sparkline span:nth-child(2n) {
+	    background: rgb(15 23 42 / 0.82);
+	    animation-delay: 0.05s;
+	  }
+
+	  .admin-votes-sparkline span:nth-child(3n) {
+	    background: rgb(16 185 129 / 0.78);
+	    animation-delay: 0.1s;
+	  }
+
+  .live-votes-stage {
+    min-height: 100vh;
+    color: #0f172a;
+    background:
+      linear-gradient(90deg, rgb(15 23 42 / 0.035) 1px, transparent 1px),
+      linear-gradient(180deg, rgb(15 23 42 / 0.035) 1px, transparent 1px),
+      linear-gradient(135deg, #fffaf4 0%, #f8fafc 42%, #ffffff 100%);
+    background-size: 34px 34px, 34px 34px, auto;
+  }
+
+  .live-votes-topbar {
+    @apply flex flex-col gap-3 rounded-[28px] border border-slate-200 bg-white/90 px-4 py-3 shadow-sm backdrop-blur sm:flex-row sm:items-center sm:justify-between;
+  }
+
+  .live-votes-live-pill,
+  .live-votes-time-pill {
+    @apply inline-flex h-10 items-center gap-2 rounded-full border px-3 text-xs font-black uppercase tracking-wide;
+  }
+
+  .live-votes-live-pill {
+    @apply border-orange-200 bg-orange-50 text-orange-800;
+  }
+
+  .live-votes-time-pill {
+    @apply border-slate-200 bg-white text-slate-700;
+  }
+
+  .live-votes-hero-panel {
+    @apply relative overflow-hidden rounded-[34px] border border-slate-200 bg-white shadow-sm;
+    box-shadow: 0 28px 90px rgb(15 23 42 / 0.09);
+  }
+
+  .live-votes-hero-panel::before {
+    content: "";
+    @apply pointer-events-none absolute inset-0;
+    border-radius: inherit;
+    box-shadow: inset 0 0 0 1px rgb(255 122 26 / 0.12);
+  }
+
+  .live-votes-hero-panel__rail {
+    @apply pointer-events-none absolute inset-y-0 right-0 w-1/3 opacity-70;
+    background:
+      repeating-linear-gradient(135deg, rgb(255 122 26 / 0.13) 0 2px, transparent 2px 18px),
+      linear-gradient(90deg, transparent, rgb(255 247 237 / 0.95));
+    animation: liveVoteRail 9s linear infinite;
+  }
+
+  .live-votes-leader-board {
+    @apply relative overflow-hidden rounded-[28px] border border-orange-200 bg-orange-50/80 p-4 shadow-sm;
+    background:
+      linear-gradient(135deg, rgb(255 247 237 / 0.98), rgb(255 255 255 / 0.92) 48%, rgb(236 253 245 / 0.78)),
+      repeating-linear-gradient(90deg, rgb(15 23 42 / 0.035) 0 1px, transparent 1px 12px);
+  }
+
+  .live-votes-leader-board__stat {
+    @apply rounded-2xl border border-white bg-white/90 px-3 py-2 shadow-sm;
+  }
+
+  .live-votes-leader-board__stat span {
+    @apply block text-[10px] font-black uppercase tracking-wide text-slate-400;
+  }
+
+  .live-votes-leader-board__stat strong {
+    @apply mt-0.5 block text-xl font-black text-slate-950;
+  }
+
+  .live-votes-metric {
+    @apply min-w-0 rounded-2xl border bg-white/90 px-3 py-3 shadow-sm;
+  }
+
+  .live-votes-metric__icon {
+    @apply mb-2 flex h-9 w-9 items-center justify-center rounded-xl;
+  }
+
+  .live-votes-metric__label {
+    @apply block text-[10px] font-black uppercase tracking-wide text-slate-400;
+  }
+
+  .live-votes-metric strong {
+    @apply mt-0.5 block text-2xl font-black text-slate-950;
+  }
+
+  .live-votes-metric--orange .live-votes-metric__icon { @apply bg-orange-100 text-orange-700; }
+  .live-votes-metric--ink .live-votes-metric__icon { @apply bg-slate-950 text-white; }
+  .live-votes-metric--green .live-votes-metric__icon { @apply bg-emerald-100 text-emerald-700; }
+  .live-votes-metric--blue .live-votes-metric__icon { @apply bg-sky-100 text-sky-700; }
+  .live-votes-metric--violet .live-votes-metric__icon { @apply bg-violet-100 text-violet-700; }
+
+  .live-votes-podium-card {
+    @apply relative overflow-hidden rounded-[28px] border p-4 shadow-sm;
+    background: linear-gradient(135deg, rgb(255 255 255 / 0.95), rgb(248 250 252 / 0.9));
+  }
+
+  .live-votes-podium-card::before {
+    content: "";
+    @apply pointer-events-none absolute inset-0;
+    border-radius: inherit;
+    box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--podium-accent, #ff7a1a) 20%, transparent);
+  }
+
+  .live-votes-podium-card__rank {
+    @apply mb-5 inline-flex rounded-full px-3 py-1 text-xs font-black text-white shadow-sm;
+    background: var(--podium-accent, #0f172a);
+  }
+
+  .live-votes-podium-card.is-gold { --podium-accent: #f59e0b; }
+  .live-votes-podium-card.is-silver { --podium-accent: #64748b; }
+  .live-votes-podium-card.is-bronze { --podium-accent: #ea580c; }
+  .live-votes-podium-card.is-default { --podium-accent: #0f172a; }
+
+  .live-votes-race-panel,
+  .live-votes-side-panel,
+  .live-votes-privacy-note {
+    @apply overflow-hidden rounded-[28px] border border-slate-200 bg-white/95 shadow-sm backdrop-blur;
+  }
+
+  .live-votes-race-row {
+    @apply flex gap-3 rounded-3xl border border-slate-200 bg-white p-3 shadow-sm transition;
+  }
+
+  .live-votes-race-row:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 18px 42px rgb(15 23 42 / 0.08);
+  }
+
+  .live-votes-race-row__rank {
+    @apply flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-sm font-black text-white shadow-sm;
+    background: var(--row-accent, #0f172a);
+  }
+
+  .live-votes-race-row.is-gold { --row-accent: #f59e0b; }
+  .live-votes-race-row.is-silver { --row-accent: #64748b; }
+  .live-votes-race-row.is-bronze { --row-accent: #ea580c; }
+  .live-votes-race-row.is-default { --row-accent: #0f172a; }
+
+  .live-votes-race-row__bar {
+    @apply mt-3 h-2.5 overflow-hidden rounded-full bg-slate-100;
+  }
+
+  .live-votes-race-row__bar span {
+    @apply block h-full rounded-full;
+    background: linear-gradient(90deg, var(--row-accent, #0f172a), #ff7a1a);
+  }
+
+  .live-votes-chip {
+    @apply rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-slate-600;
+  }
+
+  .live-votes-chip.is-hot {
+    @apply border-emerald-200 bg-emerald-50 text-emerald-700;
+  }
+
+  .live-votes-side-panel {
+    @apply p-4 sm:p-5;
+  }
+
+  .live-votes-course-pulse,
+  .live-votes-moment-public {
+    @apply rounded-2xl border border-slate-200 bg-slate-50/80 p-3;
+  }
+
+  .live-votes-moment-public {
+    @apply flex items-center gap-3 bg-white;
+  }
+
+  .live-votes-privacy-note {
+    @apply flex items-start gap-3 p-4;
+  }
+
+  .surprise-reveal {
+    @apply relative overflow-hidden rounded-2xl border p-4 text-white shadow-xl;
+    border-color: rgb(255 255 255 / 0.16);
+    background:
+      linear-gradient(135deg, rgb(2 6 23 / 0.98), rgb(15 23 42 / 0.94)),
+      radial-gradient(circle at 12% 18%, rgb(255 94 0 / 0.34), transparent 30%),
+      radial-gradient(circle at 84% 22%, rgb(0 184 148 / 0.26), transparent 32%);
+    box-shadow: 0 22px 46px rgb(15 23 42 / 0.22), inset 0 0 30px rgb(255 255 255 / 0.04);
+    animation: surpriseRevealPop 0.46s cubic-bezier(.2,.9,.2,1) both;
+  }
+
+  .surprise-reveal::before {
+    content: "";
+    @apply pointer-events-none absolute inset-0;
+    border-radius: inherit;
+    box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.14);
+  }
+
+  .surprise-reveal__grid {
+    @apply pointer-events-none absolute inset-0 opacity-50;
+    background-image:
+      linear-gradient(rgb(255 255 255 / 0.08) 1px, transparent 1px),
+      linear-gradient(90deg, rgb(255 255 255 / 0.08) 1px, transparent 1px),
+      linear-gradient(120deg, transparent 0%, rgb(255 255 255 / 0.16) 50%, transparent 100%);
+    background-size: 20px 20px, 20px 20px, 180% 100%;
+    animation: surpriseGridSweep 1.8s ease-in-out infinite;
+  }
+
+  .surprise-reveal__orb {
+    @apply relative flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-white text-slate-950;
+    box-shadow: 0 0 0 8px rgb(255 255 255 / 0.08), 0 18px 38px rgb(0 0 0 / 0.28);
+    animation: surpriseOrbPulse 1.8s ease-in-out infinite;
+  }
+
+  .surprise-reveal--points {
+    background:
+      linear-gradient(135deg, rgb(2 6 23 / 0.98), rgb(6 78 59 / 0.92)),
+      radial-gradient(circle at 14% 20%, rgb(255 94 0 / 0.38), transparent 34%),
+      radial-gradient(circle at 86% 18%, rgb(16 185 129 / 0.34), transparent 35%);
+  }
+
+  .surprise-reveal--risk {
+    background:
+      linear-gradient(135deg, rgb(2 6 23 / 0.98), rgb(127 29 29 / 0.9)),
+      radial-gradient(circle at 14% 20%, rgb(255 94 0 / 0.32), transparent 34%),
+      radial-gradient(circle at 86% 18%, rgb(244 63 94 / 0.32), transparent 35%);
+  }
+
+  .surprise-reveal--turbo {
+    background:
+      linear-gradient(135deg, rgb(2 6 23 / 0.98), rgb(124 45 18 / 0.9)),
+      radial-gradient(circle at 14% 20%, rgb(255 94 0 / 0.42), transparent 34%),
+      radial-gradient(circle at 86% 18%, rgb(251 191 36 / 0.32), transparent 35%);
+  }
+
+  .surprise-reveal--fragment {
+    background:
+      linear-gradient(135deg, rgb(2 6 23 / 0.98), rgb(88 28 135 / 0.9)),
+      radial-gradient(circle at 14% 20%, rgb(255 94 0 / 0.28), transparent 34%),
+      radial-gradient(circle at 86% 18%, rgb(168 85 247 / 0.34), transparent 35%);
+  }
+
+  .project-luxury-page {
+    background:
+      linear-gradient(180deg, rgb(255 250 244) 0%, rgb(255 255 255) 34%, rgb(248 250 252) 100%);
+    color: #050505;
+  }
+
+  .project-luxury-breadcrumb {
+    @apply border-b border-slate-200;
+    background: rgb(255 255 255 / 0.82);
+    color: rgb(71 85 105);
+    backdrop-filter: blur(14px);
+  }
+
+  .project-luxury-hero {
+    @apply relative overflow-hidden border-b border-slate-200;
+    background:
+      linear-gradient(135deg, rgb(255 250 244 / 0.98), rgb(255 255 255 / 0.94)),
+      linear-gradient(90deg, rgb(255 122 26 / 0.08), rgb(5 5 5 / 0.035));
+  }
+
+  .project-luxury-hero::before {
+    content: "";
+    @apply pointer-events-none absolute inset-0;
+    border-radius: inherit;
+    box-shadow: inset 0 0 0 1px rgb(255 122 26 / 0.12);
+  }
+
+  .project-luxury-hero__frame {
+    @apply grid w-full min-w-0 overflow-hidden rounded-[28px] border border-slate-200 bg-white shadow-sm lg:grid-cols-[minmax(0,1.03fr)_minmax(360px,0.72fr)];
+    box-shadow: 0 28px 80px rgb(15 23 42 / 0.10);
+  }
+
+  .project-luxury-hero__copy {
+    @apply min-w-0 px-5 py-6 sm:px-7 sm:py-8 lg:px-9 lg:py-10;
+    background:
+      linear-gradient(135deg, rgb(255 255 255 / 0.96), rgb(255 250 244 / 0.88)),
+      repeating-linear-gradient(90deg, transparent 0 38px, rgb(15 23 42 / 0.025) 38px 39px);
+  }
+
+  .project-luxury-tags {
+    @apply flex min-w-0 flex-wrap gap-2;
+  }
+
+  .project-luxury-tags span {
+    @apply inline-flex min-h-8 max-w-full items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1 text-[11px] font-black uppercase text-slate-700 shadow-sm;
+    letter-spacing: 0;
+    white-space: normal;
+  }
+
+  .project-luxury-tags span:first-child {
+    @apply border-orange-200 bg-orange-50 text-orange-800;
+  }
+
+  .project-luxury-tags .is-winner {
+    @apply border-amber-300 bg-amber-50 text-amber-800;
+  }
+
+  .project-luxury-hero__copy h1 {
+    @apply mt-5 max-w-3xl break-words text-4xl font-black leading-[1.02] text-slate-950 sm:text-5xl;
+    overflow-wrap: anywhere;
+  }
+
+  .project-luxury-course {
+    @apply mt-4 break-words text-sm font-bold text-orange-800;
+  }
+
+  .project-luxury-description {
+    @apply mt-4 max-w-2xl break-words text-base leading-7 text-slate-700;
+  }
+
+  .project-luxury-actions {
+    @apply mt-7 flex flex-wrap items-center gap-2;
+  }
+
+  .project-luxury-actions button,
+  .project-luxury-actions span {
+    @apply inline-flex min-h-11 items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-bold text-slate-950 shadow-sm transition-all duration-200;
+  }
+
+  .project-luxury-actions button:hover {
+    @apply border-orange-200 bg-orange-50 text-orange-800;
+    transform: translateY(-1px);
+  }
+
+  .project-luxury-actions .is-active {
+    @apply border-orange-300 bg-orange-500 text-white;
+  }
+
+  .project-luxury-hero__visual {
+    @apply relative min-h-[320px] overflow-hidden bg-slate-950;
+  }
+
+  .project-luxury-hero__visual img {
+    @apply h-full min-h-[320px] w-full object-cover;
+    filter: saturate(1.02) contrast(1.02);
+  }
+
+  .project-luxury-hero__visual::after {
+    content: "";
+    @apply pointer-events-none absolute inset-0;
+    background:
+      linear-gradient(180deg, transparent 40%, rgb(5 5 5 / 0.42)),
+      linear-gradient(90deg, rgb(5 5 5 / 0.18), transparent 42%);
+  }
+
+  .project-luxury-visual-fallback {
+    @apply flex h-full min-h-[320px] items-center justify-center;
+    background:
+      linear-gradient(135deg, var(--project-primary), var(--project-secondary)),
+      linear-gradient(90deg, rgb(255 255 255 / 0.12), transparent);
+  }
+
+  .project-luxury-visual-fallback span {
+    @apply rounded-3xl border border-white/20 bg-white/10 px-6 py-5 text-5xl font-black text-white backdrop-blur;
+  }
+
+  .project-luxury-hero__seal {
+    @apply absolute bottom-5 left-5 z-10 inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/90 px-3 py-2 text-xs font-black uppercase text-slate-950 shadow-sm;
+    letter-spacing: 0;
+  }
+
+  .project-luxury-stat {
+    @apply flex min-w-0 items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-4 shadow-sm;
+  }
+
+  .project-luxury-stat__icon {
+    @apply flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-orange-100 bg-orange-50 text-orange-700;
+  }
+
+  .project-luxury-stat p {
+    @apply text-xl font-black leading-none text-slate-950;
+  }
+
+  .project-luxury-stat span {
+    @apply mt-1 block text-[11px] font-bold uppercase text-slate-500;
+    letter-spacing: 0;
+  }
+
+  .project-luxury-panel,
+  .project-luxury-qr-card,
+  .project-luxury-side-card {
+    @apply min-w-0 overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm;
+    box-shadow: 0 18px 52px rgb(15 23 42 / 0.07);
+  }
+
+  .project-luxury-panel {
+    @apply p-5 sm:p-6;
+  }
+
+  .project-luxury-panel h2,
+  .project-luxury-side-card h3 {
+    @apply text-[13px] font-black uppercase text-slate-500;
+    letter-spacing: 0;
+  }
+
+  .project-luxury-member {
+    @apply flex min-w-0 items-center gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3;
+  }
+
+  .project-luxury-member > div {
+    @apply flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-950 text-[10px] font-black text-white;
+  }
+
+  .project-luxury-comment {
+    @apply rounded-2xl border border-slate-100 bg-slate-50 px-3 py-3;
+    background-color: rgb(248 250 252 / 0.7);
+  }
+
+  .project-luxury-login-prompt {
+    @apply flex w-full min-w-0 items-center gap-3 rounded-2xl border border-dashed border-orange-200 bg-orange-50 px-4 py-4 text-left transition-colors hover:border-orange-300 hover:bg-orange-50;
+    background-color: rgb(255 247 237 / 0.45);
+  }
+
+  .project-luxury-login-prompt > div:first-child {
+    @apply flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white;
+  }
+
+  .project-luxury-sidebar {
+    @apply lg:sticky lg:top-24 lg:self-start;
+  }
+
+  .project-luxury-qr-card,
+  .project-luxury-side-card {
+    @apply p-5;
+  }
+
+  .project-luxury-copy-link {
+    @apply mt-4 flex w-full min-w-0 items-center gap-2 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3 text-left text-sm transition-colors hover:border-orange-200 hover:bg-orange-50;
+  }
+
+  @media (max-width: 767px) {
+    .project-luxury-hero__frame {
+      border-radius: 22px;
+    }
+
+    .project-luxury-hero__copy h1 {
+      @apply text-3xl;
+    }
+
+    .project-luxury-actions button,
+    .project-luxury-actions span {
+      flex: 1 1 9rem;
+      justify-content: center;
+    }
+
+    .project-luxury-hero__visual,
+    .project-luxury-hero__visual img,
+    .project-luxury-visual-fallback {
+      min-height: 240px;
+    }
+  }
+
+  .uor-vital-card {
+    @apply relative min-w-0 overflow-hidden rounded-xl border bg-white transition-all duration-300;
+    border-color: hsl(var(--border) / 0.66);
+    box-shadow: var(--shadow-flat);
+  }
+
+  .uor-vital-card:hover {
+    border-color: rgb(255 94 0 / 0.22);
+    box-shadow: var(--shadow-raised-hover);
+    transform: translateY(-2px);
+  }
+
+  .uor-vital-stat {
+    @apply relative min-w-0 overflow-hidden rounded-xl border p-4 transition-all duration-300;
+    border-color: hsl(var(--border) / 0.62);
+    background:
+      linear-gradient(135deg, rgb(255 255 255 / 0.98), rgb(248 250 252 / 0.88)),
+      linear-gradient(120deg, rgb(255 122 26 / 0.07), rgb(5 5 5 / 0.025));
+    box-shadow: var(--shadow-flat);
+  }
+
+  .uor-vital-stat:hover {
+    box-shadow: var(--shadow-raised-hover);
+    transform: translateY(-2px);
+  }
+
+  .uor-icon-tile {
+    @apply inline-flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border shadow-sm transition-transform duration-300;
+  }
+
+  .uor-vital-card:hover .uor-icon-tile,
+  .uor-vital-stat:hover .uor-icon-tile {
+    transform: scale(1.05) rotate(-2deg);
+  }
+
+  .uor-action-button {
+    @apply min-h-11 rounded-xl font-semibold transition-all duration-200;
+    box-shadow: 0 10px 24px rgb(15 23 42 / 0.08);
+  }
+
+  .uor-action-button:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 16px 34px rgb(15 23 42 / 0.13);
+  }
+
+  .uor-chip-button {
+    @apply min-h-10 rounded-full border px-3 text-xs font-semibold transition-all duration-200;
+    box-shadow: 0 6px 16px rgb(15 23 42 / 0.04);
+  }
+
+  .uor-chip-button:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 12px 26px rgb(15 23 42 / 0.09);
+  }
+
+  .uor-animated-entry {
+    animation: uorSubtleRise 0.42s ease both;
   }
 
   /* Neon hover glow for premium cards and buttons */
@@ -502,16 +3686,6 @@
     background: linear-gradient(90deg, transparent, hsl(var(--border)), transparent);
   }
 
-  .contest-graph-paper {
-    background-image:
-      linear-gradient(rgb(0 229 200 / 0.08) 1px, transparent 1px),
-      linear-gradient(90deg, rgb(0 229 200 / 0.08) 1px, transparent 1px),
-      radial-gradient(circle at top left, rgb(22 249 254 / 0.08), transparent 34%);
-    background-position: center center;
-    background-size: 28px 28px, 28px 28px, 100% 100%;
-    mask-image: linear-gradient(180deg, rgb(0 0 0 / 0.78), transparent 100%);
-    opacity: 0.82;
-  }
 }
 
 @keyframes sponsor-marquee {
@@ -520,7 +3694,7 @@
   }
 
   to {
-    transform: translateX(calc(-50% - 0.5rem));
+    transform: translateX(calc(-33.333% - 0.5rem));
   }
 }
 
@@ -551,3 +3725,712 @@
   0% { transform: translateX(-120%); }
   100% { transform: translateX(120%); }
 }
+
+@keyframes uorSheen {
+  0% { opacity: 0; transform: translateX(-140%) skewX(-10deg); }
+  20% { opacity: 0.85; }
+  100% { opacity: 0; transform: translateX(360%) skewX(-10deg); }
+}
+
+@keyframes uorSubtleRise {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes passportGridDrift {
+  from { background-position: 0 0, 0 0, center; }
+  to { background-position: 44px 22px, 44px 22px, center; }
+}
+
+@keyframes passportSpriteFrames {
+  from { transform: translateX(-18%) translateY(0); }
+  to { transform: translateX(18%) translateY(0); }
+}
+
+@keyframes passportSpriteFloat {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  50% { transform: translateY(-4px) rotate(-2deg); }
+}
+
+@keyframes passportScanLine {
+  0% { opacity: 0; transform: translateY(0); }
+  18% { opacity: 1; }
+  82% { opacity: 1; }
+  100% { opacity: 0; transform: translateY(48px); }
+}
+
+@keyframes passportCurrentPulse {
+  0%, 100% { transform: translateY(0) scale(1); box-shadow: 0 0 0 0 rgb(255 122 26 / 0.28); }
+  50% { transform: translateY(-1px) scale(1.04); box-shadow: 0 0 0 8px rgb(255 122 26 / 0); }
+}
+
+@keyframes passportRouteDash {
+  to { stroke-dashoffset: -226; }
+}
+
+@keyframes passportPieceFloat {
+  0%, 100% { transform: translateY(0) rotate(-2deg) scale(1); }
+  50% { transform: translateY(-5px) rotate(3deg) scale(1.04); }
+}
+
+@keyframes challengeGlow {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); opacity: 0.55; }
+  50% { transform: translate3d(-18px, 14px, 0) scale(1.08); opacity: 0.86; }
+}
+
+@keyframes challengePortalSweep {
+  from { background-position: -180px 0, 160px 0; }
+  to { background-position: 180px 0, -160px 0; }
+}
+
+@keyframes challengePortalPulse {
+  0% { opacity: 0.72; transform: scale(0.72); }
+  100% { opacity: 0; transform: scale(1.38); }
+}
+
+@keyframes challengeRuleSignal {
+  0%, 100% { opacity: 0.35; transform: translateX(-16%); }
+  50% { opacity: 0.95; transform: translateX(16%); }
+}
+
+@keyframes challengeModalPulse {
+  0%, 100% { opacity: 0.48; transform: scale(0.92); }
+  50% { opacity: 0.9; transform: scale(1.06); }
+}
+
+@keyframes celebrationSweep {
+  from { background-position: 0 0, -160% 0; }
+  to { background-position: 0 0, 180% 0; }
+}
+
+@keyframes celebrationMedal {
+  0%, 100% { transform: translateY(0) rotate(0deg); }
+  50% { transform: translateY(-3px) rotate(-1deg); }
+}
+
+@keyframes celebrationLossMedal {
+  0%, 100% { transform: translateY(0) rotate(0deg) scale(1); }
+  35% { transform: translateY(3px) rotate(2deg) scale(0.98); }
+  70% { transform: translateY(-1px) rotate(-1deg) scale(1.02); }
+}
+
+@keyframes celebrationSadMedal {
+  0%, 100% { transform: translateY(0); filter: saturate(0.9); }
+  50% { transform: translateY(4px); filter: saturate(0.65); }
+}
+
+@keyframes scanConfettiFall {
+  0% { opacity: 0; transform: translate3d(0, -12vh, 0) rotate(var(--rotate)); }
+  12% { opacity: 1; }
+  100% { opacity: 0; transform: translate3d(18px, 108vh, 0) rotate(calc(var(--rotate) + 260deg)); }
+}
+
+@keyframes scanPointDrop {
+  0% { opacity: 0; transform: translate3d(-50%, -20px, 0) scale(1.15); }
+  14% { opacity: 1; }
+  100% { opacity: 0; transform: translate3d(-50%, 68vh, 0) scale(0.72); }
+}
+
+@keyframes scanSadRipple {
+  0% { opacity: 0.5; transform: translate(-50%, -50%) scale(0.5); }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(4); }
+}
+
+@keyframes surpriseRevealPop {
+  from { opacity: 0; transform: translateY(10px) scale(0.98); filter: saturate(0.8); }
+  to { opacity: 1; transform: translateY(0) scale(1); filter: saturate(1); }
+}
+
+@keyframes surpriseGridSweep {
+  0% { background-position: 0 0, 0 0, -120% 0; }
+  100% { background-position: 28px 20px, 28px 20px, 160% 0; }
+}
+
+@keyframes surpriseOrbPulse {
+  0%, 100% { transform: translateY(0) scale(1); box-shadow: 0 0 0 8px rgb(255 255 255 / 0.08), 0 18px 38px rgb(0 0 0 / 0.28); }
+  50% { transform: translateY(-2px) scale(1.04); box-shadow: 0 0 0 13px rgb(255 94 0 / 0.12), 0 20px 44px rgb(0 0 0 / 0.32); }
+}
+
+@keyframes voteLivePulse {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(0.74); opacity: 0.66; }
+}
+
+@keyframes voteSoftFloat {
+  0%, 100% { transform: translate3d(0, 0, 0) scale(1); }
+  50% { transform: translate3d(-10px, 8px, 0) scale(1.08); }
+}
+
+@keyframes voteBarRise {
+  from { transform: scaleY(0.24); opacity: 0.38; transform-origin: bottom; }
+  to { transform: scaleY(1); opacity: 1; transform-origin: bottom; }
+}
+
+@keyframes liveVoteRail {
+  from { background-position: 0 0, 0 0; }
+  to { background-position: 180px 0, 0 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .uor-vital-panel,
+  .uor-vital-card,
+  .uor-vital-stat,
+  .uor-action-button,
+  .uor-chip-button,
+  .uor-icon-tile,
+  .admin-nav-icon,
+  .admin-export-button,
+  .passport-quest,
+  .passport-quest__pin,
+  .passport-quest__piece,
+  .passport-check-item,
+	  .passport-achievement-strip span {
+	    transition: none;
+	  }
+
+  .uor-vital-panel:hover,
+  .uor-vital-card:hover,
+  .uor-vital-stat:hover,
+  .uor-action-button:hover,
+  .uor-chip-button:hover,
+  .admin-nav-item:hover .admin-nav-icon,
+  .admin-export-button:hover,
+	  .passport-quest:hover,
+	  .admin-votes-project-card:hover,
+	  .admin-votes-course-row:hover,
+	  .admin-votes-moment:hover {
+	    transform: none;
+	  }
+
+  .uor-vital-panel:hover::after,
+  .uor-animated-entry,
+  .passport-admin-hero__grid,
+  .passport-route-curve__pulse,
+  .passport-quest__piece,
+	  .passport-quest.is-current .passport-quest__pin,
+	  .challenge-entry-card__glow,
+  .challenge-rule-card::after,
+	  .challenge-avatar-card__visual::after,
+	  .challenge-avatar-card__portal span,
+	  .challenge-answer-modal__pulse,
+	  .scan-celebration-card__shine,
+		  .scan-celebration-card__medal,
+		  .scan-celebration-card__medal::before,
+	  .scan-confetti-field span,
+	  .scan-point-drain span,
+	  .scan-sad-ripple::before,
+	  .scan-sad-ripple::after,
+		  .surprise-reveal,
+	  .surprise-reveal__grid,
+	  .surprise-reveal__orb,
+	  .admin-votes-live-dot,
+	  .admin-votes-leader-card::after,
+	  .admin-votes-sparkline span,
+	  .live-votes-hero-panel__rail,
+	  .desafio-hero__barcode-lines span,
+	  .desafio-hero__flight-route::before,
+	  .passport-invite__glow,
+	  .passport-invite__barcode-lines span,
+	  .passport-invite__route::before,
+	  .hot-stand-pulse,
+	  .course-battle__crown {
+	    animation: none;
+	  }
+	}
+
+  /* ═══════════════════════════════════════════════════════
+     PASSPORT INVITE — Travel Ticket Boarding Pass Design
+     ═══════════════════════════════════════════════════════ */
+
+  .passport-invite {
+    @apply relative min-h-dvh overflow-hidden;
+    background:
+      radial-gradient(ellipse 60% 40% at 50% 0%, rgb(255 122 26 / 0.06), transparent 50%),
+      radial-gradient(ellipse 40% 50% at 10% 90%, rgb(139 92 246 / 0.04), transparent 50%),
+      linear-gradient(180deg, #0c0c0e, #111115 40%, #0a0a0c);
+  }
+
+  .passport-invite__bg-grid {
+    @apply pointer-events-none absolute inset-0 opacity-20;
+    background-image:
+      linear-gradient(rgb(255 255 255 / 0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgb(255 255 255 / 0.03) 1px, transparent 1px);
+    background-size: 32px 32px;
+    mask-image: linear-gradient(180deg, black, transparent 70%);
+  }
+
+  .passport-invite__card {
+    @apply relative w-full max-w-xl overflow-visible text-white;
+    border-radius: 22px;
+    border: none;
+    background:
+      radial-gradient(ellipse 50% 60% at 82% 8%, rgb(255 122 26 / 0.16), transparent 50%),
+      radial-gradient(ellipse 35% 45% at 8% 92%, rgb(139 92 246 / 0.08), transparent 50%),
+      linear-gradient(145deg, #0c0c0e 0%, #111115 40%, #0d1117 100%);
+    box-shadow:
+      0 28px 70px rgb(0 0 0 / 0.4),
+      inset 0 1px 0 rgb(255 255 255 / 0.06);
+  }
+
+  .passport-invite__card::before {
+    content: "";
+    @apply pointer-events-none absolute inset-0 opacity-25;
+    border-radius: inherit;
+    background-image:
+      linear-gradient(rgb(255 255 255 / 0.04) 1px, transparent 1px),
+      linear-gradient(90deg, rgb(255 255 255 / 0.04) 1px, transparent 1px);
+    background-size: 28px 28px;
+    mask-image: linear-gradient(135deg, rgb(0 0 0 / 0.5), transparent 55%);
+  }
+
+  .passport-invite__card::after {
+    content: "";
+    @apply pointer-events-none absolute inset-0;
+    border-radius: inherit;
+    box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.06);
+  }
+
+  .passport-invite__glow {
+    @apply pointer-events-none absolute -right-14 -top-14 h-52 w-52 rounded-full blur-[80px];
+    background: rgb(255 122 26 / 0.15);
+    animation: desafioGlow 5s ease-in-out infinite alternate;
+  }
+
+  .passport-invite__stamp {
+    @apply pointer-events-none absolute z-[5] hidden sm:block;
+    right: 28px;
+    top: 50%;
+    transform: translateY(-50%) rotate(-14deg);
+    width: 90px;
+    height: 90px;
+    border-radius: 50%;
+    border: 3px solid rgb(255 122 26 / 0.08);
+    box-shadow: inset 0 0 0 2px rgb(255 122 26 / 0.05);
+    opacity: 0.4;
+  }
+
+  .passport-invite__stamp::before {
+    content: "UOR";
+    @apply absolute inset-0 flex items-center justify-center text-2xl font-black;
+    color: rgb(255 122 26 / 0.06);
+    letter-spacing: 0.15em;
+  }
+
+  .passport-invite__perforation {
+    @apply pointer-events-none absolute top-4 bottom-4 hidden sm:block;
+    left: 110px;
+    width: 2px;
+    background: repeating-linear-gradient(
+      180deg,
+      rgb(255 255 255 / 0.1) 0px,
+      rgb(255 255 255 / 0.1) 5px,
+      transparent 5px,
+      transparent 10px
+    );
+  }
+
+  .passport-invite__notch {
+    @apply pointer-events-none absolute hidden sm:block;
+    left: 102px;
+    width: 18px;
+    height: 18px;
+    border-radius: 50%;
+    background: #0c0c0e;
+    z-index: 20;
+  }
+
+  .passport-invite__notch--top { top: -9px; }
+  .passport-invite__notch--bottom { bottom: -9px; }
+
+  .passport-invite__stub {
+    @apply absolute left-0 top-0 bottom-0 hidden w-[110px] flex-col items-center justify-center gap-1 sm:flex;
+    z-index: 12;
+  }
+
+  .passport-invite__ring {
+    @apply relative flex h-[68px] w-[68px] shrink-0 items-center justify-center;
+    border-radius: 50%;
+    background:
+      linear-gradient(rgb(255 255 255 / 0.05), rgb(255 255 255 / 0.02)) padding-box,
+      conic-gradient(#ff7a1a 270deg, rgb(255 255 255 / 0.08) 0) border-box;
+    border: 3px solid transparent;
+    box-shadow: 0 0 0 3px rgb(255 122 26 / 0.08), 0 0 18px rgb(255 122 26 / 0.1);
+  }
+
+  .passport-invite__ring-icon {
+    color: #ff7a1a;
+  }
+
+  .passport-invite__header-strip {
+    @apply relative z-10 flex items-center justify-between gap-3 px-5 pt-5 pb-2 sm:pl-[135px] sm:pr-6;
+  }
+
+  .passport-invite__header-label {
+    @apply flex items-center gap-2 text-[10px] font-black uppercase tracking-[0.18em] text-white/40;
+  }
+
+  .passport-invite__header-serial {
+    @apply font-mono text-[10px] font-bold text-white/25;
+    letter-spacing: 0.08em;
+  }
+
+  .passport-invite__content {
+    @apply relative z-10 flex flex-col gap-5 px-5 pb-5 pt-2 sm:pl-[135px] sm:pr-6 sm:pb-6;
+  }
+
+  .passport-invite__route {
+    @apply relative z-10 flex items-center gap-3 rounded-xl border border-white/[0.06] bg-white/[0.03] px-4 py-2.5 sm:gap-5;
+  }
+
+  .passport-invite__route-point {
+    @apply flex flex-col items-center text-center;
+    min-width: 50px;
+  }
+
+  .passport-invite__route-point span:first-child {
+    @apply text-[9px] font-bold uppercase tracking-wider text-white/35;
+  }
+
+  .passport-invite__route-point strong {
+    @apply mt-0.5 text-sm font-black;
+    color: #ff7a1a;
+  }
+
+  .passport-invite__route-line {
+    @apply relative flex flex-1 items-center;
+    min-width: 30px;
+    height: 2px;
+    background: linear-gradient(90deg, rgb(255 122 26 / 0.3), rgb(255 122 26 / 0.6), rgb(255 122 26 / 0.3));
+  }
+
+  .passport-invite__route-line::before {
+    content: "✈";
+    @apply absolute left-1/2 -translate-x-1/2 -translate-y-1/2 text-sm;
+    color: #ff7a1a;
+    filter: drop-shadow(0 0 4px rgb(255 122 26 / 0.4));
+    animation: ticketPlaneFloat 3s ease-in-out infinite;
+  }
+
+  .passport-invite__barcode {
+    @apply relative z-10 flex items-center justify-between gap-3 border-t border-white/[0.06] px-5 py-3 sm:pl-[135px] sm:pr-6;
+  }
+
+  .passport-invite__barcode-lines {
+    @apply flex items-end gap-px h-5;
+  }
+
+  .passport-invite__barcode-lines span {
+    @apply block rounded-sm;
+    background: rgb(255 255 255 / 0.2);
+    animation: barcodeShimmer 3s ease-in-out infinite;
+  }
+
+  .passport-invite__barcode-text {
+    @apply font-mono text-[9px] font-bold text-white/20;
+    letter-spacing: 0.1em;
+  }
+
+  .passport-invite__info-card {
+    @apply rounded-xl border border-white/[0.06] bg-white/[0.03] px-4 py-3;
+  }
+
+  .passport-invite__actions {
+    @apply grid gap-2.5 sm:grid-cols-2;
+  }
+
+  .passport-invite__btn {
+    @apply flex h-12 items-center justify-center gap-2 rounded-xl text-sm font-bold transition-all;
+  }
+
+  .passport-invite__btn--accept {
+    border: 1px solid rgb(52 211 153 / 0.4);
+    background: rgb(16 185 129 / 0.12);
+    color: rgb(110 231 183);
+  }
+
+  .passport-invite__btn--accept:hover:not(:disabled) {
+    border-color: rgb(52 211 153 / 0.6);
+    background: rgb(16 185 129 / 0.22);
+    color: rgb(167 243 208);
+  }
+
+  .passport-invite__btn--decline {
+    border: 1px solid rgb(255 255 255 / 0.08);
+    background: rgb(255 255 255 / 0.04);
+    color: rgb(255 255 255 / 0.6);
+  }
+
+  .passport-invite__btn--decline:hover:not(:disabled) {
+    border-color: rgb(255 255 255 / 0.14);
+    background: rgb(255 255 255 / 0.07);
+    color: rgb(255 255 255 / 0.8);
+  }
+
+  .passport-invite__btn:disabled {
+    opacity: 0.5;
+  }
+
+  @media (max-width: 639px) {
+    .passport-invite__stub { display: none; }
+    .passport-invite__content,
+    .passport-invite__header-strip,
+    .passport-invite__barcode {
+      padding-left: 1.25rem;
+    }
+  }
+
+  /* ═══════════════════════════════════════════════════════
+     COURSE BATTLE — Batalha por Cursos Leaderboard
+     ═══════════════════════════════════════════════════════ */
+
+  .course-battle {
+    @apply overflow-hidden rounded-[24px] border border-slate-200 bg-white shadow-sm;
+    box-shadow: 0 16px 48px rgb(15 23 42 / 0.06);
+  }
+
+  .course-battle__header {
+    @apply flex items-center justify-between gap-3 border-b border-slate-100 px-5 py-4;
+  }
+
+  .course-battle__header-left {
+    @apply flex items-center gap-3;
+  }
+
+  .course-battle__header-icon {
+    @apply flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl;
+    background: linear-gradient(135deg, #4f46e5, #7c3aed);
+    color: white;
+    box-shadow: 0 6px 16px rgb(79 70 229 / 0.25);
+  }
+
+  .course-battle__my-rank {
+    @apply flex items-center gap-2 rounded-xl border px-3.5 py-2;
+    border-color: rgb(79 70 229 / 0.2);
+    background: rgb(79 70 229 / 0.06);
+    backdrop-filter: blur(8px);
+  }
+
+  .course-battle__my-rank strong {
+    @apply text-lg font-black;
+    color: #4f46e5;
+  }
+
+  .course-battle__my-rank span {
+    @apply text-[11px] text-indigo-600/60;
+  }
+
+  .course-battle__podium {
+    @apply flex items-end justify-center gap-3 px-5 py-6;
+    background: linear-gradient(180deg, rgb(248 250 252 / 0.6), rgb(255 255 255));
+    border-bottom: 1px solid rgb(226 232 240 / 0.6);
+  }
+
+  .course-battle__podium-item {
+    @apply flex flex-col items-center gap-2 text-center;
+    min-width: 80px;
+  }
+
+  .course-battle__podium-bar {
+    @apply flex w-full flex-col items-center justify-end rounded-t-lg px-2 pt-2 pb-3;
+    min-width: 70px;
+    transition: height 0.5s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  .course-battle__podium-bar.is-gold {
+    height: 100px;
+    background: linear-gradient(180deg, #fbbf24, #f59e0b);
+    box-shadow: 0 4px 16px rgb(245 158 11 / 0.3);
+  }
+
+  .course-battle__podium-bar.is-silver {
+    height: 75px;
+    background: linear-gradient(180deg, #cbd5e1, #94a3b8);
+    box-shadow: 0 4px 16px rgb(148 163 184 / 0.2);
+  }
+
+  .course-battle__podium-bar.is-bronze {
+    height: 55px;
+    background: linear-gradient(180deg, #d97706, #b45309);
+    box-shadow: 0 4px 16px rgb(180 83 9 / 0.2);
+  }
+
+  .course-battle__podium-position {
+    @apply text-xl font-black text-white;
+    text-shadow: 0 1px 3px rgb(0 0 0 / 0.2);
+  }
+
+  .course-battle__podium-name {
+    @apply mt-1 max-w-[120px] truncate text-xs font-bold text-slate-900;
+  }
+
+  .course-battle__podium-pts {
+    @apply text-[10px] font-bold text-slate-500;
+  }
+
+  .course-battle__crown {
+    @apply text-amber-400;
+    animation: crownBounce 2s ease-in-out infinite;
+  }
+
+  @keyframes crownBounce {
+    0%, 100% { transform: translateY(0) rotate(0deg); }
+    50% { transform: translateY(-3px) rotate(5deg); }
+  }
+
+  .course-battle__list {
+    @apply grid gap-0.5 px-4 py-4 sm:px-5;
+  }
+
+  .course-battle__row {
+    @apply grid items-center gap-2.5 rounded-xl px-3 py-3 transition-all;
+    grid-template-columns: 28px minmax(0, 1fr) auto;
+    border: 1px solid transparent;
+  }
+
+  .course-battle__row:hover {
+    background: rgb(248 250 252);
+  }
+
+  .course-battle__row.is-mine {
+    background: rgb(238 242 255 / 0.6);
+    border-color: rgb(99 102 241 / 0.2);
+  }
+
+  .course-battle__row-pos {
+    @apply text-sm font-black text-slate-300;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .course-battle__row.is-mine .course-battle__row-pos {
+    color: #4f46e5;
+  }
+
+  .course-battle__row-name {
+    @apply truncate text-sm font-bold text-slate-900;
+  }
+
+  .course-battle__row-pts {
+    @apply text-sm font-black;
+    color: rgb(100 116 139);
+  }
+
+  .course-battle__row.is-mine .course-battle__row-pts {
+    color: #4f46e5;
+  }
+
+  /* ═══════════════════════════════════════════════════════
+     LIVE STANDS — Featured Stand Cards in Home
+     ═══════════════════════════════════════════════════════ */
+
+  .live-stands {
+    @apply mt-8;
+  }
+
+  .live-stands__header {
+    @apply mb-5 flex items-center gap-2.5;
+  }
+
+  .live-stands__header-icon {
+    @apply flex h-8 w-8 items-center justify-center rounded-lg;
+    background: linear-gradient(135deg, #f97316, #ea580c);
+    color: white;
+  }
+
+  .live-stands__grid {
+    @apply grid gap-3 sm:grid-cols-2 lg:grid-cols-3;
+  }
+
+  .live-stand-card {
+    @apply relative overflow-hidden rounded-2xl border bg-white p-4 transition-all;
+    border-color: rgb(213 220 230);
+  }
+
+  .live-stand-card:hover {
+    border-color: rgb(249 115 22 / 0.35);
+    transform: translateY(-2px);
+    box-shadow: 0 12px 32px rgb(15 23 42 / 0.08);
+  }
+
+  .live-stand-card.is-hot {
+    border-color: rgb(249 115 22 / 0.4);
+    background:
+      radial-gradient(ellipse 60% 60% at 90% 10%, rgb(249 115 22 / 0.06), transparent),
+      white;
+  }
+
+  .live-stand-card__hot-badge {
+    @apply absolute right-3 top-3 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider;
+    background: linear-gradient(135deg, #ff7a1a, #ea580c);
+    color: white;
+    box-shadow: 0 2px 8px rgb(255 122 26 / 0.3);
+  }
+
+  .hot-stand-pulse {
+    @apply relative flex h-1.5 w-1.5;
+  }
+
+  .hot-stand-pulse::before {
+    content: "";
+    @apply absolute inline-flex h-full w-full animate-ping rounded-full bg-white opacity-75;
+  }
+
+  .hot-stand-pulse::after {
+    content: "";
+    @apply relative inline-flex h-1.5 w-1.5 rounded-full bg-white;
+  }
+
+  .live-stand-card__name {
+    @apply text-sm font-bold text-slate-900;
+  }
+
+  .live-stand-card__project {
+    @apply mt-0.5 truncate text-xs text-slate-500;
+  }
+
+  .live-stand-card__stats {
+    @apply mt-3 flex items-center gap-3;
+  }
+
+  .live-stand-card__stat {
+    @apply inline-flex items-center gap-1.5 rounded-md px-2 py-1 text-[11px] font-bold;
+    background: rgb(248 250 252);
+    color: rgb(100 116 139);
+  }
+
+  .live-stand-card.is-hot .live-stand-card__stat:first-child {
+    background: rgb(255 237 213);
+    color: #c2410c;
+  }
+
+  .live-stand-card__bar {
+    @apply mt-3 h-1.5 w-full overflow-hidden rounded-full;
+    background: rgb(226 232 240);
+  }
+
+  .live-stand-card__bar-fill {
+    @apply h-full rounded-full;
+    background: linear-gradient(90deg, #ff7a1a, #f97316);
+    transition: width 0.6s cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  /* ═══════════════════════════════════════════════════════
+     HOT STAND — Admin Indicator
+     ═══════════════════════════════════════════════════════ */
+
+  .admin-hot-stand {
+    @apply relative inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider;
+    border-color: rgb(249 115 22 / 0.3);
+    background: rgb(255 237 213);
+    color: #c2410c;
+    animation: hotStandGlow 2s ease-in-out infinite alternate;
+  }
+
+  @keyframes hotStandGlow {
+    0% { box-shadow: 0 0 0 0 rgb(249 115 22 / 0.15); }
+    100% { box-shadow: 0 0 12px 2px rgb(249 115 22 / 0.3); }
+  }
+
+  .admin-hot-stand__fire {
+    font-size: 12px;
+    line-height: 1;
+  }

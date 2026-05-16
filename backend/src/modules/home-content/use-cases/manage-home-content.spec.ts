@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it } from "vitest";
-import type { HomeContentRepository, HomeCourseInput, HomeSocialConfigInput, PanelTopicInput } from "../domain/home-content.repository";
+import type { HomeCourse, PanelTopic } from "@prisma/client";
+import type { HomeContentRepository, HomeCourseInput, HomeSocialConfigInput, HomeSocialConfigRecord, PanelTopicInput } from "../domain/home-content.repository";
 import {
   CreateHomeCourse,
   CreatePanelTopic,
@@ -12,9 +13,9 @@ import {
 } from "./manage-home-content";
 
 class InMemoryHomeContentRepository implements HomeContentRepository {
-  courses: any[] = [];
-  panelTopics: any[] = [];
-  socialConfig = {
+  courses: HomeCourse[] = [];
+  panelTopics: PanelTopic[] = [];
+  socialConfig: HomeSocialConfigRecord = {
     key: "default",
     instagramUrl: "https://www.instagram.com/uorconnect??igsh=bmo4enl2cGN2cGc2&utm_source=qr",
     facebookUrl: null,

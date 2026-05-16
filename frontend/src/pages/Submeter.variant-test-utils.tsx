@@ -91,7 +91,7 @@ const defaultConfig: SubmissionConfig = {
   isOpen: true,
   iban: "AO006 0055 0000 3295 0561 10379",
   accountName: "Universidade Óscar Ribas",
-  paymentAmount: "15.000 Kz",
+  paymentAmount: "3.500 Kz",
   paymentInstructions: "Confirma a transferência antes de finalizar a candidatura.",
   projectCommunityUrl: null,
   businessCommunityUrl: null,
@@ -179,6 +179,7 @@ export function resetSubmissionMocks() {
     bannerUrl: null,
     communityUrl: null,
     boardingPassPath: "/submissions/501/boarding-pass.pdf",
+    exhibitorPdfPath: null,
     paymentProofPath: "/submissions/501/payment-proof",
     receiptPath: "/submissoes/501",
     detailPath: "/projeto/projeto-alpha-501",
@@ -283,7 +284,7 @@ export async function fillCommonValidSubmissionFields(kind: SubmissionKind) {
 
   if (kind === "produto") {
     await chooseSelectOption(/Área principal/i, "Hardware");
-    fireEvent.change(screen.getByLabelText("Entidade responsável"), { target: { value: "Laboratório Central" } });
+    fireEvent.change(screen.getByLabelText("Entidade responsável"), { target: { value: "Centro de Inovação" } });
     fireEvent.blur(screen.getByLabelText("Entidade responsável"));
     await chooseSelectOption(/Categoria do produto/i, "Hardware");
     await chooseSelectOption(/Tipo do produto/i, "Físico");

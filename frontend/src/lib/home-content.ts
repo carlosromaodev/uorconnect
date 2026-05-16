@@ -8,7 +8,9 @@ export const defaultHeroFloatingIcons: HeroFloatingIcon[] = [
 ];
 
 export const defaultHeroSponsors: HomeSponsor[] = [
+  { id: "uor", name: "Universidade Óscar Ribas", imageUrl: "/logo-uor.png", label: null },
   { id: "neic", name: "Núcleo de Engenharia Informática e Comunicações", imageUrl: "/logo-neic.jpeg", label: null },
+  { id: "uor-connect", name: "UOR Connect", imageUrl: "/logoworconnect.png", label: null },
 ];
 
 export const UOR_EVENT_TITLE_PREFIX = "3ª Edição do";

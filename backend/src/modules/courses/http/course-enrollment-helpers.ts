@@ -13,13 +13,11 @@ export function buildEnrollmentReference(courseId: number, enrollmentId: number)
 }
 
 export function getEnrollmentStatusLabel(paymentStatus: string, paymentProofPath: string | null) {
-  if (paymentStatus === "CONFIRMED") return "Confirmado";
-  if (paymentStatus === "APPROVED") return "Aprovado";
-  if (paymentStatus === "REJECTED") return "Rejeitado";
-  if (paymentStatus === "CANCELED") return "Cancelado";
-  if (paymentStatus === "PENDING" && paymentProofPath) return "Em análise";
-  if (!paymentProofPath) return "Pendente de comprovativo";
-  return "Em análise";
+  return paymentStatusLabel(paymentStatus, Boolean(paymentProofPath));
+}
+
+export function canAccessEnrollmentBenefits(paymentStatus: string) {
+  return isPaymentConfirmedByAdmin(paymentStatus);
 }
 
 export function buildWhatsAppUrl(phone: string | null, params: { courseName: string; fullName: string }) {
@@ -117,6 +115,9 @@ type StudentEnrollmentPresenterEntry = {
   phone?: string | null;
   paymentPhone?: string | null;
   paymentSubmittedAt?: string | null;
+  paymentReviewedAt?: string | null;
+  paymentReviewedByStudentNumber?: string | null;
+  paymentReviewNote?: string | null;
   whatsAppRedirectUrl?: string | null;
 };
 
@@ -140,6 +141,8 @@ export function buildStudentEnrollmentReceipt(entry: Required<Pick<
   StudentEnrollmentPresenterEntry,
   "id" | "courseId" | "studentNumber" | "fullName" | "enrolledAt" | "paymentStatus"
 >> & StudentEnrollmentPresenterEntry) {
+  const canAccessBenefits = canAccessEnrollmentBenefits(entry.paymentStatus);
+
   return {
     id: entry.id,
     courseId: entry.courseId,
@@ -147,7 +150,7 @@ export function buildStudentEnrollmentReceipt(entry: Required<Pick<
     courseDescription: entry.course.description ?? "",
     companyName: entry.course.companyName,
     companyCategory: entry.course.companyCategory ?? "",
-    communityUrl: entry.course.communityUrl ?? null,
+    communityUrl: canAccessBenefits ? entry.course.communityUrl ?? null : null,
     referenceCode: buildEnrollmentReference(entry.courseId, entry.id),
     studentNumber: entry.studentNumber,
     fullName: entry.fullName,
@@ -158,6 +161,16 @@ export function buildStudentEnrollmentReceipt(entry: Required<Pick<
     paymentStatus: entry.paymentStatus,
     statusLabel: getEnrollmentStatusLabel(entry.paymentStatus, entry.paymentProofPath),
     paymentSubmittedAt: entry.paymentSubmittedAt ?? null,
+    paymentReviewedAt: entry.paymentReviewedAt ?? null,
+    paymentReviewedByStudentNumber: entry.paymentReviewedByStudentNumber ?? null,
+    paymentReviewNote: entry.paymentReviewNote ?? null,
+    paymentTimeline: buildPaymentTimeline({
+      status: entry.paymentStatus,
+      submittedAt: entry.paymentSubmittedAt,
+      reviewedAt: entry.paymentReviewedAt,
+      reviewedBy: entry.paymentReviewedByStudentNumber,
+      reviewNote: entry.paymentReviewNote,
+    }),
     paymentProofPath: entry.paymentProofPath,
     ticketPath: entry.ticketPath,
     whatsAppRedirectUrl: entry.whatsAppRedirectUrl ?? null,
@@ -165,3 +178,4 @@ export function buildStudentEnrollmentReceipt(entry: Required<Pick<
     receiptPath: `/cursos/inscricoes/${entry.id}`,
   };
 }
+import { buildPaymentTimeline, isPaymentConfirmedByAdmin, paymentStatusLabel } from "../../payments/payment-status";

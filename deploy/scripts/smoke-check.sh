@@ -31,9 +31,35 @@ print_step "Frontend HEAD ${FRONTEND_URL}"
 curl --fail --silent --show-error --location --head "${FRONTEND_URL}" >/dev/null
 echo "OK frontend"
 
+for path in /login /completar-perfil /minha-area /admin /submeter /cursos /validar/demo-token; do
+  print_step "Frontend route ${path}"
+  curl --fail --silent --show-error --location --head "${FRONTEND_URL}${path}" >/dev/null
+  echo "OK ${path}"
+done
+
 print_step "API health ${API_URL}/health"
 health_json="$(curl --fail --silent --show-error "${API_URL}/health")"
 echo "${health_json}"
+
+print_step "API cursos"
+curl --fail --silent --show-error "${API_URL}/courses" >/dev/null
+echo "OK cursos"
+
+print_step "API candidaturas config"
+curl --fail --silent --show-error "${API_URL}/submissions/config" >/dev/null
+echo "OK submissao"
+
+print_step "API feed paginado"
+curl --fail --silent --show-error "${API_URL}/interactions/projects?limit=6&commentsLimit=0&likesLimit=0" >/dev/null
+echo "OK feed"
+
+print_step "API validacao QR negativa"
+validation_status="$(curl --silent --show-error --output /dev/null --write-out "%{http_code}" "${API_URL}/validation/demo-token")"
+if [[ "${validation_status}" != "404" ]]; then
+  echo "Falha: validação QR negativa esperava 404 e recebeu ${validation_status}."
+  exit 1
+fi
+echo "OK validacao negativa"
 
 if [[ -z "${ADMIN_STUDENT_NUMBER}" || -z "${ADMIN_PASSWORD}" ]]; then
   print_step "Smoke público concluído (sem credenciais admin)"

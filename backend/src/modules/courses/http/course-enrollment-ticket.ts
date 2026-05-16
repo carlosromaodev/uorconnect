@@ -1,4 +1,5 @@
 import { escapeHtml, formatDateLabel, loadLogoDataUri, renderPdfFromHtml } from "../../reports/http/pdf-report.utils";
+import { paymentStatusLabel as formatPaymentStatusLabel } from "../../payments/payment-status";
 import { renderQrDataUri } from "../../../shared/qr";
 
 type RenderCourseEnrollmentTicketParams = {
@@ -20,9 +21,7 @@ type RenderCourseEnrollmentTicketParams = {
 };
 
 function paymentStatusLabel(status: string) {
-  if (status === "CONFIRMED") return "Inscrição confirmada";
-  if (status === "PENDING") return "Pendente de validação";
-  return "Sem validação";
+  return formatPaymentStatusLabel(status);
 }
 
 function buildCourseEnrollmentTicketHtml(params: RenderCourseEnrollmentTicketParams & {

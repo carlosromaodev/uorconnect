@@ -14,12 +14,28 @@ export interface Student {
   birthDate?: Date | null;
   nationality?: string | null;
   phone?: string | null;
+  alternatePhone?: string | null;
+  avatarUrl?: string | null;
+  university?: string | null;
+  isUorStudent?: boolean | null;
+  registrationSource?: string | null;
+  bio?: string | null;
+  address?: string | null;
+  instagramUrl?: string | null;
+  facebookUrl?: string | null;
+  linkedinUrl?: string | null;
+  githubUrl?: string | null;
+  websiteUrl?: string | null;
+  profileCompletedAt?: Date | null;
+  accessType?: "OFFICIAL" | "TEMPORARY";
+  deletedAt?: Date | null;
+  deletionReason?: string | null;
   lastLoginAt?: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }
 
-export type StudentLoginOrigin = "uorconnect" | "laboratorio";
+export type StudentLoginOrigin = "uorconnect" | "conventional";
 
 export interface StudentLoginAudit {
   id: number;
@@ -33,6 +49,8 @@ export interface StudentLoginAudit {
 export interface LoginCredentials {
   studentNumber: string;
   password: string;
+  provider?: "uor" | "isptec";
+  identifierType?: "studentNumber" | "username";
 }
 
 export interface LoginResponse {
@@ -43,6 +61,7 @@ export interface LoginResponse {
 }
 
 export interface StudentProfile {
+  studentNumber?: string;
   name?: string;
   email?: string;
   course?: string;
@@ -54,6 +73,20 @@ export interface StudentProfile {
   birthDate?: Date;
   nationality?: string;
   phone?: string;
+  alternatePhone?: string | null;
+  avatarUrl?: string | null;
+  university?: string | null;
+  isUorStudent?: boolean | null;
+  registrationSource?: string | null;
+  bio?: string | null;
+  address?: string | null;
+  instagramUrl?: string | null;
+  facebookUrl?: string | null;
+  linkedinUrl?: string | null;
+  githubUrl?: string | null;
+  websiteUrl?: string | null;
+  profileCompletedAt?: Date | null;
+  accessType?: "OFFICIAL" | "TEMPORARY";
 }
 
 export interface StudentStats {
@@ -72,8 +105,33 @@ export interface AdminAuthorizedStudent {
   team: string;
   role: string;
   permissions: string;
+  isActive: boolean;
+  revokedAt?: Date | null;
+  revokedByStudentNumber?: string | null;
+  revocationReason?: string | null;
   createdAt: Date;
   updatedAt: Date;
+}
+
+export interface AdminAccessConflictMembership {
+  id: number;
+  fullName: string;
+  category: string;
+  team: string;
+  role: string;
+  permissions: string;
+  status: string;
+  updatedAt: Date;
+}
+
+export interface AdminAccessConflict {
+  studentNumber: string;
+  issue: "NO_ACTIVE_MEMBERSHIP" | "BLOCKED_BY_INACTIVE_MEMBERSHIP" | "OFFICIAL_MEMBERSHIP_PRECEDENCE";
+  severity: "MEDIUM" | "HIGH";
+  accessBlocked: boolean;
+  admin: AdminAuthorizedStudent;
+  memberships: AdminAccessConflictMembership[];
+  effectiveSource: "ADMIN_AUTHORIZED_STUDENT" | "TEAM_MEMBERSHIP" | "BLOCKED";
 }
 
 export interface StudentDeletionResult {

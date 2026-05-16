@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll, vi } from "vitest";
 import { LoginUseCase } from "./login";
 import { type StudentRepository } from "../infra/student.repository";
 import { loginSecretaria } from "../infra/secretaria-client";
+import { loginIsptecPortal } from "../infra/isptec-client";
 
 // Evita bater na rede nos testes: mock da secretaria retornando sucesso
 vi.mock("../infra/secretaria-client", () => ({
@@ -23,6 +24,26 @@ vi.mock("../infra/secretaria-client", () => ({
         : { success: false, reason: "Invalid credentials (mocked)" }
     );
   })
+}));
+
+vi.mock("../infra/isptec-client", () => ({
+  loginIsptecPortal: vi.fn((studentNumber: string, password: string) => {
+    const ok = password !== "senha_errada_123";
+    return Promise.resolve(
+      ok
+        ? {
+            success: true,
+            profile: {
+              name: "Aluno ISPTEC",
+              email: "aluno@isptec.example.test",
+              course: "Engenharia Informática",
+              university: "ISPTEC",
+              academicSyncedAt: new Date("2026-05-15T09:00:00.000Z"),
+            },
+          }
+        : { success: false, reason: "step:login invalid credentials status 200" },
+    );
+  }),
 }));
 
 // Credenciais reais (podem ser sobrepostas via env vars).
@@ -59,9 +80,105 @@ describe("LoginUseCase – integração com secretaria", () => {
 
       expect(result.success).toBe(true);
       expect(result.studentNumber).toBe(STUDENT_NUMBER);
-      expect(repo.upsertProfile).toHaveBeenCalledWith(STUDENT_NUMBER, expect.any(Object));
+      expect(repo.upsertProfile).toHaveBeenCalledWith(
+        STUDENT_NUMBER,
+        expect.objectContaining({
+          isUorStudent: true,
+          registrationSource: "SECRETARIA",
+        }),
+      );
     },
     30_000 // timeout para rede externa
+  );
+
+  it(
+    "aceita login ISPTEC e registra o estudante como identidade académica oficial",
+    async () => {
+      const useCase = new LoginUseCase(repo);
+      const result = await useCase.execute({
+        studentNumber: "20200227",
+        password: "senha_valida",
+        provider: "isptec",
+      });
+
+      expect(result.success).toBe(true);
+      expect(loginIsptecPortal).toHaveBeenCalledWith("20200227", "senha_valida");
+      expect(loginSecretaria).not.toHaveBeenLastCalledWith("20200227", "senha_valida");
+      expect(repo.upsertProfile).toHaveBeenCalledWith(
+        "20200227",
+        expect.objectContaining({
+          university: "ISPTEC",
+          isUorStudent: false,
+          registrationSource: "ISPTEC_OFFICIAL",
+          academicSyncedAt: expect.any(Date),
+        }),
+      );
+    },
+    30_000,
+  );
+
+  it(
+    "aceita login UOR por nome de utilizador e persiste o número oficial devolvido pela Secretaria",
+    async () => {
+      vi.mocked(loginSecretaria).mockResolvedValueOnce({
+        success: true,
+        profile: {
+          studentNumber: "20200477",
+          name: "Petrucadas",
+          course: "Engenharia Informática",
+          academicSyncedAt: new Date("2026-05-15T10:00:00.000Z"),
+        },
+      } as any);
+
+      vi.mocked(repo.upsertProfile).mockResolvedValueOnce({
+        studentNumber: "20200477",
+      } as any);
+
+      const useCase = new LoginUseCase(repo);
+      const result = await useCase.execute({
+        studentNumber: "petrucadas",
+        password: "senha_valida",
+        provider: "uor",
+        identifierType: "username",
+      });
+
+      expect(result.success).toBe(true);
+      expect(result.studentNumber).toBe("20200477");
+      expect(loginSecretaria).toHaveBeenCalledWith("petrucadas", "senha_valida");
+      expect(repo.upsertProfile).toHaveBeenCalledWith(
+        "20200477",
+        expect.objectContaining({
+          isUorStudent: true,
+          registrationSource: "SECRETARIA",
+        }),
+      );
+    },
+    30_000,
+  );
+
+  it(
+    "rejeita login UOR por nome quando a Secretaria não devolve número oficial",
+    async () => {
+      vi.mocked(loginSecretaria).mockResolvedValueOnce({
+        success: true,
+        profile: {
+          name: "Utilizador sem número",
+          course: "Engenharia Informática",
+        },
+      } as any);
+
+      const useCase = new LoginUseCase(repo);
+      const result = await useCase.execute({
+        studentNumber: "utilizador.sem.numero",
+        password: "senha_valida",
+        provider: "uor",
+        identifierType: "username",
+      });
+
+      expect(result.success).toBe(false);
+      expect(result.error).toContain("número oficial");
+    },
+    30_000,
   );
 
   it(

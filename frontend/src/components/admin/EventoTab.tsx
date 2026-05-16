@@ -1,9 +1,10 @@
-import { type Dispatch, type SetStateAction, useEffect, useMemo } from "react";
+import { type Dispatch, type SetStateAction, useEffect, useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
+import { toast } from "@/components/ui/sonner";
 import {
   Eye,
   FloppyDisk,
@@ -12,9 +13,10 @@ import {
   Sparkle,
   Trash,
 } from "@/icons/phosphor";
-import type { HeroFloatingIcon, HomeSocialConfigInput, HomeSponsor } from "@/lib/api";
+import { api, type HeroFloatingIcon, type HomeSocialConfigInput, type HomeSponsor } from "@/lib/api";
 import { defaultHeroFloatingIcons, defaultHeroSponsors, defaultHomeSocialConfig } from "@/lib/home-content";
 import { getHeroIconByName, getHeroIconSuggestions, isHeroIconAvailable, normalizeHeroIconName } from "@/lib/phosphor-icons";
+import { readCompressedImageFileAsDataUrl } from "@/lib/project-media";
 
 type EventoTabProps = {
   value: HomeSocialConfigInput;
@@ -48,6 +50,7 @@ function resolveHeroConfig(value: HomeSocialConfigInput) {
 }
 
 export function EventoTab({ value, onChange, onSave, isSaving = false }: EventoTabProps) {
+  const [uploadingSponsorId, setUploadingSponsorId] = useState<string | null>(null);
   const preview = useMemo(() => resolveHeroConfig(value), [value]);
 
   useEffect(() => {
@@ -97,6 +100,31 @@ export function EventoTab({ value, onChange, onSave, isSaving = false }: EventoT
       ...current,
       sponsors: resolveHeroConfig(current).sponsors.map((item) => item.id === id ? { ...item, ...patch } : item),
     }));
+  };
+
+  const handleSponsorLogoFile = async (id: string, file?: File | null) => {
+    if (!file) return;
+
+    setUploadingSponsorId(id);
+    try {
+      const dataUrl = await readCompressedImageFileAsDataUrl(file, {
+        maxDimension: 900,
+        maxLength: 700_000,
+      });
+      const uploaded = await api.media.uploadDataUrl(dataUrl, "home-sponsors", {
+        maxImageDimension: 900,
+      });
+      updateSponsor(id, { imageUrl: uploaded.url });
+      toast.success("Imagem do patrocinador carregada.");
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Não foi possível carregar a imagem do patrocinador.",
+      );
+    } finally {
+      setUploadingSponsorId(null);
+    }
   };
 
   const addSponsor = () => {
@@ -269,7 +297,23 @@ export function EventoTab({ value, onChange, onSave, isSaving = false }: EventoT
                     placeholder="https://dominio.com/logo.png"
                   />
                 </Label>
-                <div className="flex items-end justify-end">
+                <div className="flex items-end justify-end gap-2">
+                  <label className="inline-flex h-10 cursor-pointer items-center justify-center rounded-md border border-border bg-background px-3 text-xs font-semibold transition-colors hover:bg-muted">
+                    <Image className="mr-1.5 h-4 w-4" />
+                    {uploadingSponsorId === sponsor.id ? "A carregar..." : "Carregar imagem"}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      className="sr-only"
+                      disabled={uploadingSponsorId === sponsor.id}
+                      onChange={(event) => {
+                        const input = event.currentTarget;
+                        void handleSponsorLogoFile(sponsor.id, input.files?.[0] ?? null).finally(() => {
+                          input.value = "";
+                        });
+                      }}
+                    />
+                  </label>
                   <Button type="button" variant="ghost" size="icon" onClick={() => removeSponsor(sponsor.id)}>
                     <Trash className="h-4 w-4 text-destructive" />
                   </Button>

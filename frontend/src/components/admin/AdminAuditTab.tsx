@@ -5,7 +5,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { toast } from "@/components/ui/sonner";
-import { api, type AdminAuditLog, type PagedResult } from "@/lib/api";
+import { api, type AdminAuditLog, type DataRetentionCleanupResult, type DataRetentionPolicy, type PagedResult } from "@/lib/api";
 import { AdminTablePagination } from "@/components/admin/AdminTablePagination";
 import { downloadBlobFile } from "@/lib/student-documents";
 
@@ -50,6 +50,9 @@ export default function AdminAuditTab() {
   const [logs, setLogs] = useState<PagedResult<AdminAuditLog> | null>(null);
   const [loading, setLoading] = useState(true);
   const [exporting, setExporting] = useState(false);
+  const [retentionPolicy, setRetentionPolicy] = useState<DataRetentionPolicy | null>(null);
+  const [retentionResult, setRetentionResult] = useState<DataRetentionCleanupResult | null>(null);
+  const [retentionBusy, setRetentionBusy] = useState(false);
   const [search, setSearch] = useState("");
   const [action, setAction] = useState("todos");
   const [entityType, setEntityType] = useState("todos");
@@ -80,6 +83,9 @@ export default function AdminAuditTab() {
 
   useEffect(() => {
     void load();
+    api.audit.retentionPolicy()
+      .then(setRetentionPolicy)
+      .catch(() => undefined);
   }, []);
 
   const handleSearch = (event: FormEvent<HTMLFormElement>) => {
@@ -101,6 +107,22 @@ export default function AdminAuditTab() {
       toast.error(error instanceof Error ? error.message : "Falha ao exportar auditoria.");
     } finally {
       setExporting(false);
+    }
+  };
+
+  const handleRunRetention = async () => {
+    const confirmed = window.confirm("Executar a política de retenção agora? Logs antigos serão removidos e credenciais expiradas antigas terão dados privados minimizados.");
+    if (!confirmed) return;
+    setRetentionBusy(true);
+    try {
+      const result = await api.audit.runRetentionCleanup();
+      setRetentionResult(result);
+      toast.success("Política de retenção executada.");
+      await load(1, search.trim());
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Falha ao executar retenção.");
+    } finally {
+      setRetentionBusy(false);
     }
   };
 
@@ -157,6 +179,27 @@ export default function AdminAuditTab() {
         </div>
       </CardHeader>
       <CardContent>
+        <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50 p-4">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+            <div>
+              <p className="text-sm font-semibold text-slate-900">Retenção de dados</p>
+              <p className="mt-1 text-xs leading-5 text-slate-500">
+                {retentionPolicy
+                  ? `Auditoria: ${retentionPolicy.auditLogRetentionDays} dias · validações: ${retentionPolicy.credentialValidationLogRetentionDays} dias · credenciais expiradas: ${retentionPolicy.expiredCredentialRetentionDays} dias`
+                  : "A carregar política de retenção..."}
+              </p>
+              {retentionResult ? (
+                <p className="mt-1 text-xs text-slate-600">
+                  Última execução: {retentionResult.deletedAuditLogs} logs de auditoria, {retentionResult.deletedCredentialValidationLogs} validações e {retentionResult.minimizedExpiredCredentials} credencial(is) minimizada(s).
+                </p>
+              ) : null}
+            </div>
+            <Button variant="outline" className="rounded-xl" type="button" onClick={() => void handleRunRetention()} disabled={retentionBusy}>
+              <RefreshCw className={`mr-2 h-4 w-4 ${retentionBusy ? "animate-spin" : ""}`} />
+              Executar retenção
+            </Button>
+          </div>
+        </div>
         <div className="overflow-x-auto">
           <Table>
             <TableHeader>

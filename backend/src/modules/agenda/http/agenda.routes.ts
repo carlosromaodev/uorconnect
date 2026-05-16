@@ -5,7 +5,7 @@ import { GetAgendaLiveState } from "../use-cases/get-live-state";
 import { CreateAgendaItem, DeleteAgendaItem, GetAgendaLiveConfig, ListAgendaItems, UpdateAgendaItem, UpdateAgendaLiveConfig } from "../use-cases/manage-agenda";
 import { type Env } from "../../../config/env";
 import { authGuard } from "../../auth/http/auth.middleware";
-import { adminGuard } from "../../auth/http/admin.middleware";
+import { adminGuard, requireAdminPermission, setDefaultAdminPermission } from "../../auth/http/admin.middleware";
 
 export async function agendaRoutes(app: FastifyInstance, opts: { env: Env }) {
   const repository = new PrismaAgendaRepository();
@@ -117,6 +117,7 @@ export async function agendaRoutes(app: FastifyInstance, opts: { env: Env }) {
   app.register(async (adminApp) => {
     adminApp.register(authGuard, { env: opts.env });
     adminApp.register(adminGuard);
+    setDefaultAdminPermission(adminApp, ["SCHEDULE"]);
 
     adminApp.post("/", {
       schema: {
@@ -134,6 +135,7 @@ export async function agendaRoutes(app: FastifyInstance, opts: { env: Env }) {
     });
 
     adminApp.get("/live-config", {
+      config: requireAdminPermission(["LIVE"]),
       schema: {
         response: {
           200: agendaLiveConfigSchema,
@@ -166,6 +168,7 @@ export async function agendaRoutes(app: FastifyInstance, opts: { env: Env }) {
     });
 
     adminApp.put("/live-config", {
+      config: requireAdminPermission(["LIVE"]),
       schema: {
         body: agendaLiveConfigInputSchema,
         response: {

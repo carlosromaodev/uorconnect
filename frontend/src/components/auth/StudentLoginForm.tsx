@@ -1,18 +1,41 @@
-import { useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { AlertCircle, Shield, Lock, Eye, EyeOff } from "lucide-react";
+import { type FormEvent, useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
+import { AlertCircle, CheckCircle2, Eye, EyeOff, GraduationCap, Lock } from "lucide-react";
 import { toast } from "@/components/ui/sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ApiError, api, setToken, type StudentProfile } from "@/lib/api";
-import { getAuthOrigin } from "@/lib/contest-lab";
-import { contestButtonClassNames, contestInputClassName } from "@/components/challenges/contest-theme.tokens";
 import { cn } from "@/lib/utils";
+
+const academicLoginThemes = {
+  uor: {
+    shortLabel: "UOR",
+    label: "Estudante UOR",
+    institution: "Universidade Oscar Ribas",
+    title: "Conta académica UOR",
+    helper: "Entra com o número de estudante e a senha da secretaria.uor.edu.ao.",
+    portal: "Secretaria UOR",
+    button: "Entrar com UOR",
+  },
+  isptec: {
+    shortLabel: "ISPTEC",
+    label: "Estudante ISPTEC",
+    institution: "ISPTEC",
+    title: "Portal Académico ISPTEC",
+    helper: "Entra com o número de estudante e a senha do portal académico ISPTEC.",
+    portal: "Portal ISPTEC",
+    button: "Entrar com ISPTEC",
+  },
+} as const;
 
 function getFriendlyLoginError(error: unknown) {
   if (error instanceof ApiError) {
     if (error.status === 401) {
       return "Número de estudante ou palavra-passe inválidos.";
+    }
+
+    if (error.status === 408) {
+      return "A Secretaria demorou a responder. Mantém a ligação estável e tenta novamente em instantes.";
     }
 
     if (error.status >= 500) {
@@ -22,6 +45,10 @@ function getFriendlyLoginError(error: unknown) {
 
   if (error instanceof TypeError) {
     return "Não foi possível contactar o servidor. Verifica a tua ligação e tenta novamente.";
+  }
+
+  if (error instanceof Error && /timeout|abort/i.test(error.message)) {
+    return "A validação académica demorou mais do que o esperado. Tenta novamente em instantes.";
   }
 
   if (error instanceof Error && error.message.trim()) {
@@ -35,48 +62,68 @@ export function StudentLoginForm({
   onSuccess,
   submitLabel = "Entrar",
   compact = false,
-  mode = "portal",
 }: {
   onSuccess?: (student?: StudentProfile | null) => void;
   submitLabel?: string;
   compact?: boolean;
-  mode?: "portal" | "laboratorio";
+  mode?: "portal";
+  allowConventional?: boolean;
 }) {
+  const [loginMode, setLoginMode] = useState<"uor" | "isptec">("uor");
+  const [identifierType, setIdentifierType] = useState<"studentNumber" | "username">("studentNumber");
   const [studentNumber, setStudentNumber] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<{ number?: string; password?: string }>({});
-  const laboratorioMode = mode === "laboratorio";
+
+  const activeAcademicTheme = loginMode === "isptec" ? academicLoginThemes.isptec : academicLoginThemes.uor;
+  const academicSubmitLabel = submitLabel === "Entrar" ? activeAcademicTheme.button : submitLabel;
 
   const validate = () => {
     const errors: typeof fieldErrors = {};
-    const normalized = studentNumber.replace(/\D/g, "");
-    if (!normalized) {
-      errors.number = "Introduz o teu número de estudante.";
-    } else if (normalized.length !== 8) {
-      errors.number = "O número deve ter exatamente 8 dígitos.";
+    const currentIdentifierType = loginMode === "isptec" ? "studentNumber" : identifierType;
+    const normalizedNumber =
+      currentIdentifierType === "username"
+        ? studentNumber.trim()
+        : studentNumber.replace(/\D/g, "");
+
+    if (currentIdentifierType === "username") {
+      if (normalizedNumber.length < 2 || normalizedNumber.length > 40) {
+        errors.number = "Nome de utilizador deve ter entre 2 e 40 caracteres.";
+      } else if (!/^[\p{L}\p{N}._@ -]+$/u.test(normalizedNumber)) {
+        errors.number = "Nome de utilizador contém caracteres inválidos.";
+      }
+    } else if (normalizedNumber.length < 8 || normalizedNumber.length > 12) {
+      errors.number = "O número deve ter entre 8 e 12 dígitos.";
     }
-    if (!password) {
-      errors.password = "Introduz a tua palavra-passe.";
+
+    if (!password.trim()) {
+      errors.password = "Indica a tua palavra-passe.";
     }
+
     setFieldErrors(errors);
-    return Object.keys(errors).length === 0;
+    return { valid: Object.keys(errors).length === 0, normalizedNumber, currentIdentifierType };
   };
 
-  const handleLogin = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleLogin = async (event: FormEvent) => {
+    event.preventDefault();
     setError(null);
-    if (!validate()) return;
 
-    const normalizedNumber = studentNumber.replace(/\D/g, "").slice(0, 8);
+    const validation = validate();
+    if (!validation.valid) return;
+
     setLoading(true);
     try {
-      const authOrigin = laboratorioMode ? "laboratorio" : getAuthOrigin();
-      const result = authOrigin === "laboratorio"
-        ? await api.contest.login(normalizedNumber, password)
-        : await api.auth.login(normalizedNumber, password, authOrigin);
+      const result = await api.auth.login(
+        validation.normalizedNumber,
+        password,
+        "uorconnect",
+        loginMode === "isptec" ? "isptec" : "uor",
+        validation.currentIdentifierType,
+      );
+
       if (result.success && result.token) {
         setToken(result.token);
         toast.success("Sessão iniciada com sucesso.");
@@ -93,34 +140,46 @@ export function StudentLoginForm({
 
   return (
     <form onSubmit={handleLogin} className={compact ? "space-y-4" : "space-y-5"}>
-      <div
-        className={cn(
-          "p-4",
-          laboratorioMode
-            ? "rounded-[24px] border border-[#00e5c8]/16 bg-[linear-gradient(180deg,rgba(5,12,16,0.94),rgba(8,16,22,0.98))] shadow-[0_18px_42px_rgba(0,0,0,0.24)]"
-            : "rounded-xl border border-primary/15 bg-primary/[0.04]",
-        )}
-      >
-        <div className="flex items-center gap-3">
-          <div
-            className={cn(
-              "shrink-0 p-2",
-              laboratorioMode
-                ? "rounded-2xl border border-[#00e5c8]/16 bg-[#00e5c8]/10 text-[#00e5c8]"
-                : "rounded-lg bg-primary/10 text-primary",
-            )}
-          >
-            <Shield className="h-4 w-4" />
-          </div>
-          <p className={cn("text-[13px] leading-snug", laboratorioMode ? "text-[#7b8ca3]" : "text-muted-foreground")}>
-            {laboratorioMode
-              ? "Usa o teu acesso académico para iniciar sessão."
-              : "Usa os dados de login da secretaria.uor.edu.ao para entrar."}
-          </p>
-        </div>
+      <div className="grid gap-2.5 sm:grid-cols-2">
+        {(["uor", "isptec"] as const).map((provider) => {
+          const theme = academicLoginThemes[provider];
+          const active = loginMode === provider;
+
+          return (
+            <button
+              key={provider}
+              type="button"
+              onClick={() => {
+                setLoginMode(provider);
+                setIdentifierType("studentNumber");
+                setStudentNumber("");
+                setFieldErrors({});
+                setError(null);
+              }}
+              aria-pressed={active}
+              className={cn(
+                "group relative flex h-12 items-center justify-center rounded-xl border px-4 text-sm font-bold transition-all",
+                active
+                  ? "border-slate-950 bg-slate-950 text-white shadow-sm"
+                  : "border-slate-300 bg-white text-slate-950 hover:border-slate-950 hover:bg-slate-50",
+              )}
+            >
+              <span className="inline-flex items-center justify-center gap-2">
+                <GraduationCap className="h-4 w-4" />
+                <span>{theme.label}</span>
+                {active && <CheckCircle2 className="h-4 w-4" />}
+              </span>
+            </button>
+          );
+        })}
       </div>
 
-      {/* Error banner */}
+      <div className="flex items-center gap-3 text-[11px] font-black uppercase tracking-[0.18em] text-slate-400">
+        <span className="h-px flex-1 bg-slate-200" />
+        <span>OU</span>
+        <span className="h-px flex-1 bg-slate-200" />
+      </div>
+
       <AnimatePresence>
         {error && (
           <motion.div
@@ -137,23 +196,60 @@ export function StudentLoginForm({
         )}
       </AnimatePresence>
 
-      <div className="space-y-1.5">
-        <label className={cn("text-xs font-semibold", laboratorioMode ? "text-[#8fa0b8]" : "text-muted-foreground")}>Número de estudante</label>
+      <div className="space-y-2">
+        {loginMode === "uor" ? (
+          <div className="grid grid-cols-2 gap-1 rounded-xl border border-slate-200 bg-slate-50 p-1">
+            {([
+              ["studentNumber", "Número"],
+              ["username", "Nome"],
+            ] as const).map(([value, label]) => (
+              <button
+                key={value}
+                type="button"
+                onClick={() => {
+                  setIdentifierType(value);
+                  setStudentNumber("");
+                  setFieldErrors((prev) => ({ ...prev, number: undefined }));
+                  setError(null);
+                }}
+                className={cn(
+                  "h-8 rounded-lg text-xs font-semibold transition-colors",
+                  identifierType === value
+                    ? "bg-white text-slate-950 shadow-sm"
+                    : "text-slate-500 hover:text-slate-800",
+                )}
+                aria-pressed={identifierType === value}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        ) : null}
+        <label className="text-xs font-semibold text-muted-foreground">
+          {identifierType === "username" && loginMode === "uor" ? "Nome de utilizador" : "Número de estudante"}
+        </label>
         <Input
           type="text"
           required
           autoComplete="username"
-          inputMode="numeric"
-          placeholder="Ex: 20243454"
+          inputMode={identifierType === "username" && loginMode === "uor" ? "text" : "numeric"}
+          placeholder={
+            identifierType === "username" && loginMode === "uor"
+              ? "Ex: petrucadas"
+              : loginMode === "isptec" ? "Ex: 20200227" : "Ex: 20243454"
+          }
           value={studentNumber}
-          maxLength={8}
-          onChange={(e) => {
-            setStudentNumber(e.target.value.replace(/\D/g, "").slice(0, 8));
+          maxLength={identifierType === "username" ? 40 : 12}
+          onChange={(event) => {
+            const nextValue = identifierType === "username" && loginMode === "uor"
+              ? event.target.value.slice(0, 40)
+              : event.target.value.replace(/\D/g, "").slice(0, 12);
+            setStudentNumber(nextValue);
             setFieldErrors((prev) => ({ ...prev, number: undefined }));
             setError(null);
           }}
           className={cn(
-            laboratorioMode ? contestInputClassName : "h-11 rounded-lg border-border/80 bg-background/95 text-base md:text-sm",
+            "h-11 rounded-lg border-border/80 bg-background/95 text-base md:text-sm",
             fieldErrors.number && "border-destructive/50 focus-visible:ring-destructive/30",
           )}
         />
@@ -172,7 +268,7 @@ export function StudentLoginForm({
       </div>
 
       <div className="space-y-1.5">
-        <label className={cn("text-xs font-semibold", laboratorioMode ? "text-[#8fa0b8]" : "text-muted-foreground")}>Palavra-passe</label>
+        <label className="text-xs font-semibold text-muted-foreground">Palavra-passe</label>
         <div className="relative">
           <Input
             type={showPassword ? "text" : "password"}
@@ -180,26 +276,24 @@ export function StudentLoginForm({
             autoComplete="current-password"
             placeholder="Usa a tua palavra-passe habitual"
             value={password}
-            onChange={(e) => {
-              setPassword(e.target.value);
+            onChange={(event) => {
+              setPassword(event.target.value);
               setFieldErrors((prev) => ({ ...prev, password: undefined }));
               setError(null);
             }}
             className={cn(
-              laboratorioMode ? contestInputClassName : "h-11 rounded-lg border-border/80 bg-background/95 pr-10 text-base md:text-sm",
+              "h-11 rounded-lg border-border/80 bg-background/95 pr-10 text-base md:text-sm",
               fieldErrors.password && "border-destructive/50 focus-visible:ring-destructive/30",
             )}
           />
-          {!laboratorioMode && (
-            <button
-              type="button"
-              tabIndex={-1}
-              onClick={() => setShowPassword(!showPassword)}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground/60 transition-colors hover:text-muted-foreground"
-            >
-              {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-            </button>
-          )}
+          <button
+            type="button"
+            tabIndex={-1}
+            onClick={() => setShowPassword(!showPassword)}
+            className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground/60 transition-colors hover:text-muted-foreground"
+          >
+            {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+          </button>
         </div>
         <AnimatePresence>
           {fieldErrors.password && (
@@ -217,26 +311,18 @@ export function StudentLoginForm({
 
       <Button
         type="submit"
-        className={cn(
-          "h-11 w-full font-semibold",
-          laboratorioMode ? `${contestButtonClassNames.primary} rounded-2xl` : "rounded-lg font-semibold shadow-sm",
-        )}
+        className="h-12 w-full rounded-xl bg-primary font-bold text-primary-foreground shadow-none transition-all hover:bg-primary/90"
         disabled={loading}
       >
         {loading ? (
           <span className="flex items-center gap-2">
-            <span
-              className={cn(
-                "h-3.5 w-3.5 animate-spin rounded-full border-2",
-                laboratorioMode ? "border-[#041013]/30 border-t-[#041013]" : "border-primary-foreground/30 border-t-primary-foreground",
-              )}
-            />
-            {laboratorioMode ? "A validar sessão..." : "A extrair dados..."}
+            <span className="h-3.5 w-3.5 animate-spin rounded-full border-2 border-primary-foreground/30 border-t-primary-foreground" />
+            A extrair dados...
           </span>
         ) : (
           <span className="flex items-center gap-2">
             <Lock className="h-4 w-4" />
-            {submitLabel}
+            {academicSubmitLabel}
           </span>
         )}
       </Button>

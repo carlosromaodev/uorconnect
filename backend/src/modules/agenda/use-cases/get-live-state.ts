@@ -6,8 +6,10 @@ export type AgendaLiveState = {
   next: AgendaItem | null;
 };
 
+const ANGOLA_TIMEZONE_OFFSET = "+01:00";
+
 export function getAgendaTimestamp(item: AgendaItem, time: string) {
-  return new Date(`${item.date.toISOString().slice(0, 10)}T${time}:00.000Z`).getTime();
+  return new Date(`${item.date.toISOString().slice(0, 10)}T${time}:00.000${ANGOLA_TIMEZONE_OFFSET}`).getTime();
 }
 
 export function resolveAgendaLiveState(items: AgendaItem[], now: Date): AgendaLiveState {

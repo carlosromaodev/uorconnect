@@ -3,7 +3,7 @@ import { Users, Clock, Award, AlertCircle, CheckCircle, FileText } from "lucide-
 
 const rules = [
   { icon: Users, title: "Participação", items: ["Ser estudante da UOR", "Matrícula regular 2025/2026", "Individual ou grupo"] },
-  { icon: Users, title: "Grupos", items: ["Máximo 5 membros", "1 grupo por estudante", "Indicar líder na submissão"] },
+  { icon: Users, title: "Grupos", items: ["Máximo 17 membros", "1 grupo por estudante", "Indicar líder na submissão"] },
   { icon: Clock, title: "Apresentação", items: ["10 min de apresentação", "5 min para perguntas", "Pontualidade obrigatória"] },
   { icon: Award, title: "Avaliação", items: ["Inovação 30%", "Viabilidade técnica 25%", "Impacto social 25%", "Apresentação 20%"] },
   { icon: AlertCircle, title: "Regras Gerais", items: ["Projetos originais", "Plágio = desclassificação", "Decisão do júri é final"] },

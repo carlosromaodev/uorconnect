@@ -1,10 +1,5 @@
 {
   "experimentalServices": {
-    "laboratorio": {
-      "entrypoint": "laboratorio",
-      "routePrefix": "/desafios",
-      "framework": "vite"
-    },
     "frontend": {
       "entrypoint": "frontend",
       "routePrefix": "/",

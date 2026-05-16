@@ -1,16 +1,13 @@
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Route, Routes, useLocation } from "react-router-dom";
+import { BrowserRouter, Navigate, Route, Routes, useLocation } from "react-router-dom";
 import { Suspense, lazy, type ReactNode, useEffect, useLayoutEffect } from "react";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import {
-  getContestAbsoluteUrl,
   getSaasShowcaseHref,
-  isCommunityAppHost,
-  isContestLabHost,
-  isContestRoutePath,
+  isAdminAppHost,
   isSaasShowcaseHost,
-} from "@/lib/contest-lab";
+} from "@/lib/runtime-hosts";
 
 const queryClient = new QueryClient();
 const LazyAnalyticsProvider = lazy(() =>
@@ -33,19 +30,22 @@ const Palestrantes = lazy(() => import("./pages/Palestrantes"));
 const FAQ = lazy(() => import("./pages/FAQ"));
 const Guia = lazy(() => import("./pages/Guia"));
 const EventoAoVivo = lazy(() => import("./pages/EventoAoVivo"));
+const VotacaoAoVivo = lazy(() => import("./pages/VotacaoAoVivo"));
 const NotFound = lazy(() => import("./pages/NotFound"));
 const Admin = lazy(() => import("./pages/Admin"));
+const AdminLoginPage = lazy(() => import("./pages/AdminLoginPage"));
 const Login = lazy(() => import("./pages/Login"));
 const SaasShowcase = lazy(() => import("./pages/SaasShowcase"));
 const MinhaArea = lazy(() => import("./pages/MinhaArea"));
 const SubmissionReceipt = lazy(() => import("./pages/SubmissionReceipt"));
 const PublicValidation = lazy(() => import("./pages/PublicValidation"));
-
-// Community app
-const CommunityShell = lazy(() => import("./community/components/CommunityShell").then((m) => ({ default: m.CommunityShell })));
-const CommunityFeed = lazy(() => import("./community/pages/CommunityFeed"));
-const CommunityMessages = lazy(() => import("./community/pages/CommunityMessages"));
-const CommunityProfile = lazy(() => import("./community/pages/CommunityProfile"));
+const TeamInvitation = lazy(() => import("./pages/TeamInvitation"));
+const TeamCredentialInvitation = lazy(() => import("./pages/TeamCredentialInvitation"));
+const TeamMemberProfile = lazy(() => import("./pages/TeamMemberProfile"));
+const CompletarPerfil = lazy(() => import("./pages/CompletarPerfil"));
+const PassportReferralInvite = lazy(() => import("./pages/PassportReferralInvite"));
+const FormadorCadastro = lazy(() => import("./pages/FormadorCadastro"));
+const FormadorPainel = lazy(() => import("./pages/FormadorPainel"));
 
 function RouteFallback() {
   return (
@@ -134,64 +134,27 @@ function SaasShowcaseRedirect() {
   return null;
 }
 
-function ContestExperienceRedirect() {
+function AdminAppRedirect() {
   const location = useLocation();
 
   useEffect(() => {
-    if (typeof window === "undefined") return;
-
-    const targetPath = `${location.pathname}${location.search}${location.hash}` || "/desafios";
-    const href = getContestAbsoluteUrl(targetPath);
-
-    if (window.location.href === href) {
-      return;
-    }
-
-    window.location.replace(href);
+    if (location.pathname === "/admin") return;
+    window.location.replace(`/admin${location.search}${location.hash}`);
   }, [location.hash, location.pathname, location.search]);
 
   return null;
 }
 
-function CommunityApp({ basePath = "" }: { basePath?: string }) {
-  const b = basePath;
-  return (
-    <Suspense fallback={<RouteFallback />}>
-      <CommunityShell basePath={b}>
-        <Routes>
-          <Route path={`${b}/`} element={<CommunityFeed />} />
-          <Route path={`${b}/projetos`} element={<Projetos />} />
-          <Route path={`${b}/projeto/:slug`} element={<ProjetoDetalhe />} />
-          <Route path={`${b}/cursos`} element={<Cursos />} />
-          <Route path={`${b}/mensagens`} element={<CommunityMessages />} />
-          <Route path={`${b}/perfil`} element={<CommunityProfile />} />
-          <Route path={`${b}/minha-area`} element={<MinhaArea />} />
-          <Route path={`${b}/login`} element={<Login />} />
-          <Route path="*" element={<CommunityFeed />} />
-        </Routes>
-      </CommunityShell>
-    </Suspense>
-  );
-}
-
 const AppContent = () => {
   const location = useLocation();
   const hostname = typeof window !== "undefined" ? window.location.hostname : "";
-  const communityAppHost = isCommunityAppHost(hostname);
-  const communityRoute = location.pathname.startsWith("/comunidade");
+  const adminAppHost = isAdminAppHost(hostname);
   const saasShowcaseHost = isSaasShowcaseHost(hostname);
-  const contestLabHost = isContestLabHost(hostname);
   const isSaas = saasShowcaseHost || location.pathname.startsWith("/plataforma");
-  const isContestExperience = contestLabHost || isContestRoutePath(location.pathname, hostname);
-  const showChrome = !isSaas && !isContestExperience && !communityAppHost && !communityRoute;
-
-  if (communityAppHost) {
-    return <CommunityApp />;
-  }
-
-  if (communityRoute) {
-    return <CommunityApp basePath="/comunidade" />;
-  }
+  const adminRoute = location.pathname === "/admin" || location.pathname.startsWith("/admin/");
+  const liveDisplayRoute = location.pathname === "/votacao-ao-vivo" || location.pathname === "/votacoes/ao-vivo";
+  const passportInviteRoute = location.pathname.startsWith("/desafio/convite/");
+  const showChrome = !adminAppHost && !adminRoute && !isSaas && !liveDisplayRoute && !passportInviteRoute;
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -203,9 +166,11 @@ const AppContent = () => {
       <main className="flex-1">
         <Suspense fallback={<RouteFallback />}>
           <Routes>
-            {contestLabHost ? (
+            {adminAppHost ? (
               <>
-                <Route path="*" element={<ContestExperienceRedirect />} />
+                <Route path="/admin/login" element={<AdminLoginPage />} />
+                <Route path="/admin" element={<Admin />} />
+                <Route path="*" element={<AdminAppRedirect />} />
               </>
             ) : (
               <>
@@ -224,14 +189,25 @@ const AppContent = () => {
                 <Route path="/faq" element={<FAQ />} />
                 <Route path="/guia" element={<Guia />} />
                 <Route path="/ao-vivo" element={<EventoAoVivo />} />
+                <Route path="/votacao-ao-vivo" element={<VotacaoAoVivo />} />
+                <Route path="/votacoes/ao-vivo" element={<VotacaoAoVivo />} />
                 <Route path="/login" element={<Login />} />
+                <Route path="/admin/login" element={<AdminLoginPage />} />
                 <Route path="/admin" element={<Admin />} />
                 <Route path="/minha-area" element={<MinhaArea />} />
+                <Route path="/completar-perfil" element={<CompletarPerfil />} />
                 <Route path="/submissoes/:id" element={<SubmissionReceipt />} />
+                <Route path="/equipa/credencial/:token" element={<TeamCredentialInvitation />} />
+                <Route path="/equipa/convite/:token" element={<TeamCredentialInvitation />} />
+                <Route path="/equipa/perfil/:slug" element={<TeamMemberProfile />} />
+                <Route path="/equipa/:token" element={<TeamInvitation />} />
                 <Route path="/validar/:token" element={<PublicValidation />} />
+                <Route path="/desafio/convite/:code" element={<PassportReferralInvite />} />
+                <Route path="/formadores/cadastro" element={<FormadorCadastro />} />
+                <Route path="/formadores/painel" element={<FormadorPainel />} />
 
-                <Route path="/desafios" element={<ContestExperienceRedirect />} />
-                <Route path="/desafios/*" element={<ContestExperienceRedirect />} />
+                <Route path="/desafios" element={<Navigate to="/minha-area?tab=desafio" replace />} />
+                <Route path="/desafios/*" element={<Navigate to="/minha-area?tab=desafio" replace />} />
 
                 <Route path="/plataforma" element={<SaasShowcaseRedirect />} />
                 <Route path="/plataforma/*" element={<SaasShowcaseRedirect />} />

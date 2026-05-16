@@ -7,11 +7,28 @@ export type ModerationProjectComment = {
   course: string | null;
   submissionId: number;
   submissionName: string;
+  moderationStatus: string;
+  feedbackReviewedAt: string | null;
+  feedbackReviewedByStudentNumber: string | null;
+  feedbackReviewNote: string | null;
+  feedbackScoredAt: string | null;
 };
 
 export type ModerationLiveChatMessage = {
   id: number;
   content: string;
+  attachmentUrl: string | null;
+  attachmentMime: string | null;
+  replyTo: {
+    id: number;
+    content: string;
+    studentName: string;
+  } | null;
+  reactionCounts: Record<string, number>;
+  isPinned: boolean;
+  isHighlighted: boolean;
+  hiddenAt: string | null;
+  reportCount: number;
   createdAt: string;
   studentName: string;
   studentNumber: string;

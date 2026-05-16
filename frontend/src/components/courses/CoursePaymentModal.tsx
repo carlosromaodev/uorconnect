@@ -3,7 +3,7 @@ import { Loader2, MessageSquareMore, Paperclip, ShieldCheck, Wallet } from "luci
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import type { Course } from "@/lib/api";
+import { api, type Course } from "@/lib/api";
 
 const PHONE_PREFIX = "+244 ";
 
@@ -78,16 +78,17 @@ export function CoursePaymentModal({
       throw new Error("O ficheiro selecionado não gerou um comprovativo válido.");
     }
 
-    setPaymentProofValue(dataUrl);
+    const uploaded = await api.media.uploadDataUrl(dataUrl, "course-payment-proofs", { allowDocuments: true });
+    setPaymentProofValue(uploaded.url);
     setPaymentProofName(selectedFile.name);
-    return dataUrl;
+    return uploaded.url;
   };
 
   if (!course) return null;
 
   return (
     <Dialog open={open} onOpenChange={(nextOpen) => { if (!nextOpen) onClose(); }}>
-      <DialogContent className="w-[94vw] max-w-[560px] overflow-hidden rounded-[18px] border-border/70 p-0">
+      <DialogContent className="max-h-[calc(100dvh-2rem)] w-[94vw] max-w-[560px] overflow-y-auto overscroll-contain rounded-[18px] border-border/70 p-0">
         <div className="bg-[radial-gradient(circle_at_top_left,rgba(249,115,22,0.16),transparent_24%),linear-gradient(180deg,rgba(2,132,199,0.08),transparent)] p-6">
           <DialogHeader className="text-left">
             <DialogTitle className="flex items-center gap-2 font-heading text-xl">
@@ -163,7 +164,8 @@ export function CoursePaymentModal({
                       if (!dataUrl.startsWith("data:")) {
                         throw new Error("O ficheiro selecionado não gerou um comprovativo válido.");
                       }
-                      setPaymentProofValue(dataUrl);
+                      const uploaded = await api.media.uploadDataUrl(dataUrl, "course-payment-proofs", { allowDocuments: true });
+                      setPaymentProofValue(uploaded.url);
                       setPaymentProofName(file.name);
                       setError(null);
                     } catch (error) {

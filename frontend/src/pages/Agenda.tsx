@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Clock, MapPin, User, Filter, CalendarDays, Wifi, Radio, Globe, Smartphone, Cpu, Monitor, Signal, Zap, MessageSquare, Lightbulb, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -7,6 +7,9 @@ import { api, type AgendaItem } from "@/lib/api";
 const patternIcons = [Wifi, Radio, Globe, Smartphone, Cpu, Monitor, Signal, Zap, MessageSquare, Lightbulb];
 
 type Session = {
+  id: number;
+  day: string;
+  date: string;
   time: string;
   title: string;
   local: string;
@@ -17,7 +20,6 @@ type Session = {
 };
 
 const sessionTypes = ["Todos", "Painel", "Workshop", "Apresentação", "Intervalo", "Cerimónia"];
-const themes = ["Todos", "Telecomunicações", "Tecnologia", "Carreira", "Projetos", "Geral"];
 
 const typeColors: Record<string, string> = {
   Painel: "bg-primary/10 text-primary border-primary/20",
@@ -27,10 +29,45 @@ const typeColors: Record<string, string> = {
   Cerimónia: "bg-primary text-primary-foreground border-primary",
 };
 
-const staticDays: { day: string; date: string; dayTheme: string }[] = [
-  { day: "Dia 1", date: "17 Mai", dayTheme: "Da sala de aula ao mercado de trabalho" },
-  { day: "Dia 2", date: "18 Mai", dayTheme: "Marca pessoal, networking e posicionamento profissional" },
-];
+const dayThemes: Record<string, string> = {
+  DAY1: "Marca pessoal, formações práticas e visita aos stands",
+  DAY2: "Transformação de projetos académicos em oportunidades reais",
+};
+
+const dayLabels: Record<string, string> = {
+  DAY1: "Dia 1",
+  DAY2: "Dia 2",
+};
+
+const typeLabels: Record<string, Session["type"]> = {
+  PANEL: "Painel",
+  WORKSHOP: "Workshop",
+  PRESENTATION: "Apresentação",
+  BREAK: "Intervalo",
+  CEREMONY: "Cerimónia",
+};
+
+function formatAgendaDateLabel(date: string) {
+  const parsedDate = new Date(date);
+  if (Number.isNaN(parsedDate.getTime())) return date;
+
+  return new Intl.DateTimeFormat("pt-PT", {
+    day: "2-digit",
+    month: "short",
+  })
+    .format(parsedDate)
+    .replace(".", "");
+}
+
+function formatDayLabel(day: string) {
+  return dayLabels[day] ?? day;
+}
+
+function getDaySortValue(day: string) {
+  if (day === "DAY1") return 1;
+  if (day === "DAY2") return 2;
+  return 99;
+}
 
 export default function Agenda() {
   const [activeDay, setActiveDay] = useState<number | null>(null);
@@ -46,23 +83,62 @@ export default function Agenda() {
       .finally(() => setLoading(false));
   }, []);
 
-  const sessions: Session[] = agendaItems.map((item) => ({
-    time: item.startTime ?? "",
+  const sessions: Session[] = useMemo(() => agendaItems.map((item) => ({
+    id: item.id,
+    day: item.day,
+    date: item.date,
+    time: item.endTime ? `${item.startTime} — ${item.endTime}` : item.startTime ?? "",
     title: item.title,
     local: item.local,
     speaker: item.speaker,
     desc: item.description,
-    type: item.type as Session["type"],
+    type: typeLabels[item.type] ?? "Apresentação",
     theme: item.theme,
-  }));
+  })), [agendaItems]);
 
-  const days = staticDays.map((staticDay, index) => {
-    const dayIndex = index + 1;
-    return {
-      ...staticDay,
-      events: sessions.filter((s) => s.time?.startsWith(dayIndex === 1 ? "0" : "1")),
-    };
-  });
+  const themes = useMemo(() => {
+    const uniqueThemes = Array.from(new Set(sessions.map((session) => session.theme).filter(Boolean)));
+    return ["Todos", ...uniqueThemes];
+  }, [sessions]);
+
+  const days = useMemo(() => {
+    const grouped = new Map<string, {
+      day: string;
+      dayKey: string;
+      date: string;
+      dayTheme: string;
+      events: Session[];
+    }>();
+
+    for (const session of sessions) {
+      const key = session.day || session.date;
+      const existing = grouped.get(key);
+
+      if (existing) {
+        existing.events.push(session);
+        continue;
+      }
+
+      grouped.set(key, {
+        day: formatDayLabel(session.day),
+        dayKey: session.day,
+        date: formatAgendaDateLabel(session.date),
+        dayTheme: dayThemes[session.day] ?? "Programação oficial do evento",
+        events: [session],
+      });
+    }
+
+    return Array.from(grouped.values())
+      .sort((left, right) => {
+        const dayDiff = getDaySortValue(left.dayKey) - getDaySortValue(right.dayKey);
+        if (dayDiff !== 0) return dayDiff;
+        return left.date.localeCompare(right.date);
+      })
+      .map((day) => ({
+        ...day,
+        events: [...day.events].sort((left, right) => left.time.localeCompare(right.time)),
+      }));
+  }, [sessions]);
 
   const filteredDays = days
     .map((day, i) => {
@@ -203,7 +279,7 @@ export default function Agenda() {
                       <div className="relative pl-6 md:pl-8 border-l-2 border-primary/20 space-y-4">
                         {day.events.map((ev, i) => (
                           <motion.div
-                            key={`${day.day}-${i}`}
+                            key={ev.id}
                             initial={{ opacity: 0, x: -8 }}
                             whileInView={{ opacity: 1, x: 0 }}
                             viewport={{ once: true }}

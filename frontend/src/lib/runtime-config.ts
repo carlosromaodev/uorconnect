@@ -82,9 +82,9 @@ export function resolveAbsoluteAssetUrl(
 
   const apiBase = resolveApiBase(explicitBase, currentLocation);
   if (ABSOLUTE_URL_RE.test(apiBase)) {
-    return new URL(path, `${apiBase}/`).toString();
+    const assetPath = normalizePathSegment(path).replace(/^\/api(?=\/)/i, "");
+    return `${trimTrailingSlash(apiBase)}${normalizePathSegment(assetPath)}`;
   }
 
   return new URL(path, currentLocation?.origin ?? "http://localhost").toString();
 }
-

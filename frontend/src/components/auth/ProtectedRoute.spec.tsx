@@ -69,16 +69,16 @@ describe("ProtectedRoute", () => {
             path="/desafios/lobby"
             element={
               <ProtectedRoute loginPath="/desafios/login">
-                <div>Conteúdo protegido do laboratório</div>
+                <div>Conteúdo protegido do desafio</div>
               </ProtectedRoute>
             }
           />
-          <Route path="/desafios/login" element={<div>Login do laboratório</div>} />
+          <Route path="/desafios/login" element={<div>Login do desafio</div>} />
         </Routes>
       </MemoryRouter>
     );
 
-    expect(screen.getByText("Login do laboratório")).toBeInTheDocument();
+    expect(screen.getByText("Login do desafio")).toBeInTheDocument();
     expect(sessionStorage.getItem("uor_intended_route")).toBe("/desafios/lobby");
   });
 });

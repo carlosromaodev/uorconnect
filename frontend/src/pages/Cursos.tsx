@@ -210,7 +210,7 @@ export default function Cursos() {
                   </div>
                 </div>
 
-                <div className="flex gap-5 overflow-x-auto pb-2 scrollbar-hide snap-x snap-mandatory">
+                <div className="grid gap-5 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
                   {visibleTopCourses.map((course, index) => (
                     <motion.div
                       key={course.id}
@@ -218,7 +218,7 @@ export default function Cursos() {
                       whileInView={{ opacity: 1, scale: 1, y: 0 }}
                       viewport={{ once: true }}
                       transition={{ delay: index * 0.05, type: "spring", stiffness: 220, damping: 24 }}
-                      className="h-full snap-start w-[88vw] max-w-[340px] sm:w-[350px] sm:max-w-[350px] lg:w-[380px] lg:max-w-[380px]"
+                      className="h-full"
                     >
                       <FeaturedCourseCard
                         course={course}
@@ -255,43 +255,40 @@ export default function Cursos() {
                   Ainda não existem cursos publicados.
                 </div>
               ) : (
-                <div className="flex gap-5 overflow-x-auto pb-2 scrollbar-hide snap-x snap-mandatory">
-                  {courses.map((course, index) => (
-                    (() => {
-                      const enrollment = enrollmentsByCourse[course.id];
-                      const enrolled = Boolean(enrollment);
+                <div className="grid gap-5 grid-cols-1 sm:grid-cols-2 lg:grid-cols-3">
+                  {courses.map((course, index) => {
+                    const enrollment = enrollmentsByCourse[course.id];
+                    const enrolled = Boolean(enrollment);
 
-                      return (
-                    <motion.div
-                      key={course.id}
-                      initial={{ opacity: 0, scale: 0.9, y: 20 }}
-                      whileInView={{ opacity: 1, scale: 1, y: 0 }}
-                      viewport={{ once: true }}
-                      transition={{ delay: index * 0.06, type: "spring", stiffness: 200 }}
-                      whileHover={{ y: -8, transition: { duration: 0.2 } }}
-                      className="h-full snap-start w-[88vw] max-w-[340px] sm:w-[350px] sm:max-w-[350px] lg:w-[380px] lg:max-w-[380px]"
-                    >
-                      <FeaturedCourseCard
-                        course={course}
-                        liked={likedCourseIds.has(course.id)}
-                        enrolled={enrolled}
-                        enrollmentStatusLabel={enrollment?.statusLabel}
-                        className="h-full shadow-sm"
-                        onEnroll={() => {
-                          if (enrollment?.receiptPath) {
-                            navigate(enrollment.receiptPath);
-                            return;
-                          }
-
-                          void handleEnroll(course);
-                        }}
-                        onLike={() => void handleLike(course.id)}
-                        onOpenExternal={openExternal}
-                      />
-                    </motion.div>
-                      );
-                    })()
-                  ))}
+                    return (
+                      <motion.div
+                        key={course.id}
+                        initial={{ opacity: 0, scale: 0.96, y: 16 }}
+                        whileInView={{ opacity: 1, scale: 1, y: 0 }}
+                        viewport={{ once: true }}
+                        transition={{ delay: index * 0.05, type: "spring", stiffness: 220, damping: 24 }}
+                        whileHover={{ y: -4, transition: { duration: 0.2 } }}
+                        className="h-full"
+                      >
+                        <FeaturedCourseCard
+                          course={course}
+                          liked={likedCourseIds.has(course.id)}
+                          enrolled={enrolled}
+                          enrollmentStatusLabel={enrollment?.statusLabel}
+                          className="h-full shadow-sm"
+                          onEnroll={() => {
+                            if (enrollment?.receiptPath) {
+                              navigate(enrollment.receiptPath);
+                              return;
+                            }
+                            void handleEnroll(course);
+                          }}
+                          onLike={() => void handleLike(course.id)}
+                          onOpenExternal={openExternal}
+                        />
+                      </motion.div>
+                    );
+                  })}
                 </div>
               )}
             </section>

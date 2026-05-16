@@ -18,8 +18,17 @@ export type CreateSubmissionInput = {
   needs: string[];
   paymentProof: string;
   paymentConfirmed: boolean;
+  paymentStatus?: string | null;
+  paymentSubmittedAt?: Date | null;
+  paymentReviewedAt?: Date | null;
+  paymentReviewedByStudentNumber?: string | null;
+  paymentReviewNote?: string | null;
   repoUrl?: string | null;
   websiteUrl?: string | null;
+  instagramUrl?: string | null;
+  facebookUrl?: string | null;
+  linkedinUrl?: string | null;
+  githubUrl?: string | null;
   observations?: string | null;
   agreeRules: boolean;
   primaryColor?: string;

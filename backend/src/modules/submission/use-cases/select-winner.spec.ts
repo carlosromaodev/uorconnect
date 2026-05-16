@@ -52,12 +52,20 @@ class InMemorySubmissionRepo implements SubmissionRepository {
     return this.items.find((item) => item.id === id) ?? null;
   }
 
+  async findOwnedById(id: number, studentId: number): Promise<Submission | null> {
+    return this.items.find((item) => item.id === id && item.studentId === studentId) ?? null;
+  }
+
   async findByReference(ref: string): Promise<Submission | null> {
     return this.items.find((item) => item.referenceCode === ref) ?? null;
   }
 
   async list(status?: SubmissionStatus, type?: SubmissionType): Promise<Submission[]> {
     return this.items.filter((item) => (status ? item.status === status : true) && (type ? item.type === type : true));
+  }
+
+  async listByStudent(studentId: number): Promise<Submission[]> {
+    return this.items.filter((item) => item.studentId === studentId);
   }
 
   async summary(): Promise<SubmissionSummary | null> {
@@ -82,6 +90,14 @@ class InMemorySubmissionRepo implements SubmissionRepository {
 
   async hasDuplicate(): Promise<boolean> {
     return false;
+  }
+
+  async updateOwnedSubmission(id: number, studentId: number, data: Omit<CreateSubmissionInput, "referenceCode">): Promise<Submission> {
+    const existing = await this.findOwnedById(id, studentId);
+    if (!existing) throw new Error("Submission not found");
+    const updated = { ...existing, ...data, teamSize: data.members.length, updatedAt: new Date() };
+    this.items = this.items.map((item) => item.id === id ? updated : item);
+    return updated;
   }
 }
 

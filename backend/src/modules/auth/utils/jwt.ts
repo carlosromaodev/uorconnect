@@ -13,7 +13,13 @@ type JuryJwtPayload = {
   role: "jury";
 };
 
-type JwtPayload = StudentJwtPayload | JuryJwtPayload;
+type TrainerJwtPayload = {
+  sub: number;
+  trainerPhone: string;
+  role: "trainer";
+};
+
+type JwtPayload = StudentJwtPayload | JuryJwtPayload | TrainerJwtPayload;
 
 export function signStudentToken(studentId: number, studentNumber: string, env: Env) {
   const payload: StudentJwtPayload = { sub: studentId, studentNumber, role: "student" };
@@ -22,6 +28,11 @@ export function signStudentToken(studentId: number, studentNumber: string, env: 
 
 export function signJuryToken(juryMemberId: number, juryPhone: string, env: Env) {
   const payload: JuryJwtPayload = { sub: juryMemberId, juryPhone, role: "jury" };
+  return jwt.sign(payload, env.JWT_SECRET, { expiresIn: "7d" });
+}
+
+export function signTrainerToken(trainerRequestId: number, trainerPhone: string, env: Env) {
+  const payload: TrainerJwtPayload = { sub: trainerRequestId, trainerPhone, role: "trainer" };
   return jwt.sign(payload, env.JWT_SECRET, { expiresIn: "7d" });
 }
 
@@ -41,6 +52,14 @@ export function verifyJuryToken(token: string, env: Env): JuryJwtPayload {
   const payload = verifyAuthToken(token, env);
   if (payload.role !== "jury" || !("juryPhone" in payload)) {
     throw new Error("Invalid jury token");
+  }
+  return payload;
+}
+
+export function verifyTrainerToken(token: string, env: Env): TrainerJwtPayload {
+  const payload = verifyAuthToken(token, env);
+  if (payload.role !== "trainer" || !("trainerPhone" in payload)) {
+    throw new Error("Invalid trainer token");
   }
   return payload;
 }

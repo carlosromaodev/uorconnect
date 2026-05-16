@@ -3,7 +3,13 @@ import { z } from "zod";
 import type { Env } from "../../../config/env";
 import { prisma } from "../../../shared/prisma";
 import { authGuard } from "../../auth/http/auth.middleware";
-import { adminGuard } from "../../auth/http/admin.middleware";
+import { adminGuard, setDefaultAdminPermission } from "../../auth/http/admin.middleware";
+import { applyProfileCommunicationConsent } from "../../communication/audience";
+import {
+  buildCampaignApprovalToken,
+  isCampaignApprovalRequired,
+  isValidCampaignApprovalToken,
+} from "../../communication/campaign-approval";
 
 const submissionStatusSchema = z.enum(["PENDING", "APPROVED", "REJECTED"]);
 const smsAudienceTypeSchema = z.enum([
@@ -15,10 +21,23 @@ const smsAudienceTypeSchema = z.enum([
   "SUBMISSION_ENROLLED",
   "COURSE_OR_SUBMISSION_ENROLLED",
   "EXHIBITORS",
+  "GROUP_REPRESENTATIVES",
   "COURSE_OR_EXHIBITORS",
   "WINNERS",
   "SELECTED_STUDENTS",
 ]);
+
+const smsContextAutomationEventKeys = [
+  "SUBMISSION_CONTEXT_AUDIENCE",
+  "LIVE_CHAT_CONTEXT_AUDIENCE",
+  "PASSPORT_POINTS_GAINED",
+  "PASSPORT_POINTS_LOST",
+  "PASSPORT_NEGATIVE_BALANCE",
+  "EXHIBITOR_POINTS_GAINED",
+  "EXHIBITOR_POINTS_LOST",
+] as const;
+
+const smsContextAutomationEventKeySchema = z.enum(smsContextAutomationEventKeys);
 
 const smsAudienceSchema = z.object({
   type: smsAudienceTypeSchema,
@@ -28,6 +47,8 @@ const smsAudienceSchema = z.object({
   submissionStatuses: z.array(submissionStatusSchema).max(3).optional(),
   selectedStudentNumbers: z.array(z.string().trim().min(1)).max(5000).optional(),
   selectedPhones: z.array(z.string().trim().min(1)).max(5000).optional(),
+  includeProviderTos: z.array(z.string().trim().min(1)).max(5000).optional(),
+  excludeProviderTos: z.array(z.string().trim().min(1)).max(5000).optional(),
   cookieMarketingOptIn: z.boolean().optional(),
   cookieAnalyticsOptIn: z.boolean().optional(),
   activeWithinDays: z.coerce.number().int().min(1).max(365).optional(),
@@ -39,12 +60,24 @@ const smsPreviewBodySchema = z.object({
   limit: z.coerce.number().int().min(1).max(300).optional(),
 });
 
-const smsSendBodySchema = z.object({
-  title: z.string().trim().min(2).max(120).optional(),
+export const SMS_CAMPAIGN_TITLE_MAX_LENGTH = 120;
+const SMS_CAMPAIGN_TITLE_INPUT_MAX_LENGTH = 500;
+
+export function normalizeSmsCampaignTitle(title: string | null | undefined) {
+  const compacted = (title ?? "").replace(/\s+/g, " ").trim();
+  if (!compacted) return null;
+  if (compacted.length <= SMS_CAMPAIGN_TITLE_MAX_LENGTH) return compacted;
+
+  return `${compacted.slice(0, SMS_CAMPAIGN_TITLE_MAX_LENGTH - 3).trimEnd()}...`;
+}
+
+export const smsSendBodySchema = z.object({
+  title: z.string().trim().min(2).max(SMS_CAMPAIGN_TITLE_INPUT_MAX_LENGTH).optional(),
   sender: z.string().trim().min(3).max(16).optional(),
   message: z.string().trim().min(5).max(1500),
   audience: smsAudienceSchema,
   schedule: z.string().trim().max(80).optional(),
+  approvalToken: z.string().trim().max(128).optional(),
 });
 
 const smsRecipientPreviewSchema = z.object({
@@ -79,6 +112,30 @@ const smsProviderProxySchema = z.object({
   payload: z.unknown(),
 });
 
+const smsAutomationSettingSchema = z.object({
+  eventKey: smsContextAutomationEventKeySchema,
+  label: z.string(),
+  description: z.string(),
+  enabled: z.boolean(),
+  title: z.string(),
+  message: z.string(),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+
+const smsAutomationUpdateSchema = z.object({
+  enabled: z.boolean(),
+  title: z.string().trim().max(120).optional(),
+  message: z.string().trim().max(1500).optional(),
+});
+
+const SMS_POLICY = {
+  adminMaxRecipients: 500,
+  automationMaxRecipients: 120,
+  minApiIntervalMs: 350,
+  maxUrlsPerMessage: 2,
+};
+
 const smsAudienceButtonSchema = z.object({
   type: smsAudienceTypeSchema,
   label: z.string(),
@@ -99,6 +156,7 @@ const smsStudentClassButtonSchema = z.object({
 });
 
 type SmsAudienceInput = z.infer<typeof smsAudienceSchema>;
+type SmsContextAutomationKey = z.infer<typeof smsContextAutomationEventKeySchema>;
 
 type SmsCandidate = {
   studentId: number | null;
@@ -143,6 +201,44 @@ function normalizeSender(value: string) {
 
 function normalizeMessage(value: string) {
   return value.replace(/\r\n/g, "\n").trim();
+}
+
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function sendWithBackoff<T extends { ok: boolean }>(operation: () => Promise<T>, attempts = 3) {
+  let lastResult: T | null = null;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    lastResult = await operation();
+    if (lastResult.ok || attempt === attempts - 1) return lastResult;
+    await sleep(400 * 2 ** attempt);
+  }
+
+  return lastResult as T;
+}
+
+function countUrls(value: string) {
+  return value.match(/https?:\/\/|wa\.me\/|chat\.whatsapp\.com/gi)?.length ?? 0;
+}
+
+function validateSmsMessagePolicy(message: string) {
+  const normalized = normalizeMessage(message);
+
+  if (countUrls(normalized) > SMS_POLICY.maxUrlsPerMessage) {
+    return `A mensagem SMS tem demasiadas ligações. Mantém no máximo ${SMS_POLICY.maxUrlsPerMessage} links por envio.`;
+  }
+
+  if (/(.)\1{10,}/.test(normalized)) {
+    return "A mensagem contém repetição excessiva de caracteres, o que pode ser tratado como spam.";
+  }
+
+  return null;
+}
+
+function validateSmsVolumePolicy(totalRecipients: number, maxRecipients: number) {
+  if (totalRecipients <= maxRecipients) return null;
+  return `Por política de segurança, este envio SMS está limitado a ${maxRecipients} destinatários por campanha. Segmenta a audiência e envia em lotes menores.`;
 }
 
 function normalizePhoneForOmbala(value?: string | null): { phone: string; providerTo: string } | null {
@@ -475,6 +571,31 @@ function resolveRecipients(candidates: SmsCandidate[], search?: string): SmsReso
   };
 }
 
+function normalizeAudienceProviderTo(value: string) {
+  const normalizedPhone = normalizePhoneForOmbala(value);
+  if (normalizedPhone) return normalizedPhone.providerTo;
+
+  return value.replace(/\D/g, "").trim() || value.trim();
+}
+
+function buildProviderToSet(values?: string[]) {
+  return new Set((values ?? [])
+    .map(normalizeAudienceProviderTo)
+    .filter(Boolean));
+}
+
+function applyRecipientAudienceSelection(recipients: SmsRecipient[], audience: SmsAudienceInput) {
+  const included = buildProviderToSet(audience.includeProviderTos);
+  const excluded = buildProviderToSet(audience.excludeProviderTos);
+
+  if (included.size === 0 && excluded.size === 0) return recipients;
+
+  return recipients.filter((recipient) => (
+    (included.size === 0 || included.has(recipient.providerTo)) &&
+    !excluded.has(recipient.providerTo)
+  ));
+}
+
 async function loadAllStudentCandidates() {
   const students = await prisma.student.findMany({
     select: {
@@ -617,6 +738,74 @@ async function loadSubmissionCandidates(input: { onlyWinners?: boolean; submissi
       studentNumberSnapshot: true,
       leaderName: true,
       leaderPhone: true,
+      memberConfirmations: {
+        where: { confirmedAt: { not: null } },
+        select: {
+          name: true,
+          studentNumber: true,
+          studentName: true,
+          studentCourse: true,
+          studentPhone: true,
+          student: {
+            select: {
+              id: true,
+              studentNumber: true,
+              name: true,
+              course: true,
+              classCode: true,
+              phone: true,
+            },
+          },
+        },
+      },
+      student: {
+        select: {
+          id: true,
+          studentNumber: true,
+          name: true,
+          course: true,
+          classCode: true,
+          phone: true,
+        },
+      },
+    },
+  });
+
+  return submissions.flatMap<SmsCandidate>((submission) => {
+    const source = input.onlyWinners ? `winner:${submission.id}` : `submission:${submission.id}`;
+    const leader: SmsCandidate = {
+      studentId: submission.student?.id ?? null,
+      studentNumber: submission.student?.studentNumber ?? submission.studentNumberSnapshot ?? null,
+      name: submission.student?.name ?? submission.leaderName ?? null,
+      course: submission.student?.course ?? submission.course ?? null,
+      classCode: submission.student?.classCode ?? null,
+      phone: submission.student?.phone ?? submission.leaderPhone ?? null,
+      source,
+    };
+    const members = submission.memberConfirmations.map<SmsCandidate>((member) => ({
+      studentId: member.student?.id ?? null,
+      studentNumber: member.student?.studentNumber ?? member.studentNumber ?? null,
+      name: member.student?.name ?? member.studentName ?? member.name,
+      course: member.student?.course ?? member.studentCourse ?? submission.course ?? null,
+      classCode: member.student?.classCode ?? null,
+      phone: member.student?.phone ?? member.studentPhone ?? null,
+      source: `${source}:member`,
+    }));
+    return [leader, ...members];
+  });
+}
+
+async function loadSubmissionRepresentativeCandidates(input: { submissionStatuses?: Array<z.infer<typeof submissionStatusSchema>> }) {
+  const submissions = await prisma.submission.findMany({
+    where: {
+      status: input.submissionStatuses?.length ? { in: input.submissionStatuses } : undefined,
+    },
+    select: {
+      id: true,
+      course: true,
+      studentNumberSnapshot: true,
+      leaderName: true,
+      leaderPhone: true,
       student: {
         select: {
           id: true,
@@ -637,7 +826,7 @@ async function loadSubmissionCandidates(input: { onlyWinners?: boolean; submissi
     course: submission.student?.course ?? submission.course ?? null,
     classCode: submission.student?.classCode ?? null,
     phone: submission.student?.phone ?? submission.leaderPhone ?? null,
-    source: input.onlyWinners ? `winner:${submission.id}` : `submission:${submission.id}`,
+    source: `group-representative:${submission.id}`,
   }));
 }
 
@@ -707,6 +896,8 @@ async function resolveAudienceCandidates(audience: SmsAudienceInput) {
     case "SUBMISSION_ENROLLED":
     case "EXHIBITORS":
       return loadSubmissionCandidates({ submissionStatuses: audience.submissionStatuses });
+    case "GROUP_REPRESENTATIVES":
+      return loadSubmissionRepresentativeCandidates({ submissionStatuses: audience.submissionStatuses });
     case "COURSE_OR_SUBMISSION_ENROLLED": {
       const [course, submissions] = await Promise.all([
         loadCourseEnrollmentCandidates(audience.courseIds),
@@ -743,9 +934,13 @@ function audienceTypeLabel(type: z.infer<typeof smsAudienceTypeSchema>) {
     case "COURSE_ENROLLED":
       return "Inscritos em cursos";
     case "SUBMISSION_ENROLLED":
+      return "Candidatos com submissões";
     case "EXHIBITORS":
       return "Expositores";
+    case "GROUP_REPRESENTATIVES":
+      return "Representantes de grupo";
     case "COURSE_OR_SUBMISSION_ENROLLED":
+      return "Cursos + candidaturas";
     case "COURSE_OR_EXHIBITORS":
       return "Cursos + expositores";
     case "WINNERS":
@@ -940,6 +1135,13 @@ async function applyCookieAudienceFilters(candidates: SmsCandidate[], audience: 
   return { candidates: accepted, skipped };
 }
 
+function applyOperationalSmsEligibility(candidates: SmsCandidate[]) {
+  return {
+    candidates,
+    skipped: [] as SmsSkip[],
+  };
+}
+
 class OmbalaClient {
   constructor(private readonly env: Env) {}
 
@@ -1101,9 +1303,42 @@ const smsContextAutomationDefinitions = {
     defaultTitle: "Nova interação ao vivo",
     defaultMessage: "Olá {{nome}}, {{colega}} publicou uma nova interação no Ao Vivo para a turma {{turma}}. {{link}}",
   },
-} as const;
-
-type SmsContextAutomationKey = keyof typeof smsContextAutomationDefinitions;
+  PASSPORT_POINTS_GAINED: {
+    label: "SMS de pontos ganhos no Passaporte",
+    description: "Envia uma mensagem curta e humana quando o estudante ganha pontos no Passaporte Digital.",
+    defaultTitle: "{{titulo}}",
+    defaultMessage: "{{detalhe}}",
+  },
+  PASSPORT_POINTS_LOST: {
+    label: "SMS de pontos perdidos no Passaporte",
+    description: "Envia uma mensagem curta e humana quando o estudante perde pontos no Passaporte Digital.",
+    defaultTitle: "{{titulo}}",
+    defaultMessage: "{{detalhe}}",
+  },
+  PASSPORT_NEGATIVE_BALANCE: {
+    label: "SMS de recuperação do Passaporte",
+    description: "Envia instruções de recuperação quando o estudante fica com saldo negativo no Passaporte Digital.",
+    defaultTitle: "{{titulo}}",
+    defaultMessage: "{{detalhe}}",
+  },
+  EXHIBITOR_POINTS_GAINED: {
+    label: "SMS de pontos ganhos no Expositor",
+    description: "Envia aviso quando uma ação gera pontos para o projeto expositor.",
+    defaultTitle: "{{titulo}}",
+    defaultMessage: "{{detalhe}}",
+  },
+  EXHIBITOR_POINTS_LOST: {
+    label: "SMS de pontos perdidos no Expositor",
+    description: "Envia aviso quando uma ação remove pontos do projeto expositor.",
+    defaultTitle: "{{titulo}}",
+    defaultMessage: "{{detalhe}}",
+  },
+} as const satisfies Record<SmsContextAutomationKey, {
+  label: string;
+  description: string;
+  defaultTitle: string;
+  defaultMessage: string;
+}>;
 
 function renderSmsAutomationTemplate(
   template: string,
@@ -1122,15 +1357,113 @@ function renderSmsAutomationTemplate(
     .trim();
 }
 
+function normalizeSmsAutomationTemplate(value: string | null | undefined, fallback: string) {
+  return value?.trim() ? value.trim() : fallback;
+}
+
+function getDefaultSmsAutomationEnabled(eventKey: SmsContextAutomationKey) {
+  return eventKey !== "SUBMISSION_CONTEXT_AUDIENCE" && eventKey !== "LIVE_CHAT_CONTEXT_AUDIENCE";
+}
+
+function toSmsAutomationStorageKey(eventKey: SmsContextAutomationKey) {
+  return `SMS_${eventKey}`;
+}
+
+function fromSmsAutomationStorageKey(eventKey: string) {
+  return eventKey.startsWith("SMS_") ? eventKey.slice(4) : eventKey;
+}
+
+function serializeSmsAutomationSetting(setting: {
+  eventKey: string;
+  label: string;
+  description: string;
+  enabled: boolean;
+  customTitle: string | null;
+  customMessage: string | null;
+  createdAt: Date;
+  updatedAt: Date;
+}) {
+  const eventKey = smsContextAutomationEventKeySchema.parse(fromSmsAutomationStorageKey(setting.eventKey));
+  const definition = smsContextAutomationDefinitions[eventKey];
+
+  return {
+    eventKey,
+    label: definition.label,
+    description: definition.description,
+    enabled: setting.enabled,
+    title: normalizeSmsAutomationTemplate(setting.customTitle, definition.defaultTitle),
+    message: normalizeSmsAutomationTemplate(setting.customMessage, definition.defaultMessage),
+    createdAt: setting.createdAt.toISOString(),
+    updatedAt: setting.updatedAt.toISOString(),
+  };
+}
+
+async function ensureSmsContextAutomationSettings() {
+  await prisma.$transaction(
+    smsContextAutomationEventKeys.map((eventKey) => {
+      const definition = smsContextAutomationDefinitions[eventKey];
+      return prisma.whatsAppAutomationSetting.upsert({
+        where: { eventKey: toSmsAutomationStorageKey(eventKey) },
+        create: {
+          eventKey: toSmsAutomationStorageKey(eventKey),
+          label: definition.label,
+          description: definition.description,
+          enabled: getDefaultSmsAutomationEnabled(eventKey),
+        },
+        update: {
+          label: definition.label,
+          description: definition.description,
+        },
+      });
+    }),
+  );
+
+  const settings = await prisma.whatsAppAutomationSetting.findMany({
+    where: { eventKey: { in: smsContextAutomationEventKeys.map(toSmsAutomationStorageKey) } },
+  });
+  const byEventKey = new Map(settings.map((setting) => [fromSmsAutomationStorageKey(setting.eventKey), setting]));
+
+  return smsContextAutomationEventKeys
+    .map((eventKey) => byEventKey.get(eventKey))
+    .filter((setting): setting is NonNullable<typeof setting> => Boolean(setting));
+}
+
+async function upsertSmsContextAutomationSetting(
+  eventKey: SmsContextAutomationKey,
+  input: { enabled: boolean; title?: string; message?: string },
+) {
+  const definition = smsContextAutomationDefinitions[eventKey];
+  const storageKey = toSmsAutomationStorageKey(eventKey);
+
+  return prisma.whatsAppAutomationSetting.upsert({
+    where: { eventKey: storageKey },
+    create: {
+      eventKey: storageKey,
+      label: definition.label,
+      description: definition.description,
+      enabled: input.enabled,
+      customTitle: input.title?.trim() ? input.title.trim() : null,
+      customMessage: input.message?.trim() ? input.message.trim() : null,
+    },
+    update: {
+      label: definition.label,
+      description: definition.description,
+      enabled: input.enabled,
+      ...(input.title !== undefined ? { customTitle: input.title.trim() ? input.title.trim() : null } : {}),
+      ...(input.message !== undefined ? { customMessage: input.message.trim() ? input.message.trim() : null } : {}),
+    },
+  });
+}
+
 async function resolveSmsContextAutomationSetting(eventKey: SmsContextAutomationKey) {
   const definition = smsContextAutomationDefinitions[eventKey];
   return prisma.whatsAppAutomationSetting.upsert({
-    where: { eventKey },
+    where: { eventKey: toSmsAutomationStorageKey(eventKey) },
     create: {
-      eventKey,
+      eventKey: toSmsAutomationStorageKey(eventKey),
       label: definition.label,
       description: definition.description,
-      enabled: false,
+      enabled: getDefaultSmsAutomationEnabled(eventKey),
     },
     update: {
       label: definition.label,
@@ -1173,7 +1506,8 @@ export async function sendSmsAudienceAutomationEvent(
     ...context.audience,
     cookieMarketingOptIn: true,
   });
-  const resolved = resolveRecipients(consentFiltered.candidates);
+  const profileConsentFiltered = await applyProfileCommunicationConsent(consentFiltered.candidates, "SMS");
+  const resolved = resolveRecipients(profileConsentFiltered.candidates);
 
   if (resolved.recipients.length === 0) {
     return { ok: false, skipped: true, reason: "Nenhum destinatário com consentimento e telefone válido." };
@@ -1191,22 +1525,33 @@ export async function sendSmsAudienceAutomationEvent(
     .replace(/{{\s*(nome|numero|curso|turma)\s*}}/gi, "")
     .replace(/\s+/g, " ")
     .trim() || definition.defaultTitle;
+  const campaignTitle = normalizeSmsCampaignTitle(title) ?? definition.defaultTitle;
   const messageTemplate = renderSmsAutomationTemplate(setting.customMessage ?? definition.defaultMessage, values);
 
   if (!messageTemplate) {
     return { ok: false, skipped: true, reason: `Automação ${eventKey} sem mensagem configurada.` };
   }
 
+  const messagePolicyError = validateSmsMessagePolicy(messageTemplate);
+  if (messagePolicyError) {
+    return { ok: false, skipped: true, reason: messagePolicyError };
+  }
+
+  const volumePolicyError = validateSmsVolumePolicy(resolved.recipients.length, SMS_POLICY.automationMaxRecipients);
+  if (volumePolicyError) {
+    return { ok: false, skipped: true, reason: volumePolicyError };
+  }
+
   const campaign = await prisma.smsCampaign.create({
     data: {
-      title,
+      title: campaignTitle,
       message: messageTemplate,
       sender,
       audienceType: eventKey,
       audienceFiltersJson: JSON.stringify({
         ...context.audience,
         excludeStudentId: context.excludeStudentId ?? null,
-        consent: "marketing",
+        consent: "marketing+profile_sms",
       }),
       totalRecipients: resolved.recipients.length,
       status: "PROCESSING",
@@ -1230,34 +1575,28 @@ export async function sendSmsAudienceAutomationEvent(
 
   let successCount = 0;
   let failedCount = 0;
-  const concurrency = 5;
+  for (let i = 0; i < resolved.recipients.length; i += 1) {
+    const recipient = resolved.recipients[i];
+    const renderedMessage = applyTemplate(messageTemplate, recipient);
+    const providerResponse = await sendWithBackoff(() => ombala.sendMessage({
+      from: sender,
+      message: renderedMessage,
+      to: recipient.providerTo,
+    }));
 
-  for (let i = 0; i < resolved.recipients.length; i += concurrency) {
-    const chunk = resolved.recipients.slice(i, i + concurrency);
+    const baseUpdate = {
+      providerResponseJson: stringifyProviderPayload(providerResponse.payload),
+      providerMessageId: extractProviderMessageId(providerResponse.payload),
+      sentAt: new Date(),
+    };
 
-    await Promise.all(chunk.map(async (recipient) => {
-      const renderedMessage = applyTemplate(messageTemplate, recipient);
-      const providerResponse = await ombala.sendMessage({
-        from: sender,
-        message: renderedMessage,
-        to: recipient.providerTo,
+    if (providerResponse.ok) {
+      successCount += 1;
+      await prisma.smsCampaignRecipient.update({
+        where: { campaignId_phone: { campaignId: campaign.id, phone: recipient.phone } },
+        data: { ...baseUpdate, status: "SENT", errorMessage: null },
       });
-
-      const baseUpdate = {
-        providerResponseJson: stringifyProviderPayload(providerResponse.payload),
-        providerMessageId: extractProviderMessageId(providerResponse.payload),
-        sentAt: new Date(),
-      };
-
-      if (providerResponse.ok) {
-        successCount += 1;
-        await prisma.smsCampaignRecipient.update({
-          where: { campaignId_phone: { campaignId: campaign.id, phone: recipient.phone } },
-          data: { ...baseUpdate, status: "SENT", errorMessage: null },
-        });
-        return;
-      }
-
+    } else {
       failedCount += 1;
       const reason = pickString((providerResponse.payload as Record<string, unknown>)?.message)
         ?? `Falha no provedor (status ${providerResponse.status || "desconhecido"}).`;
@@ -1265,7 +1604,11 @@ export async function sendSmsAudienceAutomationEvent(
         where: { campaignId_phone: { campaignId: campaign.id, phone: recipient.phone } },
         data: { ...baseUpdate, status: "FAILED", errorMessage: reason },
       });
-    }));
+    }
+
+    if (i < resolved.recipients.length - 1) {
+      await sleep(SMS_POLICY.minApiIntervalMs);
+    }
   }
 
   const status = failedCount === 0 ? "SENT" : successCount === 0 ? "FAILED" : "PARTIAL";
@@ -1294,6 +1637,7 @@ export async function smsRoutes(app: FastifyInstance, opts: { env: Env }) {
 
     protectedApp.register(async (adminApp) => {
       adminApp.register(adminGuard);
+      setDefaultAdminPermission(adminApp, ["SMS"]);
 
       const ensureProviderConfigured = () => {
         if (!ombala.isConfigured) {
@@ -1328,6 +1672,7 @@ export async function smsRoutes(app: FastifyInstance, opts: { env: Env }) {
                 marketingConsented: z.object({ total: z.number(), sendable: z.number() }),
                 activeLast7Days: z.object({ total: z.number(), sendable: z.number() }),
               }),
+              automations: z.array(smsAutomationSettingSchema),
               campaigns: z.array(smsCampaignSummarySchema),
             }),
             401: z.object({ message: z.string() }),
@@ -1335,7 +1680,7 @@ export async function smsRoutes(app: FastifyInstance, opts: { env: Env }) {
           },
         },
       }, async () => {
-        const [allStudents, courseEnrolled, exhibitors, winners, campaigns] = await Promise.all([
+        const [allStudents, courseEnrolled, exhibitors, winners, campaigns, automations] = await Promise.all([
           resolveAudienceCandidates({ type: "ALL_STUDENTS" }),
           resolveAudienceCandidates({ type: "COURSE_ENROLLED" }),
           resolveAudienceCandidates({ type: "SUBMISSION_ENROLLED" }),
@@ -1358,6 +1703,7 @@ export async function smsRoutes(app: FastifyInstance, opts: { env: Env }) {
               scheduleAt: true,
             },
           }),
+          ensureSmsContextAutomationSettings(),
         ]);
 
         const allStudentsResolved = resolveRecipients(allStudents);
@@ -1421,6 +1767,7 @@ export async function smsRoutes(app: FastifyInstance, opts: { env: Env }) {
             marketingConsented: { total: marketingConsented.candidates.length, sendable: marketingConsentedResolved.recipients.length },
             activeLast7Days: { total: activeLast7Days.candidates.length, sendable: activeLast7DaysResolved.recipients.length },
           },
+          automations: automations.map(serializeSmsAutomationSetting),
           campaigns: campaigns.map((campaign) => ({
             ...campaign,
             title: campaign.title ?? null,
@@ -1429,6 +1776,28 @@ export async function smsRoutes(app: FastifyInstance, opts: { env: Env }) {
             scheduleAt: campaign.scheduleAt?.toISOString() ?? null,
           })),
         };
+      });
+
+      adminApp.put("/admin/automations/:eventKey", {
+        schema: {
+          params: z.object({ eventKey: smsContextAutomationEventKeySchema }),
+          body: smsAutomationUpdateSchema,
+          response: {
+            200: smsAutomationSettingSchema,
+            401: z.object({ message: z.string() }),
+            403: z.object({ message: z.string() }),
+          },
+        },
+      }, async (request) => {
+        const { eventKey } = request.params as { eventKey: SmsContextAutomationKey };
+        const body = request.body as z.infer<typeof smsAutomationUpdateSchema>;
+        const setting = await upsertSmsContextAutomationSetting(eventKey, {
+          enabled: body.enabled,
+          title: body.title,
+          message: body.message,
+        });
+
+        return serializeSmsAutomationSetting(setting);
       });
 
       adminApp.get("/admin/filters", {
@@ -1451,7 +1820,10 @@ export async function smsRoutes(app: FastifyInstance, opts: { env: Env }) {
           "STUDENT_COURSE",
           "STUDENT_CLASS_OR_COURSE",
           "COURSE_ENROLLED",
+          "SUBMISSION_ENROLLED",
+          "COURSE_OR_SUBMISSION_ENROLLED",
           "EXHIBITORS",
+          "GROUP_REPRESENTATIVES",
           "COURSE_OR_EXHIBITORS",
           "WINNERS",
           "SELECTED_STUDENTS",
@@ -1811,6 +2183,8 @@ export async function smsRoutes(app: FastifyInstance, opts: { env: Env }) {
               filteredCandidates: z.number(),
               totalRecipients: z.number(),
               skippedCount: z.number(),
+              approvalRequired: z.boolean(),
+              approvalToken: z.string(),
               recipients: z.array(smsRecipientPreviewSchema),
               skipped: z.array(z.object({
                 studentId: z.number().nullable(),
@@ -1831,16 +2205,24 @@ export async function smsRoutes(app: FastifyInstance, opts: { env: Env }) {
         const body = request.body as z.infer<typeof smsPreviewBodySchema>;
         const rawCandidates = await resolveAudienceCandidates(body.audience);
         const cookieFiltered = await applyCookieAudienceFilters(rawCandidates, body.audience);
-        const resolved = resolveRecipients(cookieFiltered.candidates, body.search);
-        const skipped = [...cookieFiltered.skipped, ...resolved.skipped];
+        const profileConsentFiltered = applyOperationalSmsEligibility(cookieFiltered.candidates);
+        const resolved = resolveRecipients(profileConsentFiltered.candidates, body.search);
+        const selectedRecipients = applyRecipientAudienceSelection(resolved.recipients, body.audience);
+        const skipped = [...cookieFiltered.skipped, ...profileConsentFiltered.skipped, ...resolved.skipped];
         const limit = body.limit ?? 120;
 
         return {
           totalCandidates: rawCandidates.length,
           filteredCandidates: resolved.filteredTotal,
-          totalRecipients: resolved.recipients.length,
+          totalRecipients: selectedRecipients.length,
           skippedCount: skipped.length,
-          recipients: resolved.recipients.slice(0, limit),
+          approvalRequired: isCampaignApprovalRequired(selectedRecipients.length),
+          approvalToken: buildCampaignApprovalToken({
+            channel: "SMS",
+            audience: body.audience,
+            secret: opts.env.JWT_SECRET,
+          }),
+          recipients: selectedRecipients.slice(0, limit),
           skipped: skipped.slice(0, Math.min(limit, 80)),
         };
       });
@@ -1879,6 +2261,11 @@ export async function smsRoutes(app: FastifyInstance, opts: { env: Env }) {
 
         const body = request.body as z.infer<typeof smsSendBodySchema>;
         const sender = normalizeSender(body.sender ?? opts.env.OMBALA_SMS_DEFAULT_SENDER ?? "");
+        const normalizedCampaignMessage = normalizeMessage(body.message);
+        const messagePolicyError = validateSmsMessagePolicy(normalizedCampaignMessage);
+        if (messagePolicyError) {
+          return reply.code(400).send({ message: messagePolicyError });
+        }
 
         if (!sender || !/^[A-Z0-9 _-]{3,16}$/.test(sender)) {
           return reply.code(400).send({
@@ -1901,30 +2288,57 @@ export async function smsRoutes(app: FastifyInstance, opts: { env: Env }) {
 
         const rawCandidates = await resolveAudienceCandidates(body.audience);
         const cookieFiltered = await applyCookieAudienceFilters(rawCandidates, body.audience);
-        const resolved = resolveRecipients(cookieFiltered.candidates);
-        const skipped = [...cookieFiltered.skipped, ...resolved.skipped];
+        const profileConsentFiltered = applyOperationalSmsEligibility(cookieFiltered.candidates);
+        const resolved = resolveRecipients(profileConsentFiltered.candidates);
+        const selectedRecipients = applyRecipientAudienceSelection(resolved.recipients, body.audience);
+        const skipped = [...cookieFiltered.skipped, ...profileConsentFiltered.skipped, ...resolved.skipped];
 
-        if (resolved.recipients.length === 0) {
+        if (selectedRecipients.length === 0) {
           return reply.code(400).send({
-            message: "Nenhum destinatário válido encontrado para esta audiência.",
+            message: "Nenhum destinatário válido encontrado para esta seleção de audiência.",
+          });
+        }
+
+        const volumePolicyError = validateSmsVolumePolicy(selectedRecipients.length, SMS_POLICY.adminMaxRecipients);
+        if (volumePolicyError) {
+          return reply.code(400).send({ message: volumePolicyError });
+        }
+
+        if (
+          isCampaignApprovalRequired(selectedRecipients.length) &&
+          !isValidCampaignApprovalToken({
+            channel: "SMS",
+            audience: body.audience,
+            secret: opts.env.JWT_SECRET,
+            token: body.approvalToken,
+          })
+        ) {
+          return reply.code(400).send({
+            message: "Pré-visualiza e confirma a audiência antes de enviar uma campanha SMS grande.",
           });
         }
 
         request.log.info({
           audienceType: body.audience.type,
           sender,
-          totalRecipients: resolved.recipients.length,
+          totalRecipients: selectedRecipients.length,
           scheduleAt: scheduleAt?.toISOString() ?? null,
         }, "Starting SMS admin campaign");
 
+        const campaignTitle = normalizeSmsCampaignTitle(body.title);
         const campaign = await prisma.smsCampaign.create({
           data: {
-            title: body.title?.trim() || null,
-            message: normalizeMessage(body.message),
+            title: campaignTitle,
+            message: normalizedCampaignMessage,
             sender,
             audienceType: body.audience.type,
-            audienceFiltersJson: JSON.stringify(body.audience),
-            totalRecipients: resolved.recipients.length,
+            audienceFiltersJson: JSON.stringify({
+              ...body.audience,
+              communicationBasis: body.audience.cookieMarketingOptIn
+                ? "operational_sms_with_cookie_marketing_filter"
+                : "operational_sms",
+            }),
+            totalRecipients: selectedRecipients.length,
             status: "PROCESSING",
             scheduleAt,
             createdByStudentNumber: request.student?.studentNumber ?? "unknown",
@@ -1933,7 +2347,7 @@ export async function smsRoutes(app: FastifyInstance, opts: { env: Env }) {
         });
 
         await prisma.smsCampaignRecipient.createMany({
-          data: resolved.recipients.map((recipient) => ({
+          data: selectedRecipients.map((recipient) => ({
             campaignId: campaign.id,
             studentId: recipient.studentId,
             studentNumber: recipient.studentNumber,
@@ -1949,45 +2363,40 @@ export async function smsRoutes(app: FastifyInstance, opts: { env: Env }) {
         let successCount = 0;
         let failedCount = 0;
 
-        const concurrency = 5;
-        const recipients = resolved.recipients;
+        const recipients = selectedRecipients;
 
-        for (let i = 0; i < recipients.length; i += concurrency) {
-          const chunk = recipients.slice(i, i + concurrency);
+        for (let i = 0; i < recipients.length; i += 1) {
+          const recipient = recipients[i];
+          const renderedMessage = applyTemplate(normalizedCampaignMessage, recipient);
+          const providerResponse = await sendWithBackoff(() => ombala.sendMessage({
+            from: sender,
+            message: renderedMessage,
+            to: recipient.providerTo,
+            schedule: providerSchedule,
+          }));
 
-          await Promise.all(chunk.map(async (recipient) => {
-            const renderedMessage = applyTemplate(normalizeMessage(body.message), recipient);
-            const providerResponse = await ombala.sendMessage({
-              from: sender,
-              message: renderedMessage,
-              to: recipient.providerTo,
-              schedule: providerSchedule,
+          const baseUpdate = {
+            providerResponseJson: stringifyProviderPayload(providerResponse.payload),
+            providerMessageId: extractProviderMessageId(providerResponse.payload),
+            sentAt: new Date(),
+          };
+
+          if (providerResponse.ok) {
+            successCount += 1;
+            await prisma.smsCampaignRecipient.update({
+              where: {
+                campaignId_phone: {
+                  campaignId: campaign.id,
+                  phone: recipient.phone,
+                },
+              },
+              data: {
+                ...baseUpdate,
+                status: providerSchedule ? "SCHEDULED" : "SENT",
+                errorMessage: null,
+              },
             });
-
-            const baseUpdate = {
-              providerResponseJson: stringifyProviderPayload(providerResponse.payload),
-              providerMessageId: extractProviderMessageId(providerResponse.payload),
-              sentAt: new Date(),
-            };
-
-            if (providerResponse.ok) {
-              successCount += 1;
-              await prisma.smsCampaignRecipient.update({
-                where: {
-                  campaignId_phone: {
-                    campaignId: campaign.id,
-                    phone: recipient.phone,
-                  },
-                },
-                data: {
-                  ...baseUpdate,
-                  status: providerSchedule ? "SCHEDULED" : "SENT",
-                  errorMessage: null,
-                },
-              });
-              return;
-            }
-
+          } else {
             failedCount += 1;
             const reason = pickString((providerResponse.payload as Record<string, unknown>)?.message)
               ?? `Falha no provedor (status ${providerResponse.status || "desconhecido"}).`;
@@ -2011,7 +2420,11 @@ export async function smsRoutes(app: FastifyInstance, opts: { env: Env }) {
                 errorMessage: reason,
               },
             });
-          }));
+          }
+
+          if (i < recipients.length - 1) {
+            await sleep(SMS_POLICY.minApiIntervalMs);
+          }
         }
 
         const status = failedCount === 0
@@ -2049,7 +2462,7 @@ export async function smsRoutes(app: FastifyInstance, opts: { env: Env }) {
           campaignId: campaign.id,
           status,
           totalCandidates: rawCandidates.length,
-          totalRecipients: resolved.recipients.length,
+          totalRecipients: selectedRecipients.length,
           skippedCount: skipped.length,
           successCount,
           failedCount,

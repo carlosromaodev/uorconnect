@@ -1,5 +1,9 @@
 import { describe, expect, it } from "vitest";
-import { countTeamMembers, normalizeTeamMembersInput } from "./submission-format";
+import {
+  countTeamMembers,
+  MAX_TEAM_MEMBERS,
+  normalizeTeamMembersInput,
+} from "./submission-format";
 
 describe("submission-format", () => {
   it("conta membros a partir dos nomes submetidos", () => {
@@ -12,5 +16,17 @@ describe("submission-format", () => {
 
     expect(members).toEqual(["Ana", "Bruno"]);
     expect(countTeamMembers(members)).toBe(2);
+  });
+
+  it("permite equipas com ate 17 membros normalizados", () => {
+    const rawMembers = Array.from(
+      { length: 18 },
+      (_, index) => `Membro ${index + 1}`,
+    );
+    const members = normalizeTeamMembersInput(rawMembers);
+
+    expect(MAX_TEAM_MEMBERS).toBe(17);
+    expect(members).toHaveLength(17);
+    expect(members.at(-1)).toBe("Membro 17");
   });
 });

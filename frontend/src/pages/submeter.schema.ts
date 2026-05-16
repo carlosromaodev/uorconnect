@@ -7,6 +7,7 @@
  */
 
 import { z } from "zod";
+import { MAX_SUBMISSION_TEAM_MEMBERS } from "./submeter-team";
 
 // ── Tipos exportados ────────────────────────────────────────────────────
 
@@ -125,7 +126,7 @@ export function buildSubmeterSchema(kind: SubmissionKindSchema) {
       paymentProof: z
         .string()
         .regex(
-          /^(data:|https?:\/\/)/,
+          /^(data:|https?:\/\/|\/(?:api\/)?media\/files\/)/,
           "⚠ Seleccione um ficheiro válido (PDF, PNG, JPG ou WEBP)"
         ),
 
@@ -133,7 +134,7 @@ export function buildSubmeterSchema(kind: SubmissionKindSchema) {
       members: z
         .array(z.string().trim().min(2))
         .min(1, "⚠ Adiciona pelo menos um membro.")
-        .max(5, "⚠ Máximo de 5 membros."),
+        .max(MAX_SUBMISSION_TEAM_MEMBERS, `⚠ Máximo de ${MAX_SUBMISSION_TEAM_MEMBERS} membros.`),
 
       needs: z.array(
         z.enum([

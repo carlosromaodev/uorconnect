@@ -101,14 +101,14 @@ describe("GetAgendaLiveState", () => {
     });
   });
 
-  it("retorna sessão atual e próxima", async () => {
-    const result = await new GetAgendaLiveState(repository).execute(new Date("2026-05-17T09:15:00.000Z"));
+  it("retorna sessão atual e próxima usando horário de Luanda", async () => {
+    const result = await new GetAgendaLiveState(repository).execute(new Date("2026-05-17T08:15:00.000Z"));
     expect(result.current?.title).toBe("Abertura");
     expect(result.next?.title).toBe("Painel");
   });
 
   it("retorna próxima quando ainda não começou", async () => {
-    const result = await new GetAgendaLiveState(repository).execute(new Date("2026-05-17T08:00:00.000Z"));
+    const result = await new GetAgendaLiveState(repository).execute(new Date("2026-05-17T07:00:00.000Z"));
     expect(result.current).toBeNull();
     expect(result.next?.title).toBe("Abertura");
   });

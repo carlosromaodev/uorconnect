@@ -1,6 +1,7 @@
 import { getSubmissionTypeLabel, normalizeSubmissionType } from "../domain/submission-policy";
 import { buildSubmissionSlug, formatTeamMembersLabel, normalizeTeamMembersInput } from "../domain/submission-format";
 import { buildSubmissionCommunityUrl } from "./submission-ticket";
+import { buildPaymentTimeline, isPaymentConfirmedByAdmin, paymentStatusLabel } from "../../payments/payment-status";
 
 type StudentSubmissionPresenterInput = {
   id: number;
@@ -24,9 +25,18 @@ type StudentSubmissionPresenterInput = {
   observations?: string | null;
   repoUrl?: string | null;
   websiteUrl?: string | null;
+  instagramUrl?: string | null;
+  facebookUrl?: string | null;
+  linkedinUrl?: string | null;
+  githubUrl?: string | null;
   primaryColor: string;
   secondaryColor: string;
   bannerUrl?: string | null;
+  paymentStatus?: string | null;
+  paymentSubmittedAt?: Date | null;
+  paymentReviewedAt?: Date | null;
+  paymentReviewedByStudentNumber?: string | null;
+  paymentReviewNote?: string | null;
 };
 
 export function getSubmissionStatusLabel(status: string) {
@@ -59,6 +69,10 @@ export function buildStudentSubmissionReceiptResponse(
   const slug = buildSubmissionSlug(submission.name, submission.id);
   const detailPath = `/projeto/${slug}`;
   const receiptPath = `/submissoes/${submission.id}`;
+  const paymentConfirmedByAdmin = isPaymentConfirmedByAdmin(submission.paymentStatus);
+  const exhibitorPdfPath = submission.status === "APPROVED" && paymentConfirmedByAdmin
+    ? `/submissions/${submission.id}/exhibitor-pack.pdf`
+    : null;
 
   return {
     id: submission.id,
@@ -86,11 +100,29 @@ export function buildStudentSubmissionReceiptResponse(
     observations: submission.observations ?? null,
     repoUrl: submission.repoUrl ?? null,
     websiteUrl: submission.websiteUrl ?? null,
+    instagramUrl: submission.instagramUrl ?? null,
+    facebookUrl: submission.facebookUrl ?? null,
+    linkedinUrl: submission.linkedinUrl ?? null,
+    githubUrl: submission.githubUrl ?? null,
     primaryColor: submission.primaryColor,
     secondaryColor: submission.secondaryColor,
     bannerUrl: submission.bannerUrl ?? null,
-    communityUrl: buildSubmissionCommunityUrl(submission.type, config),
+    communityUrl: submission.status === "APPROVED" && paymentConfirmedByAdmin ? buildSubmissionCommunityUrl(submission.type, config) : null,
     boardingPassPath: `/submissions/${submission.id}/boarding-pass.pdf`,
+    exhibitorPdfPath,
+    paymentStatus: submission.paymentStatus ?? "PENDING_REVIEW",
+    paymentStatusLabel: paymentStatusLabel(submission.paymentStatus, true),
+    paymentSubmittedAt: submission.paymentSubmittedAt?.toISOString() ?? null,
+    paymentReviewedAt: submission.paymentReviewedAt?.toISOString() ?? null,
+    paymentReviewedByStudentNumber: submission.paymentReviewedByStudentNumber ?? null,
+    paymentReviewNote: submission.paymentReviewNote ?? null,
+    paymentTimeline: buildPaymentTimeline({
+      status: submission.paymentStatus,
+      submittedAt: submission.paymentSubmittedAt ?? submission.createdAt,
+      reviewedAt: submission.paymentReviewedAt,
+      reviewedBy: submission.paymentReviewedByStudentNumber,
+      reviewNote: submission.paymentReviewNote,
+    }),
     paymentProofPath: `/submissions/${submission.id}/payment-proof`,
     receiptPath,
     detailPath,
@@ -100,7 +132,7 @@ export function buildStudentSubmissionReceiptResponse(
 
 export function buildStudentSubmissionListItem(submission: Pick<
   StudentSubmissionPresenterInput,
-  "id" | "referenceCode" | "name" | "status" | "type" | "area" | "createdAt" | "bannerUrl"
+  "id" | "referenceCode" | "name" | "description" | "status" | "type" | "area" | "createdAt" | "bannerUrl" | "paymentStatus" | "repoUrl" | "websiteUrl" | "instagramUrl" | "facebookUrl" | "linkedinUrl" | "githubUrl"
 >) {
   const normalizedType = normalizeSubmissionType(submission.type, submission.area);
   const typeLabel = getSubmissionTypeLabel(submission.type, submission.area);
@@ -110,13 +142,23 @@ export function buildStudentSubmissionListItem(submission: Pick<
     id: submission.id,
     referenceCode: submission.referenceCode,
     name: submission.name,
+    description: submission.description,
     status: submission.status,
     statusLabel: getSubmissionStatusLabel(submission.status),
     type: normalizedType,
     typeLabel,
     createdAt: submission.createdAt.toISOString(),
     detailPath: `/projeto/${slug}`,
+    repoUrl: submission.repoUrl ?? null,
+    websiteUrl: submission.websiteUrl ?? null,
+    instagramUrl: submission.instagramUrl ?? null,
+    facebookUrl: submission.facebookUrl ?? null,
+    linkedinUrl: submission.linkedinUrl ?? null,
+    githubUrl: submission.githubUrl ?? null,
     bannerUrl: submission.bannerUrl ?? null,
     receiptPath: `/submissoes/${submission.id}`,
+    exhibitorPdfPath: submission.status === "APPROVED" && isPaymentConfirmedByAdmin(submission.paymentStatus)
+      ? `/submissions/${submission.id}/exhibitor-pack.pdf`
+      : null,
   };
 }

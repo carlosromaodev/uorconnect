@@ -51,6 +51,7 @@ describe("student document helpers", () => {
       bannerUrl: null,
       communityUrl: "https://chat.whatsapp.com/demo",
       boardingPassPath: "/submissions/4/boarding-pass.pdf",
+      exhibitorPdfPath: null,
       paymentProofPath: "/submissions/4/payment-proof",
       receiptPath: "/submissoes/4",
       detailPath: "/projeto/projeto-campus-4",

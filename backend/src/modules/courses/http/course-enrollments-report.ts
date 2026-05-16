@@ -57,6 +57,8 @@ function buildCourseEnrollmentsHtml(params: RenderCourseEnrollmentsPdfParams & {
   const logoMarkup = logoDataUri
     ? `<img src="${logoDataUri}" alt="UOR Connect" class="brand-logo" />`
     : `<div class="brand-fallback">UOR</div>`;
+  const contactsCount = enrollments.filter((item) => item.phone).length;
+  const contactCoverage = enrollments.length > 0 ? Math.round((contactsCount / enrollments.length) * 100) : 0;
 
   return `
     <!DOCTYPE html>
@@ -65,79 +67,83 @@ function buildCourseEnrollmentsHtml(params: RenderCourseEnrollmentsPdfParams & {
         <meta charset="UTF-8" />
         <title>${escapeHtml(reportNumber)}</title>
         <style>
-          @page {
-            size: A4 portrait;
-            margin: 14mm 12mm 16mm;
-          }
+	          @page {
+	            size: A4 portrait;
+	            margin: 18mm 16mm 20mm;
+	          }
 
-          :root {
-            --brand: #FD8305;
-            --brand-dark: #1B2B3A;
-            --brand-deep: #223D42;
-            --brand-soft: #FFF4E8;
-            --line: #E7E9EB;
-            --surface: #FFFFFF;
-            --surface-alt: #F7F8FA;
-            --text: #152434;
-            --muted: #61707F;
-          }
+	          :root {
+	            --brand: #ff7a1a;
+	            --brand-dark: #050505;
+	            --brand-soft: #fff7ed;
+	            --line: #e5e7eb;
+	            --surface: #ffffff;
+	            --surface-alt: #fafafa;
+	            --text: #111827;
+	            --muted: #667085;
+	          }
 
           * {
             box-sizing: border-box;
           }
 
-          body {
-            margin: 0;
-            font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
-            color: var(--text);
-            background: #f4f6f8;
-          }
+	          body {
+	            margin: 0;
+	            font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+	            color: var(--text);
+	            background: #ffffff;
+	          }
 
-          .report-shell {
-            display: flex;
-            flex-direction: column;
-            gap: 22px;
-          }
+	          .report-shell {
+	            display: flex;
+	            flex-direction: column;
+	            gap: 14px;
+	          }
 
-          .hero {
-            display: grid;
-            grid-template-columns: 1fr;
-            gap: 18px;
-          }
+	          .hero {
+	            display: grid;
+	            grid-template-columns: 1fr;
+	            gap: 12px;
+	            align-items: start;
+	          }
 
-          .hero-panel,
-          .meta-panel,
-          .summary-card,
-          .table {
-            background: var(--surface);
-            border: 1px solid var(--line);
-            border-radius: 10px;
-          }
+	          .hero-panel,
+	          .meta-panel,
+	          .insight-card,
+	          .table {
+	            background: var(--surface);
+	            border: 1px solid var(--line);
+	            border-radius: 6px;
+	          }
 
-          .hero-panel {
-            padding: 24px 26px;
-            border-top: 4px solid var(--brand);
-            background: #ffffff;
-          }
+	          .hero-panel {
+	            position: relative;
+	            overflow: hidden;
+	            padding: 18px 20px;
+	            border-top: 3px solid var(--brand);
+	          }
 
-          .brand-row {
-            display: flex;
-            gap: 18px;
-            align-items: center;
-          }
+	          .brand-row {
+	            display: flex;
+	            gap: 18px;
+	            align-items: center;
+	            position: relative;
+	            z-index: 1;
+	          }
 
-          .brand-logo {
-            width: 150px;
-            height: auto;
-            object-fit: contain;
-          }
+	          .brand-logo {
+	            width: 132px;
+	            max-height: 62px;
+	            height: auto;
+	            object-fit: contain;
+	          }
 
-          .brand-fallback {
-            width: 100px;
-            height: 100px;
-            border-radius: 10px;
-            background: var(--brand-dark);
-            color: white;
+	          .brand-fallback {
+	            width: 84px;
+	            height: 58px;
+	            border-radius: 6px;
+	            background: var(--brand-dark);
+	            color: white;
             display: grid;
             place-items: center;
             font-size: 34px;
@@ -154,12 +160,12 @@ function buildCourseEnrollmentsHtml(params: RenderCourseEnrollmentsPdfParams & {
             font-size: 11px;
           }
 
-          h1 {
-            margin: 0;
-            font-size: 30px;
-            line-height: 1.1;
-            color: var(--brand-dark);
-          }
+	          h1 {
+	            margin: 0;
+	            font-size: 24px;
+	            line-height: 1.16;
+	            color: var(--brand-dark);
+	          }
 
           .hero-copy p {
             margin: 8px 0 0;
@@ -168,18 +174,18 @@ function buildCourseEnrollmentsHtml(params: RenderCourseEnrollmentsPdfParams & {
             color: var(--muted);
           }
 
-          .meta-panel {
-            padding: 22px;
-            display: grid;
-            gap: 12px;
-            background: #ffffff;
-          }
+	          .meta-panel {
+	            padding: 12px;
+	            display: grid;
+	            grid-template-columns: repeat(2, minmax(0, 1fr));
+	            gap: 8px;
+	          }
 
-          .meta-card {
-            border: 1px solid var(--line);
-            border-radius: 8px;
-            padding: 14px 16px;
-            background: var(--surface-alt);
+	          .meta-card {
+	            border: 1px solid var(--line);
+	            border-radius: 5px;
+	            padding: 10px 12px;
+	            background: var(--surface-alt);
           }
 
           .meta-card span {
@@ -191,49 +197,52 @@ function buildCourseEnrollmentsHtml(params: RenderCourseEnrollmentsPdfParams & {
             letter-spacing: 0.12em;
           }
 
-          .meta-card strong {
-            display: block;
-            font-size: 18px;
-            color: var(--brand-dark);
-          }
+	          .meta-card strong {
+	            display: block;
+	            font-size: 13px;
+	            color: var(--brand-dark);
+	          }
 
-          .summary-grid {
-            display: grid;
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-            gap: 14px;
-          }
+	          .section-title {
+	            display: flex;
+	            flex-direction: column;
+	            gap: 4px;
+	          }
 
-          .summary-card {
-            padding: 18px;
-            background: #ffffff;
-          }
+	          .insight-strip {
+	            display: grid;
+	            grid-template-columns: repeat(3, minmax(0, 1fr));
+	            gap: 8px;
+	          }
 
-          .summary-card__label {
-            margin: 0 0 8px;
-            font-size: 11px;
-            text-transform: uppercase;
-            letter-spacing: 0.12em;
-            color: var(--muted);
-          }
+	          .insight-card {
+	            padding: 12px;
+	            background: var(--surface-alt);
+	          }
 
-          .summary-card__value {
-            margin: 0;
-            font-size: 28px;
-            font-weight: 800;
-            color: var(--brand-dark);
-          }
+	          .insight-card span {
+	            display: block;
+	            color: var(--muted);
+	            font-size: 10px;
+	            font-weight: 800;
+	            letter-spacing: 0.14em;
+	            text-transform: uppercase;
+	          }
 
-          .summary-card__subvalue {
-            margin: 8px 0 0;
-            font-size: 12px;
-            color: var(--muted);
-          }
+	          .insight-card strong {
+	            display: block;
+	            margin-top: 6px;
+	            color: var(--brand-dark);
+		            font-size: 18px;
+	            line-height: 1.1;
+	          }
 
-          .section-title {
-            display: flex;
-            flex-direction: column;
-            gap: 4px;
-          }
+	          .insight-card p {
+	            margin: 6px 0 0;
+	            color: var(--muted);
+	            font-size: 11px;
+	            line-height: 1.5;
+	          }
 
           .section-kicker {
             color: var(--brand);
@@ -256,25 +265,25 @@ function buildCourseEnrollmentsHtml(params: RenderCourseEnrollmentsPdfParams & {
             overflow: hidden;
           }
 
-          .table thead th {
-            background: #eef2f6;
-            color: var(--brand-dark);
-            padding: 10px 11px;
-            border-bottom: 1px solid #d8e0e8;
-            border-right: 1px solid #d8e0e8;
-            font-size: 11px;
+	          .table thead th {
+	            background: #111111;
+	            color: #ffffff;
+	            padding: 8px 7px;
+	            border-bottom: 1px solid #111111;
+	            border-right: 1px solid rgba(255,255,255,0.16);
+	            font-size: 9px;
             font-weight: 700;
             letter-spacing: 0.08em;
             text-transform: uppercase;
             text-align: left;
           }
 
-          .table tbody td {
-            padding: 9px 11px;
-            border-bottom: 1px solid #e5eaf0;
-            border-right: 1px solid #edf1f5;
-            font-size: 12px;
-            line-height: 1.5;
+	          .table tbody td {
+	            padding: 7px;
+	            border-bottom: 1px solid #e5eaf0;
+	            border-right: 1px solid #edf1f5;
+	            font-size: 9.5px;
+	            line-height: 1.5;
             vertical-align: top;
           }
 
@@ -316,9 +325,9 @@ function buildCourseEnrollmentsHtml(params: RenderCourseEnrollmentsPdfParams & {
                   <p class="eyebrow">UOR Connect</p>
                   <h1>Relatório de inscritos por curso</h1>
                   <p>
-                    Documento administrativo com a listagem completa de inscritos no curso
-                    <strong>${escapeHtml(courseName)}</strong>, preparado com a mesma identidade visual dos relatórios do projeto.
-                  </p>
+	                    Documento administrativo com a lista de inscritos no curso
+	                    <strong>${escapeHtml(courseName)}</strong>, pronto para operação, contacto e prestação de contas.
+	                  </p>
                 </div>
               </div>
             </div>
@@ -341,34 +350,29 @@ function buildCourseEnrollmentsHtml(params: RenderCourseEnrollmentsPdfParams & {
                 <strong>${escapeHtml(companyCategory)}</strong>
               </div>
             </aside>
-          </section>
+	          </section>
 
-          <section class="summary-grid">
-            <article class="summary-card">
-              <p class="summary-card__label">Curso</p>
-              <p class="summary-card__value">${escapeHtml(courseName)}</p>
-              <p class="summary-card__subvalue">${escapeHtml(description || "Sem descrição adicional.")}</p>
-            </article>
-            <article class="summary-card">
-              <p class="summary-card__label">Inscritos</p>
-              <p class="summary-card__value">${enrollments.length}</p>
-              <p class="summary-card__subvalue">Participantes registados neste curso</p>
-            </article>
-            <article class="summary-card">
-              <p class="summary-card__label">Contactos válidos</p>
-              <p class="summary-card__value">${enrollments.filter((item) => item.phone).length}</p>
-              <p class="summary-card__subvalue">Inscritos com telefone disponível</p>
-            </article>
-            <article class="summary-card">
-              <p class="summary-card__label">Comunidade</p>
-              <p class="summary-card__value">${communityUrl ? "Ativa" : "Sem link"}</p>
-              <p class="summary-card__subvalue">${escapeHtml(communityUrl ?? "O curso ainda não tem ligação comunitária definida.")}</p>
-            </article>
-          </section>
+	          <section class="insight-strip">
+	            <article class="insight-card">
+	              <span>Inscritos</span>
+	              <strong>${enrollments.length}</strong>
+	              <p>Participantes registados no curso selecionado.</p>
+	            </article>
+	            <article class="insight-card">
+	              <span>Cobertura de contacto</span>
+	              <strong>${contactCoverage}%</strong>
+	              <p>${contactsCount} inscrito(s) com telefone disponível para comunicação operacional.</p>
+	            </article>
+	            <article class="insight-card">
+	              <span>Comunidade</span>
+	              <strong>${communityUrl ? "Ativa" : "Pendente"}</strong>
+	              <p>${escapeHtml(communityUrl ?? "Sem ligação comunitária definida para este curso.")}</p>
+	            </article>
+	          </section>
 
-          <section>
-            <div class="section-title">
-              <span class="section-kicker">Inscrições</span>
+	          <section>
+	            <div class="section-title">
+	              <span class="section-kicker">Inscrições</span>
               <h2>Lista completa por curso</h2>
             </div>
 
@@ -403,9 +407,9 @@ export async function renderCourseEnrollmentsPdf(params: RenderCourseEnrollments
     logoDataUri
   });
 
-  return renderPdfFromHtml(html, {
-    landscape: false,
-    preferCssPageSize: true,
-    footerLabel: `${params.courseName} • UOR Connect`
-  });
+	  return renderPdfFromHtml(html, {
+	    landscape: false,
+	    preferCssPageSize: true,
+	    footerLabel: `${params.courseName} • UOR Connect`
+	  });
 }

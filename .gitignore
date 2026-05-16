@@ -31,6 +31,18 @@ deploy/backups/
 .playwright-browsers/
 backups/
 frontend/dev-dist/
+tmp/
+.superpowers/
+cofre/
+designs/
+backend/storage/
+backend/public/live-chat/
+backend/isptec.md
+skillpencil.md
+*.pid
+
+# Hoppscotch local environments can contain real tokens/passwords.
+hoppscotch/environments/*.local.json
 frontend/exemploDesing/
 laboratorio/node_modules/
 laboratorio/dist/

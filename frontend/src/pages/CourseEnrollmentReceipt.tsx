@@ -9,8 +9,8 @@ import { api, type StudentEnrollmentReceipt, isAuthError, setToken } from "@/lib
 import { buildCourseEnrollmentLegend, downloadBlobFile, formatDateTime, toAbsoluteAssetUrl } from "@/lib/student-documents";
 
 function statusTone(status: string) {
-  if (status === "CONFIRMED") return "bg-emerald-500/10 text-emerald-700 border-emerald-500/20";
-  if (status === "PENDING") return "bg-amber-500/10 text-amber-700 border-amber-500/20";
+  if (["CONFIRMED_BY_ADMIN", "CONFIRMED", "APPROVED"].includes(status)) return "bg-emerald-500/10 text-emerald-700 border-emerald-500/20";
+  if (["PENDING_REVIEW", "PENDING", "SUBMITTED_BY_USER"].includes(status)) return "bg-amber-500/10 text-amber-700 border-amber-500/20";
   return "bg-slate-500/10 text-slate-700 border-slate-500/20";
 }
 
@@ -20,6 +20,35 @@ const celebrationParticles = [
   { size: "h-4 w-4", color: "bg-sky-400/30", top: "top-10", left: "right-[16%]", delay: 0.14 },
   { size: "h-2.5 w-2.5", color: "bg-primary/40", top: "top-28", left: "right-[30%]", delay: 0.22 },
 ];
+
+function PaymentTimeline({ items }: { items?: StudentEnrollmentReceipt["paymentTimeline"] }) {
+  const visibleItems = (items ?? []).filter((item) => item.label);
+  if (visibleItems.length === 0) return null;
+
+  return (
+    <section className="surface-card min-w-0 p-4 sm:p-6">
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Linha do tempo do pagamento</p>
+        <h2 className="mt-2 text-xl font-semibold">Revisão financeira</h2>
+      </div>
+      <div className="mt-5 grid gap-3">
+        {visibleItems.map((item, index) => (
+          <div key={`${item.key}-${index}`} className="grid gap-3 rounded-2xl border border-border/60 bg-muted/20 p-4 sm:grid-cols-[auto_1fr]">
+            <div className={`mt-1 h-3 w-3 rounded-full ${item.status === "done" ? "bg-emerald-500" : item.status === "current" ? "bg-amber-500" : "bg-slate-300"}`} />
+            <div className="min-w-0">
+              <p className="break-words text-sm font-semibold">{item.label}</p>
+              <p className="mt-1 break-words text-xs text-muted-foreground">
+                {item.at ? formatDateTime(item.at) : "Sem data registada"}
+                {item.by ? ` · Por ${item.by}` : ""}
+              </p>
+              {item.note ? <p className="mt-2 whitespace-pre-wrap break-words text-xs leading-5 text-muted-foreground">{item.note}</p> : null}
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
 
 export default function CourseEnrollmentReceipt() {
   const { id } = useParams<{ id: string }>();
@@ -137,7 +166,7 @@ export default function CourseEnrollmentReceipt() {
           transition={{ duration: 0.28, ease: "easeOut" }}
           className="surface-card overflow-hidden border-border/70 bg-[linear-gradient(145deg,rgba(253,131,5,0.12),rgba(255,255,255,0.98),rgba(34,61,66,0.08))] p-0"
         >
-          {receipt.paymentStatus === "CONFIRMED"
+          {["CONFIRMED_BY_ADMIN", "CONFIRMED", "APPROVED"].includes(receipt.paymentStatus)
             ? celebrationParticles.map((particle, index) => (
               <motion.span
                 key={`${particle.top}-${particle.left}-${index}`}
@@ -253,6 +282,8 @@ export default function CourseEnrollmentReceipt() {
             </div>
           </div>
         </motion.section>
+
+        <PaymentTimeline items={receipt.paymentTimeline} />
 
         <div className="responsive-two-col items-start">
           <section className="surface-card min-w-0 space-y-5 p-4 sm:p-6">

@@ -111,7 +111,7 @@ export function CourseCertificateAction({
           Emitir certificados
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-xl">
+      <DialogContent className="max-h-[calc(100dvh-2rem)] max-w-xl overflow-y-auto overscroll-contain">
         <DialogHeader>
           <DialogTitle>Emitir certificados do curso</DialogTitle>
           <DialogDescription>

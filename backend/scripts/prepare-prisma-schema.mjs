@@ -1,7 +1,7 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 
-const provider = process.argv[2] ?? "postgresql";
+const provider = process.argv[2] === "postgres" ? "postgresql" : process.argv[2] ?? "postgresql";
 const output = process.argv[3] ?? "prisma/schema.deploy.prisma";
 
 const root = process.cwd();

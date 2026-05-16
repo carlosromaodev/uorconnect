@@ -12,7 +12,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { api } from "@/lib/api";
-import { getPrimaryPortalHref } from "@/lib/contest-lab";
+import { getPrimaryPortalHref } from "@/lib/runtime-hosts";
 
 const WHATSAPP_LINK = `https://wa.me/244951203163?text=Ol%C3%A1%2C%20gostaria%20de%20levar%20a%20UOR%20Connect%20ao%20meu%20evento.`;
 
@@ -470,7 +470,15 @@ export default function SaasShowcase() {
                     <div className="grid grid-cols-[repeat(3,minmax(0,1fr))] gap-2">
                       <Button size="sm" className="h-10 rounded-xl text-xs font-semibold">Ver mais</Button>
                       <Button size="sm" variant="outline" className="h-10 rounded-xl text-xs font-semibold"
-                        onClick={() => setLikedExpositor(prev => { const s = new Set(prev); s.has(project.id) ? s.delete(project.id) : s.add(project.id); return s; })}>
+                        onClick={() => setLikedExpositor(prev => {
+                          const s = new Set(prev);
+                          if (s.has(project.id)) {
+                            s.delete(project.id);
+                          } else {
+                            s.add(project.id);
+                          }
+                          return s;
+                        })}>
                         <Heart className={`mr-1.5 h-3.5 w-3.5 ${likedExpositor.has(project.id) ? "fill-current text-destructive" : ""}`} />
                         {likedExpositor.has(project.id) ? "Gostei" : "Gostar"}
                       </Button>
@@ -539,7 +547,15 @@ export default function SaasShowcase() {
                       </Button>
                       <Button size="sm" variant={likedCourse.has(course.id) ? "default" : "outline"}
                         className="h-auto min-h-10 rounded-xl px-3 py-2 text-sm font-semibold sm:col-span-2"
-                        onClick={() => setLikedCourse(prev => { const s = new Set(prev); s.has(course.id) ? s.delete(course.id) : s.add(course.id); return s; })}>
+                        onClick={() => setLikedCourse(prev => {
+                          const s = new Set(prev);
+                          if (s.has(course.id)) {
+                            s.delete(course.id);
+                          } else {
+                            s.add(course.id);
+                          }
+                          return s;
+                        })}>
                         <Heart className="mr-1.5 h-4 w-4" />{likedCourse.has(course.id) ? "Curtido" : "Curtir"}
                       </Button>
                     </div>

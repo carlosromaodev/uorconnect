@@ -40,7 +40,7 @@ vi.mock("./SearchDialog", () => ({
   default: () => null,
 }));
 
-vi.mock("@/lib/contest-lab", () => ({
+vi.mock("@/lib/runtime-hosts", () => ({
   getSaasShowcaseHref: () => "/",
 }));
 
@@ -158,6 +158,7 @@ describe("Navbar notification center", () => {
         detailPath: "/projeto/projeto-aurora-11",
         bannerUrl: null,
         receiptPath: "/submissoes/11",
+        exhibitorPdfPath: "/submissions/11/exhibitor-pack.pdf",
       },
     ]);
     enrollmentsMineMock.mockResolvedValue([
@@ -230,6 +231,7 @@ describe("Navbar notification center", () => {
         detailPath: "/projeto/projeto-aurora-11",
         bannerUrl: null,
         receiptPath: "/submissoes/11",
+        exhibitorPdfPath: "/submissions/11/exhibitor-pack.pdf",
       },
     ]);
 

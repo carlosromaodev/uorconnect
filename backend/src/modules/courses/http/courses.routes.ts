@@ -8,7 +8,7 @@ import {
   UpdateCourse
 } from "../use-cases/manage-courses";
 import { authGuard } from "../../auth/http/auth.middleware";
-import { adminGuard, getAdminAccessResult } from "../../auth/http/admin.middleware";
+import { adminGuard, getAdminAccessResult, setDefaultAdminPermission } from "../../auth/http/admin.middleware";
 import { prisma } from "../../../shared/prisma";
 import type { Env } from "../../../config/env";
 import { renderCourseEnrollmentsPdf } from "./course-enrollments-report";
@@ -17,14 +17,17 @@ import { normalizeAngolaPhone } from "../../auth/domain/student-format";
 import {
   buildEnrollmentReference,
   buildPaymentShareUrl,
+  canAccessEnrollmentBenefits,
   buildStudentEnrollmentListItem,
   buildStudentEnrollmentReceipt,
   buildWhatsAppUrl,
   getEnrollmentStatusLabel,
   toAbsoluteUrl,
 } from "./course-enrollment-helpers";
-import { enqueuePdfJob, getPdfJob, getPdfJobResult } from "../../../shared/pdf-job-queue";
+import { enqueuePdfJob, getPdfJob, getPdfJobResult, pdfJobInputHash, registerPdfJobHandler } from "../../../shared/pdf-job-queue";
 import { sendWhatsAppAutomationEvent } from "../../whatsapp/http/whatsapp.routes";
+import { isStoredMediaUrl, persistMediaValue, resolveStoredMediaFile } from "../../media/application/media-storage";
+import { normalizePaymentStatus } from "../../payments/payment-status";
 
 const courseSchema = z.object({
   id: z.number(),
@@ -81,12 +84,24 @@ const courseEnrollmentSchema = z.object({
   paymentStatus: z.string(),
   statusLabel: z.string(),
   paymentSubmittedAt: z.string().nullable(),
+  paymentReviewedAt: z.string().nullable().optional(),
+  paymentReviewedByStudentNumber: z.string().nullable().optional(),
+  paymentReviewNote: z.string().nullable().optional(),
   paymentProofPath: z.string().nullable(),
   whatsAppUrl: z.string().nullable(),
   enrolledAt: z.string()
 });
 
-const courseEnrollmentStatusSchema = z.enum(["PENDING", "CONFIRMED", "REJECTED", "CANCELED"]);
+const courseEnrollmentStatusSchema = z.enum([
+  "SUBMITTED_BY_USER",
+  "PENDING_REVIEW",
+  "CONFIRMED_BY_ADMIN",
+  "REJECTED",
+  "CANCELED",
+  "PENDING",
+  "CONFIRMED",
+  "APPROVED",
+]);
 const enrollmentsPagedQuerySchema = z.object({
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(10).max(200).default(50),
@@ -94,11 +109,44 @@ const enrollmentsPagedQuerySchema = z.object({
   paymentStatus: courseEnrollmentStatusSchema.optional(),
 });
 
-const paidCourseEnrollmentSchema = z.object({
-  paymentProof: z.string().regex(/^(data:|https?:\/\/)/, "Anexa o comprovativo do pagamento."),
-  paymentConfirmed: z.literal(true),
-  paymentPhone: z.string().min(8).max(20)
+const adminCourseEnrollmentInputSchema = z.object({
+  studentNumber: z.string().trim().min(4).max(20),
+  fullName: z.string().trim().min(2).max(160).optional().nullable(),
+  studentCourse: z.string().trim().min(2).max(160).optional().nullable(),
+  phone: z.string().trim().min(6).max(30).optional().nullable(),
+  paymentPhone: z.string().trim().min(6).max(30).optional().nullable(),
+  paymentStatus: courseEnrollmentStatusSchema.optional(),
+  note: z.string().trim().max(400).optional().nullable(),
 });
+
+const paymentTimelineItemSchema = z.object({
+  key: z.string(),
+  label: z.string(),
+  status: z.string(),
+  at: z.string().nullable(),
+  by: z.string().nullable(),
+  note: z.string().nullable(),
+});
+
+const paidCourseEnrollmentSchema = z.object({
+  paymentProof: z.string().regex(/^(data:|https?:\/\/|\/(?:api\/)?media\/files\/)/, "Anexa o comprovativo do pagamento."),
+  paymentConfirmed: z.literal(true),
+  paymentPhone: z.string().min(8).max(20).optional()
+});
+
+function hidePublicCourseBenefits<T extends { courses: Array<{ communityUrl: string | null }>; topCourses: Array<{ communityUrl: string | null }>; preview: Array<{ communityUrl: string | null }> }>(payload: T): T {
+  const hideCommunityUrl = <C extends { communityUrl: string | null }>(course: C): C => ({
+    ...course,
+    communityUrl: null,
+  });
+
+  return {
+    ...payload,
+    courses: payload.courses.map(hideCommunityUrl),
+    topCourses: payload.topCourses.map(hideCommunityUrl),
+    preview: payload.preview.map(hideCommunityUrl),
+  };
+}
 
 const studentEnrollmentListItemSchema = z.object({
   id: z.number(),
@@ -132,6 +180,10 @@ const studentEnrollmentReceiptSchema = z.object({
   paymentStatus: z.string(),
   statusLabel: z.string(),
   paymentSubmittedAt: z.string().nullable(),
+  paymentReviewedAt: z.string().nullable(),
+  paymentReviewedByStudentNumber: z.string().nullable(),
+  paymentReviewNote: z.string().nullable(),
+  paymentTimeline: z.array(paymentTimelineItemSchema),
   paymentProofPath: z.string().nullable(),
   ticketPath: z.string().nullable(),
   whatsAppRedirectUrl: z.string().nullable(),
@@ -150,12 +202,75 @@ function normalizeFreeText(value?: string | null) {
   return cleaned || null;
 }
 
-function sendStoredEnrollmentProof(reply: FastifyReply, enrollment: { id: number; paymentProof: string | null }) {
+function serializeAdminCourseEnrollment(input: {
+  enrollment: {
+    id: number;
+    studentNumber: string;
+    studentName: string | null;
+    studentCourse: string | null;
+    paymentProof: string | null;
+    paymentPhone: string | null;
+    paymentStatus: string;
+    paymentSubmittedAt: Date | null;
+    paymentReviewedAt: Date | null;
+    paymentReviewedByStudentNumber: string | null;
+    paymentReviewNote: string | null;
+    createdAt: Date;
+    student: {
+      name: string | null;
+      course: string | null;
+      phone: string | null;
+    } | null;
+    course: {
+      name: string;
+    };
+  };
+  publicApiBaseUrl: string | null;
+}) {
+  const fullName = normalizeFreeText(input.enrollment.studentName ?? input.enrollment.student?.name)
+    ?? `Estudante ${input.enrollment.studentNumber}`;
+  const studentCourse = normalizeFreeText(input.enrollment.studentCourse ?? input.enrollment.student?.course);
+  const phone = normalizeFreeText(input.enrollment.student?.phone);
+  const paymentProofPath = input.enrollment.paymentProof
+    ? `${input.publicApiBaseUrl ?? ""}/courses/enrollments/${input.enrollment.id}/payment-proof`
+    : null;
+
+  return {
+    id: input.enrollment.id,
+    studentNumber: input.enrollment.studentNumber,
+    fullName,
+    course: studentCourse,
+    phone,
+    paymentPhone: normalizeFreeText(input.enrollment.paymentPhone),
+    paymentStatus: input.enrollment.paymentStatus,
+    statusLabel: getEnrollmentStatusLabel(input.enrollment.paymentStatus, paymentProofPath),
+    paymentSubmittedAt: input.enrollment.paymentSubmittedAt?.toISOString() ?? null,
+    paymentReviewedAt: input.enrollment.paymentReviewedAt?.toISOString() ?? null,
+    paymentReviewedByStudentNumber: input.enrollment.paymentReviewedByStudentNumber ?? null,
+    paymentReviewNote: input.enrollment.paymentReviewNote ?? null,
+    paymentProofPath,
+    whatsAppUrl: buildWhatsAppUrl(phone, { courseName: input.enrollment.course.name, fullName }),
+    enrolledAt: input.enrollment.createdAt.toISOString(),
+  };
+}
+
+async function sendStoredEnrollmentProof(env: Env, reply: FastifyReply, enrollment: { id: number; paymentProof: string | null }) {
   if (!enrollment.paymentProof) {
     return reply.code(409).send({ message: "Comprovativo indisponível para esta inscrição." });
   }
 
   const stored = enrollment.paymentProof;
+  if (isStoredMediaUrl(stored)) {
+    const media = await resolveStoredMediaFile(env, stored).catch(() => null);
+    if (!media) {
+      return reply.code(409).send({ message: "Comprovativo indisponível para esta inscrição." });
+    }
+
+    reply.header("Content-Type", media.mimeType);
+    reply.header("Content-Disposition", `inline; filename="curso-comprovativo-${enrollment.id}.${media.mimeType.includes("pdf") ? "pdf" : "webp"}"`);
+    return reply.send(media.stream);
+  }
+
   if (stored.startsWith("data:")) {
     const [metadata, content] = stored.split(",", 2);
     const mimeType = metadata.match(/^data:([^;]+);base64$/)?.[1] ?? "application/octet-stream";
@@ -171,6 +286,27 @@ function sendStoredEnrollmentProof(reply: FastifyReply, enrollment: { id: number
   }
 
   return reply.code(409).send({ message: "Comprovativo inválido para esta inscrição." });
+}
+
+async function getCourseEnrollmentAccess(
+  request: FastifyRequest,
+  env: Env,
+  enrollment: { studentId: number },
+) {
+  if (request.student?.id === enrollment.studentId) {
+    return { allowed: true as const };
+  }
+
+  const access = await getAdminAccessResult(request, env);
+  if (!access.allowed) {
+    return {
+      allowed: false as const,
+      status: access.status,
+      message: access.message,
+    };
+  }
+
+  return { allowed: true as const };
 }
 
 export async function coursesRoutes(app: FastifyInstance, opts: { env: Env }) {
@@ -205,7 +341,8 @@ export async function coursesRoutes(app: FastifyInstance, opts: { env: Env }) {
       }
     }
 
-    return listCourses.execute(includeDrafts);
+    const payload = await listCourses.execute(includeDrafts);
+    return includeDrafts ? payload : hidePublicCourseBenefits(payload);
   });
 
   app.register(async (protectedApp) => {
@@ -213,6 +350,7 @@ export async function coursesRoutes(app: FastifyInstance, opts: { env: Env }) {
 
     protectedApp.register(async (adminApp) => {
       adminApp.register(adminGuard);
+      setDefaultAdminPermission(adminApp, ["COURSES"]);
 
       const loadCourseEnrollments = async (courseId: number) => {
         const course = await prisma.course.findUnique({
@@ -247,6 +385,9 @@ export async function coursesRoutes(app: FastifyInstance, opts: { env: Env }) {
             paymentStatus: entry.paymentStatus,
             statusLabel: getEnrollmentStatusLabel(entry.paymentStatus, paymentProofPath),
             paymentSubmittedAt: entry.paymentSubmittedAt?.toISOString() ?? null,
+            paymentReviewedAt: entry.paymentReviewedAt?.toISOString() ?? null,
+            paymentReviewedByStudentNumber: entry.paymentReviewedByStudentNumber ?? null,
+            paymentReviewNote: entry.paymentReviewNote ?? null,
             paymentProofPath,
             whatsAppUrl: buildWhatsAppUrl(phone, { courseName: course.name, fullName }),
             enrolledAt: entry.createdAt.toISOString()
@@ -347,6 +488,9 @@ export async function coursesRoutes(app: FastifyInstance, opts: { env: Env }) {
             paymentStatus: entry.paymentStatus,
             statusLabel: getEnrollmentStatusLabel(entry.paymentStatus, paymentProofPath),
             paymentSubmittedAt: entry.paymentSubmittedAt?.toISOString() ?? null,
+            paymentReviewedAt: entry.paymentReviewedAt?.toISOString() ?? null,
+            paymentReviewedByStudentNumber: entry.paymentReviewedByStudentNumber ?? null,
+            paymentReviewNote: entry.paymentReviewNote ?? null,
             paymentProofPath,
             whatsAppUrl: buildWhatsAppUrl(phone, { courseName: course.name, fullName }),
             enrolledAt: entry.createdAt.toISOString()
@@ -370,12 +514,8 @@ export async function coursesRoutes(app: FastifyInstance, opts: { env: Env }) {
         };
       };
 
-      const generateCourseEnrollmentsPdf = async (courseId: number) => {
-        const payload = await loadCourseEnrollments(courseId);
-        if (!payload) {
-          throw new Error("Course not found");
-        }
-
+      type CourseEnrollmentsPayload = NonNullable<Awaited<ReturnType<typeof loadCourseEnrollments>>>;
+      const renderCourseEnrollmentsPayloadPdf = async (payload: CourseEnrollmentsPayload) => {
         const generatedAt = new Date();
         const pdfBuffer = await renderCourseEnrollmentsPdf({
           courseName: payload.course.name,
@@ -400,6 +540,22 @@ export async function coursesRoutes(app: FastifyInstance, opts: { env: Env }) {
           fileName: `uor-connect-curso-${payload.course.id}-${generatedAt.toISOString().slice(0, 10)}.pdf`,
         };
       };
+      const generateCourseEnrollmentsPdf = async (courseId: number) => {
+        const payload = await loadCourseEnrollments(courseId);
+        if (!payload) {
+          throw new Error("Course not found");
+        }
+
+        return renderCourseEnrollmentsPayloadPdf(payload);
+      };
+      registerPdfJobHandler("courses.enrollments", async (job) => {
+        const payload = job.snapshot?.payload as CourseEnrollmentsPayload | undefined;
+        if (!payload?.course?.id) {
+          throw new Error("Snapshot de inscrições do curso inválido.");
+        }
+        const result = await renderCourseEnrollmentsPayloadPdf(payload);
+        return { buffer: result.pdfBuffer, fileName: result.fileName, contentType: "application/pdf" };
+      });
 
       adminApp.post("/sync-student-counts", {
         schema: {
@@ -495,9 +651,14 @@ export async function coursesRoutes(app: FastifyInstance, opts: { env: Env }) {
             202: z.object({
               id: z.string(),
               kind: z.string(),
-              status: z.enum(["queued", "processing", "completed", "failed"]),
+              status: z.enum(["queued", "processing", "completed", "failed", "expired"]),
+              error: z.string().nullable().optional(),
               createdAt: z.string(),
               updatedAt: z.string(),
+              expiresAt: z.string().nullable().optional(),
+              hasFile: z.boolean().optional(),
+              fileName: z.string().optional(),
+              sizeBytes: z.number().nullable().optional(),
               statusPath: z.string(),
               filePath: z.string(),
             }),
@@ -513,10 +674,16 @@ export async function coursesRoutes(app: FastifyInstance, opts: { env: Env }) {
           return reply.code(404).send({ message: "Course not found" });
         }
 
-        const job = enqueuePdfJob({
-          kind: `courses.enrollments.${courseId}`,
+        const snapshot = { courseId, payload };
+        const version = pdfJobInputHash(snapshot);
+        const job = await enqueuePdfJob(opts.env, {
+          kind: "courses.enrollments",
+          businessKey: `courses.enrollments:${courseId}:${version}`,
+          fileName: `uor-connect-curso-${courseId}-${new Date().toISOString().slice(0, 10)}.pdf`,
+          snapshot,
+          createdByStudentNumber: request.student?.studentNumber ?? request.jury?.phone ?? null,
           execute: async () => {
-            const { pdfBuffer, fileName } = await generateCourseEnrollmentsPdf(courseId);
+            const { pdfBuffer, fileName } = await renderCourseEnrollmentsPayloadPdf(payload);
             return { buffer: pdfBuffer, fileName, contentType: "application/pdf" };
           },
         });
@@ -534,7 +701,7 @@ export async function coursesRoutes(app: FastifyInstance, opts: { env: Env }) {
         }
       }, async (request, reply) => {
         const { id, jobId } = request.params as { id: number; jobId: string };
-        const job = getPdfJob(jobId);
+        const job = await getPdfJob(opts.env, jobId);
 
         if (!job) {
           return reply.code(404).send({ message: "Job not found" });
@@ -557,7 +724,7 @@ export async function coursesRoutes(app: FastifyInstance, opts: { env: Env }) {
         }
       }, async (request, reply) => {
         const { jobId } = request.params as { id: number; jobId: string };
-        const job = getPdfJob(jobId);
+        const job = await getPdfJob(opts.env, jobId);
 
         if (!job) {
           return reply.code(404).send({ message: "Job not found" });
@@ -567,7 +734,7 @@ export async function coursesRoutes(app: FastifyInstance, opts: { env: Env }) {
           return reply.code(409).send({ message: "PDF not ready yet" });
         }
 
-        const result = getPdfJobResult(jobId);
+        const result = await getPdfJobResult(opts.env, jobId);
         if (!result) {
           return reply.code(404).send({ message: "Job result not found" });
         }
@@ -610,7 +777,10 @@ export async function coursesRoutes(app: FastifyInstance, opts: { env: Env }) {
       adminApp.patch("/enrollments/:enrollmentId/status", {
         schema: {
           params: z.object({ enrollmentId: z.coerce.number().int().positive() }),
-          body: z.object({ status: courseEnrollmentStatusSchema }),
+          body: z.object({
+            status: courseEnrollmentStatusSchema,
+            note: z.string().trim().max(400).nullable().optional(),
+          }),
           response: {
             200: z.object({ enrollment: courseEnrollmentSchema }),
             401: z.object({ message: z.string() }),
@@ -620,7 +790,9 @@ export async function coursesRoutes(app: FastifyInstance, opts: { env: Env }) {
         }
       }, async (request, reply) => {
         const { enrollmentId } = request.params as { enrollmentId: number };
-        const { status } = request.body as { status: z.infer<typeof courseEnrollmentStatusSchema> };
+        const { status, note } = request.body as { status: z.infer<typeof courseEnrollmentStatusSchema>; note?: string | null };
+        const nextStatus = normalizePaymentStatus(status);
+        const reviewedAt = ["CONFIRMED_BY_ADMIN", "REJECTED", "CANCELED"].includes(nextStatus) ? new Date() : null;
 
         const existing = await prisma.courseEnrollment.findUnique({
           where: { id: enrollmentId },
@@ -637,10 +809,13 @@ export async function coursesRoutes(app: FastifyInstance, opts: { env: Env }) {
         const updated = await prisma.courseEnrollment.update({
           where: { id: enrollmentId },
           data: {
-            paymentStatus: status,
-            paymentSubmittedAt: status === "PENDING"
+            paymentStatus: nextStatus,
+            paymentSubmittedAt: nextStatus === "PENDING_REVIEW" || nextStatus === "SUBMITTED_BY_USER"
               ? existing.paymentSubmittedAt ?? new Date()
               : existing.paymentSubmittedAt,
+            paymentReviewedAt: reviewedAt,
+            paymentReviewedByStudentNumber: reviewedAt ? request.student?.studentNumber ?? (request.jury ? `jury-${request.jury.id}` : null) : null,
+            paymentReviewNote: reviewedAt ? note?.trim() || null : null,
           },
           include: {
             student: true,
@@ -665,11 +840,11 @@ export async function coursesRoutes(app: FastifyInstance, opts: { env: Env }) {
             values: {
               curso: updated.course.name,
               estado: getEnrollmentStatusLabel(updated.paymentStatus, paymentProofPath),
-              detalhe: updated.paymentStatus === "CONFIRMED"
+              detalhe: normalizePaymentStatus(updated.paymentStatus) === "CONFIRMED_BY_ADMIN"
                 ? "A tua vaga foi confirmada pela equipa."
-                : updated.paymentStatus === "REJECTED"
+                : normalizePaymentStatus(updated.paymentStatus) === "REJECTED"
                   ? "A equipa marcou a inscrição como rejeitada. Revê os dados enviados."
-                  : updated.paymentStatus === "CANCELED"
+                  : normalizePaymentStatus(updated.paymentStatus) === "CANCELED"
                     ? "A inscrição foi cancelada pela equipa."
                     : "A equipa está a rever a tua inscrição.",
               link: `${publicAppUrl}/cursos/inscricoes/${updated.id}`,
@@ -690,11 +865,183 @@ export async function coursesRoutes(app: FastifyInstance, opts: { env: Env }) {
             paymentStatus: updated.paymentStatus,
             statusLabel: getEnrollmentStatusLabel(updated.paymentStatus, paymentProofPath),
             paymentSubmittedAt: updated.paymentSubmittedAt?.toISOString() ?? null,
+            paymentReviewedAt: updated.paymentReviewedAt?.toISOString() ?? null,
+            paymentReviewedByStudentNumber: updated.paymentReviewedByStudentNumber ?? null,
+            paymentReviewNote: updated.paymentReviewNote ?? null,
             paymentProofPath,
             whatsAppUrl: buildWhatsAppUrl(phone, { courseName: updated.course.name, fullName }),
             enrolledAt: updated.createdAt.toISOString(),
           }
         });
+      });
+
+      adminApp.post("/:id/enrollments", {
+        schema: {
+          params: z.object({ id: z.coerce.number().int().positive() }),
+          body: adminCourseEnrollmentInputSchema,
+          response: {
+            201: z.object({ enrollment: courseEnrollmentSchema }),
+            400: z.object({ message: z.string() }),
+            401: z.object({ message: z.string() }),
+            403: z.object({ message: z.string() }),
+            404: z.object({ message: z.string() }),
+            409: z.object({ message: z.string() }),
+          },
+        },
+      }, async (request, reply) => {
+        const { id: courseId } = request.params as { id: number };
+        const body = adminCourseEnrollmentInputSchema.parse(request.body);
+        const studentNumber = body.studentNumber.replace(/\D/g, "");
+        const course = await prisma.course.findUnique({ where: { id: courseId } });
+        if (!course) return reply.code(404).send({ message: "Curso não encontrado." });
+
+        const student = await prisma.student.findUnique({ where: { studentNumber } });
+        if (!student) return reply.code(404).send({ message: "Estudante não encontrado com este número." });
+
+        const existing = await prisma.courseEnrollment.findUnique({
+          where: { studentId_courseId: { studentId: student.id, courseId } },
+        });
+        if (existing) return reply.code(409).send({ message: "Este estudante já está inscrito neste curso." });
+
+        const fullName = normalizeFreeText(body.fullName);
+        const studentCourse = normalizeFreeText(body.studentCourse);
+        const phone = normalizeAngolaPhone(body.phone);
+        const paymentPhone = normalizeAngolaPhone(body.paymentPhone ?? body.phone ?? student.phone);
+        const nextStatus = normalizePaymentStatus(body.paymentStatus ?? "CONFIRMED_BY_ADMIN");
+        const reviewedAt = ["CONFIRMED_BY_ADMIN", "REJECTED", "CANCELED"].includes(nextStatus) ? new Date() : null;
+
+        if (fullName || studentCourse || phone) {
+          await prisma.student.update({
+            where: { id: student.id },
+            data: {
+              ...(fullName ? { name: fullName } : {}),
+              ...(studentCourse ? { course: studentCourse } : {}),
+              ...(phone ? { phone } : {}),
+            },
+          });
+        }
+
+        const enrollment = await prisma.courseEnrollment.create({
+          data: {
+            studentId: student.id,
+            courseId,
+            studentNumber,
+            studentName: fullName ?? student.name,
+            studentEmail: student.email,
+            studentCourse: studentCourse ?? student.course,
+            paymentPhone,
+            paymentStatus: nextStatus,
+            paymentSubmittedAt: ["SUBMITTED_BY_USER", "PENDING_REVIEW"].includes(nextStatus) ? new Date() : null,
+            paymentReviewedAt: reviewedAt,
+            paymentReviewedByStudentNumber: reviewedAt ? request.student?.studentNumber ?? (request.jury ? `jury-${request.jury.id}` : null) : null,
+            paymentReviewNote: reviewedAt ? body.note?.trim() || "Inscrição adicionada manualmente pela admin." : body.note?.trim() || null,
+          },
+          include: { student: true, course: true },
+        });
+
+        return reply.code(201).send({
+          enrollment: serializeAdminCourseEnrollment({ enrollment, publicApiBaseUrl }),
+        });
+      });
+
+      adminApp.patch("/enrollments/:enrollmentId", {
+        schema: {
+          params: z.object({ enrollmentId: z.coerce.number().int().positive() }),
+          body: adminCourseEnrollmentInputSchema.partial(),
+          response: {
+            200: z.object({ enrollment: courseEnrollmentSchema }),
+            400: z.object({ message: z.string() }),
+            401: z.object({ message: z.string() }),
+            403: z.object({ message: z.string() }),
+            404: z.object({ message: z.string() }),
+            409: z.object({ message: z.string() }),
+          },
+        },
+      }, async (request, reply) => {
+        const { enrollmentId } = request.params as { enrollmentId: number };
+        const body = adminCourseEnrollmentInputSchema.partial().parse(request.body);
+        const existing = await prisma.courseEnrollment.findUnique({
+          where: { id: enrollmentId },
+          include: { student: true, course: true },
+        });
+        if (!existing) return reply.code(404).send({ message: "Inscrição não encontrada." });
+
+        const nextStudentNumber = body.studentNumber ? body.studentNumber.replace(/\D/g, "") : existing.studentNumber;
+        const nextStudent = nextStudentNumber !== existing.studentNumber
+          ? await prisma.student.findUnique({ where: { studentNumber: nextStudentNumber } })
+          : existing.student;
+        if (!nextStudent) return reply.code(404).send({ message: "Estudante não encontrado com este número." });
+
+        if (nextStudent.id !== existing.studentId) {
+          const duplicate = await prisma.courseEnrollment.findUnique({
+            where: { studentId_courseId: { studentId: nextStudent.id, courseId: existing.courseId } },
+          });
+          if (duplicate) return reply.code(409).send({ message: "O novo estudante já está inscrito neste curso." });
+        }
+
+        const fullName = normalizeFreeText(body.fullName);
+        const studentCourse = normalizeFreeText(body.studentCourse);
+        const phone = normalizeAngolaPhone(body.phone);
+        const paymentPhone = body.paymentPhone !== undefined
+          ? normalizeAngolaPhone(body.paymentPhone)
+          : undefined;
+        const nextStatus = body.paymentStatus ? normalizePaymentStatus(body.paymentStatus) : existing.paymentStatus;
+        const reviewChanged = body.paymentStatus !== undefined || body.note !== undefined;
+        const reviewedAt = reviewChanged && ["CONFIRMED_BY_ADMIN", "REJECTED", "CANCELED"].includes(nextStatus) ? new Date() : existing.paymentReviewedAt;
+
+        if (fullName || studentCourse || phone) {
+          await prisma.student.update({
+            where: { id: nextStudent.id },
+            data: {
+              ...(fullName ? { name: fullName } : {}),
+              ...(studentCourse ? { course: studentCourse } : {}),
+              ...(phone ? { phone } : {}),
+            },
+          });
+        }
+
+        const enrollment = await prisma.courseEnrollment.update({
+          where: { id: enrollmentId },
+          data: {
+            studentId: nextStudent.id,
+            studentNumber: nextStudent.studentNumber,
+            studentName: fullName ?? existing.studentName ?? nextStudent.name,
+            studentEmail: nextStudent.email,
+            studentCourse: studentCourse ?? existing.studentCourse ?? nextStudent.course,
+            ...(paymentPhone !== undefined ? { paymentPhone } : {}),
+            paymentStatus: nextStatus,
+            paymentSubmittedAt: ["SUBMITTED_BY_USER", "PENDING_REVIEW"].includes(nextStatus)
+              ? existing.paymentSubmittedAt ?? new Date()
+              : existing.paymentSubmittedAt,
+            paymentReviewedAt: reviewedAt,
+            paymentReviewedByStudentNumber: reviewedAt && reviewChanged ? request.student?.studentNumber ?? (request.jury ? `jury-${request.jury.id}` : null) : existing.paymentReviewedByStudentNumber,
+            paymentReviewNote: reviewChanged ? body.note?.trim() || null : existing.paymentReviewNote,
+          },
+          include: { student: true, course: true },
+        });
+
+        return reply.send({
+          enrollment: serializeAdminCourseEnrollment({ enrollment, publicApiBaseUrl }),
+        });
+      });
+
+      adminApp.delete("/enrollments/:enrollmentId", {
+        schema: {
+          params: z.object({ enrollmentId: z.coerce.number().int().positive() }),
+          response: {
+            200: z.object({ success: z.literal(true) }),
+            401: z.object({ message: z.string() }),
+            403: z.object({ message: z.string() }),
+            404: z.object({ message: z.string() }),
+          },
+        },
+      }, async (request, reply) => {
+        const { enrollmentId } = request.params as { enrollmentId: number };
+        const existing = await prisma.courseEnrollment.findUnique({ where: { id: enrollmentId } });
+        if (!existing) return reply.code(404).send({ message: "Inscrição não encontrada." });
+
+        await prisma.courseEnrollment.delete({ where: { id: enrollmentId } });
+        return { success: true as const };
       });
 
       adminApp.patch("/:id", {
@@ -841,6 +1188,7 @@ export async function coursesRoutes(app: FastifyInstance, opts: { env: Env }) {
         ? `/courses/enrollments/${enrollment.id}/payment-proof`
         : null;
       const ticketPath = `/courses/enrollments/${enrollment.id}/ticket.pdf`;
+      const canAccessBenefits = canAccessEnrollmentBenefits(enrollment.paymentStatus);
 
       return reply.send(buildStudentEnrollmentReceipt({
         id: enrollment.id,
@@ -853,13 +1201,16 @@ export async function coursesRoutes(app: FastifyInstance, opts: { env: Env }) {
         paymentPhone: normalizeFreeText(enrollment.paymentPhone),
         paymentStatus: enrollment.paymentStatus,
         paymentSubmittedAt: enrollment.paymentSubmittedAt?.toISOString() ?? null,
+        paymentReviewedAt: enrollment.paymentReviewedAt?.toISOString() ?? null,
+        paymentReviewedByStudentNumber: enrollment.paymentReviewedByStudentNumber ?? null,
+        paymentReviewNote: enrollment.paymentReviewNote ?? null,
         paymentProofPath,
         ticketPath,
         whatsAppRedirectUrl: enrollment.course.isPaid ? buildPaymentShareUrl({
           courseName: enrollment.course.name,
           fullName: normalizeFreeText(enrollment.studentName ?? enrollment.student?.name) ?? `Estudante ${enrollment.studentNumber}`,
           studentNumber: enrollment.studentNumber,
-          destinationUrl: enrollment.course.communityUrl ?? null,
+          destinationUrl: canAccessBenefits ? enrollment.course.communityUrl ?? null : null,
           paymentProofPath,
           ticketPath,
           publicApiBaseUrl,
@@ -887,9 +1238,6 @@ export async function coursesRoutes(app: FastifyInstance, opts: { env: Env }) {
         }
       }
     }, async (request, reply) => {
-      const student = request.student;
-      if (!student) return reply.status(401).send({ message: "Unauthorized" });
-
       const enrollment = await prisma.courseEnrollment.findUnique({
         where: { id: (request.params as { id: number }).id },
       });
@@ -898,14 +1246,12 @@ export async function coursesRoutes(app: FastifyInstance, opts: { env: Env }) {
         return reply.code(404).send({ message: "Enrollment not found" });
       }
 
-      if (enrollment.studentId !== student.id) {
-        const access = await getAdminAccessResult(request, opts.env);
-        if (!access.allowed) {
-          return reply.status(403).send({ message: "Access denied" });
-        }
+      const access = await getCourseEnrollmentAccess(request, opts.env, enrollment);
+      if (!access.allowed) {
+        return reply.status(access.status).send({ message: access.message });
       }
 
-      return sendStoredEnrollmentProof(reply, enrollment);
+      return sendStoredEnrollmentProof(opts.env, reply, enrollment);
     });
 
     protectedApp.post("/:id/enroll", {
@@ -956,6 +1302,12 @@ export async function coursesRoutes(app: FastifyInstance, opts: { env: Env }) {
       }
 
       const normalizedPaymentPhone = normalizeAngolaPhone(body.paymentPhone ?? studentProfile?.phone ?? null) ?? null;
+      const storedPaymentProof = course.isPaid && body.paymentProof
+        ? await persistMediaValue(opts.env, body.paymentProof, {
+          purpose: "course-payment-proofs",
+          allowDocuments: true,
+        })
+        : null;
 
       const existing = await prisma.courseEnrollment.findUnique({
         where: {
@@ -975,20 +1327,26 @@ export async function coursesRoutes(app: FastifyInstance, opts: { env: Env }) {
             studentName: studentProfile?.name ?? null,
             studentEmail: studentProfile?.email ?? null,
             studentCourse: studentProfile?.course ?? null,
-            paymentProof: course.isPaid ? body.paymentProof ?? null : null,
+            paymentProof: course.isPaid ? storedPaymentProof ?? body.paymentProof ?? null : null,
             paymentPhone: course.isPaid ? normalizedPaymentPhone : null,
-            paymentStatus: course.isPaid ? "PENDING" : "CONFIRMED",
-            paymentSubmittedAt: course.isPaid ? new Date() : null
+            paymentStatus: course.isPaid ? "PENDING_REVIEW" : "CONFIRMED_BY_ADMIN",
+            paymentSubmittedAt: course.isPaid ? new Date() : null,
+            paymentReviewedAt: course.isPaid ? null : new Date(),
+            paymentReviewedByStudentNumber: course.isPaid ? null : "system",
+            paymentReviewNote: course.isPaid ? null : "Curso gratuito confirmado automaticamente.",
           }
         });
       } else if (course.isPaid && body.paymentProof) {
         await prisma.courseEnrollment.update({
           where: { id: existing.id },
           data: {
-            paymentProof: body.paymentProof,
+            paymentProof: storedPaymentProof ?? body.paymentProof,
             paymentPhone: normalizedPaymentPhone,
-            paymentStatus: "PENDING",
-            paymentSubmittedAt: new Date()
+            paymentStatus: "PENDING_REVIEW",
+            paymentSubmittedAt: new Date(),
+            paymentReviewedAt: null,
+            paymentReviewedByStudentNumber: null,
+            paymentReviewNote: null,
           }
         });
       }
@@ -1008,6 +1366,7 @@ export async function coursesRoutes(app: FastifyInstance, opts: { env: Env }) {
       const ticketPath = finalEnrollment
         ? `${publicApiBaseUrl ?? ""}/courses/enrollments/${finalEnrollment.id}/ticket.pdf`
         : null;
+      const canAccessBenefits = finalEnrollment ? canAccessEnrollmentBenefits(finalEnrollment.paymentStatus) : false;
       const shouldNotifyEnrollment = Boolean(finalEnrollment && (!existing || (course.isPaid && body.paymentProof)));
 
       if (shouldNotifyEnrollment && finalEnrollment) {
@@ -1021,7 +1380,7 @@ export async function coursesRoutes(app: FastifyInstance, opts: { env: Env }) {
             values: {
               curso: course.name,
               detalhe: course.isPaid
-                ? "Recebemos o comprovativo e a equipa vai validar o pagamento."
+                ? "A tua inscrição ficou pendente enquanto a equipa valida o pagamento."
                 : "A tua inscrição ficou confirmada.",
               link: `${publicAppUrl}/cursos/inscricoes/${finalEnrollment.id}`,
             },
@@ -1034,7 +1393,7 @@ export async function coursesRoutes(app: FastifyInstance, opts: { env: Env }) {
       return {
         enrolled: true,
         enrollmentId: finalEnrollment?.id ?? null,
-        communityUrl: course.communityUrl ?? null,
+        communityUrl: canAccessBenefits ? course.communityUrl ?? null : null,
         studentCount: await prisma.courseEnrollment.count({ where: { courseId: course.id } }),
         paymentStatus: finalEnrollment?.paymentStatus ?? null,
         paymentProofPath,
@@ -1044,7 +1403,7 @@ export async function coursesRoutes(app: FastifyInstance, opts: { env: Env }) {
           courseName: course.name,
           fullName: studentProfile?.name ?? `Estudante ${student.studentNumber}`,
           studentNumber: student.studentNumber,
-          destinationUrl: course.communityUrl ?? null,
+          destinationUrl: canAccessBenefits ? course.communityUrl ?? null : null,
           paymentProofPath,
           ticketPath,
           publicApiBaseUrl,
@@ -1064,9 +1423,6 @@ export async function coursesRoutes(app: FastifyInstance, opts: { env: Env }) {
         }
       }
     }, async (request, reply) => {
-      const student = request.student;
-      if (!student) return reply.status(401).send({ message: "Unauthorized" });
-
       const enrollment = await prisma.courseEnrollment.findUnique({
         where: { id: (request.params as { id: number }).id },
         include: {
@@ -1079,11 +1435,9 @@ export async function coursesRoutes(app: FastifyInstance, opts: { env: Env }) {
         return reply.code(404).send({ message: "Enrollment not found" });
       }
 
-      if (enrollment.studentId !== student.id) {
-        const access = await getAdminAccessResult(request, opts.env);
-        if (!access.allowed) {
-          return reply.status(403).send({ message: "Access denied" });
-        }
+      const access = await getCourseEnrollmentAccess(request, opts.env, enrollment);
+      if (!access.allowed) {
+        return reply.status(access.status).send({ message: access.message });
       }
 
       const fullName = normalizeFreeText(enrollment.studentName ?? enrollment.student?.name) ?? `Estudante ${enrollment.studentNumber}`;
@@ -1110,7 +1464,7 @@ export async function coursesRoutes(app: FastifyInstance, opts: { env: Env }) {
           siteUrl: publicAppUrl,
           ticketUrl: toAbsoluteUrl(publicApiBaseUrl, ticketPath),
           proofUrl: toAbsoluteUrl(publicApiBaseUrl, paymentProofPath),
-          communityUrl: enrollment.course.communityUrl ?? null
+          communityUrl: canAccessEnrollmentBenefits(enrollment.paymentStatus) ? enrollment.course.communityUrl ?? null : null
         });
 
         reply.header("Content-Type", "application/pdf");

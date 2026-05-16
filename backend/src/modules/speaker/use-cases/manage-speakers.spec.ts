@@ -1,13 +1,14 @@
 import { beforeEach, describe, expect, it } from "vitest";
+import type { Speaker } from "@prisma/client";
 import type { SpeakerInput, SpeakerRepository } from "../domain/speaker.repository";
 import { CreateSpeaker, DeleteSpeaker, ListSpeakers, UpdateSpeaker } from "./manage-speakers";
 
 class InMemorySpeakerRepository implements SpeakerRepository {
-  items: any[] = [];
+  items: Speaker[] = [];
   async list() { return this.items; }
   async findById(id: number) { return this.items.find((item) => item.id === id) ?? null; }
   async create(data: SpeakerInput) {
-    const item = { id: this.items.length + 1, ...data, createdAt: new Date(), updatedAt: new Date() };
+    const item = { id: this.items.length + 1, ...data, avatarUrl: data.avatarUrl ?? null, createdAt: new Date(), updatedAt: new Date() };
     this.items.push(item);
     return item;
   }

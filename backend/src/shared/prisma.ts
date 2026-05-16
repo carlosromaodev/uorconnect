@@ -4,7 +4,11 @@ import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { Pool } from "pg";
 
-const databaseProvider = process.env.DATABASE_PROVIDER ?? "sqlite";
+function normalizeDatabaseProvider(value?: string) {
+  return value === "postgres" ? "postgresql" : value ?? "sqlite";
+}
+
+const databaseProvider = normalizeDatabaseProvider(process.env.DATABASE_PROVIDER);
 const databaseUrl = process.env.DATABASE_URL ?? "file:./dev.db";
 const isProduction = process.env.NODE_ENV === "production";
 

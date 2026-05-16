@@ -8,8 +8,14 @@ class InMemorySubmissionRepo implements SubmissionRepository {
   constructor(public items: Submission[]) {}
   async create(_data: CreateSubmissionInput): Promise<Submission> { throw new Error("not implemented"); }
   async findById(id: number): Promise<Submission | null> { return this.items.find((item) => item.id === id) ?? null; }
+  async findOwnedById(id: number, studentId: number): Promise<Submission | null> {
+    return this.items.find((item) => item.id === id && item.studentId === studentId) ?? null;
+  }
   async findByReference(_ref: string): Promise<Submission | null> { return null; }
   async list(_status?: SubmissionStatus, _type?: SubmissionType): Promise<Submission[]> { return this.items; }
+  async listByStudent(studentId: number): Promise<Submission[]> {
+    return this.items.filter((item) => item.studentId === studentId);
+  }
   async summary(_id: number): Promise<SubmissionSummary | null> { return null; }
   async setStatus(_id: number, _status: SubmissionStatus): Promise<void> { return; }
   async setWinner(_id: number): Promise<void> { return; }
@@ -17,6 +23,13 @@ class InMemorySubmissionRepo implements SubmissionRepository {
     this.items = this.items.map((item) => ({ ...item, isWinner: false, winnerSelectedAt: null }));
   }
   async hasDuplicate(): Promise<boolean> { return false; }
+  async updateOwnedSubmission(id: number, studentId: number, data: Omit<CreateSubmissionInput, "referenceCode">): Promise<Submission> {
+    const existing = await this.findOwnedById(id, studentId);
+    if (!existing) throw new Error("Submission not found");
+    const updated = { ...existing, ...data, teamSize: data.members.length, updatedAt: new Date() };
+    this.items = this.items.map((item) => item.id === id ? updated : item);
+    return updated;
+  }
 }
 
 describe("ClearWinnerSubmission", () => {

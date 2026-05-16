@@ -19,7 +19,7 @@ const defaultFloatingIcons: HeroFloatingIconInput[] = [
 const defaultSponsors: HomeSponsorInput[] = [
   { id: "uor", name: "Universidade Óscar Ribas", imageUrl: "/logo-uor.png", label: null },
   { id: "neic", name: "Núcleo de Engenharia Informática e Comunicações", imageUrl: "/logo-neic.jpeg", label: "Núcleo de Engenharia Informática e Comunicações" },
-  { id: "uor-connect", name: "UOR Connect", imageUrl: "/logo-gestor.png", label: "UOR Connect" },
+  { id: "uor-connect", name: "UOR Connect", imageUrl: "/logoworconnect.png", label: "UOR Connect" },
 ];
 
 const defaultSocialConfigValues = {

@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { Link } from "react-router-dom";
 import {
+  ArrowUpRight,
   ThumbsUp,
   MessageCircle,
   Send,
@@ -14,10 +15,16 @@ import {
   Loader2,
   Heart,
   Crown,
+  QrCode,
+  Share2,
+  Search,
+  X,
 } from "lucide-react";
 import { ProjectQrDialog, type ProjectCardItem } from "@/components/projects/ProjectQrDialog";
 import { ProjectShowcaseCard } from "@/components/projects/ProjectShowcaseCard";
+import { UserAvatar } from "@/components/social/UserAvatar";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -26,13 +33,29 @@ import { StudentLoginForm } from "@/components/auth/StudentLoginForm";
 import {
   api,
   type ProjectPublicComment,
+  type ProjectFeedAudience,
+  type ProjectFeedSort,
   setToken,
   getToken
 } from "@/lib/api";
 import { canVoteSubmission, getSubmissionAreaLabel, getSubmissionAudienceCopy } from "@/lib/submission-meta";
 import { getProjectAreaClasses } from "@/lib/project-card-ui";
+import { getProjectsPageFeedParams, getTopProjectsFeedParams } from "@/lib/project-feed-options";
 
 type Project = ProjectCardItem;
+type ProjectViewMode = "compact" | "showcase";
+
+const projectSortOptions: Array<{ value: ProjectFeedSort; label: string; caption: string }> = [
+  { value: "recent_desc", label: "Recentes", caption: "últimos aprovados" },
+  { value: "votes_desc", label: "Mais votados", caption: "ranking real" },
+  { value: "likes_desc", label: "Mais gostados", caption: "interações" },
+  { value: "comments_desc", label: "Mais comentados", caption: "debate" },
+];
+const projectAudienceOptions: Array<{ value: ProjectFeedAudience; label: string }> = [
+  { value: "all", label: "Todos" },
+  { value: "competition", label: "Projetos" },
+  { value: "exhibitions", label: "Exposições" },
+];
 
 function formatRelativeDate(value: string) {
   const date = new Date(value);
@@ -42,6 +65,142 @@ function formatRelativeDate(value: string) {
     hour: "2-digit",
     minute: "2-digit"
   }).format(date);
+}
+
+function ProjectCompactCard({
+  project,
+  index,
+  onOpen,
+  onPrefetch,
+  onShare,
+  onOpenQr,
+  onPrimaryAction,
+  onLikeAction,
+}: {
+  project: Project;
+  index: number;
+  onOpen: (project: Project) => void | Promise<void>;
+  onPrefetch: (project: Project) => void | Promise<void>;
+  onShare: (project: Project) => void | Promise<void>;
+  onOpenQr: (project: Project) => void;
+  onPrimaryAction: (project: Project) => void | Promise<void>;
+  onLikeAction: (project: Project) => void | Promise<void>;
+}) {
+  const areaUi = getProjectAreaClasses(project.area, project.type);
+  const displayArea = getSubmissionAreaLabel(project.area, project.type);
+  const canVote = canVoteSubmission(project.type, project.area, project.canVote);
+  const primaryLabel = canVote ? (project.userHasVoted ? "Votado" : "Votar") : (project.userHasLiked ? "Gostei" : "Gostar");
+
+  return (
+    <motion.article
+      initial={{ opacity: 0, y: 10 }}
+      whileInView={{ opacity: 1, y: 0 }}
+      viewport={{ once: true, margin: "-40px" }}
+      transition={{ delay: Math.min(index, 10) * 0.025, type: "spring", stiffness: 260, damping: 24 }}
+      className="group relative flex min-h-[220px] flex-col overflow-hidden rounded-xl border bg-card p-3 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md"
+      style={{ borderColor: `${project.primaryColor}33` }}
+      onMouseEnter={() => void onPrefetch(project)}
+      onFocus={() => void onPrefetch(project)}
+    >
+      <div
+        className="absolute inset-x-0 top-0 h-1"
+        style={{ backgroundColor: project.primaryColor }}
+      />
+
+      <button
+        type="button"
+        className="flex flex-1 flex-col text-left"
+        onClick={() => void onOpen(project)}
+      >
+        <div className="mb-3 flex items-start justify-between gap-2">
+          <span className={`max-w-[70%] truncate rounded-md px-2 py-1 text-[10px] font-bold uppercase tracking-wide ${areaUi.badge}`}>
+            {displayArea}
+          </span>
+          <span className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-background px-2 py-1 text-[10px] font-bold text-foreground">
+            {canVote ? <ThumbsUp className="h-3 w-3 text-primary" /> : <Heart className="h-3 w-3 text-primary" />}
+            {canVote ? project.votesCount : project.likesCount}
+          </span>
+        </div>
+
+        <h3 className="line-clamp-2 min-h-[2.5rem] font-heading text-sm font-bold leading-tight text-foreground sm:text-[15px]">
+          {project.isWinner && <Crown className="mr-1 inline h-3.5 w-3.5 align-text-bottom text-[hsl(var(--warning))]" />}
+          {project.name}
+        </h3>
+
+        <p className="mt-1 truncate text-[11px] font-medium text-muted-foreground">
+          {project.course || project.typeLabel}
+        </p>
+
+        <p className="mt-2 line-clamp-2 text-xs leading-relaxed text-foreground/65">
+          {project.summary || project.description}
+        </p>
+
+        <div className="mt-auto grid grid-cols-3 gap-1.5 pt-3 text-[10px] font-semibold text-muted-foreground">
+          <span className="inline-flex items-center gap-1 rounded-lg bg-muted/40 px-2 py-1">
+            <Heart className="h-3 w-3" />
+            {project.likesCount}
+          </span>
+          <span className="inline-flex items-center gap-1 rounded-lg bg-muted/40 px-2 py-1">
+            <MessageCircle className="h-3 w-3" />
+            {project.commentsCount}
+          </span>
+          <span className="inline-flex items-center gap-1 rounded-lg bg-muted/40 px-2 py-1">
+            <Users className="h-3 w-3" />
+            {project.teamSize}
+          </span>
+        </div>
+      </button>
+
+      <div className="mt-3 grid grid-cols-[minmax(0,1fr)_2.25rem_2.25rem_2.25rem] gap-1.5">
+        <Button
+          size="sm"
+          variant={canVote ? (project.userHasVoted ? "default" : "outline") : (project.userHasLiked ? "default" : "outline")}
+          className="h-9 min-w-0 rounded-lg px-2 text-[11px] font-bold"
+          onClick={() => void onPrimaryAction(project)}
+        >
+          {canVote ? <Trophy className="h-3.5 w-3.5" /> : <Heart className={`h-3.5 w-3.5 ${project.userHasLiked ? "fill-current" : ""}`} />}
+          <span className="truncate">{primaryLabel}</span>
+        </Button>
+
+        <Button
+          size="icon"
+          variant="outline"
+          className="h-9 w-9 rounded-lg border-border/60"
+          title="Gostar"
+          onClick={() => void onLikeAction(project)}
+        >
+          <Heart className={`h-3.5 w-3.5 ${project.userHasLiked ? "fill-current text-primary" : ""}`} />
+        </Button>
+        <Button
+          size="icon"
+          variant="outline"
+          className="h-9 w-9 rounded-lg border-border/60"
+          title="QR Code"
+          onClick={() => onOpenQr(project)}
+        >
+          <QrCode className="h-3.5 w-3.5" />
+        </Button>
+        <Button
+          size="icon"
+          variant="outline"
+          className="h-9 w-9 rounded-lg border-border/60"
+          title="Partilhar"
+          onClick={() => void onShare(project)}
+        >
+          <Share2 className="h-3.5 w-3.5" />
+        </Button>
+      </div>
+
+      <button
+        type="button"
+        className="mt-2 inline-flex h-8 items-center justify-center gap-1 rounded-lg text-[11px] font-bold text-primary transition-colors hover:bg-primary/5"
+        onClick={() => void onOpen(project)}
+      >
+        Ver detalhe
+        <ArrowUpRight className="h-3 w-3" />
+      </button>
+    </motion.article>
+  );
 }
 
 function LoginModal({ open, onClose, onLogin }: { open: boolean; onClose: () => void; onLogin: () => void }) {
@@ -78,9 +237,12 @@ function CommentRow({ comment }: { comment: ProjectPublicComment }) {
   return (
     <div className="rounded-2xl border border-border/60 bg-background/90 p-4 shadow-sm">
       <div className="mb-2 flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="truncate text-sm font-semibold leading-tight text-primary">{comment.studentName}</p>
-          <p className="mt-1 text-[11px] font-medium text-[hsl(var(--area-negocio))]">{comment.course || "Curso não informado"}</p>
+        <div className="flex min-w-0 items-start gap-2.5">
+          <UserAvatar name={comment.studentName} avatarUrl={comment.studentAvatarUrl} size="sm" className="mt-0.5 shrink-0" />
+          <div className="min-w-0">
+            <p className="truncate text-sm font-semibold leading-tight text-primary">{comment.studentName}</p>
+            <p className="mt-1 text-[11px] font-medium text-[hsl(var(--area-negocio))]">{comment.course || "Curso não informado"}</p>
+          </div>
         </div>
         <span className="text-[11px] text-muted-foreground whitespace-nowrap">{formatRelativeDate(comment.createdAt)}</span>
       </div>
@@ -342,18 +504,42 @@ function ProjectDetailModal({
 
 export default function Projetos() {
   const [projects, setProjects] = useState<Project[]>([]);
+  const [topProjects, setTopProjects] = useState<Project[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [projectsPage, setProjectsPage] = useState(1);
+  const [projectsTotalPages, setProjectsTotalPages] = useState(1);
+  const [projectsTotal, setProjectsTotal] = useState(0);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [projectSort, setProjectSort] = useState<ProjectFeedSort>("recent_desc");
+  const [audienceFilter, setAudienceFilter] = useState<ProjectFeedAudience>("all");
+  const [courseFilter, setCourseFilter] = useState("");
+  const [searchTerm, setSearchTerm] = useState("");
+  const [viewMode, setViewMode] = useState<ProjectViewMode>("compact");
   const [loggedIn, setLoggedIn] = useState(false);
   const [studentProfile, setStudentProfile] = useState<{ name?: string | null; course?: string | null } | null>(null);
   const [loginOpen, setLoginOpen] = useState(false);
   const [selectedProjectId, setSelectedProjectId] = useState<number | null>(null);
   const [qrProject, setQrProject] = useState<ProjectCardItem | null>(null);
+  const deferredSearchTerm = useDeferredValue(searchTerm);
+  const hydratingProjectIds = useRef(new Set<number>());
 
   const selectedProject = useMemo(
-    () => projects.find((project) => project.id === selectedProjectId) ?? null,
-    [projects, selectedProjectId]
+    () => [...projects, ...topProjects].find((project) => project.id === selectedProjectId) ?? null,
+    [projects, topProjects, selectedProjectId]
   );
+  const availableCourses = useMemo(() => {
+    const seen = new Set<string>();
+    return [...projects, ...topProjects]
+      .map((project) => project.course?.trim())
+      .filter((course): course is string => {
+        if (!course || seen.has(course)) return false;
+        seen.add(course);
+        return true;
+      })
+      .slice(0, 8);
+  }, [projects, topProjects]);
+  const hasActiveFilters = Boolean(deferredSearchTerm.trim() || courseFilter || audienceFilter !== "all");
 
   const handleAuthError = (error: unknown, fallbackMessage: string) => {
     const message = error instanceof Error ? error.message : fallbackMessage;
@@ -368,22 +554,56 @@ export default function Projetos() {
     return false;
   };
 
-  const loadProjects = async () => {
-    setLoading(true);
+  const mapFeedProject = (project: Project): Project => ({
+    ...project,
+    userHasLiked: project.userHasLiked ?? false,
+    userHasVoted: project.userHasVoted ?? false
+  });
+
+  const updateProjectEverywhere = (projectId: number, updater: (project: Project) => Project) => {
+    setProjects((prev) => prev.map((project) => (project.id === projectId ? updater(project) : project)));
+    setTopProjects((prev) => prev.map((project) => (project.id === projectId ? updater(project) : project)));
+  };
+
+  const loadTopProjects = async () => {
+    try {
+      const feed = await api.interactions.projects(getTopProjectsFeedParams());
+      setTopProjects(feed.items.map((project) => mapFeedProject(project)));
+    } catch {
+      setTopProjects([]);
+    }
+  };
+
+  const loadProjects = async (page = 1, append = false) => {
+    if (append) {
+      setLoadingMore(true);
+    } else {
+      setLoading(true);
+    }
     setLoadError(null);
     try {
-      const feed = await api.interactions.projects();
-      setProjects(feed.map((project) => ({
-        ...project,
-        userHasLiked: false,
-        userHasVoted: false
-      })));
+      const feed = await api.interactions.projects(getProjectsPageFeedParams({
+        page,
+        sort: projectSort,
+        q: deferredSearchTerm,
+        course: courseFilter,
+        audience: audienceFilter,
+      }));
+      const mapped = feed.items.map((project) => mapFeedProject(project));
+      setProjects((current) => (append ? [...current, ...mapped] : mapped));
+      setProjectsPage(feed.page);
+      setProjectsTotalPages(feed.totalPages);
+      setProjectsTotal(feed.total);
     } catch (err) {
-      setProjects([]);
+      if (!append) setProjects([]);
       setLoadError("Não foi possível carregar os projetos agora.");
       handleAuthError(err, "Erro ao carregar projetos.");
     } finally {
-      setLoading(false);
+      if (append) {
+        setLoadingMore(false);
+      } else {
+        setLoading(false);
+      }
     }
   };
 
@@ -404,6 +624,10 @@ export default function Projetos() {
 
   useEffect(() => {
     void loadProjects();
+  }, [projectSort, deferredSearchTerm, courseFilter, audienceFilter]);
+
+  useEffect(() => {
+    void loadTopProjects();
     void loadSessionProfile();
   }, []);
 
@@ -412,6 +636,44 @@ export default function Projetos() {
     setLoggedIn(false);
     setStudentProfile(null);
     setProjects((prev) => prev.map((project) => ({ ...project, userHasLiked: false, userHasVoted: false })));
+    setTopProjects((prev) => prev.map((project) => ({ ...project, userHasLiked: false, userHasVoted: false })));
+  };
+
+  const hydrateProject = async (project: Project) => {
+    if (project.comments.length >= project.commentsCount && project.likes.length >= Math.min(project.likesCount, 12)) {
+      return project;
+    }
+    if (hydratingProjectIds.current.has(project.id)) {
+      return project;
+    }
+
+    hydratingProjectIds.current.add(project.id);
+    try {
+      const detail = await api.interactions.projectBySlug(project.slug, { likesLimit: 12, commentsLimit: 50 });
+      const hydrated: Project = {
+        ...detail,
+        userHasLiked: project.userHasLiked ?? false,
+        userHasVoted: project.userHasVoted ?? false,
+      };
+
+      setProjects((prev) => prev.map((item) => (item.id === hydrated.id ? hydrated : item)));
+      setTopProjects((prev) => prev.map((item) => (item.id === hydrated.id ? hydrated : item)));
+      return hydrated;
+    } catch (err) {
+      handleAuthError(err, "Erro ao abrir detalhe do projeto.");
+      return project;
+    } finally {
+      hydratingProjectIds.current.delete(project.id);
+    }
+  };
+
+  const prefetchProject = async (project: Project) => {
+    await hydrateProject(project);
+  };
+
+  const openProject = async (project: Project) => {
+    setSelectedProjectId(project.id);
+    await hydrateProject(project);
   };
 
   const handleShare = async (project: Project) => {
@@ -452,11 +714,8 @@ export default function Projetos() {
 
     try {
       const result = await api.interactions.vote(projectId);
-      setProjects((prev) => prev.map((project) => (
-        project.id === projectId
-          ? { ...project, votesCount: result.votesCount, userHasVoted: true }
-          : project
-      )));
+      updateProjectEverywhere(projectId, (project) => ({ ...project, votesCount: result.votesCount, userHasVoted: true }));
+      void loadTopProjects();
       toast.success("Voto registado!");
     } catch (err) {
       handleAuthError(err, "Erro ao registar voto.");
@@ -471,7 +730,7 @@ export default function Projetos() {
 
     try {
       const result = await api.interactions.like(projectId);
-      setProjects((prev) => prev.map((project) => {
+      const updateLikedProject = (project: Project): Project => {
         if (project.id !== projectId) return project;
 
         if (result.liked) {
@@ -497,7 +756,9 @@ export default function Projetos() {
           likesCount: result.likesCount,
           likes: project.likes.filter((like) => like.studentName !== (studentProfile?.name || "Estudante UOR"))
         };
-      }));
+      };
+      setProjects((prev) => prev.map(updateLikedProject));
+      setTopProjects((prev) => prev.map(updateLikedProject));
     } catch (err) {
       handleAuthError(err, "Erro ao registar like.");
     }
@@ -511,10 +772,11 @@ export default function Projetos() {
         content: created.content,
         createdAt: created.createdAt,
         studentName: created.studentName,
+        studentAvatarUrl: created.studentAvatarUrl ?? null,
         course: created.course
       };
 
-      setProjects((prev) => prev.map((project) => (
+      const updateCommentedProject = (project: Project): Project => (
         project.id === projectId
           ? {
               ...project,
@@ -522,7 +784,9 @@ export default function Projetos() {
               comments: [...project.comments, newComment]
             }
           : project
-      )));
+      );
+      setProjects((prev) => prev.map(updateCommentedProject));
+      setTopProjects((prev) => prev.map(updateCommentedProject));
 
       toast.success("Comentário publicado!");
     } catch (err) {
@@ -540,6 +804,8 @@ export default function Projetos() {
     if (leftCanVote !== rightCanVote) return leftCanVote ? -1 : 1;
     return b.votesCount - a.votesCount;
   });
+  const topProjectsDisplay = topProjects.length > 0 ? topProjects : sortedProjects.slice(0, 6);
+  const activeSort = projectSortOptions.find((option) => option.value === projectSort) ?? projectSortOptions[0];
 
   return (
     <div className="min-h-screen py-10 md:py-16 xl:py-20">
@@ -597,28 +863,62 @@ export default function Projetos() {
             </motion.div>
 
             <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.08 }} className="mb-8">
-              <h2 className="text-sm font-heading font-bold text-primary mb-3 flex items-center gap-1.5">
-                <Award className="w-4 h-4" /> Top Projetos
-              </h2>
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                {sortedProjects.slice(0, 3).map((project, index) => (
-                  <div key={project.id} className={`border rounded-xl p-4 flex items-center gap-3 ${index === 0 ? "border-primary/30 bg-primary/5" : "border-border bg-card"}`}>
-                    <span className={`text-lg font-heading font-bold ${index === 0 ? "text-primary" : "text-muted-foreground"}`}>
-                      {project.isWinner ? <Crown className="h-5 w-5 text-[hsl(var(--warning))]" /> : `#${index + 1}`}
-                    </span>
-                    <div className="flex-1 min-w-0">
-                      <p className="font-heading font-semibold text-sm truncate">{project.name}</p>
-                      <div className="mt-1 flex items-center gap-3 text-[11px] text-muted-foreground">
-                        {canVoteSubmission(project.type, project.area, project.canVote) ? (
-                          <span className="inline-flex items-center gap-1"><ThumbsUp className="h-3 w-3" /> {project.votesCount}</span>
-                        ) : (
-                          <span className="inline-flex items-center gap-1 text-[hsl(var(--area-negocio))]"><Shield className="h-3 w-3" /> Exposição</span>
-                        )}
-                        <span className="inline-flex items-center gap-1"><Heart className="h-3 w-3" /> {project.likesCount}</span>
-                      </div>
-                    </div>
+              <div className="mb-4 flex items-end justify-between gap-3">
+                <h2 className="text-base font-heading font-bold text-foreground flex items-center gap-2">
+                  <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10">
+                    <Award className="w-3.5 h-3.5 text-primary" />
                   </div>
-                ))}
+                  Mais votados
+                </h2>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-8 rounded-lg text-xs font-semibold"
+                  onClick={() => setProjectSort("votes_desc")}
+                >
+                  Ver ranking
+                </Button>
+              </div>
+              <div className="flex gap-3 overflow-x-auto pb-2 md:grid md:grid-cols-3 xl:grid-cols-6">
+                {topProjectsDisplay.map((project, index) => {
+                  const isFirst = index === 0;
+                  const primaryColor = project.primaryColor || "hsl(var(--primary))";
+                  return (
+                    <motion.div
+                      key={project.id}
+                      initial={{ opacity: 0, y: 12 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: 0.1 + index * 0.06, type: "spring", stiffness: 260, damping: 24 }}
+                      whileHover={{ y: -3, transition: { duration: 0.2 } }}
+                      className={`relative min-w-[220px] overflow-hidden rounded-xl border p-4 transition-shadow duration-200 md:min-w-0 ${isFirst ? "border-primary/25 bg-primary/[0.04] shadow-sm sm:row-span-1" : "border-border/70 bg-card hover:shadow-sm"}`}
+                      style={isFirst ? { borderLeftWidth: 3, borderLeftColor: primaryColor } : undefined}
+                      onClick={() => void openProject(project)}
+                      role="button"
+                      tabIndex={0}
+                    >
+                      <div className="flex items-start gap-3">
+                        <div className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-sm font-bold ${isFirst ? "bg-primary text-primary-foreground shadow-sm" : index === 1 ? "bg-slate-200 text-slate-600" : "bg-orange-100 text-orange-600"}`}>
+                          {project.isWinner ? <Crown className="h-4 w-4 text-[hsl(var(--warning))]" /> : `#${index + 1}`}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-heading font-semibold text-sm leading-snug line-clamp-2">{project.name}</p>
+                          {project.course && (
+                            <p className="mt-0.5 text-[11px] text-muted-foreground truncate">{project.course}</p>
+                          )}
+                          <div className="mt-2 flex items-center gap-3 text-[11px] text-muted-foreground">
+                            {canVoteSubmission(project.type, project.area, project.canVote) ? (
+                              <span className="inline-flex items-center gap-1 font-medium"><ThumbsUp className="h-3 w-3" /> {project.votesCount}</span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1 font-medium text-[hsl(var(--area-negocio))]"><Shield className="h-3 w-3" /> Exposição</span>
+                            )}
+                            <span className="inline-flex items-center gap-1"><Heart className="h-3 w-3" /> {project.likesCount}</span>
+                            <span className="inline-flex items-center gap-1"><MessageCircle className="h-3 w-3" /> {project.commentsCount}</span>
+                          </div>
+                        </div>
+                      </div>
+                    </motion.div>
+                  );
+                })}
               </div>
             </motion.div>
 
@@ -635,23 +935,168 @@ export default function Projetos() {
                 Ainda não há projetos aprovados para mostrar.
               </div>
             ) : (
-              <div className="grid gap-5 md:grid-cols-2 2xl:grid-cols-3">
-                {projects.map((project, index) => (
-                  <ProjectShowcaseCard
-                    key={project.id}
-                    project={project}
-                    index={index}
-                    onShare={handleShare}
-                    onOpenQr={(item) => setQrProject(item)}
-                    onPrimaryAction={(item) => (
-                      canVoteSubmission(item.type, item.area, item.canVote)
-                        ? handleVote(item.id)
-                        : handleLike(item.id)
-                    )}
-                    onLikeAction={(item) => handleLike(item.id)}
-                  />
-                ))}
-              </div>
+              <>
+                <div className="sticky top-3 z-20 mb-5 rounded-2xl border border-border/70 bg-background/95 p-3 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-background/80">
+                  <div className="flex flex-col gap-3">
+                    <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+                    <div className="min-w-0">
+                      <p className="text-sm font-heading font-bold">Explorar projetos</p>
+                      <p className="text-xs text-muted-foreground">
+                        {projectsTotal} aprovados · {activeSort.label.toLowerCase()} · página {projectsPage} de {projectsTotalPages}
+                      </p>
+                    </div>
+
+                    <div className="grid grid-cols-2 rounded-xl border border-border/70 bg-muted/25 p-1">
+                      <Button
+                        size="sm"
+                        variant={viewMode === "compact" ? "default" : "ghost"}
+                        className="h-8 rounded-lg text-xs font-bold"
+                        onClick={() => setViewMode("compact")}
+                      >
+                        Compacto
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant={viewMode === "showcase" ? "default" : "ghost"}
+                        className="h-8 rounded-lg text-xs font-bold"
+                        onClick={() => setViewMode("showcase")}
+                      >
+                        Detalhado
+                      </Button>
+                    </div>
+                    </div>
+
+                    <div className="grid gap-2 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
+                      <div className="relative">
+                        <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+                        <Input
+                          value={searchTerm}
+                          onChange={(event) => setSearchTerm(event.target.value)}
+                          placeholder="Pesquisar por projeto, curso, área ou membro..."
+                          className="h-10 rounded-xl border-border/70 bg-background pl-9 pr-9 text-sm"
+                        />
+                        {searchTerm ? (
+                          <button
+                            type="button"
+                            className="absolute right-2 top-1/2 flex h-7 w-7 -translate-y-1/2 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                            onClick={() => setSearchTerm("")}
+                            aria-label="Limpar pesquisa"
+                          >
+                            <X className="h-3.5 w-3.5" />
+                          </button>
+                        ) : null}
+                      </div>
+
+                      <div className="flex flex-wrap gap-2 xl:justify-end">
+                        {projectAudienceOptions.map((option) => (
+                          <Button
+                            key={option.value}
+                            size="sm"
+                            variant={audienceFilter === option.value ? "default" : "outline"}
+                            className="h-10 rounded-xl px-3 text-xs font-bold"
+                            onClick={() => setAudienceFilter(option.value)}
+                          >
+                            {option.label}
+                          </Button>
+                        ))}
+                        {hasActiveFilters ? (
+                          <Button
+                            size="sm"
+                            variant="ghost"
+                            className="h-10 rounded-xl px-3 text-xs font-bold"
+                            onClick={() => {
+                              setSearchTerm("");
+                              setCourseFilter("");
+                              setAudienceFilter("all");
+                            }}
+                          >
+                            Limpar
+                          </Button>
+                        ) : null}
+                      </div>
+                    </div>
+
+                    <div className="flex flex-col gap-2 xl:flex-row xl:items-center xl:justify-between">
+                      <div className="flex flex-wrap gap-2">
+                        {availableCourses.map((course) => (
+                          <Button
+                            key={course}
+                            size="sm"
+                            variant={courseFilter === course ? "default" : "outline"}
+                            className="h-8 max-w-[220px] rounded-lg px-2.5 text-[11px] font-semibold"
+                            title={course}
+                            onClick={() => setCourseFilter((current) => current === course ? "" : course)}
+                          >
+                            <span className="truncate">{course}</span>
+                          </Button>
+                        ))}
+                      </div>
+
+                      <div className="flex flex-wrap gap-2 xl:justify-end">
+                        {projectSortOptions.map((option) => (
+                          <Button
+                            key={option.value}
+                            size="sm"
+                            variant={projectSort === option.value ? "default" : "outline"}
+                            className="h-9 rounded-lg px-3 text-xs font-bold"
+                            onClick={() => setProjectSort(option.value)}
+                          >
+                            <span>{option.label}</span>
+                            <span className="hidden text-[10px] font-medium opacity-70 xl:inline">{option.caption}</span>
+                          </Button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className={viewMode === "compact"
+                  ? "grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-5"
+                  : "grid gap-5 md:grid-cols-2 xl:grid-cols-3"
+                }>
+                  {projects.map((project, index) => (
+                    viewMode === "compact" ? (
+                      <ProjectCompactCard
+                        key={project.id}
+                        project={project}
+                        index={index}
+                        onOpen={openProject}
+                        onPrefetch={prefetchProject}
+                        onShare={handleShare}
+                        onOpenQr={(item) => setQrProject(item)}
+                        onPrimaryAction={(item) => (
+                          canVoteSubmission(item.type, item.area, item.canVote)
+                            ? handleVote(item.id)
+                            : handleLike(item.id)
+                        )}
+                        onLikeAction={(item) => handleLike(item.id)}
+                      />
+                    ) : (
+                      <ProjectShowcaseCard
+                        key={project.id}
+                        project={project}
+                        index={index}
+                        onShare={handleShare}
+                        onOpenQr={(item) => setQrProject(item)}
+                        onPrimaryAction={(item) => (
+                          canVoteSubmission(item.type, item.area, item.canVote)
+                            ? handleVote(item.id)
+                            : handleLike(item.id)
+                        )}
+                        onLikeAction={(item) => handleLike(item.id)}
+                      />
+                    )
+                  ))}
+                </div>
+                {projectsPage < projectsTotalPages ? (
+                  <div className="mt-6 flex justify-center">
+                    <Button className="rounded-xl" variant="outline" disabled={loadingMore} onClick={() => void loadProjects(projectsPage + 1, true)}>
+                      {loadingMore ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : null}
+                      Carregar mais
+                    </Button>
+                  </div>
+                ) : null}
+              </>
             )}
           </>
         )}

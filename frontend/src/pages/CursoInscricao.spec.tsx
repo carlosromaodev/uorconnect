@@ -9,6 +9,7 @@ const {
   enrollmentsMineMock,
   enrollMock,
   navigateMock,
+  submissionConfigMock,
   syncStudentProfileIfNeededMock,
   toastErrorMock,
   toastInfoMock,
@@ -19,6 +20,7 @@ const {
   enrollmentsMineMock: vi.fn(),
   enrollMock: vi.fn(),
   navigateMock: vi.fn(),
+  submissionConfigMock: vi.fn(),
   syncStudentProfileIfNeededMock: vi.fn(),
   toastErrorMock: vi.fn(),
   toastInfoMock: vi.fn(),
@@ -71,6 +73,10 @@ vi.mock("@/lib/api", async () => {
         enrollmentsMine: enrollmentsMineMock,
         enroll: enrollMock,
       },
+      submissions: {
+        ...actual.api.submissions,
+        config: submissionConfigMock,
+      },
     },
     isAuthError: vi.fn(() => false),
     setToken: vi.fn(),
@@ -92,7 +98,7 @@ const paidCourse: Course = {
   companyInstagram: null,
   companyLinkedin: null,
   isPaid: true,
-  priceLabel: "15.000 Kz",
+  priceLabel: "3.500 Kz",
   studentCount: 0,
   likesCount: 0,
   accentColor: "#FD8305",
@@ -170,6 +176,19 @@ describe("CursoInscricao", () => {
     });
     authMeMock.mockResolvedValue(student);
     enrollmentsMineMock.mockResolvedValue([]);
+    submissionConfigMock.mockResolvedValue({
+      key: "default",
+      isOpen: true,
+      iban: "AO06 0000 0000 0000 0000 0000 0",
+      accountName: "Universidade Óscar Ribas",
+      paymentAmount: "3.500 Kz",
+      paymentInstructions: "Usa os mesmos dados de pagamento do expositor.",
+      projectCommunityUrl: null,
+      businessCommunityUrl: null,
+      productCommunityUrl: null,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
     syncStudentProfileIfNeededMock.mockResolvedValue(student);
     enrollMock.mockResolvedValue({
       enrolled: true,
@@ -188,14 +207,26 @@ describe("CursoInscricao", () => {
     });
   });
 
-  it("mostra carregamento do comprovativo enquanto o ficheiro ainda está a ser lido", async () => {
+  it("mostra detalhes de pagamento do expositor e mantém upload do comprovativo", async () => {
+    renderCourseEnrollment();
+
+    expect(await screen.findByText("Transferência e comprovativo")).toBeInTheDocument();
+    expect(screen.getByText("AO06 0000 0000 0000 0000 0000 0")).toBeInTheDocument();
+    expect(screen.getByText("Universidade Óscar Ribas")).toBeInTheDocument();
+    expect(screen.getAllByText("3.500 Kz").length).toBeGreaterThan(0);
+    expect(screen.getByText("Usa os mesmos dados de pagamento do expositor.")).toBeInTheDocument();
+    expect(screen.getByText("Selecionar PDF ou imagem do comprovativo")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Telefone usado no pagamento")).not.toBeInTheDocument();
+  });
+
+  it("bloqueia o envio enquanto o comprovativo ainda está a carregar", async () => {
     Object.defineProperty(window, "FileReader", {
       writable: true,
       value: PendingFileReader,
     });
 
     renderCourseEnrollment();
-    await screen.findByLabelText("Telefone usado no pagamento");
+    await screen.findByText("Transferência e comprovativo");
 
     uploadProof();
 
@@ -203,16 +234,13 @@ describe("CursoInscricao", () => {
     expect(screen.getByRole("button", { name: /A carregar comprovativo/i })).toBeDisabled();
   });
 
-  it("envia o Data URL do comprovativo ao inscrever num curso pago", async () => {
+  it("envia o comprovativo sem pedir telefone de pagamento", async () => {
     renderCourseEnrollment();
-    await screen.findByLabelText("Telefone usado no pagamento");
+    await screen.findByText("Transferência e comprovativo");
 
     uploadProof();
 
     await screen.findByText("Comprovativo carregado e pronto para envio.");
-    expect(screen.getAllByText("proof.pdf").length).toBeGreaterThan(0);
-    expect(screen.getByRole("button", { name: "Ver preview" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Remover ficheiro" })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Confirmar e abrir recibo" }));
 
@@ -221,11 +249,11 @@ describe("CursoInscricao", () => {
         9,
         expect.objectContaining({
           paymentConfirmed: true,
-          paymentPhone: "+244 923456789",
           paymentProof: "data:application/pdf;base64,ZmFrZQ==",
         }),
       );
     });
+    expect(enrollMock.mock.calls[0][1]).not.toHaveProperty("paymentPhone");
     expect(navigateMock).toHaveBeenCalledWith("/cursos/inscricoes/31");
   });
 });

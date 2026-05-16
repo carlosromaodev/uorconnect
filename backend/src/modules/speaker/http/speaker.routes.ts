@@ -4,7 +4,7 @@ import { PrismaSpeakerRepository } from "../infra/prisma.speaker.repository";
 import { CreateSpeaker, DeleteSpeaker, ListSpeakers, UpdateSpeaker } from "../use-cases/manage-speakers";
 import { type Env } from "../../../config/env";
 import { authGuard } from "../../auth/http/auth.middleware";
-import { adminGuard } from "../../auth/http/admin.middleware";
+import { adminGuard, setDefaultAdminPermission } from "../../auth/http/admin.middleware";
 
 export async function speakerRoutes(app: FastifyInstance, opts: { env: Env }) {
   const repository = new PrismaSpeakerRepository();
@@ -49,6 +49,7 @@ export async function speakerRoutes(app: FastifyInstance, opts: { env: Env }) {
   app.register(async (adminApp) => {
     adminApp.register(authGuard, { env: opts.env });
     adminApp.register(adminGuard);
+    setDefaultAdminPermission(adminApp, ["SPEAKERS"]);
 
     adminApp.post("/", {
       schema: {

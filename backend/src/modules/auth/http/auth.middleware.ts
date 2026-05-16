@@ -13,7 +13,11 @@ declare module "fastify" {
       id: number;
       phone: string;
     };
-    authRole?: "student" | "jury";
+    trainer?: {
+      id: number;
+      phone: string;
+    };
+    authRole?: "student" | "jury" | "trainer";
     authSource?: "bearer" | "cookie";
   }
 }
@@ -42,9 +46,12 @@ export const authGuard = fp<AuthPluginOpts>(async (app, opts) => {
       if (payload.role === "student") {
         request.student = { id: payload.sub, studentNumber: payload.studentNumber };
         request.authRole = "student";
-      } else {
+      } else if (payload.role === "jury") {
         request.jury = { id: payload.sub, phone: payload.juryPhone };
         request.authRole = "jury";
+      } else {
+        request.trainer = { id: payload.sub, phone: payload.trainerPhone };
+        request.authRole = "trainer";
       }
       request.authSource = authSource;
 

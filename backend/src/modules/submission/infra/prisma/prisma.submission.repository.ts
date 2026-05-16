@@ -7,6 +7,7 @@ import type {
   SubmissionType,
   VoteRepository
 } from "../../domain/submission.repository";
+import type { Prisma } from "@prisma/client";
 import type { Submission } from "../../domain/submission";
 import { prisma } from "../../../../shared/prisma";
 import { normalizeAngolaPhone } from "../../../auth/domain/student-format";
@@ -17,6 +18,8 @@ import {
   normalizeTeamMembersInput,
   stringifyTeamMembers
 } from "../../domain/submission-format";
+
+type SubmissionRecord = Prisma.SubmissionGetPayload<object>;
 
 function parseNeeds(value: string) {
   try {
@@ -64,8 +67,17 @@ function buildSubmissionWriteData(data: CreateSubmissionInput, options?: { inclu
       needs: JSON.stringify(data.needs),
       paymentProof: data.paymentProof,
       paymentConfirmed: data.paymentConfirmed,
+      paymentStatus: data.paymentStatus ?? "PENDING_REVIEW",
+      paymentSubmittedAt: data.paymentSubmittedAt ?? new Date(),
+      paymentReviewedAt: data.paymentReviewedAt ?? null,
+      paymentReviewedByStudentNumber: data.paymentReviewedByStudentNumber ?? null,
+      paymentReviewNote: data.paymentReviewNote ?? null,
       repoUrl: data.repoUrl ?? null,
       websiteUrl: data.websiteUrl ?? null,
+      instagramUrl: data.instagramUrl ?? null,
+      facebookUrl: data.facebookUrl ?? null,
+      linkedinUrl: data.linkedinUrl ?? null,
+      githubUrl: data.githubUrl ?? null,
       observations: data.observations ?? null,
       agreeRules: data.agreeRules,
       primaryColor: data.primaryColor ?? DEFAULT_SUBMISSION_PRIMARY_COLOR,
@@ -115,14 +127,14 @@ export class PrismaSubmissionRepository implements SubmissionRepository {
   }
 
   async findById(id: number): Promise<Submission | null> {
-    const submission = await prisma.submission.findUnique({ where: { id } });
+    const submission = await prisma.submission.findFirst({ where: { id, deletedAt: null } });
     return submission ? this.map(submission) : null;
   }
 
   async findOwnedById(id: number, studentId: number): Promise<Submission | null> {
     try {
       const submission = await prisma.submission.findFirst({
-        where: { id, studentId },
+        where: { id, studentId, deletedAt: null },
       });
       return submission ? this.map(submission) : null;
     } catch (error) {
@@ -135,12 +147,13 @@ export class PrismaSubmissionRepository implements SubmissionRepository {
 
   async findByReference(ref: string): Promise<Submission | null> {
     const submission = await prisma.submission.findUnique({ where: { referenceCode: ref } });
-    return submission ? this.map(submission) : null;
+    return submission && !submission.deletedAt ? this.map(submission) : null;
   }
 
   async list(status?: SubmissionStatus, type?: SubmissionType): Promise<Submission[]> {
     const submissions = await prisma.submission.findMany({
       where: {
+        deletedAt: null,
         status,
         type
       },
@@ -152,7 +165,20 @@ export class PrismaSubmissionRepository implements SubmissionRepository {
   async listByStudent(studentId: number): Promise<Submission[]> {
     try {
       const submissions = await prisma.submission.findMany({
-        where: { studentId },
+        where: {
+          deletedAt: null,
+          OR: [
+            { studentId },
+            {
+              memberConfirmations: {
+                some: {
+                  studentId,
+                  confirmedAt: { not: null },
+                },
+              },
+            },
+          ],
+        },
         orderBy: [{ updatedAt: "desc" }, { createdAt: "desc" }],
       });
       return submissions.map(this.map);
@@ -165,8 +191,8 @@ export class PrismaSubmissionRepository implements SubmissionRepository {
   }
 
   async summary(id: number): Promise<SubmissionSummary | null> {
-    const submission = await prisma.submission.findUnique({
-      where: { id },
+    const submission = await prisma.submission.findFirst({
+      where: { id, deletedAt: null },
       include: { reviews: { include: { reviewer: true } }, votes: true }
     });
     if (!submission) return null;
@@ -214,7 +240,7 @@ export class PrismaSubmissionRepository implements SubmissionRepository {
   }
 
   async hasDuplicate(name: string, leaderPhone: string): Promise<boolean> {
-    const count = await prisma.submission.count({ where: { name, leaderPhone } });
+    const count = await prisma.submission.count({ where: { name, leaderPhone, deletedAt: null } });
     return count > 0;
   }
 
@@ -223,7 +249,7 @@ export class PrismaSubmissionRepository implements SubmissionRepository {
 
     try {
       existing = await prisma.submission.findFirst({
-        where: { id, studentId },
+        where: { id, studentId, deletedAt: null },
         select: { id: true },
       });
     } catch (error) {
@@ -247,16 +273,37 @@ export class PrismaSubmissionRepository implements SubmissionRepository {
   }
 
   async updatePresentation(id: number, data: {
+    description?: string;
+    repoUrl?: string | null;
+    websiteUrl?: string | null;
+    instagramUrl?: string | null;
+    facebookUrl?: string | null;
+    linkedinUrl?: string | null;
+    githubUrl?: string | null;
     primaryColor?: string;
     secondaryColor?: string;
     bannerUrl?: string | null;
   }): Promise<Submission> {
     const updateData: {
+      description?: string;
+      repoUrl?: string | null;
+      websiteUrl?: string | null;
+      instagramUrl?: string | null;
+      facebookUrl?: string | null;
+      linkedinUrl?: string | null;
+      githubUrl?: string | null;
       primaryColor?: string;
       secondaryColor?: string;
       bannerUrl?: string | null;
     } = {};
 
+    if (data.description !== undefined) updateData.description = data.description;
+    if (data.repoUrl !== undefined) updateData.repoUrl = data.repoUrl;
+    if (data.websiteUrl !== undefined) updateData.websiteUrl = data.websiteUrl;
+    if (data.instagramUrl !== undefined) updateData.instagramUrl = data.instagramUrl;
+    if (data.facebookUrl !== undefined) updateData.facebookUrl = data.facebookUrl;
+    if (data.linkedinUrl !== undefined) updateData.linkedinUrl = data.linkedinUrl;
+    if (data.githubUrl !== undefined) updateData.githubUrl = data.githubUrl;
     if (data.primaryColor) updateData.primaryColor = data.primaryColor;
     if (data.secondaryColor) updateData.secondaryColor = data.secondaryColor;
     if (data.bannerUrl !== undefined) updateData.bannerUrl = data.bannerUrl;
@@ -270,14 +317,15 @@ export class PrismaSubmissionRepository implements SubmissionRepository {
   }
 
   async deleteWithRelations(id: number): Promise<void> {
-    await prisma.$transaction([
-      prisma.studentLike.deleteMany({ where: { submissionId: id } }),
-      prisma.studentVote.deleteMany({ where: { submissionId: id } }),
-      prisma.studentComment.deleteMany({ where: { submissionId: id } }),
-      prisma.vote.deleteMany({ where: { submissionId: id } }),
-      prisma.review.deleteMany({ where: { submissionId: id } }),
-      prisma.submission.delete({ where: { id } })
-    ]);
+    await prisma.submission.update({
+      where: { id },
+      data: {
+        deletedAt: new Date(),
+        deletionReason: "Removida/desativada administrativamente. Interações e certificados históricos preservados.",
+        isWinner: false,
+        winnerSelectedAt: null,
+      },
+    });
   }
 
   async assignOwnershipByPhone(studentId: number, studentNumber: string, phone?: string | null): Promise<number> {
@@ -320,7 +368,7 @@ export class PrismaSubmissionRepository implements SubmissionRepository {
     return `UOR-2026-${seq.toString().padStart(4, "0")}`;
   }
 
-  private map = (submission: any): Submission => ({
+  private map = (submission: SubmissionRecord): Submission => ({
     ...submission,
     members: normalizeTeamMembersInput(submission.members),
     teamSize: countTeamMembers(submission.members),

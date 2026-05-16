@@ -6,7 +6,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { Switch } from "@/components/ui/switch";
 import { toast } from "@/components/ui/sonner";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { api, type AttendanceCheckIn, type AttendanceOverview, type PagedResult, type QrActionItem, type QrActionScanItem, type QrActionsOverview } from "@/lib/api";
+import { api, type AttendanceCheckIn, type AttendanceOverview, type DigitalPassportAdminMission, type PagedResult, type QrActionItem, type QrActionScanItem, type QrActionsOverview } from "@/lib/api";
 import { AdminTablePagination } from "@/components/admin/AdminTablePagination";
 import { QrCameraScanner } from "@/components/admin/QrCameraScanner";
 
@@ -19,6 +19,11 @@ function formatDate(value: string) {
 
 const QR_TYPE_META: Record<string, { label: string; color: string; icon: string }> = {
   CHECKIN: { label: "Check-in", color: "text-emerald-700 bg-emerald-50 border-emerald-200", icon: "check" },
+  WORKSHOP_CHECKIN: { label: "Workshop", color: "text-sky-700 bg-sky-50 border-sky-200", icon: "calendar" },
+  STAND_VISIT: { label: "Stand", color: "text-orange-700 bg-orange-50 border-orange-200", icon: "stand" },
+  EXHIBITOR_CHALLENGE: { label: "Desafio", color: "text-violet-700 bg-violet-50 border-violet-200", icon: "puzzle" },
+  NETWORKING_CROSS_COURSE: { label: "Networking", color: "text-teal-700 bg-teal-50 border-teal-200", icon: "network" },
+  SPECIAL_QUIZ: { label: "Quiz", color: "text-fuchsia-700 bg-fuchsia-50 border-fuchsia-200", icon: "quiz" },
   COURSE_ENROLL: { label: "Inscrição Curso", color: "text-blue-700 bg-blue-50 border-blue-200", icon: "book" },
   EXHIBITOR_VOTE: { label: "Voto Expositor", color: "text-violet-700 bg-violet-50 border-violet-200", icon: "star" },
 };
@@ -40,6 +45,7 @@ export default function AdminAttendanceTab() {
   // QR Actions state
   const [qrOverview, setQrOverview] = useState<QrActionsOverview | null>(null);
   const [qrActions, setQrActions] = useState<PagedResult<QrActionItem> | null>(null);
+  const [passportMissions, setPassportMissions] = useState<DigitalPassportAdminMission[]>([]);
   const [qrLoading, setQrLoading] = useState(false);
   const [qrPage, setQrPage] = useState(1);
   const [qrSearch, setQrSearch] = useState("");
@@ -61,6 +67,7 @@ export default function AdminAttendanceTab() {
     smsOnScan: false,
     smsTemplate: "",
     smsSender: "",
+    passportMissionId: "",
   });
 
   /* ---------- Check-ins data ---------- */
@@ -85,12 +92,14 @@ export default function AdminAttendanceTab() {
   const loadQrActions = async (nextPage = qrPage, nextSearch = qrSearch, type = qrTypeFilter) => {
     setQrLoading(true);
     try {
-      const [nextOverview, nextActions] = await Promise.all([
+      const [nextOverview, nextActions, nextPassportMissions] = await Promise.all([
         api.attendance.qrActionsOverview(),
         api.attendance.qrActions({ page: nextPage, search: nextSearch || undefined, type: type || undefined }),
+        api.passport.missions().catch(() => [] as DigitalPassportAdminMission[]),
       ]);
       setQrOverview(nextOverview);
       setQrActions(nextActions);
+      setPassportMissions(nextPassportMissions.filter((mission) => mission.active));
       setQrPage(nextActions.page);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Falha ao carregar QR actions.");
@@ -152,10 +161,11 @@ export default function AdminAttendanceTab() {
         smsOnScan: newAction.smsOnScan,
         smsTemplate: newAction.smsTemplate.trim() || null,
         smsSender: newAction.smsSender.trim() || null,
+        passportMissionId: newAction.passportMissionId ? Number(newAction.passportMissionId) : null,
       });
       toast.success("QR criado com sucesso.");
       setCreateDialogOpen(false);
-      setNewAction({ type: "CHECKIN", label: "", description: "", targetId: "", eventKey: "", eventLabel: "", maxScans: "", expiresAt: "", smsOnScan: false, smsTemplate: "", smsSender: "" });
+      setNewAction({ type: "CHECKIN", label: "", description: "", targetId: "", eventKey: "", eventLabel: "", maxScans: "", expiresAt: "", smsOnScan: false, smsTemplate: "", smsSender: "", passportMissionId: "" });
       await loadQrActions(1, qrSearch, qrTypeFilter);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Falha ao criar QR.");
@@ -201,7 +211,7 @@ export default function AdminAttendanceTab() {
   };
 
   return (
-    <div className="space-y-5">
+    <div className="min-w-0 space-y-5">
       <QrCameraScanner
         open={scannerOpen}
         onClose={() => setScannerOpen(false)}
@@ -212,11 +222,11 @@ export default function AdminAttendanceTab() {
       />
 
       {/* Sub-tabs */}
-      <div className="flex gap-2 rounded-2xl border border-border/60 bg-muted/20 p-1.5">
+      <div className="flex flex-wrap gap-2 rounded-2xl border border-border/60 bg-muted/20 p-1.5">
         <button
           type="button"
           onClick={() => setSubTab("checkins")}
-          className={`flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium transition-all ${subTab === "checkins" ? "bg-white text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+          className={`flex min-w-[140px] flex-1 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium transition-all sm:flex-none ${subTab === "checkins" ? "bg-white text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
         >
           <ClipboardCheck className="h-4 w-4" />
           Check-ins
@@ -224,7 +234,7 @@ export default function AdminAttendanceTab() {
         <button
           type="button"
           onClick={() => setSubTab("qr-actions")}
-          className={`flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium transition-all ${subTab === "qr-actions" ? "bg-white text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+          className={`flex min-w-[140px] flex-1 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium transition-all sm:flex-none ${subTab === "qr-actions" ? "bg-white text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
         >
           <QrCode className="h-4 w-4" />
           QR Actions
@@ -256,14 +266,14 @@ export default function AdminAttendanceTab() {
                 Check-in rápido
               </h3>
             </div>
-            <div className="grid gap-3 p-4 sm:grid-cols-[1fr_180px_auto_140px]">
-              <Input value={token} onChange={(e) => setToken(e.target.value)} placeholder="Cole o link/token do QR" className="rounded-xl" />
-              <Input value={studentNumber} onChange={(e) => setStudentNumber(e.target.value)} placeholder="N.º estudante" className="rounded-xl" />
-              <Button variant="outline" className="rounded-xl" onClick={() => setScannerOpen(true)}>
+            <div className="grid gap-3 p-4 md:grid-cols-[minmax(0,1fr)_minmax(140px,180px)] xl:grid-cols-[minmax(0,1fr)_180px_auto_auto]">
+              <Input value={token} onChange={(e) => setToken(e.target.value)} placeholder="Cole o link/token do QR" className="min-w-0 rounded-xl" />
+              <Input value={studentNumber} onChange={(e) => setStudentNumber(e.target.value)} placeholder="N.º estudante" className="min-w-0 rounded-xl" />
+              <Button variant="outline" className="w-full rounded-xl xl:w-auto" onClick={() => setScannerOpen(true)}>
                 <Camera className="mr-2 h-4 w-4" />
                 Câmara
               </Button>
-              <Button className="rounded-xl" onClick={() => void handleCheckIn()} disabled={checking}>
+              <Button className="w-full rounded-xl xl:w-auto" onClick={() => void handleCheckIn()} disabled={checking}>
                 {checking ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
                 Registar
               </Button>
@@ -272,15 +282,15 @@ export default function AdminAttendanceTab() {
 
           {/* Check-in history */}
           <div className="overflow-hidden rounded-2xl border border-border/50 bg-card">
-            <div className="flex flex-col gap-3 border-b border-border/50 bg-muted/20 px-5 py-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex flex-col gap-3 border-b border-border/50 bg-muted/20 px-5 py-3 lg:flex-row lg:items-center lg:justify-between">
               <h3 className="flex items-center gap-2 text-sm font-semibold">
                 <ClipboardCheck className="h-4 w-4 text-primary" />
                 Presenças registadas
               </h3>
-              <form className="flex gap-2" onSubmit={handleSearchCheckIns}>
-                <div className="relative">
+              <form className="grid w-full grid-cols-[minmax(0,1fr)_auto_auto] gap-2 lg:w-auto" onSubmit={handleSearchCheckIns}>
+                <div className="relative min-w-0 lg:w-64">
                   <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-                  <Input className="h-9 rounded-xl pl-9 text-xs" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Pesquisar..." />
+                  <Input className="h-9 w-full min-w-0 rounded-xl pl-9 text-xs" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Pesquisar..." />
                 </div>
                 <Button variant="outline" size="sm" className="rounded-xl" type="submit" disabled={loading}>
                   <Search className="h-3.5 w-3.5" />
@@ -291,7 +301,7 @@ export default function AdminAttendanceTab() {
               </form>
             </div>
             <div className="overflow-x-auto">
-              <Table>
+              <Table className="min-w-[760px]">
                 <TableHeader>
                   <TableRow>
                     <TableHead>Estudante</TableHead>
@@ -342,7 +352,7 @@ export default function AdminAttendanceTab() {
       {subTab === "qr-actions" ? (
         <>
           {/* QR Overview stats */}
-          <div className="grid gap-3 sm:grid-cols-4">
+          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             {[
               { label: "Total QR", value: qrOverview?.totalActions ?? 0, color: "border-slate-200 bg-slate-50 text-slate-700" },
               { label: "Ativos", value: qrOverview?.activeActions ?? 0, color: "border-emerald-200 bg-emerald-50 text-emerald-700" },
@@ -358,11 +368,11 @@ export default function AdminAttendanceTab() {
 
           {/* Type breakdown */}
           {qrOverview?.byType ? (
-            <div className="grid gap-2 sm:grid-cols-3">
+            <div className="grid gap-2 md:grid-cols-3">
               {qrOverview.byType.map((bt) => {
                 const meta = QR_TYPE_META[bt.type] ?? { label: bt.type, color: "text-slate-600 bg-slate-50 border-slate-200" };
                 return (
-                  <div key={bt.type} className={`flex items-center justify-between rounded-xl border px-4 py-2.5 ${meta.color}`}>
+                  <div key={bt.type} className={`flex flex-wrap items-center justify-between gap-2 rounded-xl border px-4 py-2.5 ${meta.color}`}>
                     <span className="text-xs font-semibold">{meta.label}</span>
                     <span className="text-xs">{bt.count} QR · {bt.scans} leituras</span>
                   </div>
@@ -372,31 +382,31 @@ export default function AdminAttendanceTab() {
           ) : null}
 
           {/* Toolbar */}
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex gap-2">
-              <div className="relative">
+          <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
+            <div className="grid w-full gap-2 xl:flex xl:min-w-0 xl:items-center">
+              <div className="relative min-w-0 xl:w-64">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-                <Input className="h-9 w-56 rounded-xl pl-9 text-xs" value={qrSearch} onChange={(e) => setQrSearch(e.target.value)} placeholder="Pesquisar QR..." onKeyDown={(e) => { if (e.key === "Enter") void loadQrActions(1, qrSearch, qrTypeFilter); }} />
+                <Input className="h-9 w-full min-w-0 rounded-xl pl-9 text-xs" value={qrSearch} onChange={(e) => setQrSearch(e.target.value)} placeholder="Pesquisar QR..." onKeyDown={(e) => { if (e.key === "Enter") void loadQrActions(1, qrSearch, qrTypeFilter); }} />
               </div>
-              <div className="flex gap-1">
+              <div className="flex max-w-full flex-wrap gap-1">
                 {[{ key: "", label: "Todos" }, ...Object.entries(QR_TYPE_META).map(([key, meta]) => ({ key, label: meta.label }))].map((item) => (
                   <button
                     key={item.key}
                     type="button"
                     onClick={() => { setQrTypeFilter(item.key); void loadQrActions(1, qrSearch, item.key); }}
-                    className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-all ${qrTypeFilter === item.key ? "bg-foreground text-background" : "bg-muted/40 text-muted-foreground hover:bg-muted"}`}
+                    className={`min-h-9 rounded-lg px-3 py-1.5 text-xs font-medium transition-all ${qrTypeFilter === item.key ? "bg-foreground text-background" : "bg-muted/40 text-muted-foreground hover:bg-muted"}`}
                   >
                     {item.label}
                   </button>
                 ))}
               </div>
             </div>
-            <div className="flex gap-2">
-              <Button variant="outline" size="sm" className="rounded-xl" onClick={() => void loadQrActions(qrPage, qrSearch, qrTypeFilter)} disabled={qrLoading}>
+            <div className="grid grid-cols-2 gap-2 sm:flex sm:items-center">
+              <Button variant="outline" size="sm" className="w-full rounded-xl sm:w-auto" onClick={() => void loadQrActions(qrPage, qrSearch, qrTypeFilter)} disabled={qrLoading}>
                 <RefreshCw className={`mr-1.5 h-3.5 w-3.5 ${qrLoading ? "animate-spin" : ""}`} />
                 Atualizar
               </Button>
-              <Button size="sm" className="rounded-xl" onClick={() => setCreateDialogOpen(true)}>
+              <Button size="sm" className="w-full rounded-xl sm:w-auto" onClick={() => setCreateDialogOpen(true)}>
                 <Plus className="mr-1.5 h-3.5 w-3.5" />
                 Criar QR
               </Button>
@@ -419,7 +429,7 @@ export default function AdminAttendanceTab() {
               </Button>
             </div>
           ) : (
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="grid gap-3 md:grid-cols-2 2xl:grid-cols-3">
               {qrActions?.items.map((action) => {
                 const meta = QR_TYPE_META[action.type] ?? { label: action.type, color: "text-slate-600 bg-slate-50 border-slate-200" };
                 const targetInfo = action.targetMeta ? (() => { try { return JSON.parse(action.targetMeta); } catch { return null; } })() : null;
@@ -444,7 +454,7 @@ export default function AdminAttendanceTab() {
                         </p>
                       ) : null}
 
-                      <div className="mt-3 flex items-center gap-3 text-xs text-muted-foreground">
+                      <div className="mt-3 flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
                         <span className="flex items-center gap-1">
                           <ScanLine className="h-3 w-3" />
                           {action.scansCount} leituras
@@ -458,20 +468,20 @@ export default function AdminAttendanceTab() {
                         ) : null}
                       </div>
 
-                      <div className="mt-3 flex items-center gap-1.5">
-                        <Button variant="outline" size="sm" className="h-7 rounded-lg px-2.5 text-[10px]" onClick={() => void handleViewDetail(action)}>
+                      <div className="mt-3 grid grid-cols-2 gap-1.5 sm:flex sm:flex-wrap">
+                        <Button variant="outline" size="sm" className="h-8 rounded-lg px-2.5 text-[10px] sm:h-7" onClick={() => void handleViewDetail(action)}>
                           <Eye className="mr-1 h-3 w-3" />
                           Detalhes
                         </Button>
-                        <Button variant="outline" size="sm" className="h-7 rounded-lg px-2.5 text-[10px]" onClick={() => copyToClipboard(action.token)}>
+                        <Button variant="outline" size="sm" className="h-8 rounded-lg px-2.5 text-[10px] sm:h-7" onClick={() => copyToClipboard(action.token)}>
                           <Copy className="mr-1 h-3 w-3" />
                           Token
                         </Button>
-                        <Button variant="outline" size="sm" className={`h-7 rounded-lg px-2.5 text-[10px] ${action.active ? "" : "text-emerald-600"}`} onClick={() => void handleToggleActive(action)}>
+                        <Button variant="outline" size="sm" className={`h-8 rounded-lg px-2.5 text-[10px] sm:h-7 ${action.active ? "" : "text-emerald-600"}`} onClick={() => void handleToggleActive(action)}>
                           {action.active ? <PowerOff className="mr-1 h-3 w-3" /> : <Power className="mr-1 h-3 w-3" />}
                           {action.active ? "Desativar" : "Ativar"}
                         </Button>
-                        <Button variant="outline" size="sm" className="h-7 rounded-lg px-2.5 text-[10px] text-rose-600 hover:bg-rose-50" onClick={() => void handleDeleteAction(action)}>
+                        <Button variant="outline" size="sm" className="h-8 rounded-lg px-2.5 text-[10px] text-rose-600 hover:bg-rose-50 sm:h-7" onClick={() => void handleDeleteAction(action)}>
                           <Trash2 className="h-3 w-3" />
                         </Button>
                       </div>
@@ -496,8 +506,8 @@ export default function AdminAttendanceTab() {
 
       {/* ===== CREATE QR DIALOG ===== */}
       <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
-        <DialogContent className="w-[96vw] max-w-lg gap-0 overflow-hidden rounded-3xl border-0 p-0 shadow-2xl">
-          <div className="bg-gradient-to-br from-slate-800 to-slate-900 px-6 py-5">
+        <DialogContent className="w-[calc(100vw-1rem)] max-w-lg gap-0 overflow-hidden rounded-3xl border-0 p-0 shadow-2xl">
+          <div className="bg-gradient-to-br from-slate-800 to-slate-900 px-5 py-5 sm:px-6">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2 text-white">
                 <QrCode className="h-5 w-5" />
@@ -505,11 +515,11 @@ export default function AdminAttendanceTab() {
               </DialogTitle>
             </DialogHeader>
           </div>
-          <div className="max-h-[min(65vh,520px)] overflow-y-auto p-5">
+          <div className="max-h-[calc(100dvh-12rem)] overflow-y-auto p-4 sm:p-5">
             <div className="space-y-4">
               <div>
                 <label className="mb-1.5 block text-xs font-semibold text-muted-foreground">Tipo</label>
-                <div className="grid grid-cols-3 gap-2">
+                <div className="grid gap-2 sm:grid-cols-3">
                   {Object.entries(QR_TYPE_META).map(([key, meta]) => (
                     <button
                       key={key}
@@ -529,12 +539,31 @@ export default function AdminAttendanceTab() {
               </div>
 
               <div>
+                <label className="mb-1.5 block text-xs font-semibold text-muted-foreground">Missão do Passaporte</label>
+                <select
+                  value={newAction.passportMissionId}
+                  onChange={(e) => setNewAction((c) => ({ ...c, passportMissionId: e.target.value }))}
+                  className="h-10 w-full rounded-xl border border-input bg-background px-3 text-sm"
+                >
+                  <option value="">Usar missão padrão pelo tipo de QR</option>
+                  {passportMissions.map((mission) => (
+                    <option key={mission.id} value={mission.id}>
+                      {mission.title} · {mission.points} pts
+                    </option>
+                  ))}
+                </select>
+                <p className="mt-1 text-[10px] leading-4 text-muted-foreground">
+                  Quando não escolheres uma missão, o sistema associa automaticamente pelo tipo do QR.
+                </p>
+              </div>
+
+              <div>
                 <label className="mb-1.5 block text-xs font-semibold text-muted-foreground">Descrição</label>
                 <Input value={newAction.description} onChange={(e) => setNewAction((c) => ({ ...c, description: e.target.value }))} placeholder="Descrição opcional..." className="rounded-xl" />
               </div>
 
-              {newAction.type === "CHECKIN" ? (
-                <div className="grid grid-cols-2 gap-3">
+              {newAction.type === "CHECKIN" || newAction.type === "WORKSHOP_CHECKIN" ? (
+                <div className="grid gap-3 sm:grid-cols-2">
                   <div>
                     <label className="mb-1.5 block text-xs font-semibold text-muted-foreground">Event Key</label>
                     <Input value={newAction.eventKey} onChange={(e) => setNewAction((c) => ({ ...c, eventKey: e.target.value }))} placeholder="main-event" className="rounded-xl" />
@@ -547,13 +576,13 @@ export default function AdminAttendanceTab() {
               ) : (
                 <div>
                   <label className="mb-1.5 block text-xs font-semibold text-muted-foreground">
-                    {newAction.type === "COURSE_ENROLL" ? "ID do Curso" : "ID do Projeto/Expositor"}
+                    {newAction.type === "COURSE_ENROLL" ? "ID do Curso" : newAction.type === "NETWORKING_CROSS_COURSE" ? "ID do estudante destino" : "ID do Projeto/Expositor"}
                   </label>
                   <Input value={newAction.targetId} onChange={(e) => setNewAction((c) => ({ ...c, targetId: e.target.value }))} placeholder="ID numérico" type="number" className="rounded-xl" />
                 </div>
               )}
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid gap-3 sm:grid-cols-2">
                 <div>
                   <label className="mb-1.5 block text-xs font-semibold text-muted-foreground">Máx. leituras</label>
                   <Input value={newAction.maxScans} onChange={(e) => setNewAction((c) => ({ ...c, maxScans: e.target.value }))} placeholder="Ilimitado" type="number" className="rounded-xl" />
@@ -565,8 +594,8 @@ export default function AdminAttendanceTab() {
               </div>
 
               <div className="rounded-xl border border-border/50 bg-muted/10 p-4">
-                <div className="flex items-center justify-between">
-                  <div>
+                <div className="flex items-center justify-between gap-3">
+                  <div className="min-w-0">
                     <p className="text-sm font-semibold">Notificação SMS</p>
                     <p className="text-xs text-muted-foreground">Enviar SMS ao estudante ao escanear</p>
                   </div>
@@ -594,9 +623,9 @@ export default function AdminAttendanceTab() {
               </div>
             </div>
           </div>
-          <div className="flex justify-end gap-2 border-t border-border/50 bg-muted/10 px-5 py-3">
-            <Button variant="outline" className="rounded-xl" onClick={() => setCreateDialogOpen(false)}>Cancelar</Button>
-            <Button className="rounded-xl" onClick={() => void handleCreateQrAction()} disabled={creatingAction}>
+          <div className="flex flex-col-reverse gap-2 border-t border-border/50 bg-muted/10 px-4 py-3 sm:flex-row sm:justify-end sm:px-5">
+            <Button variant="outline" className="w-full rounded-xl sm:w-auto" onClick={() => setCreateDialogOpen(false)}>Cancelar</Button>
+            <Button className="w-full rounded-xl sm:w-auto" onClick={() => void handleCreateQrAction()} disabled={creatingAction}>
               {creatingAction ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Plus className="mr-1.5 h-3.5 w-3.5" />}
               Criar QR
             </Button>
@@ -606,20 +635,20 @@ export default function AdminAttendanceTab() {
 
       {/* ===== DETAIL DIALOG ===== */}
       <Dialog open={detailDialogOpen} onOpenChange={setDetailDialogOpen}>
-        <DialogContent className="w-[96vw] max-w-lg gap-0 overflow-hidden rounded-3xl border-0 p-0 shadow-2xl">
-          <div className="bg-gradient-to-br from-slate-800 to-slate-900 px-6 py-5">
+        <DialogContent className="w-[calc(100vw-1rem)] max-w-lg gap-0 overflow-hidden rounded-3xl border-0 p-0 shadow-2xl">
+          <div className="bg-gradient-to-br from-slate-800 to-slate-900 px-5 py-5 sm:px-6">
             <DialogHeader>
-              <DialogTitle className="flex items-center gap-2 text-white">
+              <DialogTitle className="flex min-w-0 items-center gap-2 text-white">
                 <ScanLine className="h-5 w-5" />
-                {selectedAction?.label ?? "Detalhes"}
+                <span className="truncate">{selectedAction?.label ?? "Detalhes"}</span>
               </DialogTitle>
             </DialogHeader>
           </div>
           {selectedAction ? (
-            <div className="max-h-[min(65vh,520px)] overflow-y-auto p-5">
+            <div className="max-h-[calc(100dvh-12rem)] overflow-y-auto p-4 sm:p-5">
               <div className="space-y-4">
                 {/* Action info */}
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid gap-3 sm:grid-cols-2">
                   <div className="rounded-xl border border-border/50 bg-muted/10 p-3">
                     <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Tipo</p>
                     <p className="mt-1 text-sm font-medium">{QR_TYPE_META[selectedAction.type]?.label ?? selectedAction.type}</p>
@@ -634,7 +663,7 @@ export default function AdminAttendanceTab() {
                 <div className="rounded-xl border border-border/50 bg-muted/10 p-3">
                   <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Token</p>
                   <div className="mt-1 flex items-center gap-2">
-                    <code className="flex-1 truncate rounded-lg bg-muted/30 px-2 py-1 font-mono text-xs">{selectedAction.token}</code>
+                    <code className="min-w-0 flex-1 truncate rounded-lg bg-muted/30 px-2 py-1 font-mono text-xs">{selectedAction.token}</code>
                     <Button variant="outline" size="sm" className="h-7 shrink-0 rounded-lg px-2" onClick={() => copyToClipboard(selectedAction.token)}>
                       <Copy className="h-3 w-3" />
                     </Button>
@@ -642,14 +671,14 @@ export default function AdminAttendanceTab() {
                 </div>
 
                 {/* QR image link */}
-                <div className="flex items-center gap-3">
-                  <img src={selectedAction.qrImageUrl} alt="QR Code" className="h-24 w-24 rounded-xl border border-border/50 bg-white p-1" />
-                  <div className="space-y-2">
-                    <Button variant="outline" size="sm" className="rounded-xl text-xs" onClick={() => copyToClipboard(selectedAction.qrImageUrl)}>
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+                  <img src={selectedAction.qrImageUrl} alt="QR Code" className="h-28 w-28 rounded-xl border border-border/50 bg-white p-1 sm:h-24 sm:w-24" />
+                  <div className="grid gap-2 sm:block sm:space-y-2">
+                    <Button variant="outline" size="sm" className="w-full rounded-xl text-xs sm:w-auto" onClick={() => copyToClipboard(selectedAction.qrImageUrl)}>
                       <Copy className="mr-1.5 h-3 w-3" />
                       Copiar link QR
                     </Button>
-                    <Button variant="outline" size="sm" className="rounded-xl text-xs" asChild>
+                    <Button variant="outline" size="sm" className="w-full rounded-xl text-xs sm:w-auto" asChild>
                       <a href={selectedAction.qrImageUrl} target="_blank" rel="noreferrer">
                         <Download className="mr-1.5 h-3 w-3" />
                         Abrir QR
@@ -666,12 +695,12 @@ export default function AdminAttendanceTab() {
                   ) : (
                     <div className="mt-2 space-y-1.5">
                       {actionScans.map((scan) => (
-                        <div key={scan.id} className="flex items-center justify-between rounded-xl border border-border/40 bg-muted/10 px-3 py-2">
-                          <div className="flex items-center gap-2">
+                        <div key={scan.id} className="flex flex-col gap-2 rounded-xl border border-border/40 bg-muted/10 px-3 py-2 sm:flex-row sm:items-center sm:justify-between">
+                          <div className="flex min-w-0 items-center gap-2">
                             <span className={`h-2 w-2 rounded-full ${scan.result === "SUCCESS" ? "bg-emerald-500" : scan.result === "ALREADY_DONE" ? "bg-amber-500" : "bg-rose-500"}`} />
-                            <div>
+                            <div className="min-w-0">
                               <p className="text-xs font-medium">{scan.studentName ?? scan.studentNumber}</p>
-                              <p className="text-[10px] text-muted-foreground">{scan.message}</p>
+                              <p className="break-words text-[10px] text-muted-foreground">{scan.message}</p>
                             </div>
                           </div>
                           <span className="shrink-0 text-[10px] text-muted-foreground">{formatDate(scan.scannedAt)}</span>
@@ -683,8 +712,8 @@ export default function AdminAttendanceTab() {
               </div>
             </div>
           ) : null}
-          <div className="flex justify-end border-t border-border/50 bg-muted/10 px-5 py-3">
-            <Button variant="outline" className="rounded-xl" onClick={() => setDetailDialogOpen(false)}>Fechar</Button>
+          <div className="flex justify-end border-t border-border/50 bg-muted/10 px-4 py-3 sm:px-5">
+            <Button variant="outline" className="w-full rounded-xl sm:w-auto" onClick={() => setDetailDialogOpen(false)}>Fechar</Button>
           </div>
         </DialogContent>
       </Dialog>

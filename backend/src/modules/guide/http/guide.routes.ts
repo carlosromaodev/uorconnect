@@ -15,7 +15,7 @@ import {
 } from "../use-cases/manage-guide";
 import { type Env } from "../../../config/env";
 import { authGuard } from "../../auth/http/auth.middleware";
-import { adminGuard, getAdminAccessResult } from "../../auth/http/admin.middleware";
+import { adminGuard, getAdminAccessResult, setDefaultAdminPermission } from "../../auth/http/admin.middleware";
 
 const stepSchema = z.object({
   id: z.number(),
@@ -114,6 +114,7 @@ export async function guideRoutes(app: FastifyInstance, opts: { env: Env }) {
   app.register(async (adminApp) => {
     adminApp.register(authGuard, { env: opts.env });
     adminApp.register(adminGuard);
+    setDefaultAdminPermission(adminApp, ["GUIDE"]);
 
     adminApp.post("/steps", { schema: { body: stepInputSchema, response: { 201: stepSchema, 401: z.object({ message: z.string() }), 403: z.object({ message: z.string() }) } } }, async (request, reply) => {
       return reply.code(201).send(await createGuideStep.execute(request.body as z.infer<typeof stepInputSchema>));

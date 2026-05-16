@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Link, useLocation, useNavigate, useSearchParams } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -25,7 +25,6 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { AutoFillBadge } from "@/components/auth/AutoFillBadge";
 import { ResponsiveDocumentViewer } from "@/components/documents/ResponsiveDocumentViewer";
 import {
   api,
@@ -37,12 +36,16 @@ import {
   setToken,
 } from "@/lib/api";
 import { buildSubmeterSchema } from "./submeter.schema";
-import { buildRoutePath, redirectToStudentLogin } from "@/lib/auth-routing";
 import {
-  getOfficialCourseFieldValue,
-  getOfficialCourseSelectOptions,
-  normalizeOfficialCourse,
-} from "@/lib/official-courses";
+  buildSubmissionMembers,
+  getAdditionalMemberInputPlaceholder,
+  getAdditionalSubmissionMembers,
+  isSubmittingStudentMember,
+  MAX_ADDITIONAL_TEAM_MEMBERS,
+  MAX_SUBMISSION_TEAM_MEMBERS,
+} from "./submeter-team";
+import { buildRoutePath, redirectToStudentLogin } from "@/lib/auth-routing";
+import { getOfficialCourseFieldValue } from "@/lib/official-courses";
 import { syncStudentProfileIfNeeded } from "@/lib/student-profile";
 import { toAbsoluteAssetUrl } from "@/lib/student-documents";
 
@@ -111,13 +114,45 @@ const businessStages = ["Ideia", "Protótipo", "MVP", "Funcionando", "Já no Mer
 const productTypes = ["Físico", "Digital", "Híbrido"];
 const needsOptions = ["Tomada elétrica", "Projetor multimédia", "Ligação à internet", "Mesa de exposição", "Espaço extra"];
 
+function getSubmissionCopy(kind: SubmissionKind | null) {
+  if (kind === "negocio") {
+    return {
+      nameLabel: "Nome do negócio",
+      descriptionLabel: "Descrição do negócio",
+      nameNote: "Escreve o nome público que deve aparecer no recibo, votação e materiais da exposição.",
+      descriptionNote: "Resume o problema, a proposta e o que será demonstrado na exposição.",
+      areaNote: "Escolhe a área que melhor representa o negócio.",
+      responsibleNote: "Indica a startup, empresa ou grupo responsável.",
+    };
+  }
+
+  if (kind === "produto") {
+    return {
+      nameLabel: "Nome do produto",
+      descriptionLabel: "Descrição do produto",
+      nameNote: "Escreve o nome público que deve aparecer no recibo, votação e materiais da exposição.",
+      descriptionNote: "Resume a utilidade, o público-alvo e como o produto será apresentado.",
+      areaNote: "Escolhe a categoria geral onde o produto se encaixa melhor.",
+      responsibleNote: "Indica a marca, equipa ou entidade responsável.",
+    };
+  }
+
+  return {
+    nameLabel: "Nome do projecto",
+    descriptionLabel: "Descrição do projecto",
+    nameNote: "Escreve o nome público que deve aparecer no recibo, votação e materiais da exposição.",
+    descriptionNote: "Resume o problema, a solução e o que será mostrado na exposição.",
+    areaNote: "Escolhe a área principal do projecto.",
+    responsibleNote: "Indica o docente que acompanha ou orienta o projecto.",
+  };
+}
 
 const defaultConfig: SubmissionConfig = {
   key: "default",
   isOpen: true,
   iban: "AO006 0055 0000 3295 0561 10379",
   accountName: "Universidade Óscar Ribas",
-  paymentAmount: "15.000 Kz",
+  paymentAmount: "3.500 Kz",
   paymentInstructions: "Confirma a transferência antes de finalizar a candidatura.",
   projectCommunityUrl: null,
   businessCommunityUrl: null,
@@ -158,15 +193,6 @@ function normalizeSubmissionPhoneDigits(value?: string | null) {
   if (digits.startsWith("2449")) return digits.slice(4, 12);
   if (digits.startsWith("9")) return digits.slice(1, 9);
   return digits.slice(-8);
-}
-
-function extractSubmissionPhoneDigits(value: string) {
-  const digits = value.replace(/\D/g, "");
-  if (!digits) return "";
-  if (digits.startsWith("2449")) return digits.slice(4, 12);
-  if (digits.startsWith("244")) return digits.slice(3, 11);
-  if (digits.startsWith("9")) return digits.slice(1, 9);
-  return digits.slice(0, 8);
 }
 
 function formatSubmissionPhone(digits: string) {
@@ -241,10 +267,6 @@ function inputCls(
   return base;
 }
 
-function studentFieldCardClassName(autoFilled: boolean) {
-  return autoFilled ? "field-shell field-shell--auto space-y-2" : "field-shell space-y-2";
-}
-
 function extractObservationValue(observations: string | null, prefix: string) {
   if (!observations) return "";
   const line = observations.split("\n").find((entry) => entry.startsWith(prefix));
@@ -272,8 +294,10 @@ function typeFromReceipt(receiptType: string): SubmissionKind {
 }
 
 function mapReceiptToForm(receipt: StudentSubmissionReceipt): SubmissionFormState {
+  const leaderName = receipt.leaderName ?? "";
+
   return {
-    leaderName: receipt.leaderName ?? "",
+    leaderName,
     phoneDigits: normalizeSubmissionPhoneDigits(receipt.leaderPhone),
     academicCourse: getOfficialCourseFieldValue(receipt.course),
     name: receipt.name,
@@ -292,7 +316,10 @@ function mapReceiptToForm(receipt: StudentSubmissionReceipt): SubmissionFormStat
     paymentConfirmed: true,
     paymentProof: toAbsoluteAssetUrl(receipt.paymentProofPath) ?? "",
     paymentProofName: receipt.paymentProofPath ? "Comprovativo atual" : "",
-    members: receipt.membersList,
+    members: getAdditionalSubmissionMembers({
+      leaderName,
+      members: receipt.membersList,
+    }),
     needs: receipt.needs,
   };
 }
@@ -417,10 +444,16 @@ export default function Submeter() {
   const selectedKind = useMemo(() => submissionKinds.find((entry) => entry.id === kind) ?? null, [kind]);
   const previewDocumentSource = form.paymentProof || toAbsoluteAssetUrl(editingReceipt?.paymentProofPath);
   const editingLocked = Boolean(isEditMode && editingReceipt && !editingReceipt.canEdit);
-  const academicCourseOptions = useMemo(
-    () => getOfficialCourseSelectOptions(form.academicCourse),
-    [form.academicCourse]
+  const submissionCopy = useMemo(() => getSubmissionCopy(kind), [kind]);
+  const responsibleMemberName = form.leaderName || student?.name || "";
+  const visibleTeamMembers = useMemo(
+    () => buildSubmissionMembers({
+      leaderName: responsibleMemberName,
+      members: form.members,
+    }),
+    [form.members, responsibleMemberName]
   );
+  const memberInputPlaceholder = getAdditionalMemberInputPlaceholder(form.members.length);
   const availableAreas = useMemo(
     () => withCurrentOption(kind === "projeto" ? projectAreas : kind === "negocio" ? businessAreas : productAreas, form.area),
     [form.area, kind]
@@ -428,26 +461,6 @@ export default function Submeter() {
   const availableBusinessStages = useMemo(() => withCurrentOption(businessStages, form.stage), [form.stage]);
   const availableProductAreas = useMemo(() => withCurrentOption(productAreas, form.category), [form.category]);
   const availableProductTypes = useMemo(() => withCurrentOption(productTypes, form.productType), [form.productType]);
-
-  const matchesStudentField = (field: "leaderName" | "academicCourse" | "phoneDigits") => {
-    if (!student) return false;
-
-    if (field === "phoneDigits") {
-      return normalizeSubmissionPhoneDigits(student.phone) === form.phoneDigits && Boolean(form.phoneDigits);
-    }
-
-    if (field === "leaderName") return normalizeText(student.name) === normalizeText(form.leaderName) && Boolean(form.leaderName);
-
-    const studentCourse = getOfficialCourseFieldValue(student.course);
-    const formCourse = getOfficialCourseFieldValue(form.academicCourse);
-    return normalizeText(studentCourse) === normalizeText(formCourse) && Boolean(formCourse);
-  };
-
-  const autofilledFieldsCount = [
-    matchesStudentField("leaderName"),
-    matchesStudentField("phoneDigits"),
-    matchesStudentField("academicCourse"),
-  ].filter(Boolean).length;
 
   const validateField = (key: SubmissionFieldKey, nextForm: SubmissionFormState, nextKind: SubmissionKind | null = kind) => {
     if (!nextKind) return null;
@@ -493,6 +506,11 @@ export default function Submeter() {
   };
 
   const handlePickKind = (nextKind: SubmissionKind) => {
+    if (!config.isOpen && !isEditMode) {
+      toast.error("As candidaturas estão fechadas neste momento.");
+      return;
+    }
+
     setKind(nextKind);
     setTouchedFields({});
     setErrors({});
@@ -521,7 +539,8 @@ export default function Submeter() {
       if (!dataUrl.startsWith("data:")) {
         throw new Error("O ficheiro selecionado não gerou um comprovativo válido.");
       }
-      updateField("paymentProof", dataUrl);
+      const uploaded = await api.media.uploadDataUrl(dataUrl, "submission-payment-proofs", { allowDocuments: true });
+      updateField("paymentProof", uploaded.url);
       updateField("paymentProofName", file.name);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Falha ao ler o comprovativo.");
@@ -543,9 +562,10 @@ export default function Submeter() {
       if (!dataUrl.startsWith("data:")) {
         throw new Error("O ficheiro selecionado não gerou um comprovativo válido.");
       }
-      updateField("paymentProof", dataUrl);
+      const uploaded = await api.media.uploadDataUrl(dataUrl, "submission-payment-proofs", { allowDocuments: true });
+      updateField("paymentProof", uploaded.url);
       updateField("paymentProofName", selectedFile.name);
-      return dataUrl;
+      return uploaded.url;
     } finally {
       setProofReading(false);
     }
@@ -571,8 +591,13 @@ export default function Submeter() {
     const cleaned = memberInput.trim();
     if (!cleaned) return;
 
-    if (form.members.length >= 5) {
-      toast.error("Máximo de 5 membros por candidatura.");
+    if (form.members.length >= MAX_ADDITIONAL_TEAM_MEMBERS) {
+      toast.error(`Máximo de ${MAX_SUBMISSION_TEAM_MEMBERS} membros por candidatura.`);
+      return;
+    }
+
+    if (isSubmittingStudentMember({ leaderName: responsibleMemberName, memberName: cleaned })) {
+      toast.info("O teu nome já entra automaticamente como 1.º membro.");
       return;
     }
 
@@ -608,7 +633,14 @@ export default function Submeter() {
       }
     }
 
-    const submissionForm = { ...form, paymentProof: resolvedPaymentProof };
+    const hydratedSubmissionForm = hydrateFromStudent({ ...form, paymentProof: resolvedPaymentProof }, student);
+    const submissionForm = {
+      ...hydratedSubmissionForm,
+      members: buildSubmissionMembers({
+        leaderName: hydratedSubmissionForm.leaderName,
+        members: hydratedSubmissionForm.members,
+      }),
+    };
     const parsed = buildSubmeterSchema(kind).safeParse(submissionForm);
     if (!parsed.success) {
       const nextErrors = parsed.error.issues.reduce<Record<string, string>>((acc, issue) => {
@@ -760,7 +792,8 @@ export default function Submeter() {
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ delay: index * 0.06, duration: 0.24, ease: "easeOut" }}
                   onClick={() => handlePickKind(entry.id)}
-                  className={`overflow-hidden rounded-2xl border border-border bg-gradient-to-br ${entry.gradient} p-5 text-left shadow-sm transition-all hover:-translate-y-1 hover:border-primary/40 hover:shadow-lg`}
+                  disabled={!config.isOpen && !isEditMode}
+                  className={`overflow-hidden rounded-2xl border border-border bg-gradient-to-br ${entry.gradient} p-5 text-left shadow-sm transition-all ${!config.isOpen && !isEditMode ? "cursor-not-allowed opacity-60" : "hover:-translate-y-1 hover:border-primary/40 hover:shadow-lg"}`}
                 >
                   <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-xl bg-white/80">
                     <Icon className="h-5 w-5 text-primary" />
@@ -793,20 +826,11 @@ export default function Submeter() {
         </motion.div>
 
         <div className="surface-card mb-6 overflow-hidden border-border/70 bg-card p-4">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-            <div>
-              <p className="text-sm font-medium text-foreground">
-                <span className={`mr-2 inline-block h-2 w-2 rounded-full ${config.isOpen ? "bg-primary" : "bg-destructive"}`}></span>
-                {config.isOpen ? "Candidaturas abertas" : "Candidaturas fechadas"}
-              </p>
-            </div>
-            <div className="flex items-center gap-3 rounded-xl border border-border/60 bg-muted/20 px-4 py-2">
-              <ShieldCheck className="h-4 w-4 text-primary" />
-              <div className="text-sm">
-                <p className="font-semibold">{student?.studentNumber || "Sessão ativa"}</p>
-                <p className="text-xs text-muted-foreground">{isEditMode ? "Modo de edição" : "Conta verificada"}</p>
-              </div>
-            </div>
+          <div className="flex items-center justify-between gap-4">
+            <p className="text-sm font-medium text-foreground">
+              <span className={`mr-2 inline-block h-2 w-2 rounded-full ${config.isOpen ? "bg-primary" : "bg-destructive"}`}></span>
+              {config.isOpen ? "Candidaturas abertas" : "Candidaturas fechadas"}
+            </p>
           </div>
         </div>
 
@@ -820,77 +844,19 @@ export default function Submeter() {
           <section className="space-y-6">
             <div className="surface-card space-y-5 p-6">
               <div>
-                <h2 className="text-xl font-semibold">Representante da equipa</h2>
-              </div>
-
-              <div className="responsive-two-col">
-                <div className={studentFieldCardClassName(matchesStudentField("leaderName"))}>
-                  <Label htmlFor="leaderName">Nome completo</Label>
-                  <Input
-                    id="leaderName"
-                    value={form.leaderName}
-                    onChange={(event) => updateField("leaderName", event.target.value)}
-                    aria-required="true"
-                    aria-invalid={Boolean(errors.leaderName)}
-                    aria-describedby={errors.leaderName ? errorId("leaderName") : undefined}
-                    className={inputCls(errors, "leaderName", form.leaderName, undefined, isTouched("leaderName"))}
-                  />
-                  <AutoFillBadge visible={matchesStudentField("leaderName")} />
-                  {fieldError(errors, "leaderName", isTouched("leaderName"), errorId("leaderName"))}
-                </div>
-
-                <div className={studentFieldCardClassName(matchesStudentField("phoneDigits"))}>
-                  <Label htmlFor="phoneDigits">Contacto</Label>
-                  <Input
-                    id="phoneDigits"
-                    value={formatSubmissionPhone(form.phoneDigits)}
-                    onChange={(event) => updateField("phoneDigits", extractSubmissionPhoneDigits(event.target.value))}
-                    aria-required="true"
-                    aria-invalid={Boolean(errors.phoneDigits)}
-                    aria-describedby={errors.phoneDigits ? errorId("phoneDigits") : undefined}
-                    className={inputCls(errors, "phoneDigits", form.phoneDigits, undefined, isTouched("phoneDigits"))}
-                  />
-                  <AutoFillBadge visible={matchesStudentField("phoneDigits")} />
-                  {fieldError(errors, "phoneDigits", isTouched("phoneDigits"), errorId("phoneDigits"))}
-                </div>
-              </div>
-
-              <div className={studentFieldCardClassName(matchesStudentField("academicCourse"))}>
-                <Label htmlFor="academicCourse">Curso académico</Label>
-                  <Select value={form.academicCourse} onValueChange={(value) => updateField("academicCourse", value)}>
-                    <SelectTrigger
-                      id="academicCourse"
-                      aria-required="true"
-                      aria-invalid={Boolean(errors.academicCourse)}
-                      aria-describedby={errors.academicCourse ? errorId("academicCourse") : undefined}
-                      className="h-11 rounded-xl px-4 text-base md:text-sm"
-                    >
-                    <SelectValue placeholder="Seleciona o curso" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {academicCourseOptions.map((option) => (
-                      <SelectItem key={option} value={option}>{option}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                <AutoFillBadge visible={matchesStudentField("academicCourse")} />
-                {fieldError(errors, "academicCourse", isTouched("academicCourse"), errorId("academicCourse"))}
-              </div>
-            </div>
-
-            <div className="surface-card space-y-5 p-6">
-              <div>
                 <h2 className="text-xl font-semibold">Dados da candidatura</h2>
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="submissionName">Nome da candidatura</Label>
+                <Label htmlFor="submissionName">{submissionCopy.nameLabel}</Label>
+                <p className="field-note">{submissionCopy.nameNote}</p>
                 <Input id="submissionName" value={form.name} onChange={(event) => updateField("name", event.target.value)} className={inputCls(errors, "name", form.name)} />
                 {fieldError(errors, "name")}
               </div>
 
               <div className="space-y-2">
-                <Label htmlFor="description">Descrição</Label>
+                <Label htmlFor="description">{submissionCopy.descriptionLabel}</Label>
+                <p className="field-note">{submissionCopy.descriptionNote}</p>
                 <Textarea id="description" value={form.description} onChange={(event) => updateField("description", event.target.value.slice(0, 500))} className={`min-h-[140px] rounded-xl px-4 py-3 text-base md:text-sm ${errors.description ? 'input-invalid' : form.description.length >= 20 ? 'input-valid' : ''}`} />
                 <div className="field-note flex items-center justify-between">
                   <span>Opcional</span>
@@ -902,6 +868,7 @@ export default function Submeter() {
               <div className="responsive-two-col">
                 <div className="space-y-2">
                   <Label htmlFor="area">Área principal</Label>
+                  <p className="field-note">{submissionCopy.areaNote}</p>
                   <Select value={form.area} onValueChange={(value) => updateField("area", value)}>
                     <SelectTrigger
                       id="area"
@@ -924,12 +891,14 @@ export default function Submeter() {
                 {kind === "projeto" ? (
                   <div className="space-y-2">
                     <Label htmlFor="advisor">Docente orientador</Label>
+                    <p className="field-note">{submissionCopy.responsibleNote}</p>
                     <Input id="advisor" value={form.advisor} onChange={(event) => updateField("advisor", event.target.value)} className={inputCls(errors, "advisor", form.advisor)} />
                     {fieldError(errors, "advisor")}
                   </div>
                 ) : (
                   <div className="space-y-2">
                     <Label htmlFor="organizationName">Entidade responsável</Label>
+                    <p className="field-note">{submissionCopy.responsibleNote}</p>
                     <Input id="organizationName" value={form.organizationName} onChange={(event) => updateField("organizationName", event.target.value)} className={inputCls(errors, "organizationName", form.organizationName)} />
                     {fieldError(errors, "organizationName")}
                   </div>
@@ -939,6 +908,7 @@ export default function Submeter() {
               {kind === "negocio" ? (
                 <div className="space-y-2">
                   <Label htmlFor="stage">Estágio do negócio</Label>
+                  <p className="field-note">Indica se a ideia ainda está em validação, protótipo, MVP ou já em operação.</p>
                   <Select value={form.stage} onValueChange={(value) => updateField("stage", value)}>
                       <SelectTrigger
                         id="stage"
@@ -963,6 +933,7 @@ export default function Submeter() {
                 <div className="responsive-two-col">
                   <div className="space-y-2">
                     <Label htmlFor="category">Categoria do produto</Label>
+                    <p className="field-note">Escolhe a família onde o produto será mais fácil de encontrar.</p>
                     <Select value={form.category} onValueChange={(value) => updateField("category", value)}>
                       <SelectTrigger
                         id="category"
@@ -984,6 +955,7 @@ export default function Submeter() {
 
                   <div className="space-y-2">
                     <Label htmlFor="productType">Tipo do produto</Label>
+                    <p className="field-note">Define se o produto será apresentado como físico, digital ou híbrido.</p>
                     <Select value={form.productType} onValueChange={(value) => updateField("productType", value)}>
                       <SelectTrigger
                         id="productType"
@@ -1008,6 +980,7 @@ export default function Submeter() {
               {kind === "produto" ? (
                 <div className="space-y-2">
                   <Label htmlFor="priceAverage">Média de preço estimado</Label>
+                  <p className="field-note">Usa apenas números para indicar uma referência simples de preço.</p>
                   <Input
                     id="priceAverage"
                     value={form.priceAverage}
@@ -1023,12 +996,14 @@ export default function Submeter() {
               <div className="responsive-two-col">
                 <div className="space-y-2">
                   <Label htmlFor="repoUrl">Repositório (opcional)</Label>
+                  <p className="field-note">Cola o link do código ou protótipo técnico, se existir.</p>
                   <Input id="repoUrl" value={form.repoUrl} onChange={(event) => updateField("repoUrl", event.target.value)} placeholder="https://github.com/..." className={inputCls(errors, "repoUrl", form.repoUrl)} />
                   {fieldError(errors, "repoUrl")}
                 </div>
 
                 <div className="space-y-2">
                   <Label htmlFor="websiteUrl">Website / Link (opcional)</Label>
+                  <p className="field-note">Cola uma página, demonstração, portefólio ou vídeo de apoio.</p>
                   <Input id="websiteUrl" value={form.websiteUrl} onChange={(event) => updateField("websiteUrl", event.target.value)} placeholder="https://..." className={inputCls(errors, "websiteUrl", form.websiteUrl)} />
                   {fieldError(errors, "websiteUrl")}
                 </div>
@@ -1036,6 +1011,7 @@ export default function Submeter() {
 
               <div className="space-y-2">
                 <Label htmlFor="observations">Observações (opcional)</Label>
+                <p className="field-note">Acrescenta detalhes logísticos ou informações que a organização deve saber.</p>
                 <Textarea id="observations" value={form.observations} onChange={(event) => updateField("observations", event.target.value.slice(0, 500))} className="min-h-[120px] rounded-xl px-4 py-3 text-base md:text-sm" />
                 {fieldError(errors, "observations")}
               </div>
@@ -1045,14 +1021,15 @@ export default function Submeter() {
               <div className="flex items-center justify-between gap-3">
                 <div>
                   <h2 className="text-xl font-semibold">Equipa</h2>
+                  <p className="field-note mt-1">Tu és o 1.º membro automaticamente. Adiciona os restantes nomes. Até 17 membros.</p>
                 </div>
                 <span className="rounded-full border border-primary/20 bg-primary/5 px-3 py-1 text-xs font-semibold text-primary">
-                  {form.members.length} membro(s)
+                  {visibleTeamMembers.length} membro(s)
                 </span>
               </div>
 
               <div className="flex flex-col gap-3 sm:flex-row">
-                <Input value={memberInput} onChange={(event) => setMemberInput(event.target.value)} placeholder="Adicionar membro" className="h-11 flex-1 rounded-xl px-4 text-base md:text-sm" />
+                <Input value={memberInput} onChange={(event) => setMemberInput(event.target.value)} placeholder={memberInputPlaceholder} className="h-11 flex-1 rounded-xl px-4 text-base md:text-sm" />
                 <Button type="button" onClick={handleAddMember} className="h-11 rounded-xl">
                   <Plus className="mr-2 h-4 w-4" />
                   Adicionar
@@ -1061,18 +1038,29 @@ export default function Submeter() {
               {fieldError(errors, "members")}
 
               <div className="surface-scroll-y max-h-[32dvh] rounded-3xl border border-border/60 bg-background/80 p-4">
-                {form.members.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">Sem membros adicionais.</p>
+                {visibleTeamMembers.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">O teu nome entra automaticamente como primeiro membro.</p>
                 ) : (
                   <div className="grid gap-3 sm:grid-cols-2">
-                    {form.members.map((member, index) => (
-                      <div key={`${member}-${index}`} className="flex items-center justify-between gap-3 rounded-2xl border border-border/60 bg-muted/20 p-4">
-                        <span className="min-w-0 break-words text-sm font-medium">{member}</span>
-                        <Button type="button" variant="ghost" size="icon" className="h-9 w-9 shrink-0 rounded-xl" onClick={() => handleRemoveMember(member)}>
-                          <Trash2 className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    ))}
+                    {visibleTeamMembers.map((member, index) => {
+                      const isResponsible = index === 0 && isSubmittingStudentMember({
+                        leaderName: responsibleMemberName,
+                        memberName: member,
+                      });
+
+                      return (
+                        <div key={`${member}-${index}`} className="flex items-center justify-between gap-3 rounded-2xl border border-border/60 bg-muted/20 p-4">
+                          <span className="min-w-0 break-words text-sm font-medium">{member}</span>
+                          {isResponsible ? (
+                            <span className="h-9 shrink-0 rounded-xl px-3 py-2 text-xs font-semibold text-muted-foreground">1.º</span>
+                          ) : (
+                            <Button type="button" variant="ghost" size="icon" className="h-9 w-9 shrink-0 rounded-xl" onClick={() => handleRemoveMember(member)}>
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -1199,7 +1187,7 @@ export default function Submeter() {
 
             <div className="surface-card p-6">
               <div className="flex flex-col gap-3">
-                <Button type="submit" disabled={saving || proofReading || editingLocked} className="h-11 rounded-xl">
+                <Button type="submit" disabled={saving || proofReading || editingLocked || (!config.isOpen && !isEditMode)} className="h-11 rounded-xl">
                   {saving || proofReading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <CheckCircle2 className="mr-2 h-4 w-4" />}
                   {proofReading ? "A carregar comprovativo" : isEditMode ? "Atualizar e voltar ao recibo" : "Submeter e abrir recibo"}
                 </Button>

@@ -25,6 +25,13 @@ export type SubmissionConfigInput = {
 };
 
 export type SubmissionPresentationInput = {
+  description?: string;
+  repoUrl?: string | null;
+  websiteUrl?: string | null;
+  instagramUrl?: string | null;
+  facebookUrl?: string | null;
+  linkedinUrl?: string | null;
+  githubUrl?: string | null;
   primaryColor?: string;
   secondaryColor?: string;
   bannerUrl?: string | null;

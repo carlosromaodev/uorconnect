@@ -121,4 +121,25 @@ describe("course enrollment helpers", () => {
     expect(receipt.receiptPath).toBe("/cursos/inscricoes/11");
     expect(receipt.communityUrl).toBe("https://chat.whatsapp.com/curso");
   });
+
+  it("bloqueia comunidade do curso enquanto o pagamento nao estiver confirmado", () => {
+    const receipt = buildStudentEnrollmentReceipt({
+      id: 12,
+      courseId: 5,
+      studentNumber: "20240100",
+      fullName: "Carla Dias",
+      paymentStatus: "PENDING",
+      paymentProofPath: "/courses/enrollments/12/payment-proof",
+      ticketPath: "/courses/enrollments/12/ticket.pdf",
+      enrolledAt: "2026-03-28T10:00:00.000Z",
+      course: {
+        name: "Segurança",
+        companyName: "Parceiro Tech",
+        communityUrl: "https://chat.whatsapp.com/curso",
+      },
+    });
+
+    expect(receipt.statusLabel).toBe("Em análise");
+    expect(receipt.communityUrl).toBeNull();
+  });
 });

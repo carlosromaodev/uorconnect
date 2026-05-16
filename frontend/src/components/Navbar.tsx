@@ -1,6 +1,7 @@
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { useEffect, useRef, useState } from "react";
-import { Bell, CalendarClock, ChevronDown, LogOut, Menu, Search, User, X } from "lucide-react";
+import { AnimatePresence, motion } from "framer-motion";
+import { Bell, CalendarClock, ChevronDown, ChevronRight, LogOut, Menu, Search, User, X } from "lucide-react";
 import { toast } from "@/components/ui/sonner";
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import {
@@ -15,7 +16,7 @@ import {
 } from "@/lib/api";
 import { UserAvatar } from "@/components/social/UserAvatar";
 import SearchDialog from "./SearchDialog";
-import { getSaasShowcaseHref } from "@/lib/contest-lab";
+import { getSaasShowcaseHref } from "@/lib/runtime-hosts";
 
 const SUBMISSION_APPROVAL_SEEN_STORAGE_KEY = "uor-approved-submissions-seen";
 const ENROLLMENT_APPROVAL_SEEN_STORAGE_KEY = "uor-approved-enrollments-seen";
@@ -130,7 +131,7 @@ export default function Navbar() {
         if (!active) return;
 
         const approved = submissionItems.filter((item) => item.status === "APPROVED");
-        const confirmed = enrollmentItems.filter((item) => item.paymentStatus === "CONFIRMED" || item.paymentStatus === "APPROVED");
+        const confirmed = enrollmentItems.filter((item) => ["CONFIRMED_BY_ADMIN", "CONFIRMED", "APPROVED"].includes(item.paymentStatus));
 
         setApprovedSubmissions(approved);
         setConfirmedEnrollments(confirmed);
@@ -527,7 +528,7 @@ export default function Navbar() {
                   className="flex items-center gap-2 rounded-lg px-2 py-1.5 transition-colors hover:bg-secondary"
                 >
                   {student ? (
-                    <UserAvatar name={accountAvatarName} size="sm" />
+                    <UserAvatar name={accountAvatarName} avatarUrl={student.avatarUrl} size="sm" />
                   ) : (
                     <span className="grid h-7 w-7 place-items-center rounded-full bg-primary/10 text-primary">
                       <User className="h-3.5 w-3.5" />
@@ -582,70 +583,117 @@ export default function Navbar() {
           </div>
         </div>
 
-        {open ? (
-          <div className="xl:hidden border-t border-border/60 bg-white/90 px-4 pb-3 pt-2 backdrop-blur-2xl">
-            {primaryNavItems.map((item) => (
-              <Link
-                key={item.path}
-                to={item.path}
-                onClick={() => setOpen(false)}
-                className={`block rounded-lg px-3 py-2.5 text-sm font-medium ${
-                  location.pathname === item.path
-                    ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:bg-secondary"
-                }`}
-              >
-                {item.label}
-              </Link>
-            ))}
-            <div className="my-1.5 h-px bg-border/50" />
-            <p className="px-3 py-1.5 text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">Mais</p>
-            {secondaryNavItems.map((item) => (
-              <Link
-                key={item.path}
-                to={item.path}
-                onClick={() => setOpen(false)}
-                className={`block rounded-lg px-3 py-2.5 text-sm font-medium ${
-                  location.pathname === item.path
-                    ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:bg-secondary"
-                }`}
-              >
-                {item.label}
-              </Link>
-            ))}
-            <div className="my-1.5 h-px bg-border/50" />
-            {isAuthenticated ? (
-              <Link
-                to={accountHref}
-                onClick={() => setOpen(false)}
-                className={`flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-sm font-medium ${
-                  location.pathname === "/minha-area"
-                    ? "bg-primary text-primary-foreground"
-                    : "text-muted-foreground hover:bg-secondary"
-                }`}
-              >
-                {student ? <UserAvatar name={accountAvatarName} size="sm" /> : <User className="h-4 w-4" />}
-                {accountLabel}
-              </Link>
-            ) : (
-              <Link
-                to="/login"
-                onClick={() => setOpen(false)}
-                className="block rounded-lg px-3 py-2.5 text-sm font-medium text-muted-foreground hover:bg-secondary"
-              >
-                Entrar
-              </Link>
-            )}
-            <a
-              href={getSaasShowcaseHref("/")}
-              onClick={() => setOpen(false)}
-              className="mt-2 block rounded-lg bg-primary px-3 py-2.5 text-center text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
+        <AnimatePresence>
+          {open && (
+            <motion.div
+              initial={{ height: 0, opacity: 0 }}
+              animate={{ height: "auto", opacity: 1 }}
+              exit={{ height: 0, opacity: 0 }}
+              transition={{ duration: 0.25, ease: [0.4, 0, 0.2, 1] }}
+              className="xl:hidden overflow-hidden border-t border-border/60"
             >
-              Marcar evento
-            </a>
-          </div>
-        ) : null}
+              <div className="bg-white/95 px-4 pb-4 pt-3 backdrop-blur-2xl">
+                <nav className="space-y-0.5">
+                  {primaryNavItems.map((item, i) => (
+                    <motion.div
+                      key={item.path}
+                      initial={{ opacity: 0, x: -12 }}
+                      animate={{ opacity: 1, x: 0 }}
+                      transition={{ delay: i * 0.03, duration: 0.2 }}
+                    >
+                      <Link
+                        to={item.path}
+                        onClick={() => setOpen(false)}
+                        className={`flex items-center justify-between rounded-xl px-3.5 py-2.5 text-[15px] font-medium transition-colors ${
+                          location.pathname === item.path
+                            ? "bg-primary/10 text-primary"
+                            : "text-foreground/80 active:bg-muted/60"
+                        }`}
+                      >
+                        {item.label}
+                        {location.pathname === item.path && (
+                          <span className="h-1.5 w-1.5 rounded-full bg-primary" />
+                        )}
+                      </Link>
+                    </motion.div>
+                  ))}
+                </nav>
+
+                <div className="my-3 h-px bg-border/40" />
+                <p className="px-3.5 pb-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/70">Explorar</p>
+                <nav className="grid grid-cols-2 gap-0.5">
+                  {secondaryNavItems.map((item, i) => (
+                    <motion.div
+                      key={item.path}
+                      initial={{ opacity: 0, y: 6 }}
+                      animate={{ opacity: 1, y: 0 }}
+                      transition={{ delay: 0.1 + i * 0.025, duration: 0.2 }}
+                    >
+                      <Link
+                        to={item.path}
+                        onClick={() => setOpen(false)}
+                        className={`flex items-center gap-1.5 rounded-xl px-3.5 py-2 text-sm font-medium transition-colors ${
+                          location.pathname === item.path
+                            ? "bg-primary/10 text-primary"
+                            : "text-foreground/60 active:bg-muted/60"
+                        }`}
+                      >
+                        <ChevronRight className="h-3 w-3 text-muted-foreground/40" />
+                        {item.label}
+                      </Link>
+                    </motion.div>
+                  ))}
+                </nav>
+
+                <div className="my-3 h-px bg-border/40" />
+
+                <motion.div
+                  initial={{ opacity: 0, y: 8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ delay: 0.18, duration: 0.2 }}
+                  className="space-y-2"
+                >
+                  {isAuthenticated ? (
+                    <Link
+                      to={accountHref}
+                      onClick={() => setOpen(false)}
+                      className="flex items-center gap-3 rounded-xl bg-muted/40 px-3.5 py-3 transition-colors active:bg-muted/60"
+                    >
+                      {student ? (
+                        <UserAvatar name={accountAvatarName} avatarUrl={student.avatarUrl} size="sm" />
+                      ) : (
+                        <span className="grid h-8 w-8 place-items-center rounded-full bg-primary/10 text-primary">
+                          <User className="h-4 w-4" />
+                        </span>
+                      )}
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-sm font-semibold text-foreground">{accountName}</p>
+                        <p className="text-xs text-muted-foreground">{student?.studentNumber || "Conta autenticada"}</p>
+                      </div>
+                      <ChevronRight className="h-4 w-4 text-muted-foreground/50" />
+                    </Link>
+                  ) : (
+                    <Link
+                      to="/login"
+                      onClick={() => setOpen(false)}
+                      className="flex items-center justify-center gap-2 rounded-xl border border-border/60 bg-white px-3.5 py-2.5 text-sm font-semibold text-foreground transition-colors active:bg-muted/40"
+                    >
+                      <User className="h-4 w-4" />
+                      Entrar na plataforma
+                    </Link>
+                  )}
+                  <a
+                    href={getSaasShowcaseHref("/")}
+                    onClick={() => setOpen(false)}
+                    className="flex items-center justify-center rounded-xl bg-primary px-3.5 py-2.5 text-sm font-semibold text-primary-foreground shadow-sm transition-colors hover:bg-primary/90"
+                  >
+                    Marcar evento
+                  </a>
+                </motion.div>
+              </div>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </nav>
 
       <SearchDialog open={searchOpen} onClose={() => setSearchOpen(false)} />

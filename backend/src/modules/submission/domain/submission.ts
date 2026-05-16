@@ -23,8 +23,17 @@ export type Submission = {
   needs: string[];
   paymentProof: string;
   paymentConfirmed: boolean;
+  paymentStatus?: string | null;
+  paymentSubmittedAt?: Date | null;
+  paymentReviewedAt?: Date | null;
+  paymentReviewedByStudentNumber?: string | null;
+  paymentReviewNote?: string | null;
   repoUrl?: string | null;
   websiteUrl?: string | null;
+  instagramUrl?: string | null;
+  facebookUrl?: string | null;
+  linkedinUrl?: string | null;
+  githubUrl?: string | null;
   observations?: string | null;
   agreeRules: boolean;
   primaryColor: string;
@@ -32,6 +41,9 @@ export type Submission = {
   bannerUrl?: string | null;
   isWinner: boolean;
   winnerSelectedAt?: Date | null;
+  deletedAt?: Date | null;
+  deletedByStudentNumber?: string | null;
+  deletionReason?: string | null;
   createdAt: Date;
   updatedAt: Date;
 };

@@ -37,7 +37,7 @@ export function buildBoardingPassHtml(submission: Submission, options: {
   const members = submission.members.length > 0 ? submission.members.join(" • ") : "Sem equipa";
   const createdAt = formatDateLabel(submission.createdAt);
   const typeLabel = submissionTypeLabel(submission.type);
-  const siteUrl = options.publicAppUrl?.replace(/\/$/, "") ?? "https://uorconnect.space";
+  const siteUrl = options.publicAppUrl?.replace(/\/$/, "") ?? "http://localhost:5173";
   const pdfUrl = options.pdfUrl ?? `${siteUrl}/api/submissions/${submission.id}/boarding-pass.pdf`;
 
   return `<!DOCTYPE html>
@@ -331,7 +331,7 @@ export function parseStoredProof(value: string) {
     };
   }
 
-  if (/^https?:\/\//i.test(trimmed)) {
+  if (/^https?:\/\//i.test(trimmed) || /^\/(?:api\/)?media\/files\//.test(trimmed)) {
     return {
       kind: "url" as const,
       url: trimmed

@@ -8,11 +8,45 @@ uorconnect.space www.uorconnect.space {
   }
 
   handle /desafios {
-    redir https://laboratorio.uorconnect.space/ 308
+    redir * /minha-area?tab=desafio 308
   }
 
   handle_path /desafios/* {
-    redir https://laboratorio.uorconnect.space{uri} 308
+    redir * /minha-area?tab=desafio 308
+  }
+
+  handle_path /api/* {
+    reverse_proxy backend:3333 {
+      transport http {
+        dial_timeout 10s
+        response_header_timeout 120s
+        read_timeout 120s
+        write_timeout 120s
+      }
+    }
+  }
+
+  reverse_proxy frontend:80
+}
+
+admin.uorconnect.space {
+  encode gzip zstd
+
+  header {
+    X-Content-Type-Options "nosniff"
+    X-Frame-Options "SAMEORIGIN"
+    Referrer-Policy "strict-origin-when-cross-origin"
+  }
+
+  handle_path /api/* {
+    reverse_proxy backend:3333 {
+      transport http {
+        dial_timeout 10s
+        response_header_timeout 120s
+        read_timeout 120s
+        write_timeout 120s
+      }
+    }
   }
 
   reverse_proxy frontend:80
@@ -27,7 +61,7 @@ laboratorio.uorconnect.space {
     Referrer-Policy "strict-origin-when-cross-origin"
   }
 
-  reverse_proxy laboratorio:80
+  redir https://uorconnect.space/minha-area?tab=desafio 308
 }
 
 api.uorconnect.space {
@@ -37,6 +71,14 @@ api.uorconnect.space {
     X-Content-Type-Options "nosniff"
     X-Frame-Options "SAMEORIGIN"
     Referrer-Policy "strict-origin-when-cross-origin"
+  }
+
+  handle /equipa/credencial/* {
+    redir https://uorconnect.space{uri} 302
+  }
+
+  handle /equipa/convite/* {
+    redir https://uorconnect.space{uri} 302
   }
 
   reverse_proxy backend:3333 {

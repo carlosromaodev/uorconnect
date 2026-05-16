@@ -14,6 +14,10 @@ function makeAuthorizedStudent(overrides: Partial<AdminAuthorizedStudent> = {}):
     team: "Geral",
     role: "SUPER_ADMIN",
     permissions: "ALL",
+    isActive: true,
+    revokedAt: null,
+    revokedByStudentNumber: null,
+    revocationReason: null,
     createdAt: new Date("2026-03-22T18:00:00.000Z"),
     updatedAt: new Date("2026-03-22T18:00:00.000Z"),
     ...overrides,
@@ -45,14 +49,17 @@ describe("admin security use cases", () => {
       revokeAdminStudent: vi.fn(),
       isAdminAuthorized: vi.fn(),
       listRecentLogins: vi.fn().mockResolvedValue([makeStudent()]),
+      listAdminAccessConflicts: vi.fn().mockResolvedValue([]),
     };
 
     const result = await new ListAdminSecurityOverviewUseCase(repo).execute();
 
     expect(result.authorizedStudents).toHaveLength(1);
     expect(result.recentLogins).toHaveLength(1);
+    expect(result.adminAccessConflicts).toHaveLength(0);
     expect(repo.listAuthorizedAdminStudents).toHaveBeenCalledOnce();
     expect(repo.listRecentLogins).toHaveBeenCalledWith(25);
+    expect(repo.listAdminAccessConflicts).toHaveBeenCalledOnce();
   });
 
   it("autoriza um número de estudante válido", async () => {
@@ -62,6 +69,7 @@ describe("admin security use cases", () => {
       revokeAdminStudent: vi.fn(),
       isAdminAuthorized: vi.fn(),
       listRecentLogins: vi.fn(),
+      listAdminAccessConflicts: vi.fn(),
     };
 
     const result = await new AuthorizeAdminStudentUseCase(repo).execute("2024-2111");
@@ -89,6 +97,7 @@ describe("admin security use cases", () => {
       revokeAdminStudent: vi.fn(),
       isAdminAuthorized: vi.fn(),
       listRecentLogins: vi.fn(),
+      listAdminAccessConflicts: vi.fn(),
     };
 
     const result = await new AuthorizeAdminStudentUseCase(repo).execute("20242112", {
@@ -119,11 +128,12 @@ describe("admin security use cases", () => {
       revokeAdminStudent: vi.fn(),
       isAdminAuthorized: vi.fn(),
       listRecentLogins: vi.fn(),
+      listAdminAccessConflicts: vi.fn(),
     };
 
     const result = await new AuthorizeAdminStudentUseCase(repo).execute("123");
 
-    expect(result).toEqual({ success: false, error: "Student number must have between 8 and 10 digits" });
+    expect(result).toEqual({ success: false, error: "Student number must have between 8 and 12 digits" });
     expect(repo.authorizeAdminStudent).not.toHaveBeenCalled();
   });
 
@@ -134,6 +144,7 @@ describe("admin security use cases", () => {
       revokeAdminStudent: vi.fn(),
       isAdminAuthorized: vi.fn(),
       listRecentLogins: vi.fn(),
+      listAdminAccessConflicts: vi.fn(),
     };
 
     const result = await new AuthorizeAdminStudentUseCase(repo).execute("2024211101");
@@ -156,12 +167,17 @@ describe("admin security use cases", () => {
       revokeAdminStudent: vi.fn().mockResolvedValue(undefined),
       isAdminAuthorized: vi.fn().mockResolvedValue(true),
       listRecentLogins: vi.fn(),
+      listAdminAccessConflicts: vi.fn(),
     };
 
-    const result = await new RevokeAdminStudentUseCase(repo).execute("20242099");
+    const result = await new RevokeAdminStudentUseCase(repo).execute("20242099", {
+      revokedByStudentNumber: "20240001",
+    });
 
     expect(result).toEqual({ success: true });
-    expect(repo.revokeAdminStudent).toHaveBeenCalledWith("20242099");
+    expect(repo.revokeAdminStudent).toHaveBeenCalledWith("20242099", {
+      revokedByStudentNumber: "20240001",
+    });
   });
 
   it("falha ao remover quando o número não está autorizado", async () => {
@@ -171,6 +187,7 @@ describe("admin security use cases", () => {
       revokeAdminStudent: vi.fn(),
       isAdminAuthorized: vi.fn().mockResolvedValue(false),
       listRecentLogins: vi.fn(),
+      listAdminAccessConflicts: vi.fn(),
     };
 
     const result = await new RevokeAdminStudentUseCase(repo).execute("20249999");

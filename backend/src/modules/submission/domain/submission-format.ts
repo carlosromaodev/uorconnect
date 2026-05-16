@@ -2,7 +2,7 @@ const TEAM_MEMBER_SPLIT_REGEX = /[\n,;]+/;
 
 export const DEFAULT_SUBMISSION_PRIMARY_COLOR = "#FD8305";
 export const DEFAULT_SUBMISSION_SECONDARY_COLOR = "#223D42";
-export const MAX_TEAM_MEMBERS = 5;
+export const MAX_TEAM_MEMBERS = 17;
 
 function normalizeText(value: string) {
   return value.replace(/\s+/g, " ").trim();

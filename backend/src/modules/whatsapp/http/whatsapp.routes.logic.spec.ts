@@ -1,10 +1,25 @@
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import {
   extractProviderMessage,
   isConnectedWhatsAppInstanceStatus,
   pickPreferredWhatsAppInstance,
   renderWhatsAppAutomationTemplate,
 } from "./whatsapp.routes";
+import { communicationAudienceSchema } from "../../communication/audience";
+
+function readSource(path: string) {
+  return readFileSync(join(process.cwd(), path), "utf8");
+}
+
+function sliceBetween(source: string, start: string, end: string) {
+  const startIndex = source.indexOf(start);
+  const endIndex = source.indexOf(end, startIndex + start.length);
+  expect(startIndex).toBeGreaterThanOrEqual(0);
+  expect(endIndex).toBeGreaterThan(startIndex);
+  return source.slice(startIndex, endIndex);
+}
 
 describe("whatsapp.routes instance selection", () => {
   it("prefers a connected instance over a closed default instance", () => {
@@ -54,5 +69,28 @@ describe("whatsapp.routes instance selection", () => {
       "Olá Carlos",
       "https://uorconnect.test/recibo",
     ].join("\n"));
+  });
+
+  it("accepts group representatives as a direct WhatsApp audience", () => {
+    const parsed = communicationAudienceSchema.safeParse({
+      type: "GROUP_REPRESENTATIVES",
+      submissionStatuses: ["APPROVED"],
+    });
+
+    expect(parsed.success).toBe(true);
+  });
+
+  it("does not force marketing or profile consent gates on manual admin campaigns", () => {
+    const source = readSource("src/modules/whatsapp/http/whatsapp.routes.ts");
+    const previewRoute = sliceBetween(source, 'adminApp.post("/admin/preview"', 'adminApp.post("/admin/send"');
+    const sendRoute = sliceBetween(source, 'adminApp.post("/admin/send"', "request.log.info({");
+
+    expect(previewRoute).toContain("applyCookieAudienceFilters(rawCandidates, body.audience)");
+    expect(previewRoute).not.toContain("cookieMarketingOptIn: true");
+    expect(previewRoute).not.toContain("applyProfileCommunicationConsent");
+    expect(sendRoute).toContain("applyCookieAudienceFilters(rawCandidates, body.audience)");
+    expect(sendRoute).not.toContain("cookieMarketingOptIn: true");
+    expect(sendRoute).not.toContain("applyProfileCommunicationConsent");
+    expect(source).toContain('consent: body.audience.cookieMarketingOptIn ? "marketing_opt_in" : "admin_operational_no_consent_gate"');
   });
 });

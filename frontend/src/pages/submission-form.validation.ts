@@ -1,3 +1,5 @@
+import { MAX_SUBMISSION_TEAM_MEMBERS } from "./submeter-team";
+
 export type SubmissionKind = "projeto" | "negocio" | "produto";
 
 export type SubmissionFormState = {
@@ -53,8 +55,7 @@ export const emptyFormState: SubmissionFormState = {
 
 const LETTERS_ONLY_REGEX = /^[A-Za-zÀ-ÖØ-öø-ÿ\s]+$/u;
 const NINE_DIGIT_PHONE_REGEX = /^9\d{8}$/;
-const PROOF_VALUE_REGEX = /^(data:|https?:\/\/)/;
-
+const PROOF_VALUE_REGEX = /^(data:|https?:\/\/|\/(?:api\/)?media\/files\/)/;
 export const VALIDATION_BANNER_MESSAGE = "⚠ Corrija os erros assinalados antes de continuar";
 export const VALID_FIELD_ARIA_LABEL = "Campo válido";
 
@@ -226,7 +227,8 @@ export function validateSubmissionField(
 
     case "members":
       if (form.members.length === 0) return "⚠ Adicione pelo menos um membro";
-      if (form.members.length > 5) return "⚠ Máximo de 5 membros";
+      if (form.members.length > MAX_SUBMISSION_TEAM_MEMBERS)
+        return `⚠ Máximo de ${MAX_SUBMISSION_TEAM_MEMBERS} membros`;
       if (form.members.some((member) => member.trim().length < 2)) return "⚠ Adicione pelo menos um membro";
       return null;
 

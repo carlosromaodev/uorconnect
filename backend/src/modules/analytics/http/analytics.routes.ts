@@ -5,9 +5,10 @@ import { z } from "zod";
 import { prisma } from "../../../shared/prisma";
 import type { Env } from "../../../config/env";
 import { authGuard } from "../../auth/http/auth.middleware";
-import { adminGuard } from "../../auth/http/admin.middleware";
+import { adminGuard, requireAdminPermission, setDefaultAdminPermission } from "../../auth/http/admin.middleware";
 import { getCookie } from "../../../shared/cookies";
 import { verifyStudentToken } from "../../auth/utils/jwt";
+import { recordAdminAudit } from "../../audit/application/audit.service";
 
 const analyticsCategoryValues = [
   "NAVIGATION",
@@ -27,6 +28,25 @@ const dashboardEventSampleLimit = 20_000;
 const dashboardSessionSampleLimit = 10_000;
 let lastCleanupAt = 0;
 
+type JsonValue =
+  | string
+  | number
+  | boolean
+  | null
+  | JsonValue[]
+  | { [key: string]: JsonValue };
+
+const jsonValueSchema: z.ZodType<JsonValue> = z.lazy(() =>
+  z.union([
+    z.string(),
+    z.number(),
+    z.boolean(),
+    z.null(),
+    z.array(jsonValueSchema),
+    z.record(z.string(), jsonValueSchema),
+  ]),
+);
+
 const consentSchema = z.object({
   essential: z.literal(true).default(true),
   analytics: z.boolean().default(false),
@@ -45,7 +65,7 @@ const eventSchema = z.object({
   elementLabel: z.string().trim().max(200).nullable().optional(),
   duration: z.number().int().min(0).max(1000 * 60 * 60 * 8).nullable().optional(),
   scrollDepth: z.number().int().min(0).max(100).nullable().optional(),
-  metadata: z.record(z.string(), z.any()).nullable().optional(),
+  metadata: z.record(z.string(), jsonValueSchema).nullable().optional(),
 });
 
 const consentPayloadSchema = z.object({
@@ -147,7 +167,7 @@ async function resolveAuthenticatedContext(request: FastifyRequest, env: Env) {
       }),
       prisma.adminAuthorizedStudent.findUnique({
         where: { studentNumber: payload.studentNumber },
-        select: { id: true }
+        select: { id: true, isActive: true }
       })
     ]);
 
@@ -158,7 +178,7 @@ async function resolveAuthenticatedContext(request: FastifyRequest, env: Env) {
       studentNumber: student.studentNumber,
       name: student.name ?? `Estudante ${student.studentNumber}`,
       course: student.course ?? null,
-      role: adminAccess ? "admin" : "student",
+      role: adminAccess?.isActive ? "admin" : "student",
     };
   } catch {
     return null;
@@ -437,6 +457,7 @@ export async function analyticsRoutes(app: FastifyInstance, opts: { env: Env }) 
   app.register(async (adminApp) => {
     adminApp.register(authGuard, { env: opts.env });
     adminApp.register(adminGuard);
+    setDefaultAdminPermission(adminApp, ["ANALYTICS"]);
 
     adminApp.get("/dashboard", {
       schema: { querystring: analyticsFilterSchema }
@@ -449,7 +470,31 @@ export async function analyticsRoutes(app: FastifyInstance, opts: { env: Env }) 
       const dayFrom = new Date();
       dayFrom.setHours(0, 0, 0, 0);
 
-      const [eventsSample, sessionsSample, totalSessionsCount, audienceSplitCounts, recentConsents, recentEvents] = await Promise.all([
+      const conversionEventTypes = [
+        "course_enrollment_submitted",
+        "submission_created",
+        "course_ticket_download",
+        "submission_ticket_download",
+      ];
+      const enrollmentEventTypes = ["course_enrollment_submitted", "submission_created"];
+
+      const [
+        eventsSample,
+        sessionsSample,
+        totalSessionsCount,
+        uniqueVisitorRows,
+        todayVisitorRows,
+        authenticatedUserRows,
+        durationAggregate,
+        conversionSessionRows,
+        liveSessionRows,
+        ticketSharesCount,
+        coursePageViewsCount,
+        projectPageViewsCount,
+        audienceSplitCounts,
+        recentConsents,
+        recentEvents
+      ] = await Promise.all([
         prisma.analyticsEvent.findMany({
           where: eventWhere,
           select: {
@@ -488,6 +533,44 @@ export async function analyticsRoutes(app: FastifyInstance, opts: { env: Env }) 
         prisma.analyticsSession.count({
           where: sessionWhere,
         }),
+        prisma.analyticsEvent.groupBy({
+          by: ["visitorId"],
+          where: eventWhere,
+          _count: { _all: true },
+        }),
+        prisma.analyticsEvent.groupBy({
+          by: ["visitorId"],
+          where: { AND: [eventWhere, { createdAt: { gte: dayFrom, lte: to } }] },
+          _count: { _all: true },
+        }),
+        prisma.analyticsEvent.groupBy({
+          by: ["studentId"],
+          where: { AND: [eventWhere, { studentId: { not: null } }] },
+          _count: { _all: true },
+        }),
+        prisma.analyticsEvent.aggregate({
+          where: eventWhere,
+          _avg: { duration: true },
+        }),
+        prisma.analyticsEvent.groupBy({
+          by: ["sessionId"],
+          where: { AND: [eventWhere, { eventType: { in: conversionEventTypes } }] },
+          _count: { _all: true },
+        }),
+        prisma.analyticsEvent.groupBy({
+          by: ["sessionId"],
+          where: { AND: [eventWhere, { eventCategory: "LIVE" }] },
+          _count: { _all: true },
+        }),
+        prisma.analyticsEvent.count({
+          where: { AND: [eventWhere, { eventType: { in: ["ticket_share", "project_share"] } }] },
+        }),
+        prisma.analyticsEvent.count({
+          where: { AND: [eventWhere, { pageUrl: { contains: "/cursos" } }] },
+        }),
+        prisma.analyticsEvent.count({
+          where: { AND: [eventWhere, { pageUrl: { contains: "/projeto/" } }] },
+        }),
         prisma.analyticsSession.groupBy({
           by: ["audience"],
           where: sessionWhere,
@@ -522,30 +605,25 @@ export async function analyticsRoutes(app: FastifyInstance, opts: { env: Env }) 
       const sampled = eventsSample.length >= dashboardEventSampleLimit || sessionsSample.length >= dashboardSessionSampleLimit;
 
       const totalSessions = totalSessionsCount;
-      const totalVisitors = new Set([...events.map((event) => event.visitorId), ...sessions.map((session) => session.visitorId)]).size;
-      const visitorsToday = new Set(events.filter((event) => event.createdAt >= dayFrom).map((event) => event.visitorId)).size;
-      const authenticatedUsers = new Set(events.filter((event) => event.studentId).map((event) => event.studentId)).size;
+      const totalVisitors = uniqueVisitorRows.length;
+      const visitorsToday = todayVisitorRows.length;
+      const authenticatedUsers = authenticatedUserRows.length;
       const averageSessionDuration = totalSessions > 0
-        ? Math.round(events.reduce((sum, event) => sum + (event.duration ?? 0), 0) / totalSessions / 1000)
+        ? Math.round((durationAggregate._avg.duration ?? 0) / 1000)
         : 0;
-      const conversionSessions = new Set(events.filter((event) => [
-        "course_enrollment_submitted",
-        "submission_created",
-        "course_ticket_download",
-        "submission_ticket_download",
-      ].includes(event.eventType)).map((event) => event.sessionId)).size;
+      const conversionSessions = conversionSessionRows.length;
       const conversionSessionIds = new Set(
         events
-          .filter((event) => ["course_enrollment_submitted", "submission_created"].includes(event.eventType))
+          .filter((event) => enrollmentEventTypes.includes(event.eventType))
           .map((event) => event.sessionId)
       );
       const conversionRate = totalSessions > 0 ? Number(((conversionSessions / totalSessions) * 100).toFixed(1)) : 0;
       const liveEngagement = totalSessions > 0
-        ? Number(((new Set(events.filter((event) => event.eventCategory === "LIVE").map((event) => event.sessionId)).size / totalSessions) * 100).toFixed(1))
+        ? Number(((liveSessionRows.length / totalSessions) * 100).toFixed(1))
         : 0;
-      const ticketShares = events.filter((event) => event.eventType === "ticket_share" || event.eventType === "project_share").length;
-      const coursePageViews = events.filter((event) => event.pageUrl?.includes("/cursos")).length;
-      const projectPageViews = events.filter((event) => event.pageUrl?.includes("/projeto/")).length;
+      const ticketShares = ticketSharesCount;
+      const coursePageViews = coursePageViewsCount;
+      const projectPageViews = projectPageViewsCount;
 
       const byDay = new Map<string, { visitors: Set<string>; sessions: Set<string>; conversions: Set<string> }>();
       const topPagesMap = new Map<string, number>();
@@ -710,6 +788,7 @@ export async function analyticsRoutes(app: FastifyInstance, opts: { env: Env }) 
     });
 
     adminApp.get("/events/export.csv", {
+      config: requireAdminPermission(["DATA_EXPORT"]),
       schema: {
         querystring: analyticsFilterSchema.omit({ limit: true, page: true }).extend({
           limit: z.coerce.number().int().min(100).max(5000).default(1000)
@@ -757,6 +836,18 @@ export async function analyticsRoutes(app: FastifyInstance, opts: { env: Env }) 
         item.duration ?? "",
         item.scrollDepth ?? "",
       ].map(csvEscape).join(","));
+
+      await recordAdminAudit({
+        actorStudentNumber: request.student?.studentNumber ?? request.jury?.phone ?? "unknown",
+        actorRole: request.jury ? "jury_admin" : "admin",
+        action: "data_export.analytics_events_csv",
+        entityType: "AnalyticsEvent",
+        summary: `Exportação CSV de analytics com ${items.length} evento(s).`,
+        metadata: {
+          count: items.length,
+          filters: filter,
+        },
+      });
 
       reply.header("Content-Type", "text/csv; charset=utf-8");
       reply.header("Content-Disposition", `attachment; filename="uor-connect-analytics-${new Date().toISOString().slice(0, 10)}.csv"`);

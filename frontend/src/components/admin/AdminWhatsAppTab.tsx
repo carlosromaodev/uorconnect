@@ -16,6 +16,8 @@ import {
   ShieldCheck,
   Smartphone,
   Trash2,
+  UserCheck,
+  UserMinus,
   Users,
   Wifi,
   X,
@@ -67,6 +69,7 @@ type PlaceholderSuggestion = {
   hint: string;
 };
 
+type WhatsAppPreviewRecipient = WhatsAppRecipientPreviewPayload["recipients"][number];
 type AutomationEventKey = WhatsAppAutomationSetting["eventKey"];
 type AutomationZoneKey = "projects" | "courses" | "announcements";
 
@@ -76,7 +79,10 @@ const defaultAudienceButtons: SmsFilterOptionsPayload["audienceButtons"] = [
   { type: "STUDENT_COURSE", label: "Cursos dos estudantes", total: 0, sendable: 0 },
   { type: "STUDENT_CLASS_OR_COURSE", label: "Turmas + cursos dos estudantes", total: 0, sendable: 0 },
   { type: "COURSE_ENROLLED", label: "Inscritos em cursos", total: 0, sendable: 0 },
+  { type: "SUBMISSION_ENROLLED", label: "Candidatos com submissões", total: 0, sendable: 0 },
+  { type: "COURSE_OR_SUBMISSION_ENROLLED", label: "Cursos + candidaturas", total: 0, sendable: 0 },
   { type: "EXHIBITORS", label: "Expositores", total: 0, sendable: 0 },
+  { type: "GROUP_REPRESENTATIVES", label: "Representantes de grupo", total: 0, sendable: 0 },
   { type: "COURSE_OR_EXHIBITORS", label: "Cursos + expositores", total: 0, sendable: 0 },
   { type: "WINNERS", label: "Vencedores", total: 0, sendable: 0 },
   { type: "SELECTED_STUDENTS", label: "Selecionados manualmente", total: 0, sendable: 0 },
@@ -93,6 +99,7 @@ const audienceHelpers: Record<SmsAudienceType, string> = {
   SUBMISSION_ENROLLED: "Estudantes com candidaturas submetidas.",
   COURSE_OR_SUBMISSION_ENROLLED: "Inscritos em cursos e candidatos numa só audiência.",
   EXHIBITORS: "Candidatos e expositores com submissões registadas.",
+  GROUP_REPRESENTATIVES: "Somente responsáveis/representantes principais de cada grupo ou projeto.",
   COURSE_OR_EXHIBITORS: "Inscritos em cursos e expositores.",
   WINNERS: "Candidaturas marcadas como vencedoras.",
   SELECTED_STUDENTS: "Seleção manual por número de estudante ou telefone.",
@@ -166,7 +173,11 @@ function isStudentCourseAudience(type: SmsAudienceType) {
 }
 
 function isSubmissionAudience(type: SmsAudienceType) {
-  return type === "EXHIBITORS" || type === "COURSE_OR_EXHIBITORS";
+  return type === "SUBMISSION_ENROLLED"
+    || type === "COURSE_OR_SUBMISSION_ENROLLED"
+    || type === "EXHIBITORS"
+    || type === "GROUP_REPRESENTATIVES"
+    || type === "COURSE_OR_EXHIBITORS";
 }
 
 function formatDateLabel(value?: string | null) {
@@ -216,13 +227,37 @@ function normalizeInstanceName(value: string) {
   return value.trim().replace(/\s+/g, "-");
 }
 
-function personalizeForPreview(message: string) {
+function getRecipientDisplayName(recipient: WhatsAppPreviewRecipient) {
+  return recipient.name?.trim() || recipient.studentNumber || recipient.providerTo;
+}
+
+function buildRecipientSearchText(recipient: WhatsAppPreviewRecipient) {
+  return [
+    recipient.name,
+    recipient.studentNumber,
+    recipient.course,
+    recipient.classCode,
+    recipient.phone,
+    recipient.providerTo,
+    ...recipient.sources,
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+}
+
+function personalizeForPreview(message: string, recipient?: WhatsAppPreviewRecipient | null) {
+  const nome = recipient ? getRecipientDisplayName(recipient) : "Estudante";
+  const numero = recipient?.studentNumber || (recipient ? recipient.providerTo : "00000000");
+  const curso = recipient?.course || (recipient ? "Sem curso" : "Curso");
+  const turma = recipient?.classCode || (recipient ? "Sem turma" : "Turma");
+
   return message
-    .replace(/{{\s*nome\s*}}/gi, "Carlos Romão")
-    .replace(/{{\s*numero\s*}}/gi, "20242099")
-    .replace(/{{\s*curso\s*}}/gi, "Engenharia Informática")
-    .replace(/{{\s*turma\s*}}/gi, "TINFM")
-    .replace(/{{\s*colega\s*}}/gi, "Ana Mateus");
+    .replace(/{{\s*nome\s*}}/gi, nome)
+    .replace(/{{\s*numero\s*}}/gi, numero)
+    .replace(/{{\s*curso\s*}}/gi, curso)
+    .replace(/{{\s*turma\s*}}/gi, turma)
+    .replace(/{{\s*colega\s*}}/gi, "Colega");
 }
 
 function ensureArray<T>(value: T[] | null | undefined) {
@@ -347,6 +382,10 @@ export function AdminWhatsAppTab({ courses }: Props) {
   const [previewSearch, setPreviewSearch] = useState("");
   const [previewLoading, setPreviewLoading] = useState(false);
   const [previewPayload, setPreviewPayload] = useState<WhatsAppRecipientPreviewPayload | null>(null);
+  const [recipientListSearch, setRecipientListSearch] = useState("");
+  const [includeProviderTos, setIncludeProviderTos] = useState<string[]>([]);
+  const [excludeProviderTos, setExcludeProviderTos] = useState<string[]>([]);
+  const [focusedProviderTo, setFocusedProviderTo] = useState<string | null>(null);
   const [confirmSendOpen, setConfirmSendOpen] = useState(false);
   const [sending, setSending] = useState(false);
   const [sendResult, setSendResult] = useState<WhatsAppSendResult | null>(null);
@@ -366,7 +405,46 @@ export function AdminWhatsAppTab({ courses }: Props) {
   const selectedInstance = typeof instanceId === "number"
     ? instances.find((item) => item.id === instanceId) ?? null
     : null;
-  const previewMessage = useMemo(() => personalizeForPreview(message), [message]);
+  const previewRecipients = previewPayload?.recipients ?? [];
+  const includeProviderToSet = useMemo(() => new Set(includeProviderTos), [includeProviderTos]);
+  const excludeProviderToSet = useMemo(() => new Set(excludeProviderTos), [excludeProviderTos]);
+  const selectedPreviewRecipients = useMemo(() => previewRecipients.filter((recipient) => (
+    (includeProviderToSet.size === 0 || includeProviderToSet.has(recipient.providerTo)) &&
+    !excludeProviderToSet.has(recipient.providerTo)
+  )), [excludeProviderToSet, includeProviderToSet, previewRecipients]);
+  const activeRecipientTotal = previewPayload
+    ? includeProviderToSet.size > 0
+      ? selectedPreviewRecipients.length
+      : Math.max(previewPayload.totalRecipients - excludeProviderToSet.size, 0)
+    : includeProviderToSet.size > 0
+      ? includeProviderToSet.size
+      : null;
+  const visiblePreviewRecipients = useMemo(() => {
+    const query = recipientListSearch.trim().toLowerCase();
+    if (!query) return previewRecipients;
+    return previewRecipients.filter((recipient) => buildRecipientSearchText(recipient).includes(query));
+  }, [previewRecipients, recipientListSearch]);
+  const selectedContextRecipient = useMemo(() => {
+    if (!previewRecipients.length) return null;
+
+    if (focusedProviderTo) {
+      const focused = selectedPreviewRecipients.find((recipient) => recipient.providerTo === focusedProviderTo);
+      if (focused) return focused;
+    }
+
+    if (includeProviderToSet.size === 1) {
+      const providerTo = Array.from(includeProviderToSet)[0];
+      const selected = selectedPreviewRecipients.find((recipient) => recipient.providerTo === providerTo);
+      if (selected) return selected;
+    }
+
+    if (activeRecipientTotal === 1 && selectedPreviewRecipients.length === 1) {
+      return selectedPreviewRecipients[0];
+    }
+
+    return null;
+  }, [activeRecipientTotal, focusedProviderTo, includeProviderToSet, previewRecipients, selectedPreviewRecipients]);
+  const previewMessage = useMemo(() => personalizeForPreview(message, selectedContextRecipient), [message, selectedContextRecipient]);
   const integrationReady = Boolean(overview?.integration.configured);
   const connectedCount = instances.filter((item) => isConnectedInstance(item.status)).length;
   const enabledAutomationCount = automations.filter((item) => automationDrafts[item.eventKey]?.enabled ?? item.enabled).length;
@@ -448,7 +526,7 @@ export function AdminWhatsAppTab({ courses }: Props) {
     }
   }, [activeAutomationKey, automations]);
 
-  const buildAudiencePayload = (): SmsAudienceInput => {
+  const buildAudiencePayload = (options: { withRecipientSelection?: boolean } = {}): SmsAudienceInput => {
     const payload: SmsAudienceInput = { type: audienceType };
 
     if (isStudentClassAudience(audienceType)) payload.studentClassCodes = selectedStudentClassCodes;
@@ -461,6 +539,10 @@ export function AdminWhatsAppTab({ courses }: Props) {
     }
     if (cookieMarketingOptIn) payload.cookieMarketingOptIn = true;
     if (requireRecentActivity && activeWithinDays > 0) payload.activeWithinDays = activeWithinDays;
+    if (options.withRecipientSelection !== false) {
+      if (includeProviderTos.length) payload.includeProviderTos = includeProviderTos;
+      if (excludeProviderTos.length) payload.excludeProviderTos = excludeProviderTos;
+    }
 
     return payload;
   };
@@ -705,8 +787,87 @@ export function AdminWhatsAppTab({ courses }: Props) {
     }
   };
 
+  const resetRecipientSelection = useCallback(() => {
+    setRecipientListSearch("");
+    setIncludeProviderTos([]);
+    setExcludeProviderTos([]);
+    setFocusedProviderTo(null);
+  }, []);
+
+  const resetAudienceValidation = useCallback(() => {
+    setPreviewPayload(null);
+    setSendResult(null);
+    resetRecipientSelection();
+  }, [resetRecipientSelection]);
+
+  const handleToggleRecipientSelection = (recipient: WhatsAppPreviewRecipient) => {
+    setFocusedProviderTo(recipient.providerTo);
+
+    if (includeProviderTos.length > 0) {
+      setIncludeProviderTos((current) => {
+        if (current.includes(recipient.providerTo)) {
+          if (current.length === 1) {
+            toast.warning("Mantém pelo menos um destinatário ou usa 'Usar todos'.");
+            return current;
+          }
+          return current.filter((providerTo) => providerTo !== recipient.providerTo);
+        }
+
+        return Array.from(new Set([...current, recipient.providerTo]));
+      });
+      setExcludeProviderTos((current) => current.filter((providerTo) => recipient.providerTo !== providerTo));
+      return;
+    }
+
+    setExcludeProviderTos((current) => current.includes(recipient.providerTo)
+      ? current.filter((providerTo) => providerTo !== recipient.providerTo)
+      : Array.from(new Set([...current, recipient.providerTo])));
+  };
+
+  const handleOnlyRecipient = (recipient: WhatsAppPreviewRecipient) => {
+    setIncludeProviderTos([recipient.providerTo]);
+    setExcludeProviderTos([]);
+    setFocusedProviderTo(recipient.providerTo);
+  };
+
+  const handleSelectVisibleRecipients = () => {
+    const providerTos = visiblePreviewRecipients.map((recipient) => recipient.providerTo);
+    if (!providerTos.length) {
+      toast.error("Não há destinatários visíveis para selecionar.");
+      return;
+    }
+
+    setIncludeProviderTos(Array.from(new Set(providerTos)));
+    setExcludeProviderTos([]);
+    setFocusedProviderTo(providerTos.length === 1 ? providerTos[0] : null);
+    toast.success(`${providerTos.length} destinatário(s) visível(is) selecionado(s).`);
+  };
+
+  const handleRemoveVisibleRecipients = () => {
+    const providerTos = visiblePreviewRecipients.map((recipient) => recipient.providerTo);
+    if (!providerTos.length) {
+      toast.error("Não há destinatários visíveis para remover.");
+      return;
+    }
+
+    if (includeProviderTos.length > 0) {
+      setIncludeProviderTos((current) => {
+        const next = current.filter((providerTo) => !providerTos.includes(providerTo));
+        if (!next.length) {
+          toast.warning("A seleção ficaria vazia. Mantém pelo menos um destinatário.");
+          return current;
+        }
+        return next;
+      });
+    } else {
+      setExcludeProviderTos((current) => Array.from(new Set([...current, ...providerTos])));
+    }
+
+    if (focusedProviderTo && providerTos.includes(focusedProviderTo)) setFocusedProviderTo(null);
+  };
+
   const handlePreview = async () => {
-    const audience = buildAudiencePayload();
+    const audience = buildAudiencePayload({ withRecipientSelection: false });
     if (isStudentClassAudience(audience.type) && !(audience.studentClassCodes?.length)) {
       toast.error("Seleciona pelo menos uma turma.");
       return;
@@ -718,6 +879,7 @@ export function AdminWhatsAppTab({ courses }: Props) {
 
     setPreviewLoading(true);
     setPreviewPayload(null);
+    resetRecipientSelection();
     try {
       const payload = await api.whatsapp.previewRecipients({
         audience,
@@ -739,6 +901,11 @@ export function AdminWhatsAppTab({ courses }: Props) {
       return;
     }
 
+    if (typeof activeRecipientTotal === "number" && activeRecipientTotal <= 0) {
+      toast.error("A seleção atual não tem destinatários. Usa todos ou escolhe pelo menos um contacto.");
+      return;
+    }
+
     setConfirmSendOpen(true);
   };
 
@@ -756,6 +923,7 @@ export function AdminWhatsAppTab({ courses }: Props) {
     setSelectedStudentNumbersText("");
     setSendResult(null);
     setPreviewPayload(null);
+    resetRecipientSelection();
     toast.success(`${failedPhones.length} telefone(s) falhado(s) copiados para reenvio.`);
   };
 
@@ -797,6 +965,7 @@ export function AdminWhatsAppTab({ courses }: Props) {
     setSelectedPhonesText(failedPhones.join("\n"));
     setSelectedStudentNumbersText("");
     setPreviewPayload(null);
+    resetRecipientSelection();
     setExpandedCampaignId(null);
     toast.success(`${failedPhones.length} telefone(s) preparados para reenvio com a mesma mensagem.`);
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -818,6 +987,7 @@ export function AdminWhatsAppTab({ courses }: Props) {
         audience: buildAudiencePayload(),
         instanceId: typeof instanceId === "number" ? instanceId : undefined,
         delay: delay > 0 ? delay : undefined,
+        approvalToken: previewPayload?.approvalToken,
         media: documentUrl.trim()
           ? {
             url: documentUrl.trim(),
@@ -1404,7 +1574,11 @@ export function AdminWhatsAppTab({ courses }: Props) {
                     type="button"
                     variant={audienceType === button.type ? "default" : "outline"}
                     className="h-auto min-h-[56px] justify-between gap-2 whitespace-normal rounded-xl px-3 py-2 text-left"
-                    onClick={() => setAudienceType(button.type)}
+                    onClick={() => {
+                      if (button.type === audienceType) return;
+                      setAudienceType(button.type);
+                      resetAudienceValidation();
+                    }}
                   >
                     <span className="flex min-w-0 flex-1 flex-col items-start">
                       <span className="text-sm leading-5">{button.label}</span>
@@ -1424,9 +1598,12 @@ export function AdminWhatsAppTab({ courses }: Props) {
                       type="button"
                       variant={selectedStudentClassCodes.includes(button.classCode) ? "default" : "outline"}
                       className="h-auto min-h-[48px] justify-between gap-2 whitespace-normal rounded-lg px-3 py-2 text-left"
-                      onClick={() => setSelectedStudentClassCodes((current) => current.includes(button.classCode)
-                        ? current.filter((classCode) => classCode !== button.classCode)
-                        : [...current, button.classCode])}
+                      onClick={() => {
+                        setSelectedStudentClassCodes((current) => current.includes(button.classCode)
+                          ? current.filter((classCode) => classCode !== button.classCode)
+                          : [...current, button.classCode]);
+                        resetAudienceValidation();
+                      }}
                     >
                       <span className="min-w-0 flex-1 break-words">{button.classCode}</span>
                       <span className="text-xs opacity-80">{button.sendable}</span>
@@ -1443,9 +1620,12 @@ export function AdminWhatsAppTab({ courses }: Props) {
                       type="button"
                       variant={selectedStudentCourses.includes(button.course) ? "default" : "outline"}
                       className="h-auto min-h-[48px] justify-between gap-2 whitespace-normal rounded-lg px-3 py-2 text-left"
-                      onClick={() => setSelectedStudentCourses((current) => current.includes(button.course)
-                        ? current.filter((course) => course !== button.course)
-                        : [...current, button.course])}
+                      onClick={() => {
+                        setSelectedStudentCourses((current) => current.includes(button.course)
+                          ? current.filter((course) => course !== button.course)
+                          : [...current, button.course]);
+                        resetAudienceValidation();
+                      }}
                     >
                       <span className="min-w-0 flex-1 break-words">{button.course}</span>
                       <span className="text-xs opacity-80">{button.sendable}</span>
@@ -1461,9 +1641,12 @@ export function AdminWhatsAppTab({ courses }: Props) {
                       <input
                         type="checkbox"
                         checked={selectedCourseIds.includes(course.id)}
-                        onChange={(event) => setSelectedCourseIds((current) => event.target.checked
-                          ? [...current, course.id]
-                          : current.filter((id) => id !== course.id))}
+                        onChange={(event) => {
+                          setSelectedCourseIds((current) => event.target.checked
+                            ? [...current, course.id]
+                            : current.filter((id) => id !== course.id));
+                          resetAudienceValidation();
+                        }}
                       />
                       <span className="min-w-0 truncate">{course.name}</span>
                     </label>
@@ -1479,9 +1662,12 @@ export function AdminWhatsAppTab({ courses }: Props) {
                       type="button"
                       variant={selectedStatuses.includes(status) ? "default" : "outline"}
                       size="sm"
-                      onClick={() => setSelectedStatuses((current) => current.includes(status)
-                        ? current.filter((item) => item !== status)
-                        : [...current, status])}
+                      onClick={() => {
+                        setSelectedStatuses((current) => current.includes(status)
+                          ? current.filter((item) => item !== status)
+                          : [...current, status]);
+                        resetAudienceValidation();
+                      }}
                     >
                       {status}
                     </Button>
@@ -1495,7 +1681,10 @@ export function AdminWhatsAppTab({ courses }: Props) {
                     <span className="text-xs font-semibold uppercase text-muted-foreground">Números de estudante</span>
                     <Textarea
                       value={selectedStudentNumbersText}
-                      onChange={(event) => setSelectedStudentNumbersText(event.target.value)}
+                      onChange={(event) => {
+                        setSelectedStudentNumbersText(event.target.value);
+                        resetAudienceValidation();
+                      }}
                       rows={4}
                       placeholder="20242099, 20242100"
                     />
@@ -1504,7 +1693,10 @@ export function AdminWhatsAppTab({ courses }: Props) {
                     <span className="text-xs font-semibold uppercase text-muted-foreground">Telefones</span>
                     <Textarea
                       value={selectedPhonesText}
-                      onChange={(event) => setSelectedPhonesText(event.target.value)}
+                      onChange={(event) => {
+                        setSelectedPhonesText(event.target.value);
+                        resetAudienceValidation();
+                      }}
                       rows={4}
                       placeholder="244951203163"
                     />
@@ -1537,11 +1729,23 @@ export function AdminWhatsAppTab({ courses }: Props) {
 
               <div className="grid gap-3 sm:grid-cols-2">
                 <label className="flex min-h-[52px] items-center gap-3 rounded-xl border border-border/60 bg-background px-3 py-2 text-sm">
-                  <Switch checked={cookieMarketingOptIn} onCheckedChange={setCookieMarketingOptIn} />
+                  <Switch
+                    checked={cookieMarketingOptIn}
+                    onCheckedChange={(checked) => {
+                      setCookieMarketingOptIn(checked);
+                      resetAudienceValidation();
+                    }}
+                  />
                   <span className="leading-5">Exigir consentimento de marketing</span>
                 </label>
                 <label className="flex min-h-[52px] flex-wrap items-center gap-2 rounded-xl border border-border/60 bg-background px-3 py-2 text-sm">
-                  <Switch checked={requireRecentActivity} onCheckedChange={setRequireRecentActivity} />
+                  <Switch
+                    checked={requireRecentActivity}
+                    onCheckedChange={(checked) => {
+                      setRequireRecentActivity(checked);
+                      resetAudienceValidation();
+                    }}
+                  />
                   <span>Ativos nos últimos</span>
                   <Input
                     type="number"
@@ -1549,7 +1753,10 @@ export function AdminWhatsAppTab({ courses }: Props) {
                     max={365}
                     value={activeWithinDays}
                     disabled={!requireRecentActivity}
-                    onChange={(event) => setActiveWithinDays(Number(event.target.value) || 30)}
+                    onChange={(event) => {
+                      setActiveWithinDays(Number(event.target.value) || 30);
+                      resetAudienceValidation();
+                    }}
                     className="h-8 w-20"
                   />
                   <span>dias</span>
@@ -1570,11 +1777,34 @@ export function AdminWhatsAppTab({ courses }: Props) {
           <CardContent className="space-y-5">
             <label className="space-y-2">
               <span className="text-xs font-semibold uppercase text-muted-foreground">Pesquisar na audiência</span>
-              <Input value={previewSearch} onChange={(event) => setPreviewSearch(event.target.value)} placeholder="Nome, número ou curso" />
+              <Input
+                value={previewSearch}
+                onChange={(event) => {
+                  setPreviewSearch(event.target.value);
+                  setPreviewPayload(null);
+                  resetRecipientSelection();
+                }}
+                placeholder="Nome, número ou curso"
+              />
             </label>
 
             <div className="rounded-xl border border-border/60 bg-muted/20 p-4">
-              <p className="text-xs font-semibold uppercase text-muted-foreground">Prévia da mensagem</p>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-xs font-semibold uppercase text-muted-foreground">Prévia da mensagem</p>
+                {selectedContextRecipient ? (
+                  <Badge variant="outline" className="border-emerald-500/25 bg-emerald-500/10 text-emerald-700">
+                    Focado em {getRecipientDisplayName(selectedContextRecipient)}
+                  </Badge>
+                ) : (
+                  <Badge variant="secondary">Exemplo geral</Badge>
+                )}
+              </div>
+              {selectedContextRecipient ? (
+                <div className="mt-3 rounded-lg border border-emerald-500/15 bg-white px-3 py-2 text-xs text-muted-foreground">
+                  <p className="font-medium text-foreground">{getRecipientDisplayName(selectedContextRecipient)}</p>
+                  <p>{selectedContextRecipient.phone} · {selectedContextRecipient.course || "Sem curso"} · {selectedContextRecipient.classCode || "Sem turma"}</p>
+                </div>
+              ) : null}
               <p className="mt-2 min-h-[96px] whitespace-pre-wrap text-sm leading-6 text-foreground">{previewMessage}</p>
             </div>
 
@@ -1591,7 +1821,7 @@ export function AdminWhatsAppTab({ courses }: Props) {
 
             {previewPayload ? (
               <div className="space-y-3">
-                <div className="grid gap-3 sm:grid-cols-3">
+                <div className="grid gap-3 sm:grid-cols-2">
                   <div className="rounded-xl border border-border/60 p-3">
                     <p className="text-xs uppercase text-muted-foreground">Filtrados</p>
                     <p className="mt-1 text-lg font-semibold">{previewPayload.filteredCandidates}</p>
@@ -1600,19 +1830,140 @@ export function AdminWhatsAppTab({ courses }: Props) {
                     <p className="text-xs uppercase text-muted-foreground">Válidos</p>
                     <p className="mt-1 text-lg font-semibold">{previewPayload.totalRecipients}</p>
                   </div>
+                  <div className="rounded-xl border border-emerald-500/20 bg-emerald-500/[0.04] p-3">
+                    <p className="text-xs uppercase text-emerald-700/75">Selecionados</p>
+                    <p className="mt-1 text-lg font-semibold text-emerald-700">{activeRecipientTotal ?? previewPayload.totalRecipients}</p>
+                  </div>
                   <div className="rounded-xl border border-border/60 p-3">
                     <p className="text-xs uppercase text-muted-foreground">Ignorados</p>
                     <p className="mt-1 text-lg font-semibold">{previewPayload.skippedCount}</p>
                   </div>
                 </div>
 
-                <div className="max-h-[260px] space-y-2 overflow-y-auto rounded-xl border border-border/60 p-3">
-                  {previewPayload.recipients.slice(0, 12).map((recipient) => (
-                    <div key={`${recipient.providerTo}-${recipient.studentNumber ?? "manual"}`} className="rounded-lg border border-border/50 px-3 py-2">
-                      <p className="text-sm font-medium">{recipient.name || recipient.studentNumber || recipient.providerTo}</p>
-                      <p className="text-xs text-muted-foreground">{recipient.phone} · {recipient.course || "Sem curso"}</p>
+                <div className="rounded-xl border border-border/60 p-3">
+                  <div className="flex flex-col gap-3">
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div>
+                        <p className="text-xs font-semibold uppercase text-muted-foreground">Destinatários carregados</p>
+                        <p className="text-xs text-muted-foreground">
+                          {previewRecipients.length} visível(is)
+                          {previewPayload.totalRecipients > previewRecipients.length
+                            ? ` de ${previewPayload.totalRecipients} válido(s)`
+                            : ""}
+                        </p>
+                      </div>
+                      <div className="flex flex-wrap gap-2">
+                        <Button type="button" variant="outline" size="sm" className="rounded-lg" onClick={resetRecipientSelection}>
+                          Usar todos
+                        </Button>
+                        <Button type="button" variant="outline" size="sm" className="rounded-lg" onClick={handleSelectVisibleRecipients}>
+                          <UserCheck className="mr-1.5 h-3.5 w-3.5" />
+                          Só visíveis
+                        </Button>
+                        <Button type="button" variant="outline" size="sm" className="rounded-lg" onClick={handleRemoveVisibleRecipients}>
+                          <UserMinus className="mr-1.5 h-3.5 w-3.5" />
+                          Remover visíveis
+                        </Button>
+                      </div>
                     </div>
-                  ))}
+
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+                      <Input
+                        value={recipientListSearch}
+                        onChange={(event) => setRecipientListSearch(event.target.value)}
+                        placeholder="Filtrar lista validada por nome, número, curso ou telefone"
+                        className="pl-9"
+                      />
+                    </div>
+
+                    {(includeProviderTos.length > 0 || excludeProviderTos.length > 0) ? (
+                      <div className="flex flex-wrap gap-2 text-xs">
+                        {includeProviderTos.length > 0 ? (
+                          <Badge variant="outline" className="border-emerald-500/25 bg-emerald-500/10 text-emerald-700">
+                            Seleção fixa: {includeProviderTos.length}
+                          </Badge>
+                        ) : null}
+                        {excludeProviderTos.length > 0 ? (
+                          <Badge variant="outline" className="border-rose-500/25 bg-rose-500/10 text-rose-700">
+                            Removidos: {excludeProviderTos.length}
+                          </Badge>
+                        ) : null}
+                      </div>
+                    ) : null}
+
+                    <div className="max-h-[360px] space-y-2 overflow-y-auto pr-1">
+                      {visiblePreviewRecipients.length ? visiblePreviewRecipients.map((recipient) => {
+                        const checked = includeProviderToSet.size > 0
+                          ? includeProviderToSet.has(recipient.providerTo)
+                          : !excludeProviderToSet.has(recipient.providerTo);
+                        const focused = selectedContextRecipient?.providerTo === recipient.providerTo;
+
+                        return (
+                          <div
+                            key={`${recipient.providerTo}-${recipient.studentNumber ?? "manual"}`}
+                            className={`rounded-lg border px-3 py-2 transition-colors ${
+                              checked
+                                ? focused
+                                  ? "border-emerald-500/35 bg-emerald-500/[0.06]"
+                                  : "border-border/60 bg-white"
+                                : "border-rose-500/20 bg-rose-500/[0.04] opacity-75"
+                            }`}
+                          >
+                            <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                              <label className="flex min-w-0 flex-1 items-start gap-2 text-sm">
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={() => handleToggleRecipientSelection(recipient)}
+                                  className="mt-1"
+                                  aria-label={`Selecionar ${getRecipientDisplayName(recipient)}`}
+                                />
+                                <span className="min-w-0">
+                                  <span className="block truncate font-medium text-foreground">{getRecipientDisplayName(recipient)}</span>
+                                  <span className="block text-xs text-muted-foreground">
+                                    {recipient.phone} · {recipient.course || "Sem curso"} · {recipient.classCode || "Sem turma"}
+                                  </span>
+                                  <span className="mt-1 flex flex-wrap gap-1">
+                                    {recipient.studentNumber ? (
+                                      <Badge variant="secondary" className="h-5 rounded-md px-1.5 text-[10px]">{recipient.studentNumber}</Badge>
+                                    ) : null}
+                                    {recipient.sources.slice(0, 2).map((source) => (
+                                      <Badge key={source} variant="outline" className="h-5 rounded-md px-1.5 text-[10px]">{source}</Badge>
+                                    ))}
+                                  </span>
+                                </span>
+                              </label>
+                              <div className="flex shrink-0 flex-wrap gap-1.5">
+                                <Button
+                                  type="button"
+                                  variant={focused ? "default" : "outline"}
+                                  size="sm"
+                                  className="h-8 rounded-lg px-2 text-xs"
+                                  onClick={() => setFocusedProviderTo(recipient.providerTo)}
+                                >
+                                  Focar
+                                </Button>
+                                <Button
+                                  type="button"
+                                  variant="outline"
+                                  size="sm"
+                                  className="h-8 rounded-lg px-2 text-xs"
+                                  onClick={() => handleOnlyRecipient(recipient)}
+                                >
+                                  Só este
+                                </Button>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      }) : (
+                        <div className="rounded-lg border border-dashed border-border/70 bg-muted/20 px-3 py-4 text-center text-sm text-muted-foreground">
+                          Nenhum destinatário encontrado nesta lista validada.
+                        </div>
+                      )}
+                    </div>
+                  </div>
                 </div>
               </div>
             ) : (
@@ -1711,7 +2062,7 @@ export function AdminWhatsAppTab({ courses }: Props) {
                 <p className="mt-2 text-sm font-semibold text-foreground">{selectedAudienceButton?.label ?? audienceType}</p>
                 <p className="mt-1 text-xs text-muted-foreground">
                   {previewPayload
-                    ? `${previewPayload.totalRecipients} contactos válidos após a validação`
+                    ? `${activeRecipientTotal ?? previewPayload.totalRecipients} contacto(s) selecionado(s) após a validação`
                     : `${selectedAudienceButton?.sendable ?? 0} contactos válidos na contagem base`}
                 </p>
               </div>

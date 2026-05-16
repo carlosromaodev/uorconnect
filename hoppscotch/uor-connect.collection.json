@@ -1,0 +1,910 @@
+{
+  "v": 6,
+  "id": "uorconnect_critical_flows",
+  "name": "UOR Connect - Fluxos Criticos",
+  "folders": [
+    {
+      "v": 6,
+      "id": "folder_uorconnect_001",
+      "name": "00 Sessao e Saude",
+      "folders": [],
+      "requests": [
+        {
+          "v": "11",
+          "name": "Health check",
+          "method": "GET",
+          "endpoint": "<<apiBase>>/health",
+          "params": [],
+          "headers": [],
+          "preRequestScript": "",
+          "testScript": "pw.test(\"API responde\", () => { if (pw.response.status !== 200) throw new Error(\"Esperado 200, recebido \" + pw.response.status); const body = typeof pw.response.body === \"string\" ? JSON.parse(pw.response.body) : pw.response.body; if (body.status !== \"ok\") throw new Error(\"Health sem status ok\"); });",
+          "auth": {
+            "authType": "none",
+            "authActive": false
+          },
+          "body": {
+            "contentType": null,
+            "body": null
+          },
+          "requestVariables": [],
+          "responses": {}
+        },
+        {
+          "v": "11",
+          "name": "Login estudante UOR",
+          "method": "POST",
+          "endpoint": "<<apiBase>>/auth/login",
+          "params": [],
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json",
+              "active": true,
+              "description": ""
+            }
+          ],
+          "preRequestScript": "",
+          "testScript": "pw.test(\"login UOR devolve token\", () => { if (pw.response.status !== 200) throw new Error(\"Login UOR falhou: \" + pw.response.status); const body = typeof pw.response.body === \"string\" ? JSON.parse(pw.response.body) : pw.response.body; if (!body.token) throw new Error(\"Token de estudante ausente\"); pw.env.set(\"studentToken\", body.token); });",
+          "auth": {
+            "authType": "none",
+            "authActive": false
+          },
+          "body": {
+            "contentType": "application/json",
+            "body": "{\n  \"studentNumber\": \"<<studentNumber>>\",\n  \"password\": \"<<studentPassword>>\",\n  \"provider\": \"uor\",\n  \"origin\": \"uorconnect\",\n  \"identifierType\": \"studentNumber\"\n}"
+          },
+          "requestVariables": [],
+          "responses": {}
+        },
+        {
+          "v": "11",
+          "name": "Login expositor UOR",
+          "method": "POST",
+          "endpoint": "<<apiBase>>/auth/login",
+          "params": [],
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json",
+              "active": true,
+              "description": ""
+            }
+          ],
+          "preRequestScript": "",
+          "testScript": "pw.test(\"login expositor devolve token\", () => { if (pw.response.status !== 200) throw new Error(\"Login expositor falhou: \" + pw.response.status); const body = typeof pw.response.body === \"string\" ? JSON.parse(pw.response.body) : pw.response.body; if (!body.token) throw new Error(\"Token expositor ausente\"); pw.env.set(\"exhibitorToken\", body.token); });",
+          "auth": {
+            "authType": "none",
+            "authActive": false
+          },
+          "body": {
+            "contentType": "application/json",
+            "body": "{\n  \"studentNumber\": \"<<exhibitorNumber>>\",\n  \"password\": \"<<exhibitorPassword>>\",\n  \"provider\": \"uor\",\n  \"origin\": \"uorconnect\",\n  \"identifierType\": \"studentNumber\"\n}"
+          },
+          "requestVariables": [],
+          "responses": {}
+        },
+        {
+          "v": "11",
+          "name": "Login estudante ISPTEC",
+          "method": "POST",
+          "endpoint": "<<apiBase>>/auth/login",
+          "params": [],
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json",
+              "active": true,
+              "description": ""
+            }
+          ],
+          "preRequestScript": "",
+          "testScript": "pw.test(\"login ISPTEC devolve token\", () => { if (pw.response.status !== 200) throw new Error(\"Login ISPTEC falhou: \" + pw.response.status); const body = typeof pw.response.body === \"string\" ? JSON.parse(pw.response.body) : pw.response.body; if (!body.token) throw new Error(\"Token ISPTEC ausente\"); pw.env.set(\"isptecToken\", body.token); });",
+          "auth": {
+            "authType": "none",
+            "authActive": false
+          },
+          "body": {
+            "contentType": "application/json",
+            "body": "{\n  \"studentNumber\": \"<<isptecStudentNumber>>\",\n  \"password\": \"<<isptecPassword>>\",\n  \"provider\": \"isptec\",\n  \"origin\": \"uorconnect\",\n  \"identifierType\": \"studentNumber\"\n}"
+          },
+          "requestVariables": [],
+          "responses": {}
+        },
+        {
+          "v": "11",
+          "name": "Login admin",
+          "method": "POST",
+          "endpoint": "<<apiBase>>/auth/login",
+          "params": [],
+          "headers": [
+            {
+              "key": "Content-Type",
+              "value": "application/json",
+              "active": true,
+              "description": ""
+            }
+          ],
+          "preRequestScript": "",
+          "testScript": "pw.test(\"login admin devolve token\", () => { if (pw.response.status !== 200) throw new Error(\"Login admin falhou: \" + pw.response.status); const body = typeof pw.response.body === \"string\" ? JSON.parse(pw.response.body) : pw.response.body; if (!body.token) throw new Error(\"Token admin ausente\"); pw.env.set(\"adminToken\", body.token); });",
+          "auth": {
+            "authType": "none",
+            "authActive": false
+          },
+          "body": {
+            "contentType": "application/json",
+            "body": "{\n  \"studentNumber\": \"<<adminStudentNumber>>\",\n  \"password\": \"<<adminPassword>>\",\n  \"provider\": \"uor\",\n  \"origin\": \"uorconnect\",\n  \"identifierType\": \"studentNumber\"\n}"
+          },
+          "requestVariables": [],
+          "responses": {}
+        },
+        {
+          "v": "11",
+          "name": "Perfil autenticado",
+          "method": "GET",
+          "endpoint": "<<apiBase>>/auth/me",
+          "params": [],
+          "headers": [
+            {
+              "key": "Authorization",
+              "value": "Bearer <<studentToken>>",
+              "active": true,
+              "description": ""
+            }
+          ],
+          "preRequestScript": "",
+          "testScript": "pw.test(\"perfil do estudante autenticado\", () => { if (pw.response.status !== 200) throw new Error(\"Perfil falhou: \" + pw.response.status); const body = typeof pw.response.body === \"string\" ? JSON.parse(pw.response.body) : pw.response.body; if (!body.studentNumber) throw new Error(\"Perfil sem numero de estudante\"); });",
+          "auth": {
+            "authType": "none",
+            "authActive": false
+          },
+          "body": {
+            "contentType": null,
+            "body": null
+          },
+          "requestVariables": [],
+          "responses": {}
+        }
+      ],
+      "auth": {
+        "authType": "none",
+        "authActive": true
+      },
+      "headers": [],
+      "_ref_id": "coll_uorconnect_002"
+    },
+    {
+      "v": 6,
+      "id": "folder_uorconnect_003",
+      "name": "01 Estudante e Minha Area",
+      "folders": [],
+      "requests": [
+        {
+          "v": "11",
+          "name": "Minha Area - submissoes",
+          "method": "GET",
+          "endpoint": "<<apiBase>>/submissions/mine",
+          "params": [],
+          "headers": [
+            {
+              "key": "Authorization",
+              "value": "Bearer <<studentToken>>",
+              "active": true,
+              "description": ""
+            }
+          ],
+          "preRequestScript": "",
+          "testScript": "pw.test(\"submissoes do estudante carregam\", () => { if (pw.response.status !== 200) throw new Error(\"Submissoes falharam: \" + pw.response.status); const body = typeof pw.response.body === \"string\" ? JSON.parse(pw.response.body) : pw.response.body; if (!Array.isArray(body)) throw new Error(\"Resposta de submissoes nao e lista\"); });",
+          "auth": {
+            "authType": "none",
+            "authActive": false
+          },
+          "body": {
+            "contentType": null,
+            "body": null
+          },
+          "requestVariables": [],
+          "responses": {}
+        },
+        {
+          "v": "11",
+          "name": "Minha Area - passe PDF",
+          "method": "GET",
+          "endpoint": "<<apiBase>>/auth/me/pass.pdf",
+          "params": [],
+          "headers": [
+            {
+              "key": "Authorization",
+              "value": "Bearer <<studentToken>>",
+              "active": true,
+              "description": ""
+            }
+          ],
+          "preRequestScript": "",
+          "testScript": "pw.test(\"passe PDF responde ou exige perfil completo\", () => { if (![200, 400, 404].includes(pw.response.status)) throw new Error(\"Passe PDF com status inesperado: \" + pw.response.status); });",
+          "auth": {
+            "authType": "none",
+            "authActive": false
+          },
+          "body": {
+            "contentType": null,
+            "body": null
+          },
+          "requestVariables": [],
+          "responses": {}
+        },
+        {
+          "v": "11",
+          "name": "Certificados - meus",
+          "method": "GET",
+          "endpoint": "<<apiBase>>/certificates/mine",
+          "params": [],
+          "headers": [
+            {
+              "key": "Authorization",
+              "value": "Bearer <<studentToken>>",
+              "active": true,
+              "description": ""
+            }
+          ],
+          "preRequestScript": "",
+          "testScript": "pw.test(\"certificados do estudante carregam\", () => { if (pw.response.status !== 200) throw new Error(\"Certificados falharam: \" + pw.response.status); const body = typeof pw.response.body === \"string\" ? JSON.parse(pw.response.body) : pw.response.body; if (!Array.isArray(body)) throw new Error(\"Certificados nao retornaram lista\"); });",
+          "auth": {
+            "authType": "none",
+            "authActive": false
+          },
+          "body": {
+            "contentType": null,
+            "body": null
+          },
+          "requestVariables": [],
+          "responses": {}
+        },
+        {
+          "v": "11",
+          "name": "Certificados - PDF",
+          "method": "GET",
+          "endpoint": "<<apiBase>>/certificates/<<certificateId>>/pdf",
+          "params": [],
+          "headers": [
+            {
+              "key": "Authorization",
+              "value": "Bearer <<studentToken>>",
+              "active": true,
+              "description": ""
+            }
+          ],
+          "preRequestScript": "",
+          "testScript": "pw.test(\"PDF de certificado tem resposta controlada\", () => { if (![200, 403, 404].includes(pw.response.status)) throw new Error(\"PDF certificado com status inesperado: \" + pw.response.status); });",
+          "auth": {
+            "authType": "none",
+            "authActive": false
+          },
+          "body": {
+            "contentType": null,
+            "body": null
+          },
+          "requestVariables": [],
+          "responses": {}
+        }
+      ],
+      "auth": {
+        "authType": "none",
+        "authActive": true
+      },
+      "headers": [],
+      "_ref_id": "coll_uorconnect_004"
+    },
+    {
+      "v": 6,
+      "id": "folder_uorconnect_005",
+      "name": "02 Votacao QR e Desafio do Expositor",
+      "folders": [],
+      "requests": [
+        {
+          "v": "11",
+          "name": "Projetos - listar aprovados",
+          "method": "GET",
+          "endpoint": "<<apiBase>>/submissions/paged?page=1&limit=10",
+          "params": [],
+          "headers": [
+            {
+              "key": "Authorization",
+              "value": "Bearer <<adminToken>>",
+              "active": true,
+              "description": ""
+            }
+          ],
+          "preRequestScript": "",
+          "testScript": "pw.test(\"listagem admin de projetos carregou\", () => { if (pw.response.status !== 200) throw new Error(\"Listagem de projetos falhou: \" + pw.response.status); const body = typeof pw.response.body === \"string\" ? JSON.parse(pw.response.body) : pw.response.body; if (!Array.isArray(body.items)) throw new Error(\"Listagem paged sem items\"); });",
+          "auth": {
+            "authType": "none",
+            "authActive": false
+          },
+          "body": {
+            "contentType": null,
+            "body": null
+          },
+          "requestVariables": [],
+          "responses": {}
+        },
+        {
+          "v": "11",
+          "name": "Desafio expositor - meu mapa",
+          "method": "GET",
+          "endpoint": "<<apiBase>>/submissions/exhibitor-passport/mine",
+          "params": [],
+          "headers": [
+            {
+              "key": "Authorization",
+              "value": "Bearer <<exhibitorToken>>",
+              "active": true,
+              "description": ""
+            }
+          ],
+          "preRequestScript": "",
+          "testScript": "pw.test(\"mapa do expositor responde com projeto ativo\", () => { if (pw.response.status !== 200) throw new Error(\"Mapa expositor falhou: \" + pw.response.status); const body = typeof pw.response.body === \"string\" ? JSON.parse(pw.response.body) : pw.response.body; if (body.hasExhibitorPassport !== true) throw new Error(\"Expositor sem passaporte ativo\"); if (!body.activeProject || !Array.isArray(body.projects) || body.projects.length === 0) throw new Error(\"Mapa sem projeto ativo\"); if (!Array.isArray(body.activeProject.missions) || body.activeProject.missions.length < 20) throw new Error(\"Mapa com poucas missoes\"); });",
+          "auth": {
+            "authType": "none",
+            "authActive": false
+          },
+          "body": {
+            "contentType": null,
+            "body": null
+          },
+          "requestVariables": [],
+          "responses": {}
+        },
+        {
+          "v": "11",
+          "name": "Votacao por QR do expositor",
+          "method": "POST",
+          "endpoint": "<<apiBase>>/interactions/vote",
+          "params": [],
+          "headers": [
+            {
+              "key": "Authorization",
+              "value": "Bearer <<studentToken>>",
+              "active": true,
+              "description": ""
+            },
+            {
+              "key": "Content-Type",
+              "value": "application/json",
+              "active": true,
+              "description": ""
+            }
+          ],
+          "preRequestScript": "",
+          "testScript": "pw.test(\"voto QR e aceite ou recusado com regra clara\", () => { if (![200, 403, 404].includes(pw.response.status)) throw new Error(\"Voto QR com status inesperado: \" + pw.response.status); if (pw.response.status === 200) { const body = typeof pw.response.body === \"string\" ? JSON.parse(pw.response.body) : pw.response.body; if (!Array.isArray(body.scoringEvents)) throw new Error(\"Voto sem eventos de pontuacao\"); if (typeof body.scoreDelta !== \"number\") throw new Error(\"Voto sem scoreDelta\"); } });",
+          "auth": {
+            "authType": "none",
+            "authActive": false
+          },
+          "body": {
+            "contentType": "application/json",
+            "body": "{\n  \"submissionId\": <<submissionId>>\n}"
+          },
+          "requestVariables": [],
+          "responses": {}
+        },
+        {
+          "v": "11",
+          "name": "Feedback qualificado do expositor",
+          "method": "POST",
+          "endpoint": "<<apiBase>>/interactions/comment",
+          "params": [],
+          "headers": [
+            {
+              "key": "Authorization",
+              "value": "Bearer <<studentToken>>",
+              "active": true,
+              "description": ""
+            },
+            {
+              "key": "Content-Type",
+              "value": "application/json",
+              "active": true,
+              "description": ""
+            }
+          ],
+          "preRequestScript": "",
+          "testScript": "pw.test(\"feedback e registado ou bloqueado por regra\", () => { if (![200, 201, 400, 403, 404].includes(pw.response.status)) throw new Error(\"Feedback com status inesperado: \" + pw.response.status); });",
+          "auth": {
+            "authType": "none",
+            "authActive": false
+          },
+          "body": {
+            "contentType": "application/json",
+            "body": "{\n  \"submissionId\": <<submissionId>>,\n  \"content\": \"<<commentContent>>\"\n}"
+          },
+          "requestVariables": [],
+          "responses": {}
+        },
+        {
+          "v": "11",
+          "name": "Interacoes - estado do estudante",
+          "method": "GET",
+          "endpoint": "<<apiBase>>/interactions/me",
+          "params": [],
+          "headers": [
+            {
+              "key": "Authorization",
+              "value": "Bearer <<studentToken>>",
+              "active": true,
+              "description": ""
+            }
+          ],
+          "preRequestScript": "",
+          "testScript": "pw.test(\"estado de interacoes responde\", () => { if (pw.response.status !== 200) throw new Error(\"Interacoes/me falhou: \" + pw.response.status); const body = typeof pw.response.body === \"string\" ? JSON.parse(pw.response.body) : pw.response.body; if (!body.stats) throw new Error(\"Estado sem stats\"); });",
+          "auth": {
+            "authType": "none",
+            "authActive": false
+          },
+          "body": {
+            "contentType": null,
+            "body": null
+          },
+          "requestVariables": [],
+          "responses": {}
+        }
+      ],
+      "auth": {
+        "authType": "none",
+        "authActive": true
+      },
+      "headers": [],
+      "_ref_id": "coll_uorconnect_006"
+    },
+    {
+      "v": 6,
+      "id": "folder_uorconnect_007",
+      "name": "03 Passaporte Digital",
+      "folders": [],
+      "requests": [
+        {
+          "v": "11",
+          "name": "Passaporte Digital - resumo",
+          "method": "GET",
+          "endpoint": "<<apiBase>>/passport/me",
+          "params": [],
+          "headers": [
+            {
+              "key": "Authorization",
+              "value": "Bearer <<studentToken>>",
+              "active": true,
+              "description": ""
+            }
+          ],
+          "preRequestScript": "",
+          "testScript": "pw.test(\"resumo do passaporte responde\", () => { if (pw.response.status !== 200) throw new Error(\"Passaporte/me falhou: \" + pw.response.status); const body = typeof pw.response.body === \"string\" ? JSON.parse(pw.response.body) : pw.response.body; if (typeof body.totalPoints !== \"number\" && typeof body.points !== \"number\") throw new Error(\"Resumo sem pontos\"); });",
+          "auth": {
+            "authType": "none",
+            "authActive": false
+          },
+          "body": {
+            "contentType": null,
+            "body": null
+          },
+          "requestVariables": [],
+          "responses": {}
+        },
+        {
+          "v": "11",
+          "name": "Passaporte Digital - entrar",
+          "method": "POST",
+          "endpoint": "<<apiBase>>/passport/join",
+          "params": [],
+          "headers": [
+            {
+              "key": "Authorization",
+              "value": "Bearer <<studentToken>>",
+              "active": true,
+              "description": ""
+            },
+            {
+              "key": "Content-Type",
+              "value": "application/json",
+              "active": true,
+              "description": ""
+            }
+          ],
+          "preRequestScript": "",
+          "testScript": "pw.test(\"entrada no passaporte responde\", () => { if (![200, 403, 404].includes(pw.response.status)) throw new Error(\"Passport join com status inesperado: \" + pw.response.status); });",
+          "auth": {
+            "authType": "none",
+            "authActive": false
+          },
+          "body": {
+            "contentType": "application/json",
+            "body": "{\n  \"visitorId\": \"hoppscotch-local\",\n  \"referralCode\": null\n}"
+          },
+          "requestVariables": [],
+          "responses": {}
+        },
+        {
+          "v": "11",
+          "name": "Passaporte Digital - networking QR",
+          "method": "GET",
+          "endpoint": "<<apiBase>>/passport/me/networking-qr",
+          "params": [],
+          "headers": [
+            {
+              "key": "Authorization",
+              "value": "Bearer <<studentToken>>",
+              "active": true,
+              "description": ""
+            }
+          ],
+          "preRequestScript": "",
+          "testScript": "pw.test(\"networking QR responde\", () => { if (pw.response.status !== 200) throw new Error(\"Networking QR falhou: \" + pw.response.status); const body = typeof pw.response.body === \"string\" ? JSON.parse(pw.response.body) : pw.response.body; if (!body.token || !body.validationUrl) throw new Error(\"Networking QR incompleto\"); });",
+          "auth": {
+            "authType": "none",
+            "authActive": false
+          },
+          "body": {
+            "contentType": null,
+            "body": null
+          },
+          "requestVariables": [],
+          "responses": {}
+        },
+        {
+          "v": "11",
+          "name": "Passaporte Digital - desafios do projeto",
+          "method": "GET",
+          "endpoint": "<<apiBase>>/passport/me/project-challenges",
+          "params": [],
+          "headers": [
+            {
+              "key": "Authorization",
+              "value": "Bearer <<studentToken>>",
+              "active": true,
+              "description": ""
+            }
+          ],
+          "preRequestScript": "",
+          "testScript": "pw.test(\"desafios do projeto carregam\", () => { if (pw.response.status !== 200) throw new Error(\"Project challenges falhou: \" + pw.response.status); const body = typeof pw.response.body === \"string\" ? JSON.parse(pw.response.body) : pw.response.body; if (!Array.isArray(body)) throw new Error(\"Project challenges nao retornou lista\"); });",
+          "auth": {
+            "authType": "none",
+            "authActive": false
+          },
+          "body": {
+            "contentType": null,
+            "body": null
+          },
+          "requestVariables": [],
+          "responses": {}
+        },
+        {
+          "v": "11",
+          "name": "Passaporte Digital - responder desafio",
+          "method": "POST",
+          "endpoint": "<<apiBase>>/passport/challenges/<<passportChallengeId>>/answer",
+          "params": [],
+          "headers": [
+            {
+              "key": "Authorization",
+              "value": "Bearer <<studentToken>>",
+              "active": true,
+              "description": ""
+            },
+            {
+              "key": "Content-Type",
+              "value": "application/json",
+              "active": true,
+              "description": ""
+            }
+          ],
+          "preRequestScript": "",
+          "testScript": "pw.test(\"resposta ao desafio tem retorno controlado\", () => { if (![200, 400, 404].includes(pw.response.status)) throw new Error(\"Responder desafio com status inesperado: \" + pw.response.status); });",
+          "auth": {
+            "authType": "none",
+            "authActive": false
+          },
+          "body": {
+            "contentType": "application/json",
+            "body": "{\n  \"answer\": \"teste-hoppscotch\"\n}"
+          },
+          "requestVariables": [],
+          "responses": {}
+        },
+        {
+          "v": "11",
+          "name": "Passaporte Digital - leaderboard",
+          "method": "GET",
+          "endpoint": "<<apiBase>>/passport/leaderboard?limit=10",
+          "params": [],
+          "headers": [
+            {
+              "key": "Authorization",
+              "value": "Bearer <<studentToken>>",
+              "active": true,
+              "description": ""
+            }
+          ],
+          "preRequestScript": "",
+          "testScript": "pw.test(\"ranking do passaporte carrega\", () => { if (pw.response.status !== 200) throw new Error(\"Leaderboard falhou: \" + pw.response.status); const body = typeof pw.response.body === \"string\" ? JSON.parse(pw.response.body) : pw.response.body; if (!Array.isArray(body)) throw new Error(\"Leaderboard nao retornou lista\"); });",
+          "auth": {
+            "authType": "none",
+            "authActive": false
+          },
+          "body": {
+            "contentType": null,
+            "body": null
+          },
+          "requestVariables": [],
+          "responses": {}
+        }
+      ],
+      "auth": {
+        "authType": "none",
+        "authActive": true
+      },
+      "headers": [],
+      "_ref_id": "coll_uorconnect_008"
+    },
+    {
+      "v": 6,
+      "id": "folder_uorconnect_009",
+      "name": "04 Admin Organizacao",
+      "folders": [],
+      "requests": [
+        {
+          "v": "11",
+          "name": "Admin - painel de votos",
+          "method": "GET",
+          "endpoint": "<<apiBase>>/interactions/admin/votes/paged?projectsPage=1&projectsLimit=10&votesPage=1&votesLimit=10",
+          "params": [],
+          "headers": [
+            {
+              "key": "Authorization",
+              "value": "Bearer <<adminToken>>",
+              "active": true,
+              "description": ""
+            }
+          ],
+          "preRequestScript": "",
+          "testScript": "pw.test(\"admin votos carrega\", () => { if (pw.response.status !== 200) throw new Error(\"Admin votos falhou: \" + pw.response.status); const body = typeof pw.response.body === \"string\" ? JSON.parse(pw.response.body) : pw.response.body; if (!body.projects || !body.votes) throw new Error(\"Admin votos incompleto\"); });",
+          "auth": {
+            "authType": "none",
+            "authActive": false
+          },
+          "body": {
+            "contentType": null,
+            "body": null
+          },
+          "requestVariables": [],
+          "responses": {}
+        },
+        {
+          "v": "11",
+          "name": "Expositor Admin - configuracao de pontos",
+          "method": "GET",
+          "endpoint": "<<apiBase>>/interactions/admin/votes/scoring/config",
+          "params": [],
+          "headers": [
+            {
+              "key": "Authorization",
+              "value": "Bearer <<adminToken>>",
+              "active": true,
+              "description": ""
+            }
+          ],
+          "preRequestScript": "",
+          "testScript": "pw.test(\"configuracao de pontos tem bonus de outras universidades\", () => { if (pw.response.status !== 200) throw new Error(\"Scoring config falhou: \" + pw.response.status); const body = typeof pw.response.body === \"string\" ? JSON.parse(pw.response.body) : pw.response.body; if (!body.weights || typeof body.weights.otherUniversityVoteBonus !== \"number\") throw new Error(\"Config sem otherUniversityVoteBonus\"); });",
+          "auth": {
+            "authType": "none",
+            "authActive": false
+          },
+          "body": {
+            "contentType": null,
+            "body": null
+          },
+          "requestVariables": [],
+          "responses": {}
+        },
+        {
+          "v": "11",
+          "name": "Expositor Admin - ranking de pontos",
+          "method": "GET",
+          "endpoint": "<<apiBase>>/interactions/admin/votes/scoring/export?frozenOnly=false",
+          "params": [],
+          "headers": [
+            {
+              "key": "Authorization",
+              "value": "Bearer <<adminToken>>",
+              "active": true,
+              "description": ""
+            }
+          ],
+          "preRequestScript": "",
+          "testScript": "pw.test(\"ranking de pontos responde\", () => { if (pw.response.status !== 200) throw new Error(\"Ranking pontos falhou: \" + pw.response.status); const body = typeof pw.response.body === \"string\" ? JSON.parse(pw.response.body) : pw.response.body; if (!Array.isArray(body.projects)) throw new Error(\"Ranking sem lista de projetos\"); });",
+          "auth": {
+            "authType": "none",
+            "authActive": false
+          },
+          "body": {
+            "contentType": null,
+            "body": null
+          },
+          "requestVariables": [],
+          "responses": {}
+        },
+        {
+          "v": "11",
+          "name": "Expositor Admin - alertas",
+          "method": "GET",
+          "endpoint": "<<apiBase>>/interactions/admin/votes/scoring/alerts",
+          "params": [],
+          "headers": [
+            {
+              "key": "Authorization",
+              "value": "Bearer <<adminToken>>",
+              "active": true,
+              "description": ""
+            }
+          ],
+          "preRequestScript": "",
+          "testScript": "pw.test(\"alertas do expositor respondem\", () => { if (pw.response.status !== 200) throw new Error(\"Alertas falharam: \" + pw.response.status); const body = typeof pw.response.body === \"string\" ? JSON.parse(pw.response.body) : pw.response.body; if (!Array.isArray(body.alerts)) throw new Error(\"Alertas sem lista\"); });",
+          "auth": {
+            "authType": "none",
+            "authActive": false
+          },
+          "body": {
+            "contentType": null,
+            "body": null
+          },
+          "requestVariables": [],
+          "responses": {}
+        },
+        {
+          "v": "11",
+          "name": "Expositor Admin - ranking de embaixadores",
+          "method": "GET",
+          "endpoint": "<<apiBase>>/interactions/admin/votes/scoring/ambassadors",
+          "params": [],
+          "headers": [
+            {
+              "key": "Authorization",
+              "value": "Bearer <<adminToken>>",
+              "active": true,
+              "description": ""
+            }
+          ],
+          "preRequestScript": "",
+          "testScript": "pw.test(\"ranking de embaixadores responde\", () => { if (pw.response.status !== 200) throw new Error(\"Embaixadores falhou: \" + pw.response.status); const body = typeof pw.response.body === \"string\" ? JSON.parse(pw.response.body) : pw.response.body; if (!Array.isArray(body.members)) throw new Error(\"Ranking de embaixadores sem members\"); });",
+          "auth": {
+            "authType": "none",
+            "authActive": false
+          },
+          "body": {
+            "contentType": null,
+            "body": null
+          },
+          "requestVariables": [],
+          "responses": {}
+        },
+        {
+          "v": "11",
+          "name": "Passaporte Admin - overview",
+          "method": "GET",
+          "endpoint": "<<apiBase>>/passport/admin/overview",
+          "params": [],
+          "headers": [
+            {
+              "key": "Authorization",
+              "value": "Bearer <<adminToken>>",
+              "active": true,
+              "description": ""
+            }
+          ],
+          "preRequestScript": "",
+          "testScript": "pw.test(\"overview admin do passaporte responde\", () => { if (pw.response.status !== 200) throw new Error(\"Passport admin overview falhou: \" + pw.response.status); const body = typeof pw.response.body === \"string\" ? JSON.parse(pw.response.body) : pw.response.body; if (typeof body.participants !== \"number\") throw new Error(\"Overview sem participantes\"); });",
+          "auth": {
+            "authType": "none",
+            "authActive": false
+          },
+          "body": {
+            "contentType": null,
+            "body": null
+          },
+          "requestVariables": [],
+          "responses": {}
+        },
+        {
+          "v": "11",
+          "name": "Passaporte Admin - missoes",
+          "method": "GET",
+          "endpoint": "<<apiBase>>/passport/admin/missions",
+          "params": [],
+          "headers": [
+            {
+              "key": "Authorization",
+              "value": "Bearer <<adminToken>>",
+              "active": true,
+              "description": ""
+            }
+          ],
+          "preRequestScript": "",
+          "testScript": "pw.test(\"missoes admin do passaporte respondem\", () => { if (pw.response.status !== 200) throw new Error(\"Passport admin missions falhou: \" + pw.response.status); const body = typeof pw.response.body === \"string\" ? JSON.parse(pw.response.body) : pw.response.body; if (!Array.isArray(body)) throw new Error(\"Missoes nao retornaram lista\"); });",
+          "auth": {
+            "authType": "none",
+            "authActive": false
+          },
+          "body": {
+            "contentType": null,
+            "body": null
+          },
+          "requestVariables": [],
+          "responses": {}
+        },
+        {
+          "v": "11",
+          "name": "Certificados Admin - templates",
+          "method": "GET",
+          "endpoint": "<<apiBase>>/certificates/admin/templates",
+          "params": [],
+          "headers": [
+            {
+              "key": "Authorization",
+              "value": "Bearer <<adminToken>>",
+              "active": true,
+              "description": ""
+            }
+          ],
+          "preRequestScript": "",
+          "testScript": "pw.test(\"templates de certificados respondem\", () => { if (pw.response.status !== 200) throw new Error(\"Templates certificados falharam: \" + pw.response.status); const body = typeof pw.response.body === \"string\" ? JSON.parse(pw.response.body) : pw.response.body; if (!Array.isArray(body.templates)) throw new Error(\"Templates ausentes\"); });",
+          "auth": {
+            "authType": "none",
+            "authActive": false
+          },
+          "body": {
+            "contentType": null,
+            "body": null
+          },
+          "requestVariables": [],
+          "responses": {}
+        },
+        {
+          "v": "11",
+          "name": "Certificados Admin - listar",
+          "method": "GET",
+          "endpoint": "<<apiBase>>/certificates/admin/list?page=1&limit=10",
+          "params": [],
+          "headers": [
+            {
+              "key": "Authorization",
+              "value": "Bearer <<adminToken>>",
+              "active": true,
+              "description": ""
+            }
+          ],
+          "preRequestScript": "",
+          "testScript": "pw.test(\"lista admin de certificados responde\", () => { if (pw.response.status !== 200) throw new Error(\"Listar certificados falhou: \" + pw.response.status); const body = typeof pw.response.body === \"string\" ? JSON.parse(pw.response.body) : pw.response.body; if (!Array.isArray(body.items)) throw new Error(\"Lista certificados sem items\"); });",
+          "auth": {
+            "authType": "none",
+            "authActive": false
+          },
+          "body": {
+            "contentType": null,
+            "body": null
+          },
+          "requestVariables": [],
+          "responses": {}
+        }
+      ],
+      "auth": {
+        "authType": "none",
+        "authActive": true
+      },
+      "headers": [],
+      "_ref_id": "coll_uorconnect_010"
+    }
+  ],
+  "requests": [],
+  "auth": {
+    "authType": "none",
+    "authActive": false
+  },
+  "headers": []
+}

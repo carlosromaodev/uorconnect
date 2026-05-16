@@ -5,9 +5,10 @@ import { z } from "zod";
 import type { Env } from "../../../config/env";
 import { prisma } from "../../../shared/prisma";
 import { authGuard } from "../../auth/http/auth.middleware";
-import { adminGuard } from "../../auth/http/admin.middleware";
+import { adminGuard, setDefaultAdminPermission } from "../../auth/http/admin.middleware";
 import {
   applyCookieAudienceFilters,
+  applyProfileCommunicationConsent,
   applyTemplate,
   audienceTypeLabel,
   buildStudentClassButtons,
@@ -23,6 +24,11 @@ import {
   type CommunicationAudienceInput,
   type CommunicationAudienceType,
 } from "../../communication/audience";
+import {
+  buildCampaignApprovalToken,
+  isCampaignApprovalRequired,
+  isValidCampaignApprovalToken,
+} from "../../communication/campaign-approval";
 
 const whatsappPreviewBodySchema = z.object({
   audience: communicationAudienceSchema,
@@ -45,6 +51,7 @@ const whatsappSendBodySchema = z.object({
   instanceId: z.coerce.number().int().positive().optional(),
   delay: z.coerce.number().int().min(0).max(20000).optional(),
   media: whatsappMediaSchema,
+  approvalToken: z.string().trim().max(128).optional(),
 });
 
 const whatsappRecipientPreviewSchema = z.object({
@@ -57,6 +64,34 @@ const whatsappRecipientPreviewSchema = z.object({
   providerTo: z.string(),
   sources: z.array(z.string()),
 });
+
+function normalizeAudienceProviderTo(value: string) {
+  const normalizedPhone = normalizePhoneForWhatsApp(value);
+  if (normalizedPhone) return normalizedPhone.providerTo;
+
+  return value.replace(/\D/g, "").trim() || value.trim();
+}
+
+function buildProviderToSet(values?: string[]) {
+  return new Set((values ?? [])
+    .map(normalizeAudienceProviderTo)
+    .filter(Boolean));
+}
+
+function applyRecipientAudienceSelection(
+  recipients: ReturnType<typeof resolveRecipients>["recipients"],
+  audience: CommunicationAudienceInput,
+) {
+  const included = buildProviderToSet(audience.includeProviderTos);
+  const excluded = buildProviderToSet(audience.excludeProviderTos);
+
+  if (included.size === 0 && excluded.size === 0) return recipients;
+
+  return recipients.filter((recipient) => (
+    (included.size === 0 || included.has(recipient.providerTo)) &&
+    !excluded.has(recipient.providerTo)
+  ));
+}
 
 const whatsappCampaignSummarySchema = z.object({
   id: z.number(),
@@ -133,6 +168,11 @@ const whatsappAutomationEventKeys = [
   "CERTIFICATE_ISSUED",
   "ATTENDANCE_CHECKED_IN",
   "LIVE_CHAT_CONTEXT_AUDIENCE",
+  "PASSPORT_POINTS_GAINED",
+  "PASSPORT_POINTS_LOST",
+  "PASSPORT_NEGATIVE_BALANCE",
+  "EXHIBITOR_POINTS_GAINED",
+  "EXHIBITOR_POINTS_LOST",
 ] as const;
 
 const whatsappAutomationEventKeySchema = z.enum(whatsappAutomationEventKeys);
@@ -241,6 +281,36 @@ const whatsappAutomationDefinitionByKey = {
       "{{link}}",
     ].join("\n"),
   },
+  PASSPORT_POINTS_GAINED: {
+    label: "Passaporte: pontos ganhos",
+    description: "Dispara quando o estudante ganha pontos no Passaporte Digital por QR, desafio ou missão.",
+    defaultTitle: "{{titulo}}",
+    defaultMessage: "{{detalhe}}",
+  },
+  PASSPORT_POINTS_LOST: {
+    label: "Passaporte: pontos perdidos",
+    description: "Dispara quando o estudante perde pontos no Passaporte Digital.",
+    defaultTitle: "{{titulo}}",
+    defaultMessage: "{{detalhe}}",
+  },
+  PASSPORT_NEGATIVE_BALANCE: {
+    label: "Passaporte: recuperação de pontos",
+    description: "Dispara quando o estudante fica com saldo negativo e precisa de instrução de recuperação.",
+    defaultTitle: "{{titulo}}",
+    defaultMessage: "{{detalhe}}",
+  },
+  EXHIBITOR_POINTS_GAINED: {
+    label: "Expositor: pontos ganhos",
+    description: "Dispara quando uma ação gera pontos para o projeto expositor.",
+    defaultTitle: "{{titulo}}",
+    defaultMessage: "{{detalhe}}",
+  },
+  EXHIBITOR_POINTS_LOST: {
+    label: "Expositor: pontos perdidos",
+    description: "Dispara quando uma ação remove pontos do projeto expositor.",
+    defaultTitle: "{{titulo}}",
+    defaultMessage: "{{detalhe}}",
+  },
 } as const satisfies Record<z.infer<typeof whatsappAutomationEventKeySchema>, {
   label: string;
   description: string;
@@ -302,6 +372,14 @@ const CONNECTED_WHATSAPP_INSTANCE_STATUSES = new Set(["OPEN", "CONNECTED", "ONLI
 const PENDING_WHATSAPP_INSTANCE_STATUSES = new Set(["CREATED", "CONNECTING", "PAIRING"]);
 const CONNECTION_CODE_FETCH_DELAY_MS = 1500;
 const CONNECTION_CODE_FETCH_ATTEMPTS = 3;
+const WHATSAPP_POLICY = {
+  adminMaxRecipients: 80,
+  automationMaxRecipients: 25,
+  operationalDailyMaxPerInstance: 250,
+  minProviderDelayMs: 10_000,
+  minApiIntervalMs: 1_500,
+  maxUrlsPerMessage: 3,
+};
 
 type WhatsAppInstanceSelectionCandidate = {
   status: string;
@@ -614,6 +692,77 @@ function normalizeOwnerNumber(value?: string | null) {
 
 function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function sendWithBackoff<T extends { ok: boolean }>(operation: () => Promise<T>, attempts = 3) {
+  let lastResult: T | null = null;
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    lastResult = await operation();
+    if (lastResult.ok || attempt === attempts - 1) return lastResult;
+    await sleep(600 * 2 ** attempt);
+  }
+
+  return lastResult as T;
+}
+
+function countUrls(value: string) {
+  return value.match(/https?:\/\/|wa\.me\/|chat\.whatsapp\.com/gi)?.length ?? 0;
+}
+
+function validateWhatsAppMessagePolicy(message: string) {
+  const normalized = normalizeMessage(message);
+
+  if (countUrls(normalized) > WHATSAPP_POLICY.maxUrlsPerMessage) {
+    return `A mensagem tem demasiadas ligações. Mantém no máximo ${WHATSAPP_POLICY.maxUrlsPerMessage} links por envio WhatsApp.`;
+  }
+
+  if (/(.)\1{12,}/.test(normalized)) {
+    return "A mensagem contém repetição excessiva de caracteres, o que pode ser tratado como spam.";
+  }
+
+  if (normalized.length > 900 && countUrls(normalized) > 0) {
+    return "Mensagens WhatsApp com links devem ser curtas e contextuais. Reduz o texto antes do envio.";
+  }
+
+  return null;
+}
+
+function resolveWhatsAppProviderDelay(delay?: number | null) {
+  return Math.max(delay ?? 0, WHATSAPP_POLICY.minProviderDelayMs);
+}
+
+function startOfLocalDay() {
+  const date = new Date();
+  date.setHours(0, 0, 0, 0);
+  return date;
+}
+
+async function assertWhatsAppVolumePolicy(input: {
+  instanceId: number;
+  requestedRecipients: number;
+  maxRecipients: number;
+}) {
+  if (input.requestedRecipients > input.maxRecipients) {
+    return `Por política de segurança WhatsApp, este envio está limitado a ${input.maxRecipients} destinatários por campanha. Segmenta a audiência e envia em lotes menores.`;
+  }
+
+  const today = startOfLocalDay();
+  const sentToday = await prisma.whatsAppCampaign.aggregate({
+    where: {
+      instanceId: input.instanceId,
+      createdAt: { gte: today },
+      status: { in: ["PROCESSING", "SENT", "PARTIAL"] },
+    },
+    _sum: { totalRecipients: true },
+  });
+  const alreadyPlannedToday = sentToday._sum.totalRecipients ?? 0;
+
+  if (alreadyPlannedToday + input.requestedRecipients > WHATSAPP_POLICY.operationalDailyMaxPerInstance) {
+    const remaining = Math.max(0, WHATSAPP_POLICY.operationalDailyMaxPerInstance - alreadyPlannedToday);
+    return `Limite diário de segurança WhatsApp atingido para esta instância. Restam ${remaining} envio(s) hoje; agenda o restante para outro período.`;
+  }
+
+  return null;
 }
 
 function buildFallbackEvolutionResult(message: string): EvolutionRequestResult {
@@ -1166,7 +1315,8 @@ export async function sendWhatsAppAudienceAutomationEvent(
     ...context.audience,
     cookieMarketingOptIn: true,
   });
-  const resolved = resolveRecipients(consentFiltered.candidates);
+  const profileConsentFiltered = await applyProfileCommunicationConsent(consentFiltered.candidates, "WHATSAPP");
+  const resolved = resolveRecipients(profileConsentFiltered.candidates);
 
   if (resolved.recipients.length === 0) {
     return { ok: false, skipped: true, reason: "Nenhum destinatário com consentimento e WhatsApp válido." };
@@ -1186,6 +1336,20 @@ export async function sendWhatsAppAudienceAutomationEvent(
     return { ok: false, skipped: true, reason: `Automação ${eventKey} sem mensagem configurada.` };
   }
 
+  const messagePolicyError = validateWhatsAppMessagePolicy(messageTemplate);
+  if (messagePolicyError) {
+    return { ok: false, skipped: true, reason: messagePolicyError };
+  }
+
+  const volumePolicyError = await assertWhatsAppVolumePolicy({
+    instanceId: instance.id,
+    requestedRecipients: resolved.recipients.length,
+    maxRecipients: WHATSAPP_POLICY.automationMaxRecipients,
+  });
+  if (volumePolicyError) {
+    return { ok: false, skipped: true, reason: volumePolicyError };
+  }
+
   const campaign = await prisma.whatsAppCampaign.create({
     data: {
       title,
@@ -1196,7 +1360,7 @@ export async function sendWhatsAppAudienceAutomationEvent(
       audienceFiltersJson: JSON.stringify({
         ...context.audience,
         excludeStudentId: context.excludeStudentId ?? null,
-        consent: "marketing",
+        consent: "marketing+profile_whatsapp",
       }),
       mediaUrl: context.media?.url ?? null,
       mediaType: context.media?.type ?? null,
@@ -1225,44 +1389,40 @@ export async function sendWhatsAppAudienceAutomationEvent(
   let successCount = 0;
   let failedCount = 0;
   let connectionClosedObserved = false;
-  const concurrency = 3;
+  const providerDelay = resolveWhatsAppProviderDelay(context.delay);
 
-  for (let i = 0; i < resolved.recipients.length; i += concurrency) {
-    const chunk = resolved.recipients.slice(i, i + concurrency);
+  for (let i = 0; i < resolved.recipients.length; i += 1) {
+    const recipient = resolved.recipients[i];
+    const renderedMessage = applyTemplate(messageTemplate, recipient);
+    const providerResponse = await sendWithBackoff(() => context.media
+      ? client.sendMedia(instance.name, {
+        number: recipient.providerTo,
+        mediatype: context.media.type ?? "document",
+        mimetype: context.media.mimeType ?? "application/pdf",
+        media: context.media.url,
+        fileName: context.media.fileName,
+        caption: context.media.caption?.trim() || renderedMessage,
+        delay: providerDelay,
+      })
+      : client.sendText(instance.name, {
+        number: recipient.providerTo,
+        text: renderedMessage,
+        delay: providerDelay,
+      }));
 
-    await Promise.all(chunk.map(async (recipient) => {
-      const renderedMessage = applyTemplate(messageTemplate, recipient);
-      const providerResponse = context.media
-        ? await client.sendMedia(instance.name, {
-          number: recipient.providerTo,
-          mediatype: context.media.type ?? "document",
-          mimetype: context.media.mimeType ?? "application/pdf",
-          media: context.media.url,
-          fileName: context.media.fileName,
-          caption: context.media.caption?.trim() || renderedMessage,
-          delay: context.delay,
-        })
-        : await client.sendText(instance.name, {
-          number: recipient.providerTo,
-          text: renderedMessage,
-          delay: context.delay,
-        });
+    const baseUpdate = {
+      providerResponseJson: stringifyProviderPayload(providerResponse.payload),
+      providerMessageId: extractProviderMessageId(providerResponse.payload),
+      sentAt: new Date(),
+    };
 
-      const baseUpdate = {
-        providerResponseJson: stringifyProviderPayload(providerResponse.payload),
-        providerMessageId: extractProviderMessageId(providerResponse.payload),
-        sentAt: new Date(),
-      };
-
-      if (providerResponse.ok) {
-        successCount += 1;
-        await prisma.whatsAppCampaignRecipient.update({
-          where: { campaignId_phone: { campaignId: campaign.id, phone: recipient.phone } },
-          data: { ...baseUpdate, status: "SENT", errorMessage: null },
-        });
-        return;
-      }
-
+    if (providerResponse.ok) {
+      successCount += 1;
+      await prisma.whatsAppCampaignRecipient.update({
+        where: { campaignId_phone: { campaignId: campaign.id, phone: recipient.phone } },
+        data: { ...baseUpdate, status: "SENT", errorMessage: null },
+      });
+    } else {
       failedCount += 1;
       if (isConnectionClosedProviderPayload(providerResponse.payload)) connectionClosedObserved = true;
       const reason = extractProviderMessage(providerResponse.payload)
@@ -1271,7 +1431,11 @@ export async function sendWhatsAppAudienceAutomationEvent(
         where: { campaignId_phone: { campaignId: campaign.id, phone: recipient.phone } },
         data: { ...baseUpdate, status: "FAILED", errorMessage: reason },
       });
-    }));
+    }
+
+    if (i < resolved.recipients.length - 1) {
+      await sleep(WHATSAPP_POLICY.minApiIntervalMs);
+    }
   }
 
   const status = failedCount === 0 ? "SENT" : successCount === 0 ? "FAILED" : "PARTIAL";
@@ -1339,19 +1503,36 @@ export async function sendOperationalWhatsApp(env: Env, input: {
   }
 
   const renderedMessage = normalizeMessage(input.message);
-  const providerResponse = input.media
-    ? await client.sendMedia(instance.name, {
+  const messagePolicyError = validateWhatsAppMessagePolicy(renderedMessage);
+  if (messagePolicyError) {
+    return { ok: false, skipped: true, reason: messagePolicyError };
+  }
+
+  const volumePolicyError = await assertWhatsAppVolumePolicy({
+    instanceId: instance.id,
+    requestedRecipients: 1,
+    maxRecipients: 1,
+  });
+  if (volumePolicyError) {
+    return { ok: false, skipped: true, reason: volumePolicyError };
+  }
+
+  const providerDelay = resolveWhatsAppProviderDelay(null);
+  const providerResponse = await sendWithBackoff(() => input.media
+    ? client.sendMedia(instance.name, {
       number: normalizedPhone.providerTo,
       mediatype: input.media.type ?? "document",
       mimetype: input.media.mimeType ?? "application/pdf",
       media: input.media.url,
       fileName: input.media.fileName,
       caption: input.media.caption?.trim() || renderedMessage,
+      delay: providerDelay,
     })
-    : await client.sendText(instance.name, {
+    : client.sendText(instance.name, {
       number: normalizedPhone.providerTo,
       text: renderedMessage,
-    });
+      delay: providerDelay,
+    }));
 
   const providerError = extractProviderMessage(providerResponse.payload)
     ?? `Falha na Evolution API (status ${providerResponse.status || "desconhecido"}).`;
@@ -1420,6 +1601,7 @@ export async function whatsappRoutes(app: FastifyInstance, opts: { env: Env }) {
 
     protectedApp.register(async (adminApp) => {
       adminApp.register(adminGuard);
+      setDefaultAdminPermission(adminApp, ["SMS"]);
 
       adminApp.get("/admin/overview", {
         schema: {
@@ -1561,7 +1743,10 @@ export async function whatsappRoutes(app: FastifyInstance, opts: { env: Env }) {
           "STUDENT_COURSE",
           "STUDENT_CLASS_OR_COURSE",
           "COURSE_ENROLLED",
+          "SUBMISSION_ENROLLED",
+          "COURSE_OR_SUBMISSION_ENROLLED",
           "EXHIBITORS",
+          "GROUP_REPRESENTATIVES",
           "COURSE_OR_EXHIBITORS",
           "WINNERS",
           "SELECTED_STUDENTS",
@@ -1987,6 +2172,8 @@ export async function whatsappRoutes(app: FastifyInstance, opts: { env: Env }) {
               filteredCandidates: z.number(),
               totalRecipients: z.number(),
               skippedCount: z.number(),
+              approvalRequired: z.boolean(),
+              approvalToken: z.string(),
               recipients: z.array(whatsappRecipientPreviewSchema),
               skipped: z.array(z.object({
                 studentId: z.number().nullable(),
@@ -2006,15 +2193,22 @@ export async function whatsappRoutes(app: FastifyInstance, opts: { env: Env }) {
         const rawCandidates = await resolveAudienceCandidates(body.audience);
         const cookieFiltered = await applyCookieAudienceFilters(rawCandidates, body.audience);
         const resolved = resolveRecipients(cookieFiltered.candidates, body.search);
+        const selectedRecipients = applyRecipientAudienceSelection(resolved.recipients, body.audience);
         const skipped = [...cookieFiltered.skipped, ...resolved.skipped];
         const limit = body.limit ?? 120;
 
         return {
           totalCandidates: rawCandidates.length,
           filteredCandidates: resolved.filteredTotal,
-          totalRecipients: resolved.recipients.length,
+          totalRecipients: selectedRecipients.length,
           skippedCount: skipped.length,
-          recipients: resolved.recipients.slice(0, limit),
+          approvalRequired: isCampaignApprovalRequired(selectedRecipients.length),
+          approvalToken: buildCampaignApprovalToken({
+            channel: "WHATSAPP",
+            audience: body.audience,
+            secret: opts.env.JWT_SECRET,
+          }),
+          recipients: selectedRecipients.slice(0, limit),
           skipped: skipped.slice(0, Math.min(limit, 80)),
         };
       });
@@ -2074,14 +2268,44 @@ export async function whatsappRoutes(app: FastifyInstance, opts: { env: Env }) {
           });
         }
 
+        const normalizedCampaignMessage = normalizeMessage(body.message);
+        const messagePolicyError = validateWhatsAppMessagePolicy(normalizedCampaignMessage);
+        if (messagePolicyError) {
+          return reply.code(400).send({ message: messagePolicyError });
+        }
+
         const rawCandidates = await resolveAudienceCandidates(body.audience);
         const cookieFiltered = await applyCookieAudienceFilters(rawCandidates, body.audience);
         const resolved = resolveRecipients(cookieFiltered.candidates);
+        const selectedRecipients = applyRecipientAudienceSelection(resolved.recipients, body.audience);
         const skipped = [...cookieFiltered.skipped, ...resolved.skipped];
 
-        if (resolved.recipients.length === 0) {
+        if (selectedRecipients.length === 0) {
           return reply.code(400).send({
-            message: "Nenhum destinatário WhatsApp válido encontrado para esta audiência.",
+            message: "Nenhum destinatário WhatsApp válido encontrado para esta seleção de audiência.",
+          });
+        }
+
+        const volumePolicyError = await assertWhatsAppVolumePolicy({
+          instanceId: instance.id,
+          requestedRecipients: selectedRecipients.length,
+          maxRecipients: WHATSAPP_POLICY.adminMaxRecipients,
+        });
+        if (volumePolicyError) {
+          return reply.code(400).send({ message: volumePolicyError });
+        }
+
+        if (
+          isCampaignApprovalRequired(selectedRecipients.length) &&
+          !isValidCampaignApprovalToken({
+            channel: "WHATSAPP",
+            audience: body.audience,
+            secret: opts.env.JWT_SECRET,
+            token: body.approvalToken,
+          })
+        ) {
+          return reply.code(400).send({
+            message: "Pré-visualiza e confirma a audiência antes de enviar uma campanha WhatsApp grande.",
           });
         }
 
@@ -2089,23 +2313,26 @@ export async function whatsappRoutes(app: FastifyInstance, opts: { env: Env }) {
           audienceType: body.audience.type,
           instanceId: instance.id,
           instanceName: instance.name,
-          totalRecipients: resolved.recipients.length,
+          totalRecipients: selectedRecipients.length,
           media: Boolean(body.media),
         }, "Starting WhatsApp admin campaign");
 
         const campaign = await prisma.whatsAppCampaign.create({
           data: {
             title: body.title?.trim() || null,
-            message: normalizeMessage(body.message),
+            message: normalizedCampaignMessage,
             instanceId: instance.id,
             instanceName: instance.name,
             audienceType: body.audience.type,
-            audienceFiltersJson: JSON.stringify(body.audience),
+            audienceFiltersJson: JSON.stringify({
+              ...body.audience,
+              consent: body.audience.cookieMarketingOptIn ? "marketing_opt_in" : "admin_operational_no_consent_gate",
+            }),
             mediaUrl: body.media?.url ?? null,
             mediaType: body.media?.type ?? null,
             mediaMimeType: body.media?.mimeType ?? null,
             mediaFileName: body.media?.fileName ?? null,
-            totalRecipients: resolved.recipients.length,
+            totalRecipients: selectedRecipients.length,
             status: "PROCESSING",
             createdByStudentNumber: request.student?.studentNumber ?? "unknown",
           },
@@ -2113,7 +2340,7 @@ export async function whatsappRoutes(app: FastifyInstance, opts: { env: Env }) {
         });
 
         await prisma.whatsAppCampaignRecipient.createMany({
-          data: resolved.recipients.map((recipient) => ({
+          data: selectedRecipients.map((recipient) => ({
             campaignId: campaign.id,
             studentId: recipient.studentId,
             studentNumber: recipient.studentNumber,
@@ -2129,53 +2356,49 @@ export async function whatsappRoutes(app: FastifyInstance, opts: { env: Env }) {
         let successCount = 0;
         let failedCount = 0;
         let connectionClosedObserved = false;
-        const concurrency = 3;
+        const providerDelay = resolveWhatsAppProviderDelay(body.delay);
 
-        for (let i = 0; i < resolved.recipients.length; i += concurrency) {
-          const chunk = resolved.recipients.slice(i, i + concurrency);
+        for (let i = 0; i < selectedRecipients.length; i += 1) {
+          const recipient = selectedRecipients[i];
+          const renderedMessage = applyTemplate(normalizedCampaignMessage, recipient);
+          const providerResponse = await sendWithBackoff(() => body.media
+            ? client.sendMedia(instance.name, {
+              number: recipient.providerTo,
+              mediatype: body.media.type,
+              mimetype: body.media.mimeType,
+              media: body.media.url,
+              fileName: body.media.fileName,
+              caption: body.media.caption?.trim() || renderedMessage,
+              delay: providerDelay,
+            })
+            : client.sendText(instance.name, {
+              number: recipient.providerTo,
+              text: renderedMessage,
+              delay: providerDelay,
+            }));
 
-          await Promise.all(chunk.map(async (recipient) => {
-            const renderedMessage = applyTemplate(normalizeMessage(body.message), recipient);
-            const providerResponse = body.media
-              ? await client.sendMedia(instance.name, {
-                number: recipient.providerTo,
-                mediatype: body.media.type,
-                mimetype: body.media.mimeType,
-                media: body.media.url,
-                fileName: body.media.fileName,
-                caption: body.media.caption?.trim() || renderedMessage,
-                delay: body.delay,
-              })
-              : await client.sendText(instance.name, {
-                number: recipient.providerTo,
-                text: renderedMessage,
-                delay: body.delay,
-              });
+          const baseUpdate = {
+            providerResponseJson: stringifyProviderPayload(providerResponse.payload),
+            providerMessageId: extractProviderMessageId(providerResponse.payload),
+            sentAt: new Date(),
+          };
 
-            const baseUpdate = {
-              providerResponseJson: stringifyProviderPayload(providerResponse.payload),
-              providerMessageId: extractProviderMessageId(providerResponse.payload),
-              sentAt: new Date(),
-            };
-
-            if (providerResponse.ok) {
-              successCount += 1;
-              await prisma.whatsAppCampaignRecipient.update({
-                where: {
-                  campaignId_phone: {
-                    campaignId: campaign.id,
-                    phone: recipient.phone,
-                  },
+          if (providerResponse.ok) {
+            successCount += 1;
+            await prisma.whatsAppCampaignRecipient.update({
+              where: {
+                campaignId_phone: {
+                  campaignId: campaign.id,
+                  phone: recipient.phone,
                 },
-                data: {
-                  ...baseUpdate,
-                  status: "SENT",
-                  errorMessage: null,
-                },
-              });
-              return;
-            }
-
+              },
+              data: {
+                ...baseUpdate,
+                status: "SENT",
+                errorMessage: null,
+              },
+            });
+          } else {
             failedCount += 1;
             const reason = extractProviderMessage(providerResponse.payload)
               ?? `Falha na Evolution API (status ${providerResponse.status || "desconhecido"}).`;
@@ -2202,7 +2425,11 @@ export async function whatsappRoutes(app: FastifyInstance, opts: { env: Env }) {
                 errorMessage: reason,
               },
             });
-          }));
+          }
+
+          if (i < selectedRecipients.length - 1) {
+            await sleep(WHATSAPP_POLICY.minApiIntervalMs);
+          }
         }
 
         const status = failedCount === 0
@@ -2251,7 +2478,7 @@ export async function whatsappRoutes(app: FastifyInstance, opts: { env: Env }) {
           campaignId: campaign.id,
           status,
           totalCandidates: rawCandidates.length,
-          totalRecipients: resolved.recipients.length,
+          totalRecipients: selectedRecipients.length,
           skippedCount: skipped.length,
           successCount,
           failedCount,

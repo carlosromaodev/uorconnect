@@ -98,27 +98,6 @@ services:
     networks:
       - internal
 
-  laboratorio:
-    build:
-      context: ..
-      dockerfile: deploy/laboratorio.Dockerfile
-      args:
-        VITE_API_BASE_URL: ${PUBLIC_API_URL}
-        VITE_LAB_BASE_PATH: /
-    restart: unless-stopped
-    expose:
-      - "80"
-    healthcheck:
-      test: ["CMD-SHELL", "wget -q -O - http://127.0.0.1/ >/dev/null 2>&1 || exit 1"]
-      interval: 30s
-      timeout: 10s
-      retries: 5
-      start_period: 20s
-    mem_limit: 192m
-    cpus: 0.5
-    networks:
-      - internal
-
   backend:
     build:
       context: ../backend
@@ -157,6 +136,9 @@ services:
     cpus: 1.50
     tmpfs:
       - /tmp:size=128m
+    volumes:
+      - backend_storage:/app/storage
+      - backend_live_chat:/app/public/live-chat
     networks:
       - internal
 
@@ -166,7 +148,6 @@ services:
     restart: unless-stopped
     depends_on:
       - frontend
-      - laboratorio
       - backend
     environment:
       FRONTEND_DOMAIN: ${FRONTEND_DOMAIN:-uorconnect.space, www.uorconnect.space}
@@ -187,6 +168,8 @@ volumes:
   postgres_data:
   redis_data:
   evolution_instances:
+  backend_storage:
+  backend_live_chat:
   caddy_data:
   caddy_config:
 

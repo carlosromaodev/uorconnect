@@ -11,16 +11,13 @@ import {
   Loader2,
   Paperclip,
   ShieldCheck,
-  Sparkles,
 } from "lucide-react";
 import { toast } from "@/components/ui/sonner";
-import { AutoFillBadge } from "@/components/auth/AutoFillBadge";
 import { ResponsiveDocumentViewer } from "@/components/documents/ResponsiveDocumentViewer";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { api, type Course, type StudentEnrollmentListItem, type StudentProfile, isAuthError, setToken } from "@/lib/api";
+import { api, type Course, type StudentEnrollmentListItem, type StudentProfile, type SubmissionConfig, isAuthError, setToken } from "@/lib/api";
 import { buildRoutePath, redirectToStudentLogin } from "@/lib/auth-routing";
 import { getOfficialCourseFieldValue } from "@/lib/official-courses";
 import { toAbsoluteAssetUrl } from "@/lib/student-documents";
@@ -30,7 +27,6 @@ type EnrollmentFormState = {
   fullName: string;
   studentCourse: string;
   phoneDigits: string;
-  paymentPhoneDigits: string;
   paymentProof: string;
   paymentProofName: string;
   notes: string;
@@ -42,7 +38,6 @@ const emptyFormState: EnrollmentFormState = {
   fullName: "",
   studentCourse: "",
   phoneDigits: "",
-  paymentPhoneDigits: "",
   paymentProof: "",
   paymentProofName: "",
   notes: "",
@@ -70,10 +65,6 @@ function readFileAsDataUrl(file: File) {
   });
 }
 
-function normalizeText(value?: string | null) {
-  return value?.trim().toLowerCase() ?? "";
-}
-
 function hydrateFromStudent(student: StudentProfile | null) {
   if (!student) return emptyFormState;
 
@@ -83,7 +74,6 @@ function hydrateFromStudent(student: StudentProfile | null) {
     fullName: student.name || "",
     studentCourse: getOfficialCourseFieldValue(student.course),
     phoneDigits,
-    paymentPhoneDigits: phoneDigits,
     paymentProof: "",
     paymentProofName: "",
     notes: "",
@@ -91,42 +81,23 @@ function hydrateFromStudent(student: StudentProfile | null) {
 }
 
 function statusTone(status: string) {
-  if (status === "CONFIRMED") return "bg-emerald-500/10 text-emerald-700 border-emerald-500/20";
-  if (status === "PENDING") return "bg-amber-500/10 text-amber-700 border-amber-500/20";
+  if (["CONFIRMED_BY_ADMIN", "CONFIRMED", "APPROVED"].includes(status)) return "bg-emerald-500/10 text-emerald-700 border-emerald-500/20";
+  if (["PENDING_REVIEW", "PENDING", "SUBMITTED_BY_USER"].includes(status)) return "bg-amber-500/10 text-amber-700 border-amber-500/20";
   return "bg-slate-500/10 text-slate-700 border-slate-500/20";
-}
-
-/** Returns Tailwind classes for an input based on its validation state */
-function inputClsEnroll(
-  errors: Record<string, string>,
-  key: string,
-  value: string | boolean,
-  base = "h-11 rounded-xl px-4 text-base md:text-sm"
-) {
-  const hasError = Boolean(errors[key]);
-  const hasValue = Boolean(value);
-  if (hasError) return `${base} input-invalid`;
-  if (hasValue) return `${base} input-valid`;
-  return base;
 }
 
 function buildEnrollmentSchema(isPaid: boolean) {
   return z.object({
-    fullName: z.string().trim().min(3, "Informa o teu nome completo."),
-    studentCourse: z.string().trim().min(2, "Informa o teu curso académico."),
-    phoneDigits: z.string().regex(/^\d{9}$/, "Indica um contacto válido com 9 dígitos."),
-    paymentPhoneDigits: z.string().trim(),
+    fullName: z.string().trim(),
+    studentCourse: z.string().trim(),
+    phoneDigits: z.string().trim(),
     paymentProof: z.string().trim(),
     paymentProofName: z.string().trim(),
     notes: z.string().max(180, "Máximo de 180 caracteres."),
   }).superRefine((value, ctx) => {
     if (!isPaid) return;
 
-    if (!/^\d{9}$/.test(value.paymentPhoneDigits)) {
-      ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["paymentPhoneDigits"], message: "Indica o número usado no pagamento." });
-    }
-
-    if (!/^(data:|https?:\/\/)/.test(value.paymentProof)) {
+    if (!/^(data:|https?:\/\/|\/(?:api\/)?media\/files\/)/.test(value.paymentProof)) {
       ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["paymentProof"], message: "Anexa o comprovativo do pagamento." });
     }
   });
@@ -141,6 +112,7 @@ export default function CursoInscricao() {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [course, setCourse] = useState<Course | null>(null);
+  const [paymentConfig, setPaymentConfig] = useState<SubmissionConfig | null>(null);
   const [student, setStudent] = useState<StudentProfile | null>(null);
   const [existingEnrollment, setExistingEnrollment] = useState<StudentEnrollmentListItem | null>(null);
   const [form, setForm] = useState<EnrollmentFormState>(emptyFormState);
@@ -171,14 +143,16 @@ export default function CursoInscricao() {
       api.courses.list(),
       api.auth.me(),
       api.courses.enrollmentsMine(),
+      api.submissions.config(),
     ])
-      .then(([coursesPayload, currentStudent, enrollmentItems]) => {
+      .then(([coursesPayload, currentStudent, enrollmentItems, submissionConfig]) => {
         if (!active) return;
 
         const selectedCourse = coursesPayload.courses.find((entry) => entry.id === courseId) ?? null;
         const currentEnrollment = enrollmentItems.find((entry) => entry.courseId === courseId) ?? null;
 
         setCourse(selectedCourse);
+        setPaymentConfig(submissionConfig);
         setStudent(currentStudent);
         setExistingEnrollment(currentEnrollment);
 
@@ -218,17 +192,6 @@ export default function CursoInscricao() {
   }, [courseId, location, navigate]);
 
   const proofSource = form.paymentProof || toAbsoluteAssetUrl(existingEnrollment?.paymentProofPath);
-
-  const matchesStudentField = (field: "fullName" | "studentCourse" | "phoneDigits") => {
-    if (!student) return false;
-
-    if (field === "phoneDigits") {
-      return normalizePhoneDigits(student.phone) === form.phoneDigits && Boolean(form.phoneDigits);
-    }
-
-    if (field === "fullName") return normalizeText(student.name) === normalizeText(form.fullName) && Boolean(form.fullName);
-    return normalizeText(getOfficialCourseFieldValue(student.course)) === normalizeText(getOfficialCourseFieldValue(form.studentCourse)) && Boolean(form.studentCourse);
-  };
 
   const validateField = (key: EnrollmentFieldKey, nextForm: EnrollmentFormState) => {
     const parsed = buildEnrollmentSchema(Boolean(course?.isPaid)).safeParse(nextForm);
@@ -312,7 +275,8 @@ export default function CursoInscricao() {
       if (!dataUrl.startsWith("data:")) {
         throw new Error("O ficheiro selecionado não gerou um comprovativo válido.");
       }
-      applyFieldPatch({ paymentProof: dataUrl, paymentProofName: file.name }, ["paymentProof", "paymentProofName"]);
+      const uploaded = await api.media.uploadDataUrl(dataUrl, "course-payment-proofs", { allowDocuments: true });
+      applyFieldPatch({ paymentProof: uploaded.url, paymentProofName: file.name }, ["paymentProof", "paymentProofName"]);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Não foi possível carregar o comprovativo.");
     } finally {
@@ -333,11 +297,12 @@ export default function CursoInscricao() {
       if (!dataUrl.startsWith("data:")) {
         throw new Error("O ficheiro selecionado não gerou um comprovativo válido.");
       }
+      const uploaded = await api.media.uploadDataUrl(dataUrl, "course-payment-proofs", { allowDocuments: true });
       applyFieldPatch(
-        { paymentProof: dataUrl, paymentProofName: selectedFile.name },
+        { paymentProof: uploaded.url, paymentProofName: selectedFile.name },
         ["paymentProof", "paymentProofName"],
       );
-      return dataUrl;
+      return uploaded.url;
     } finally {
       setProofReading(false);
     }
@@ -385,9 +350,9 @@ export default function CursoInscricao() {
       const normalizedStudentCourse = getOfficialCourseFieldValue(submissionForm.studentCourse);
 
       const syncedStudent = await syncStudentProfileIfNeeded(student, {
-        name: submissionForm.fullName,
+        name: submissionForm.fullName || undefined,
         course: normalizedStudentCourse || undefined,
-        phone: formatPhone(submissionForm.phoneDigits),
+        phone: /^\d{9}$/.test(submissionForm.phoneDigits) ? formatPhone(submissionForm.phoneDigits) : undefined,
       });
       setStudent(syncedStudent ?? student);
 
@@ -396,7 +361,6 @@ export default function CursoInscricao() {
         course.isPaid
           ? {
               paymentConfirmed: true,
-              paymentPhone: formatPhone(submissionForm.paymentPhoneDigits),
               paymentProof: submissionForm.paymentProof,
             }
           : undefined
@@ -467,7 +431,7 @@ export default function CursoInscricao() {
           initial={{ opacity: 0, y: 14 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.28, ease: "easeOut" }}
-          className="surface-card border-border/70 bg-[linear-gradient(145deg,rgba(253,131,5,0.12),rgba(255,255,255,0.98),rgba(34,61,66,0.08))] p-6 sm:p-8"
+          className="surface-card border-border/70 bg-card p-6 sm:p-8"
         >
           <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
             <div className="space-y-3">
@@ -475,8 +439,8 @@ export default function CursoInscricao() {
                 <ArrowLeft className="h-4 w-4" />
                 Voltar aos cursos
               </Link>
-              <div className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-white/80 px-4 py-2 text-xs font-semibold uppercase tracking-[0.18em] text-primary shadow-sm">
-                <Sparkles className="h-3.5 w-3.5" />
+              <div className="inline-flex items-center gap-2 rounded-lg border border-border bg-muted/30 px-3 py-2 text-xs font-semibold uppercase tracking-[0.14em] text-muted-foreground">
+                <ShieldCheck className="h-3.5 w-3.5" />
                 Inscrição protegida
               </div>
               <div>
@@ -487,7 +451,7 @@ export default function CursoInscricao() {
               </div>
             </div>
 
-            <div className="rounded-3xl border border-white/70 bg-white/85 px-5 py-4 shadow-sm">
+            <div className="rounded-xl border border-border/60 bg-muted/20 px-5 py-4">
               <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Parceiro</p>
               <p className="mt-2 text-base font-semibold">{course.companyName}</p>
               <p className="text-sm text-muted-foreground">{course.companyCategory}</p>
@@ -516,56 +480,38 @@ export default function CursoInscricao() {
           <section className="space-y-6">
             <div className="surface-card space-y-5 p-6">
               <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Dados do estudante</p>
-                <h2 className="mt-2 text-xl font-semibold">Perfil do estudante</h2>
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="fullName">Nome completo</Label>
-                <Input id="fullName" value={form.fullName} onChange={(event) => updateField("fullName", event.target.value)} className={inputClsEnroll(errors, "fullName", form.fullName)} />
-                <AutoFillBadge visible={matchesStudentField("fullName")} />
-                {errors.fullName ? <p className="field-error-msg"><span className="inline-block h-3 w-3 rounded-full bg-destructive/20">·</span>{errors.fullName}</p> : null}
-              </div>
-
-              <div className="responsive-two-col">
-                <div className="space-y-2">
-                  <Label htmlFor="studentCourse">Curso académico</Label>
-                  <Input id="studentCourse" value={form.studentCourse} onChange={(event) => updateField("studentCourse", event.target.value)} className={inputClsEnroll(errors, "studentCourse", form.studentCourse)} />
-                  <AutoFillBadge visible={matchesStudentField("studentCourse")} />
-                  {errors.studentCourse ? <p className="field-error-msg"><span className="inline-block h-3 w-3 rounded-full bg-destructive/20">·</span>{errors.studentCourse}</p> : null}
-                </div>
-
-                <div className="space-y-2">
-                  <Label htmlFor="phoneDigits">Telefone principal</Label>
-                  <Input id="phoneDigits" value={formatPhone(form.phoneDigits)} onChange={(event) => updateField("phoneDigits", normalizePhoneDigits(event.target.value))} className={inputClsEnroll(errors, "phoneDigits", form.phoneDigits)} />
-                  <AutoFillBadge visible={matchesStudentField("phoneDigits")} />
-                  {errors.phoneDigits ? <p className="field-error-msg"><span className="inline-block h-3 w-3 rounded-full bg-destructive/20">·</span>{errors.phoneDigits}</p> : null}
-                </div>
-              </div>
-
-              <div className="rounded-2xl border border-border/60 bg-muted/20 p-4">
-                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Número de estudante</p>
-                <p className="mt-2 text-sm font-semibold">{student?.studentNumber || "Não disponível"}</p>
-              </div>
-            </div>
-
-            <div className="surface-card space-y-5 p-6">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Pagamento e comprovativo</p>
-                <h2 className="mt-2 text-xl font-semibold">Comprovativo do pagamento</h2>
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Detalhes de pagamento</p>
+                <h2 className="mt-2 text-xl font-semibold">{course.isPaid ? "Transferência e comprovativo" : "Curso gratuito"}</h2>
               </div>
 
               {course.isPaid ? (
                 <>
-                  <div className="space-y-2">
-                    <Label htmlFor="paymentPhoneDigits">Telefone usado no pagamento</Label>
-                    <Input id="paymentPhoneDigits" value={formatPhone(form.paymentPhoneDigits)} onChange={(event) => updateField("paymentPhoneDigits", normalizePhoneDigits(event.target.value))} className={inputClsEnroll(errors, "paymentPhoneDigits", form.paymentPhoneDigits)} />
-                    {errors.paymentPhoneDigits ? <p className="field-error-msg"><span className="inline-block h-3 w-3 rounded-full bg-destructive/20">·</span>{errors.paymentPhoneDigits}</p> : null}
+                  <div className="rounded-xl border border-border/60 bg-muted/20 p-4">
+                    <dl className="grid gap-3 text-sm sm:grid-cols-3">
+                      <div>
+                        <dt className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">IBAN</dt>
+                        <dd className="mt-1 break-words font-mono font-semibold">{paymentConfig?.iban || "IBAN por confirmar"}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Titular</dt>
+                        <dd className="mt-1 font-semibold">{paymentConfig?.accountName || "Universidade Óscar Ribas"}</dd>
+                      </div>
+                      <div>
+                        <dt className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Montante</dt>
+                        <dd className="mt-1 font-semibold">{paymentConfig?.paymentAmount || course.priceLabel || "Por confirmar"}</dd>
+                      </div>
+                    </dl>
                   </div>
+                  {paymentConfig?.paymentInstructions ? (
+                    <div className="rounded-xl border border-border/60 bg-muted/20 p-4">
+                      <p className="text-[11px] font-semibold uppercase tracking-[0.14em] text-muted-foreground">Instruções</p>
+                      <p className="mt-2 text-sm leading-7 text-muted-foreground">{paymentConfig.paymentInstructions}</p>
+                    </div>
+                  ) : null}
 
                   <label
-                    className={`grid cursor-pointer gap-4 rounded-[18px] border border-dashed p-5 transition-all ${
-                      isDraggingProof ? "border-primary bg-primary/10 shadow-[0_18px_36px_rgba(255,94,0,0.14)]" : "border-primary/30 bg-[linear-gradient(135deg,rgba(255,94,0,0.05),rgba(0,184,148,0.06))] hover:border-primary/50 hover:bg-primary/5"
+                    className={`grid cursor-pointer gap-4 rounded-xl border border-dashed p-5 transition-colors ${
+                      isDraggingProof ? "border-primary bg-primary/5" : "border-border bg-white hover:border-primary/50"
                     }`}
                     onDragOver={handleProofDragOver}
                     onDragLeave={handleProofDragLeave}
@@ -573,9 +519,9 @@ export default function CursoInscricao() {
                   >
                     <div className="min-w-0">
                       <p className="text-sm font-semibold">{form.paymentProofName || "Selecionar PDF ou imagem do comprovativo"}</p>
-                      <p className="mt-1 text-xs leading-6 text-muted-foreground">PDF, PNG, JPG ou WEBP.</p>
+                      <p className="mt-1 text-xs leading-6 text-muted-foreground">PDF, PNG, JPG ou WEBP até 5 MB.</p>
                     </div>
-                    <div className="inline-flex h-11 w-fit items-center justify-center rounded-xl bg-primary/10 px-4 text-sm font-semibold text-primary">
+                    <div className="inline-flex h-10 w-fit items-center justify-center rounded-lg border border-border px-4 text-sm font-semibold">
                       <Paperclip className="mr-2 h-4 w-4" />
                       Escolher ficheiro
                     </div>
@@ -614,9 +560,9 @@ export default function CursoInscricao() {
                   />
                 </>
               ) : (
-                <div className="rounded-3xl border border-emerald-500/20 bg-emerald-500/[0.05] p-5">
+                <div className="rounded-xl border border-border/60 bg-muted/20 p-5">
                   <div className="flex items-start gap-3">
-                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-600">
+                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-muted text-muted-foreground">
                       <GraduationCap className="h-5 w-5" />
                     </div>
                     <div>
@@ -721,7 +667,9 @@ export default function CursoInscricao() {
                 </Button>
               ) : (
                 <div className="rounded-2xl border border-dashed border-border/60 p-4 text-sm text-muted-foreground">
-                  A comunidade deste curso ainda não foi configurada.
+                  {course.isPaid && !["CONFIRMED_BY_ADMIN", "CONFIRMED", "APPROVED"].includes(existingEnrollment?.paymentStatus ?? "")
+                    ? "A comunidade fica disponível no recibo depois da validação do pagamento."
+                    : "A comunidade deste curso ainda não foi configurada."}
                 </div>
               )}
             </div>

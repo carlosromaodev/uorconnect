@@ -7,6 +7,26 @@ import { normalizeCourse, normalizeStudentName } from "../domain/student-format"
 const BASE_URL = "http://secretaria.uor.edu.ao";
 const LOGIN_URL = `${BASE_URL}/netpa/page?stage=loginstage`;
 const TARGET_STAGE = "BoletimMatricula";
+const SECRETARIA_FETCH_TIMEOUT_MS = Number(process.env.SECRETARIA_FETCH_TIMEOUT_MS ?? 25_000);
+
+async function fetchSecretaria(input: string | URL, init: RequestInit = {}) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), SECRETARIA_FETCH_TIMEOUT_MS);
+
+  try {
+    return await fetch(input, {
+      ...init,
+      signal: controller.signal,
+    });
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Error(`secretaria timeout after ${SECRETARIA_FETCH_TIMEOUT_MS}ms`);
+    }
+    throw error;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
 
 type NormalizedRecord = Record<string, unknown>;
 
@@ -102,7 +122,7 @@ function hasProfilePageMarker(html: string) {
 
 async function fetchWithCookies(url: string, cookie: string) {
   // Requisição GET preservando cookies capturados no login manual que o site espera
-  return fetch(url, {
+  return fetchSecretaria(url, {
     method: "GET",
     headers: {
       Cookie: cookie,
@@ -319,7 +339,7 @@ async function fetchJsonWithCookies(path: string, cookie: string, params: Record
     url.searchParams.set(key, String(value));
   }
 
-  const response = await fetch(url, {
+  const response = await fetchSecretaria(url, {
     method: "GET",
     headers: {
       Cookie: cookie,
@@ -383,7 +403,7 @@ async function extractAcademicContext(cookieHeader: string): Promise<Partial<Stu
 export async function loginSecretaria(studentNumber: string, password: string): Promise<SecretariaResult> {
   try {
     // 1) GET inicial para obter cookies de sessão
-    const initResp = await fetch(LOGIN_URL, {
+    const initResp = await fetchSecretaria(LOGIN_URL, {
       method: "GET",
       headers: {
         "User-Agent":
@@ -403,7 +423,7 @@ export async function loginSecretaria(studentNumber: string, password: string): 
       return { success: false, reason: "step:init missing cookie" };
     }
 
-    const loginResp = await fetch(LOGIN_URL, {
+    const loginResp = await fetchSecretaria(LOGIN_URL, {
       method: "POST",
       headers: {
         "Content-Type": "application/x-www-form-urlencoded",
@@ -584,6 +604,7 @@ function extractProfile(html: string): StudentProfile {
   );
 
   return {
+    studentNumber: alunoBlock.number,
     name,
     email,
     course,

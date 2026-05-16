@@ -25,6 +25,13 @@ class InMemorySubmissionAdminRepository implements SubmissionAdminRepository {
 
     const updated = {
       ...existing,
+      ...(data.description !== undefined ? { description: data.description } : {}),
+      ...(data.repoUrl !== undefined ? { repoUrl: data.repoUrl } : {}),
+      ...(data.websiteUrl !== undefined ? { websiteUrl: data.websiteUrl } : {}),
+      ...(data.instagramUrl !== undefined ? { instagramUrl: data.instagramUrl } : {}),
+      ...(data.facebookUrl !== undefined ? { facebookUrl: data.facebookUrl } : {}),
+      ...(data.linkedinUrl !== undefined ? { linkedinUrl: data.linkedinUrl } : {}),
+      ...(data.githubUrl !== undefined ? { githubUrl: data.githubUrl } : {}),
       ...(data.primaryColor ? { primaryColor: data.primaryColor } : {}),
       ...(data.secondaryColor ? { secondaryColor: data.secondaryColor } : {}),
       ...(data.bannerUrl !== undefined ? { bannerUrl: data.bannerUrl } : {})
@@ -45,7 +52,7 @@ class InMemorySubmissionConfigRepository implements SubmissionConfigRepository {
     isOpen: true,
     iban: "AO006",
     accountName: "Universidade",
-    paymentAmount: "15.000 Kz",
+    paymentAmount: "3.500 Kz",
     paymentInstructions: null,
     createdAt: new Date(),
     updatedAt: new Date()
@@ -84,6 +91,10 @@ function makeSubmission(overrides: Partial<Submission> = {}): Submission {
     paymentConfirmed: true,
     repoUrl: null,
     websiteUrl: null,
+    instagramUrl: null,
+    facebookUrl: null,
+    linkedinUrl: null,
+    githubUrl: null,
     observations: null,
     agreeRules: true,
     primaryColor: DEFAULT_SUBMISSION_PRIMARY_COLOR,
@@ -130,6 +141,26 @@ describe("submission admin use cases", () => {
 
     expect(updated.primaryColor).toBe("#0f766e");
     expect(updated.bannerUrl).toBe("https://example.com/banner.jpg");
+  });
+
+  it("atualiza detalhes públicos sem reabrir a submissão", async () => {
+    submissionRepository.items = [makeSubmission({ status: "APPROVED" })];
+
+    const updated = await new UpdateSubmissionPresentation(submissionRepository).execute(1, {
+      description: "Descrição pública atualizada para orientar visitantes e jurados.",
+      repoUrl: "https://github.com/uor/project",
+      websiteUrl: "https://project.uorconnect.space",
+      instagramUrl: "https://instagram.com/project",
+      facebookUrl: null,
+      linkedinUrl: "https://linkedin.com/company/project",
+      githubUrl: "https://github.com/uor/project",
+    });
+
+    expect(updated.status).toBe("APPROVED");
+    expect(updated.description).toContain("Descrição pública atualizada");
+    expect(updated.websiteUrl).toBe("https://project.uorconnect.space");
+    expect(updated.instagramUrl).toBe("https://instagram.com/project");
+    expect(updated.facebookUrl).toBeNull();
   });
 
   it("remove a candidatura existente", async () => {

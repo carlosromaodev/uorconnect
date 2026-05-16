@@ -85,7 +85,45 @@ describe("submission-form.validation", () => {
     expect(validateSubmissionField("projeto", { ...form, observations: "a".repeat(501) }, "observations")).toBe("⚠ Observações não podem exceder 500 caracteres");
     expect(validateSubmissionField("projeto", { ...form, members: [] }, "members")).toBe("⚠ Adicione pelo menos um membro");
     expect(validateSubmissionField("projeto", { ...form, members: ["A", "B"] }, "members")).toBe("⚠ Adicione pelo menos um membro");
-    expect(validateSubmissionField("projeto", { ...form, members: ["1", "2", "3", "4", "5", "6"] }, "members")).toBe("⚠ Máximo de 5 membros");
+    expect(validateSubmissionField("projeto", { ...form, members: [
+      "Ana",
+      "Bruno",
+      "Carla",
+      "Daniel",
+      "Eva",
+      "Fábio",
+      "Graça",
+      "Hélder",
+      "Inês",
+      "João",
+      "Kátia",
+      "Luís",
+      "Marta",
+      "Nuno",
+      "Olga",
+      "Paulo",
+      "Rita",
+    ] }, "members")).toBeNull();
+    expect(validateSubmissionField("projeto", { ...form, members: [
+      "Ana",
+      "Bruno",
+      "Carla",
+      "Daniel",
+      "Eva",
+      "Fábio",
+      "Graça",
+      "Hélder",
+      "Inês",
+      "João",
+      "Kátia",
+      "Luís",
+      "Marta",
+      "Nuno",
+      "Olga",
+      "Paulo",
+      "Rita",
+      "Sofia",
+    ] }, "members")).toBe("⚠ Máximo de 17 membros");
     expect(validateSubmissionField("projeto", { ...form, paymentProof: "" }, "paymentProof")).toBe("⚠ Anexe o comprovativo do pagamento");
     expect(validateSubmissionField("projeto", { ...form, paymentProof: "https://example.com/proof.pdf" }, "paymentProof")).toBeNull();
     expect(validateSubmissionField("projeto", { ...form, paymentConfirmed: false }, "paymentConfirmed")).toBe("⚠ É necessário confirmar o pagamento");
@@ -128,7 +166,7 @@ describe("submission-form.validation", () => {
     });
     expect(validateSubmissionForm("produto", {
       ...form,
-      organizationName: "Laboratório Central",
+      organizationName: "Centro de Inovação",
       category: "Hardware",
       productType: "Físico",
       priceAverage: "25000",

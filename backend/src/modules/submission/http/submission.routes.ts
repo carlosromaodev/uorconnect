@@ -1,7 +1,9 @@
-import type { FastifyInstance } from "fastify";
+import type { FastifyInstance, FastifyRequest } from "fastify";
 import { z } from "zod";
+import type { Prisma } from "@prisma/client";
 import { PrismaSubmissionRepository, PrismaSubmissionConfigRepository, PrismaVoteRepository, PrismaReviewRepository } from "../infra/prisma/prisma.submission.repository";
 import { CreateSubmission } from "../use-cases/create-submission";
+import type { Submission } from "../domain/submission";
 import { VoteSubmission } from "../use-cases/vote-submission";
 import { ReviewSubmission } from "../use-cases/review-submission";
 import { SelectWinnerSubmission } from "../use-cases/select-winner";
@@ -17,7 +19,8 @@ import {
 import { loadEnv } from "../../../config/env";
 import { getSubmissionTypeLabel, isCompetitionEligible, normalizeSubmissionType } from "../domain/submission-policy";
 import { authGuard } from "../../auth/http/auth.middleware";
-import { adminGuard } from "../../auth/http/admin.middleware";
+import { adminGuard, isAdminStudentNumber, requireAdminPermission, setDefaultAdminPermission } from "../../auth/http/admin.middleware";
+import { verifyAuthToken } from "../../auth/utils/jwt";
 import {
   buildSubmissionSlug,
   DEFAULT_SUBMISSION_PRIMARY_COLOR,
@@ -42,6 +45,29 @@ import {
   sendWhatsAppAutomationEvent,
 } from "../../whatsapp/http/whatsapp.routes";
 import { sendSmsAudienceAutomationEvent } from "../../sms/http/sms.routes";
+import { getCookie } from "../../../shared/cookies";
+import {
+  generateExhibitorPdfForSubmission,
+  loadLatestExhibitorPdfMetadata,
+  notifyExhibitorPdfReady,
+  readExhibitorPdfFile,
+  type ExhibitorPdfMetadata,
+} from "./exhibitor-pdf";
+import {
+  addSubmissionTeamMember,
+  adminConfirmExternalSubmissionTeamMember,
+  adminConfirmSubmissionTeamMember,
+  buildMemberJourneyLabel,
+  buildSubmissionTeamPayload,
+  confirmSubmissionTeamMember,
+  loadSubmissionTeamByToken,
+  replaceSubmissionTeamMembers,
+  removeSubmissionTeamMember,
+  setSubmissionTeamMemberExpectedStudentNumber,
+} from "./submission-team";
+import { isStoredMediaUrl, persistMediaValue, resolveStoredMediaFile } from "../../media/application/media-storage";
+import { buildPaymentTimeline, isPaymentConfirmedByAdmin, normalizePaymentStatus, paymentStatusLabel } from "../../payments/payment-status";
+import { getStudentExhibitorPassportSummary } from "../../exhibitor-scoring/application/exhibitor-passport-student";
 
 const submissionRepo = new PrismaSubmissionRepository();
 const submissionConfigRepo = new PrismaSubmissionConfigRepository();
@@ -50,6 +76,7 @@ const reviewRepo = new PrismaReviewRepository();
 
 const hexColorSchema = z.string().regex(/^#([0-9a-fA-F]{6})$/);
 const imageDataUrlSchema = z.string().regex(/^data:image\/[a-zA-Z0-9.+-]+;base64,[A-Za-z0-9+/=]+$/);
+const storedMediaUrlSchema = z.string().regex(/^\/(?:api\/)?media\/files\/.+/).max(700);
 const teamMemberSchema = z.string().trim().min(2).max(80);
 const leaderPhoneSchema = z.string()
   .trim()
@@ -106,7 +133,8 @@ const baseSubmissionSchema = z.object({
   ),
   paymentProof: z.union([
     z.string().regex(/^data:(application\/pdf|image\/png|image\/jpeg|image\/webp);base64,[A-Za-z0-9+/=]+$/),
-    z.string().url()
+    z.string().url(),
+    storedMediaUrlSchema
   ]),
   paymentConfirmed: z.literal(true),
   repoUrl: z.string().url().optional(),
@@ -115,7 +143,7 @@ const baseSubmissionSchema = z.object({
   agreeRules: z.literal(true),
   primaryColor: hexColorSchema.optional(),
   secondaryColor: hexColorSchema.optional(),
-  bannerUrl: z.union([z.string().url(), imageDataUrlSchema]).nullable().optional()
+  bannerUrl: z.union([z.string().url(), storedMediaUrlSchema, imageDataUrlSchema]).nullable().optional()
 });
 
 const submissionConfigSchema = z.object({
@@ -130,24 +158,113 @@ const submissionConfigSchema = z.object({
 });
 
 const createSubmissionSchema = baseSubmissionSchema.and(typeSpecificSchema);
+const optionalProjectUrlSchema = z.preprocess(
+  (value) => typeof value === "string" && value.trim() === "" ? null : value,
+  z.string().trim().url().max(240).nullable().optional(),
+);
 const submissionPresentationSchema = z.object({
+  description: z.string().trim().max(500).refine((value) => value.length === 0 || value.length >= 10, {
+    message: "Descrição deve ter entre 10 e 500 caracteres."
+  }).optional(),
+  repoUrl: optionalProjectUrlSchema,
+  websiteUrl: optionalProjectUrlSchema,
+  instagramUrl: optionalProjectUrlSchema,
+  facebookUrl: optionalProjectUrlSchema,
+  linkedinUrl: optionalProjectUrlSchema,
+  githubUrl: optionalProjectUrlSchema,
   primaryColor: hexColorSchema.optional(),
   secondaryColor: hexColorSchema.optional(),
-  bannerUrl: z.union([z.string().url(), imageDataUrlSchema]).nullable().optional()
+  bannerUrl: z.union([z.string().url(), storedMediaUrlSchema, imageDataUrlSchema]).nullable().optional()
+});
+
+const submissionPresentationResponseSchema = z.object({
+  id: z.number(),
+  slug: z.string(),
+  detailPath: z.string(),
+  description: z.string(),
+  repoUrl: z.string().nullable(),
+  websiteUrl: z.string().nullable(),
+  instagramUrl: z.string().nullable(),
+  facebookUrl: z.string().nullable(),
+  linkedinUrl: z.string().nullable(),
+  githubUrl: z.string().nullable(),
+  primaryColor: z.string(),
+  secondaryColor: z.string(),
+  bannerUrl: z.string().nullable(),
+  status: z.string().optional(),
+});
+
+const addTeamMemberSchema = z.object({
+  name: teamMemberSchema,
+});
+
+const updateTeamMemberStudentNumberSchema = z.object({
+  studentNumber: z.string().trim().min(8).max(20),
+});
+
+const updateTeamMemberExternalExceptionSchema = z.object({
+  isExternal: z.boolean().default(true),
+  externalOrganization: z.string().trim().min(2).max(160).optional().nullable(),
+  externalReason: z.string().trim().min(3).max(400),
+});
+
+const confirmExternalTeamMemberSchema = z.object({
+  name: z.string().trim().min(2).max(120).optional(),
+  phone: z.string().trim().min(8).max(30),
+  externalOrganization: z.string().trim().min(2).max(160),
+  externalReason: z.string().trim().min(3).max(400).optional(),
+});
+
+const updateTeamMembersSchema = z.object({
+  members: z.array(teamMemberSchema).min(1).max(MAX_TEAM_MEMBERS),
 });
 
 const studentSubmissionListItemSchema = z.object({
   id: z.number(),
   referenceCode: z.string(),
   name: z.string(),
+  description: z.string(),
   status: z.string(),
   statusLabel: z.string(),
   type: z.string(),
   typeLabel: z.string(),
   createdAt: z.string(),
   detailPath: z.string(),
+  repoUrl: z.string().nullable(),
+  websiteUrl: z.string().nullable(),
+  instagramUrl: z.string().nullable(),
+  facebookUrl: z.string().nullable(),
+  linkedinUrl: z.string().nullable(),
+  githubUrl: z.string().nullable(),
   bannerUrl: z.string().nullable(),
   receiptPath: z.string(),
+  exhibitorPdfPath: z.string().nullable(),
+  viewerRole: z.enum(["RESPONSAVEL", "MEMBRO"]),
+  canManageTeam: z.boolean(),
+  canManagePresentation: z.boolean(),
+  canManageChallenge: z.boolean(),
+  teamInviteUrl: z.string().nullable(),
+  teamJourneyLabel: z.string(),
+  teamTotalMembers: z.number(),
+  teamConfirmedMembers: z.number(),
+  teamAllConfirmed: z.boolean(),
+  teamMembers: z.array(z.object({
+    id: z.number(),
+    name: z.string(),
+    confirmed: z.boolean(),
+    confirmedAt: z.string().nullable(),
+    expectedStudentNumber: z.string().nullable(),
+    studentNumber: z.string().nullable(),
+    studentName: z.string().nullable(),
+    studentCourse: z.string().nullable(),
+    isExternal: z.boolean(),
+    externalOrganization: z.string().nullable(),
+    externalReason: z.string().nullable(),
+    exceptionApprovedAt: z.string().nullable(),
+    role: z.enum(["RESPONSAVEL", "MEMBRO"]),
+    roleLabel: z.string(),
+    isResponsible: z.boolean(),
+  })),
 });
 
 const studentSubmissionReceiptSchema = z.object({
@@ -176,15 +293,245 @@ const studentSubmissionReceiptSchema = z.object({
   observations: z.string().nullable(),
   repoUrl: z.string().nullable(),
   websiteUrl: z.string().nullable(),
+  instagramUrl: z.string().nullable(),
+  facebookUrl: z.string().nullable(),
+  linkedinUrl: z.string().nullable(),
+  githubUrl: z.string().nullable(),
   primaryColor: z.string(),
   secondaryColor: z.string(),
   bannerUrl: z.string().nullable(),
   communityUrl: z.string().nullable(),
   boardingPassPath: z.string(),
+  exhibitorPdfPath: z.string().nullable(),
+  paymentStatus: z.string(),
+  paymentStatusLabel: z.string(),
+  paymentSubmittedAt: z.string().nullable(),
+  paymentReviewedAt: z.string().nullable(),
+  paymentReviewedByStudentNumber: z.string().nullable(),
+  paymentReviewNote: z.string().nullable(),
+  paymentTimeline: z.array(z.object({
+    key: z.string(),
+    label: z.string(),
+    status: z.string(),
+    at: z.string().nullable(),
+    by: z.string().nullable(),
+    note: z.string().nullable(),
+  })),
   paymentProofPath: z.string().nullable(),
   receiptPath: z.string(),
   detailPath: z.string(),
   canEdit: z.boolean(),
+  viewerRole: z.enum(["RESPONSAVEL", "MEMBRO"]),
+  canManageSubmission: z.boolean(),
+});
+
+const submissionTeamMemberSchema = z.object({
+  id: z.number(),
+  name: z.string(),
+  confirmed: z.boolean(),
+  confirmedAt: z.string().nullable(),
+  expectedStudentNumber: z.string().nullable(),
+  studentNumber: z.string().nullable(),
+  studentName: z.string().nullable(),
+  studentCourse: z.string().nullable(),
+  isExternal: z.boolean(),
+  externalOrganization: z.string().nullable(),
+  externalReason: z.string().nullable(),
+  exceptionApprovedAt: z.string().nullable(),
+  role: z.enum(["RESPONSAVEL", "MEMBRO"]),
+  roleLabel: z.string(),
+  isResponsible: z.boolean(),
+});
+
+const exhibitorPdfRecipientSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  phone: z.string().nullable(),
+  role: z.enum(["RESPONSAVEL", "MEMBRO"]),
+  confirmed: z.boolean(),
+  studentNumber: z.string().nullable(),
+  memberId: z.number().nullable(),
+});
+
+const submissionTeamPayloadSchema = z.object({
+  submission: z.object({
+    id: z.number(),
+    referenceCode: z.string(),
+    name: z.string(),
+    status: z.string(),
+    type: z.string(),
+    typeLabel: z.string(),
+    course: z.string().nullable(),
+    leaderName: z.string().nullable(),
+    detailPath: z.string(),
+  }),
+  inviteUrl: z.string().nullable(),
+  token: z.string().nullable(),
+  totalMembers: z.number(),
+  confirmedMembers: z.number(),
+  allConfirmed: z.boolean(),
+  journeyLabel: z.string(),
+  members: z.array(submissionTeamMemberSchema),
+});
+
+const externalTeamMemberCredentialsSchema = z.object({
+  studentNumber: z.string(),
+  temporaryPassword: z.string(),
+});
+
+const exhibitorPassportMissionSchema = z.object({
+  key: z.string(),
+  type: z.string(),
+  title: z.string(),
+  description: z.string(),
+  points: z.number(),
+  pointsEarned: z.number(),
+  completions: z.number(),
+  status: z.enum(["done", "available", "locked"]),
+  completedAt: z.string().nullable(),
+});
+
+const exhibitorPassportBadgeSchema = z.object({
+  key: z.string(),
+  label: z.string(),
+  description: z.string(),
+  icon: z.string().nullable(),
+  earned: z.boolean(),
+  awardedAt: z.string().nullable(),
+});
+
+const exhibitorPassportRecentEventSchema = z.object({
+  id: z.number(),
+  businessKey: z.string(),
+  submissionId: z.number(),
+  submissionName: z.string(),
+  action: z.string(),
+  sourceType: z.string(),
+  points: z.number(),
+  reason: z.string().nullable(),
+  roundLabel: z.string().nullable(),
+  awardedAt: z.string(),
+  effect: z.enum(["GAIN", "LOSS", "NEUTRAL"]),
+});
+
+const exhibitorPassportOpportunitySchema = z.object({
+  key: z.string(),
+  type: z.string(),
+  title: z.string(),
+  description: z.string(),
+  pointsLabel: z.string(),
+  icon: z.string().nullable(),
+  completedCount: z.number(),
+  pointsEarned: z.number(),
+  status: z.enum(["done", "available", "attention", "locked"]),
+});
+
+const exhibitorPassportMemberEffortSchema = z.object({
+  memberId: z.number().nullable(),
+  name: z.string(),
+  studentNumber: z.string().nullable(),
+  role: z.enum(["RESPONSAVEL", "MEMBRO"]),
+  confirmed: z.boolean(),
+  points: z.number(),
+  actions: z.number(),
+  positiveActions: z.number(),
+  penalties: z.number(),
+  level: z.enum(["Ouro", "Prata", "Bronze", "Sem movimento"]),
+  lastActivityAt: z.string().nullable(),
+});
+
+const exhibitorPassportRoundFlowItemSchema = z.object({
+  key: z.string(),
+  label: z.string(),
+  multiplier: z.number(),
+  startsAt: z.string(),
+  endsAt: z.string(),
+  status: z.enum(["ACTIVE", "FROZEN", "CLOSED", "DRAFT"]),
+  phase: z.enum(["past", "current", "next", "upcoming", "closed"]),
+  progressPercent: z.number(),
+  minutesRemaining: z.number().nullable(),
+  startsInMinutes: z.number().nullable(),
+});
+
+const exhibitorPassportRoundFlowSchema = z.object({
+  generatedAt: z.string(),
+  currentRoundKey: z.string().nullable(),
+  currentLabel: z.string().nullable(),
+  currentMultiplier: z.number(),
+  minutesRemaining: z.number().nullable(),
+  items: z.array(exhibitorPassportRoundFlowItemSchema),
+  streakTargets: z.array(z.object({
+    minCourses: z.number(),
+    points: z.number(),
+    label: z.string(),
+  })),
+});
+
+const exhibitorPassportProjectSchema = z.object({
+  submissionId: z.number(),
+  referenceCode: z.string(),
+  name: z.string(),
+  course: z.string().nullable(),
+  type: z.string(),
+  area: z.string(),
+  primaryColor: z.string(),
+  secondaryColor: z.string(),
+  viewerRole: z.enum(["RESPONSAVEL", "MEMBRO"]),
+  score: z.number(),
+  ranking: z.object({
+    position: z.number(),
+    totalProjects: z.number(),
+    points: z.number(),
+  }).nullable(),
+  progressPercent: z.number(),
+  completedMissions: z.number(),
+  totalMissions: z.number(),
+  totalAvailablePoints: z.number(),
+  teamTotalMembers: z.number(),
+  teamConfirmedMembers: z.number(),
+  missions: z.array(exhibitorPassportMissionSchema),
+  badges: z.array(exhibitorPassportBadgeSchema),
+  continuousActions: z.array(exhibitorPassportOpportunitySchema),
+  bonusOpportunities: z.array(exhibitorPassportOpportunitySchema),
+  teamActivity: z.array(exhibitorPassportMemberEffortSchema),
+  recentEvents: z.array(exhibitorPassportRecentEventSchema),
+});
+
+const exhibitorPassportSummarySchema = z.object({
+  eventKey: z.string(),
+  generatedAt: z.string(),
+  hasExhibitorPassport: z.boolean(),
+  activeProject: exhibitorPassportProjectSchema.nullable(),
+  projects: z.array(exhibitorPassportProjectSchema),
+  roundFlow: exhibitorPassportRoundFlowSchema.nullable(),
+});
+
+const adminSubmissionTeamStateSchema = {
+  teamInviteUrl: z.string().nullable(),
+  teamJourneyLabel: z.string(),
+  teamTotalMembers: z.number(),
+  teamConfirmedMembers: z.number(),
+  teamAllConfirmed: z.boolean(),
+  teamMembers: z.array(submissionTeamMemberSchema),
+};
+
+const adminTeamMembersUpdateResponseSchema = z.object({
+  success: z.literal(true),
+  members: z.string().nullable(),
+  membersList: z.array(z.string()),
+  teamSize: z.number(),
+  ...adminSubmissionTeamStateSchema,
+});
+
+const adminTeamMemberConfirmResponseSchema = z.object({
+  success: z.literal(true),
+  ...adminSubmissionTeamStateSchema,
+});
+
+const adminExternalTeamMemberConfirmResponseSchema = z.object({
+  success: z.literal(true),
+  credentials: externalTeamMemberCredentialsSchema,
+  ...adminSubmissionTeamStateSchema,
 });
 
 const adminSubmissionQuerySchema = z.object({
@@ -203,6 +550,22 @@ const adminSubmissionQuerySchema = z.object({
     "course_asc",
     "course_desc",
   ]).default("created_desc"),
+});
+
+const paymentReviewStatusSchema = z.enum([
+  "SUBMITTED_BY_USER",
+  "PENDING_REVIEW",
+  "CONFIRMED_BY_ADMIN",
+  "REJECTED",
+  "CANCELED",
+  "PENDING",
+  "CONFIRMED",
+  "APPROVED",
+]);
+
+const paymentReviewBodySchema = z.object({
+  status: paymentReviewStatusSchema,
+  note: z.string().trim().max(400).nullable().optional(),
 });
 
 function hexToRgb(value: string) {
@@ -269,7 +632,12 @@ function parseSubmissionNeeds(value: unknown) {
   return [];
 }
 
-function toAdminSubmissionResponse(s: any) {
+type AdminSubmissionLike = Submission | Prisma.SubmissionGetPayload<object>;
+
+function toAdminSubmissionResponse(
+  s: AdminSubmissionLike,
+  team?: Awaited<ReturnType<typeof buildSubmissionTeamPayload>> | null,
+) {
   const membersList = normalizeTeamMembersInput(s.members);
   const needsList = parseSubmissionNeeds(s.needs);
   const competitionEligible = isCompetitionEligible(s.type, s.area);
@@ -292,6 +660,19 @@ function toAdminSubmissionResponse(s: any) {
     teamSize: membersList.length,
     leaderName: s.leaderName ?? null,
     leaderPhone: s.leaderPhone ?? null,
+    paymentStatus: s.paymentStatus ?? "PENDING_REVIEW",
+    paymentStatusLabel: paymentStatusLabel(s.paymentStatus, Boolean(s.paymentProof)),
+    paymentSubmittedAt: s.paymentSubmittedAt?.toISOString() ?? null,
+    paymentReviewedAt: s.paymentReviewedAt?.toISOString() ?? null,
+    paymentReviewedByStudentNumber: s.paymentReviewedByStudentNumber ?? null,
+    paymentReviewNote: s.paymentReviewNote ?? null,
+    paymentTimeline: buildPaymentTimeline({
+      status: s.paymentStatus,
+      submittedAt: s.paymentSubmittedAt ?? s.createdAt,
+      reviewedAt: s.paymentReviewedAt,
+      reviewedBy: s.paymentReviewedByStudentNumber,
+      reviewNote: s.paymentReviewNote,
+    }),
     needs: needsList,
     observations: s.observations ?? null,
     primaryColor: s.primaryColor,
@@ -299,7 +680,13 @@ function toAdminSubmissionResponse(s: any) {
     bannerUrl: s.bannerUrl ?? null,
     isWinner: competitionEligible ? s.isWinner ?? false : false,
     canVote: competitionEligible,
-    eligibleForAward: competitionEligible
+    eligibleForAward: competitionEligible,
+    teamInviteUrl: team?.inviteUrl ?? null,
+    teamJourneyLabel: team?.journeyLabel ?? buildMemberJourneyLabel({ total: membersList.length, confirmed: 0 }),
+    teamTotalMembers: team?.totalMembers ?? membersList.length,
+    teamConfirmedMembers: team?.confirmedMembers ?? 0,
+    teamAllConfirmed: team?.allConfirmed ?? false,
+    teamMembers: team?.members ?? [],
   };
 }
 
@@ -325,23 +712,189 @@ function isOwnedSubmissionDuplicate(
   return submission.studentId === student.id || submission.studentNumberSnapshot === student.studentNumber;
 }
 
+function isSubmissionPaymentProofSelfReference(value: string, submissionId: number) {
+  const trimmed = value.trim();
+  const expectedPath = `/submissions/${submissionId}/payment-proof`;
+
+  if (trimmed === expectedPath || trimmed === `/api${expectedPath}`) {
+    return true;
+  }
+
+  if (!/^https?:\/\//i.test(trimmed)) {
+    return false;
+  }
+
+  try {
+    const { pathname } = new URL(trimmed);
+    const normalizedPath = pathname.startsWith("/api/") ? pathname.slice(4) : pathname;
+    return normalizedPath === expectedPath;
+  } catch {
+    return false;
+  }
+}
+
+function getRequestAuthToken(request: FastifyRequest) {
+  const authHeader = request.headers.authorization;
+  if (authHeader?.startsWith("Bearer ")) {
+    return authHeader.substring("Bearer ".length);
+  }
+
+  return getCookie(request, "uor_auth");
+}
+
+function isResponsibleSubmissionViewer(submission: {
+  studentId?: number | null;
+  studentNumberSnapshot?: string | null;
+}, student: { id: number; studentNumber: string }) {
+  return submission.studentId === student.id
+    || (!!submission.studentNumberSnapshot && submission.studentNumberSnapshot === student.studentNumber);
+}
+
+async function isConfirmedSubmissionMember(submissionId: number, student: { id: number; studentNumber: string }) {
+  const member = await prisma.submissionMember.findFirst({
+    where: {
+      submissionId,
+      confirmedAt: { not: null },
+      OR: [
+        { studentId: student.id },
+        { studentNumber: student.studentNumber },
+      ],
+    },
+    select: { id: true },
+  });
+
+  return Boolean(member);
+}
+
+async function resolveSubmissionViewerAccess(submission: {
+  id: number;
+  studentId?: number | null;
+  studentNumberSnapshot?: string | null;
+}, student: { id: number; studentNumber: string }) {
+  if (isResponsibleSubmissionViewer(submission, student)) {
+    return {
+      allowed: true,
+      viewerRole: "RESPONSAVEL" as const,
+      canManageSubmission: true,
+    };
+  }
+
+  if (await isConfirmedSubmissionMember(submission.id, student)) {
+    return {
+      allowed: true,
+      viewerRole: "MEMBRO" as const,
+      canManageSubmission: false,
+    };
+  }
+
+  return {
+    allowed: false,
+    viewerRole: "MEMBRO" as const,
+    canManageSubmission: false,
+  };
+}
+
+async function canReadExhibitorPdf(request: FastifyRequest, env: ReturnType<typeof loadEnv>, input: {
+  submission: {
+    id: number;
+    studentId: number | null;
+    studentNumberSnapshot: string | null;
+  };
+  token?: string | null;
+  metadata?: ExhibitorPdfMetadata | null;
+  allowConfirmedMembers?: boolean;
+}) {
+  if (input.token && input.metadata?.accessToken && input.token === input.metadata.accessToken) {
+    return { allowed: true as const };
+  }
+
+  const authToken = getRequestAuthToken(request);
+  if (!authToken) {
+    return { allowed: false as const, status: 401 as const, message: "Missing or invalid token" };
+  }
+
+  try {
+    const payload = verifyAuthToken(authToken, env);
+
+    if (payload.role === "jury") {
+      return { allowed: true as const };
+    }
+
+    if (payload.role === "trainer") {
+      return { allowed: false as const, status: 403 as const, message: "Access denied" };
+    }
+
+    const ownsSubmission = input.submission.studentId === payload.sub
+      || input.submission.studentNumberSnapshot === payload.studentNumber;
+    if (ownsSubmission || await isAdminStudentNumber(payload.studentNumber)) {
+      return { allowed: true as const };
+    }
+
+    if (
+      input.allowConfirmedMembers
+      && await isConfirmedSubmissionMember(input.submission.id, {
+        id: payload.sub,
+        studentNumber: payload.studentNumber,
+      })
+    ) {
+      return { allowed: true as const };
+    }
+
+    return { allowed: false as const, status: 403 as const, message: "Access denied" };
+  } catch {
+    return { allowed: false as const, status: 401 as const, message: "Invalid token" };
+  }
+}
+
+async function canReadSubmissionDocument(request: FastifyRequest, env: ReturnType<typeof loadEnv>, submission: {
+  id: number;
+  studentId?: number | null;
+  studentNumberSnapshot?: string | null;
+}, options?: { allowConfirmedMembers?: boolean }) {
+  return canReadExhibitorPdf(request, env, {
+    submission: {
+      id: submission.id,
+      studentId: submission.studentId ?? null,
+      studentNumberSnapshot: submission.studentNumberSnapshot ?? null,
+    },
+    allowConfirmedMembers: options?.allowConfirmedMembers ?? false,
+  });
+}
+
+function serializeExhibitorPdfMetadata(metadata: ExhibitorPdfMetadata, created: boolean) {
+  return {
+    submissionId: metadata.submissionId,
+    fileName: metadata.fileName,
+    pdfPath: metadata.pdfPath,
+    publicUrl: metadata.publicUrl,
+    generatedAt: metadata.generatedAt,
+    version: metadata.version,
+    created,
+  };
+}
+
 function buildSubmissionCreateResponse(submission: {
   id: number;
   referenceCode: string;
   status: string;
   type: "PROJECT" | "BUSINESS" | "PRODUCT";
+  paymentStatus?: string | null;
 }, config: {
   projectCommunityUrl?: string | null;
   businessCommunityUrl?: string | null;
   productCommunityUrl?: string | null;
 }) {
-  const communityUrl = buildSubmissionCommunityUrl(submission.type, config);
+  const communityUrl = submission.status === "APPROVED" && isPaymentConfirmedByAdmin(submission.paymentStatus)
+    ? buildSubmissionCommunityUrl(submission.type, config)
+    : null;
 
   return {
     referenceCode: submission.referenceCode,
     status: submission.status,
     id: submission.id,
     communityUrl,
+    paymentStatus: submission.paymentStatus ?? "PENDING_REVIEW",
+    paymentStatusLabel: paymentStatusLabel(submission.paymentStatus, true),
     boardingPassPath: `/submissions/${submission.id}/boarding-pass.pdf`,
     paymentProofPath: `/submissions/${submission.id}/payment-proof`,
     receiptPath: `/submissoes/${submission.id}`,
@@ -376,7 +929,7 @@ export async function submissionRoutes(app: FastifyInstance, { env }: { env: Ret
   const updateSubmissionStatus = new UpdateSubmissionStatus(submissionRepo);
   const updateSubmissionPresentation = new UpdateSubmissionPresentation(submissionRepo);
   const deleteSubmission = new DeleteSubmission(submissionRepo);
-  const publicAppUrl = env.PUBLIC_APP_URL?.replace(/\/$/, "") ?? "https://uorconnect.space";
+  const publicAppUrl = env.PUBLIC_APP_URL?.replace(/\/$/, "") ?? "http://localhost:5173";
 
   app.get("/config", {
     schema: {
@@ -404,6 +957,8 @@ export async function submissionRoutes(app: FastifyInstance, { env }: { env: Ret
             status: z.string(),
             id: z.number(),
             communityUrl: z.string().nullable(),
+            paymentStatus: z.string(),
+            paymentStatusLabel: z.string(),
             boardingPassPath: z.string(),
             paymentProofPath: z.string().nullable(),
             receiptPath: z.string(),
@@ -452,13 +1007,27 @@ export async function submissionRoutes(app: FastifyInstance, { env }: { env: Ret
       }
 
       let result;
+      const storedPaymentProof = await persistMediaValue(env, payload.paymentProof, {
+        purpose: "submission-payment-proofs",
+        allowDocuments: true,
+      });
+      const storedBannerUrl = await persistMediaValue(env, payload.bannerUrl ?? null, {
+        purpose: "submission-banners",
+        maxImageDimension: 1600,
+      });
       try {
         result = await createSubmission.execute({
           ...payload,
+          paymentProof: storedPaymentProof ?? payload.paymentProof,
+          paymentStatus: "PENDING_REVIEW",
+          paymentSubmittedAt: new Date(),
+          paymentReviewedAt: null,
+          paymentReviewedByStudentNumber: null,
+          paymentReviewNote: null,
           members: normalizedMembers,
           primaryColor,
           secondaryColor,
-          bannerUrl: payload.bannerUrl ?? null,
+          bannerUrl: storedBannerUrl ?? null,
           studentId: student.id,
           studentNumberSnapshot: student.studentNumber,
         });
@@ -471,6 +1040,7 @@ export async function submissionRoutes(app: FastifyInstance, { env }: { env: Ret
           where: {
             name: payload.name,
             leaderPhone: payload.leaderPhone,
+            deletedAt: null,
           },
           orderBy: { createdAt: "desc" },
           select: {
@@ -478,6 +1048,7 @@ export async function submissionRoutes(app: FastifyInstance, { env }: { env: Ret
             referenceCode: true,
             status: true,
             type: true,
+            paymentStatus: true,
             studentId: true,
             studentNumberSnapshot: true,
           },
@@ -493,7 +1064,9 @@ export async function submissionRoutes(app: FastifyInstance, { env }: { env: Ret
         });
       }
 
-      const communityUrl = buildSubmissionCommunityUrl(result.type, config);
+      const communityUrl = result.status === "APPROVED" && isPaymentConfirmedByAdmin(result.paymentStatus)
+        ? buildSubmissionCommunityUrl(result.type, config)
+        : null;
       const submissionCourse = "course" in payload ? payload.course : null;
 
       try {
@@ -577,7 +1150,271 @@ export async function submissionRoutes(app: FastifyInstance, { env }: { env: Ret
       }
 
       const submissions = await submissionRepo.listByStudent(request.student.id);
-      return reply.send(submissions.map((submission) => buildStudentSubmissionListItem(submission)));
+      const items = await Promise.all(submissions.map(async (submission) => {
+        const base = buildStudentSubmissionListItem(submission);
+        const team = await buildSubmissionTeamPayload(env, submission);
+        const access = await resolveSubmissionViewerAccess(submission, request.student!);
+        const canManageSubmission = access.canManageSubmission;
+        return {
+          ...base,
+          viewerRole: access.viewerRole,
+          canManageTeam: canManageSubmission,
+          canManagePresentation: canManageSubmission,
+          canManageChallenge: canManageSubmission,
+          teamInviteUrl: canManageSubmission ? team.inviteUrl : null,
+          teamJourneyLabel: team.journeyLabel,
+          teamTotalMembers: team.totalMembers,
+          teamConfirmedMembers: team.confirmedMembers,
+          teamAllConfirmed: team.allConfirmed,
+          teamMembers: team.members,
+        };
+      }));
+      return reply.send(items);
+    });
+
+    protectedApp.get("/exhibitor-passport/mine", {
+      schema: {
+        response: {
+          200: exhibitorPassportSummarySchema,
+          401: z.object({ message: z.string() }),
+        }
+      }
+    }, async (request, reply) => {
+      if (!request.student?.id) {
+        return reply.code(401).send({ message: "Missing or invalid token" });
+      }
+
+      return reply.send(await getStudentExhibitorPassportSummary({
+        studentId: request.student.id,
+        eventKey: "main-event",
+      }));
+    });
+
+    protectedApp.get("/:id/team", {
+      schema: {
+        params: z.object({ id: z.coerce.number().int().positive() }),
+        response: {
+          200: submissionTeamPayloadSchema,
+          401: z.object({ message: z.string() }),
+          404: z.object({ message: z.string() }),
+        }
+      }
+    }, async (request, reply) => {
+      if (!request.student?.id) {
+        return reply.code(401).send({ message: "Missing or invalid token" });
+      }
+
+      const submission = await submissionRepo.findOwnedById((request.params as { id: number }).id, request.student.id);
+      if (!submission) {
+        return reply.code(404).send({ message: "Submission not found" });
+      }
+
+      return reply.send(await buildSubmissionTeamPayload(env, submission));
+    });
+
+    protectedApp.post("/:id/team/members", {
+      schema: {
+        params: z.object({ id: z.coerce.number().int().positive() }),
+        body: addTeamMemberSchema,
+        response: {
+          200: submissionTeamPayloadSchema,
+          400: z.object({ message: z.string() }),
+          401: z.object({ message: z.string() }),
+          403: z.object({ message: z.string() }),
+          404: z.object({ message: z.string() }),
+        }
+      }
+    }, async (request, reply) => {
+      if (!request.student?.id) {
+        return reply.code(401).send({ message: "Missing or invalid token" });
+      }
+
+      const submission = await submissionRepo.findOwnedById((request.params as { id: number }).id, request.student.id);
+      if (!submission) {
+        return reply.code(404).send({ message: "Submission not found" });
+      }
+
+      try {
+        return reply.send(await addSubmissionTeamMember(
+          env,
+          submission,
+          (request.body as z.infer<typeof addTeamMemberSchema>).name,
+        ));
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Não foi possível adicionar este membro.";
+        if (/recusada/i.test(message)) {
+          return reply.code(403).send({ message });
+        }
+        return reply.code(400).send({ message });
+      }
+    });
+
+    protectedApp.patch("/:id/team/members/:memberId/student-number", {
+      schema: {
+        params: z.object({
+          id: z.coerce.number().int().positive(),
+          memberId: z.coerce.number().int().positive(),
+        }),
+        body: updateTeamMemberStudentNumberSchema,
+        response: {
+          200: submissionTeamPayloadSchema,
+          400: z.object({ message: z.string() }),
+          401: z.object({ message: z.string() }),
+          403: z.object({ message: z.string() }),
+          404: z.object({ message: z.string() }),
+        }
+      }
+    }, async (request, reply) => {
+      if (!request.student?.id) {
+        return reply.code(401).send({ message: "Missing or invalid token" });
+      }
+
+      const params = request.params as { id: number; memberId: number };
+      const submission = await submissionRepo.findOwnedById(params.id, request.student.id);
+      if (!submission) {
+        return reply.code(404).send({ message: "Submission not found" });
+      }
+
+      try {
+        return reply.send(await setSubmissionTeamMemberExpectedStudentNumber(
+          env,
+          submission,
+          params.memberId,
+          (request.body as z.infer<typeof updateTeamMemberStudentNumberSchema>).studentNumber,
+        ));
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Não foi possível guardar o número deste membro.";
+        if (/recusada|responsável/i.test(message)) {
+          return reply.code(403).send({ message });
+        }
+        return reply.code(400).send({ message });
+      }
+    });
+
+    protectedApp.delete("/:id/team/members/:memberId", {
+      schema: {
+        params: z.object({
+          id: z.coerce.number().int().positive(),
+          memberId: z.coerce.number().int().positive(),
+        }),
+        response: {
+          200: submissionTeamPayloadSchema,
+          400: z.object({ message: z.string() }),
+          401: z.object({ message: z.string() }),
+          403: z.object({ message: z.string() }),
+          404: z.object({ message: z.string() }),
+        }
+      }
+    }, async (request, reply) => {
+      if (!request.student?.id) {
+        return reply.code(401).send({ message: "Missing or invalid token" });
+      }
+
+      const params = request.params as { id: number; memberId: number };
+      const submission = await submissionRepo.findOwnedById(params.id, request.student.id);
+      if (!submission) {
+        return reply.code(404).send({ message: "Submission not found" });
+      }
+
+      try {
+        const team = await removeSubmissionTeamMember(env, submission, params.memberId);
+
+        await recordAdminAudit({
+          actorStudentNumber: request.student.studentNumber,
+          action: "submission.team_member_remove_responsible",
+          entityType: "SubmissionMember",
+          entityId: params.memberId,
+          summary: `Responsável removeu um membro da candidatura ${submission.referenceCode}.`,
+          metadata: {
+            submissionId: submission.id,
+            memberId: params.memberId,
+          },
+        });
+
+        return reply.send(team);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Não foi possível remover este membro.";
+        if (/responsável|recusada/i.test(message)) {
+          return reply.code(403).send({ message });
+        }
+        return reply.code(400).send({ message });
+      }
+    });
+
+    protectedApp.post("/:id/team/members/:memberId/confirm-external", {
+      schema: {
+        params: z.object({
+          id: z.coerce.number().int().positive(),
+          memberId: z.coerce.number().int().positive(),
+        }),
+        body: confirmExternalTeamMemberSchema,
+        response: {
+          200: submissionTeamPayloadSchema.extend({
+            credentials: externalTeamMemberCredentialsSchema,
+          }),
+          400: z.object({ message: z.string() }),
+          401: z.object({ message: z.string() }),
+          403: z.object({ message: z.string() }),
+          404: z.object({ message: z.string() }),
+          409: z.object({ message: z.string() }),
+        }
+      }
+    }, async (request, reply) => {
+      if (!request.student?.id) {
+        return reply.code(401).send({ message: "Missing or invalid token" });
+      }
+
+      const params = request.params as { id: number; memberId: number };
+      let submission = await submissionRepo.findOwnedById(params.id, request.student.id);
+      const adminActor = !submission && await isAdminStudentNumber(request.student.studentNumber);
+      if (!submission && adminActor) {
+        submission = await submissionRepo.findById(params.id);
+      }
+      if (!submission) {
+        return reply.code(404).send({ message: "Submission not found" });
+      }
+
+      try {
+        const result = await adminConfirmExternalSubmissionTeamMember(
+          env,
+          submission,
+          params.memberId,
+          {
+            ...(request.body as z.infer<typeof confirmExternalTeamMemberSchema>),
+            actorStudentNumber: request.student.studentNumber,
+          },
+        );
+        if (adminActor) {
+          await recordAdminAudit({
+            actorStudentNumber: request.student.studentNumber,
+            action: "submission.team_member_confirm_external",
+            entityType: "SubmissionMember",
+            entityId: params.memberId,
+            summary: `Membro externo da candidatura ${submission.referenceCode} confirmado com credenciais locais.`,
+            metadata: {
+              submissionId: params.id,
+              memberId: params.memberId,
+              externalOrganization: (request.body as z.infer<typeof confirmExternalTeamMemberSchema>).externalOrganization,
+            },
+          });
+        }
+        return reply.send({
+          ...result.team,
+          credentials: result.credentials,
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Não foi possível confirmar este membro externo.";
+        if (/não encontrado/i.test(message)) {
+          return reply.code(404).send({ message });
+        }
+        if (/já está ligado|já confirmou|outro estudante/i.test(message)) {
+          return reply.code(409).send({ message });
+        }
+        if (/recusada|responsável/i.test(message)) {
+          return reply.code(403).send({ message });
+        }
+        return reply.code(400).send({ message });
+      }
     });
 
     protectedApp.get("/:id/receipt", {
@@ -594,13 +1431,25 @@ export async function submissionRoutes(app: FastifyInstance, { env }: { env: Ret
         return reply.code(401).send({ message: "Missing or invalid token" });
       }
 
-      const submission = await submissionRepo.findOwnedById((request.params as { id: number }).id, request.student.id);
+      const submission = await submissionRepo.findById((request.params as { id: number }).id);
       if (!submission) {
         return reply.code(404).send({ message: "Submission not found" });
       }
 
+      const access = await resolveSubmissionViewerAccess(submission, request.student);
+      if (!access.allowed) {
+        return reply.code(404).send({ message: "Submission not found" });
+      }
+
       const config = await getSubmissionConfig.execute();
-      return reply.send(buildStudentSubmissionReceiptResponse(submission, config));
+      const receipt = buildStudentSubmissionReceiptResponse(submission, config);
+      return reply.send({
+        ...receipt,
+        canEdit: access.canManageSubmission && receipt.canEdit,
+        viewerRole: access.viewerRole,
+        canManageSubmission: access.canManageSubmission,
+        paymentProofPath: access.canManageSubmission ? receipt.paymentProofPath : null,
+      });
     });
 
     protectedApp.patch("/:id", {
@@ -648,12 +1497,29 @@ export async function submissionRoutes(app: FastifyInstance, { env }: { env: Ret
         return reply.code(401).send({ message: "Missing or invalid token" });
       }
 
+      const paymentProof = isSubmissionPaymentProofSelfReference(payload.paymentProof, submissionId)
+        ? existing.paymentProof
+        : await persistMediaValue(env, payload.paymentProof, {
+          purpose: "submission-payment-proofs",
+          allowDocuments: true,
+        }) ?? payload.paymentProof;
+      const storedBannerUrl = await persistMediaValue(env, payload.bannerUrl ?? null, {
+        purpose: "submission-banners",
+        maxImageDimension: 1600,
+      });
+
       const updated = await submissionRepo.updateOwnedSubmission(submissionId, request.student.id, {
         ...payload,
         members: normalizedMembers,
+        paymentProof,
+        paymentStatus: "PENDING_REVIEW",
+        paymentSubmittedAt: new Date(),
+        paymentReviewedAt: null,
+        paymentReviewedByStudentNumber: null,
+        paymentReviewNote: null,
         primaryColor,
         secondaryColor,
-        bannerUrl: payload.bannerUrl ?? null,
+        bannerUrl: storedBannerUrl ?? null,
         studentId: student.id,
         studentNumberSnapshot: student.studentNumber,
       });
@@ -667,15 +1533,7 @@ export async function submissionRoutes(app: FastifyInstance, { env }: { env: Ret
         params: z.object({ id: z.coerce.number().int().positive() }),
         body: submissionPresentationSchema,
         response: {
-          200: z.object({
-            id: z.number(),
-            slug: z.string(),
-            detailPath: z.string(),
-            primaryColor: z.string(),
-            secondaryColor: z.string(),
-            bannerUrl: z.string().nullable(),
-            status: z.string(),
-          }),
+          200: submissionPresentationResponseSchema.extend({ status: z.string() }),
           400: z.object({ message: z.string() }),
           401: z.object({ message: z.string() }),
           403: z.object({ message: z.string() }),
@@ -707,13 +1565,32 @@ export async function submissionRoutes(app: FastifyInstance, { env }: { env: Ret
         return reply.code(400).send({ message: themeError });
       }
 
-      const updated = await updateSubmissionPresentation.execute(id, body);
+      const hasBannerUpdate = Object.prototype.hasOwnProperty.call(body, "bannerUrl");
+      const storedBannerUrl = hasBannerUpdate
+        ? await persistMediaValue(env, body.bannerUrl ?? null, {
+          purpose: "submission-banners",
+          maxImageDimension: 1600,
+        })
+        : undefined;
+      const presentationPayload = {
+        ...body,
+        ...(hasBannerUpdate ? { bannerUrl: storedBannerUrl ?? null } : {}),
+      };
+
+      const updated = await updateSubmissionPresentation.execute(id, presentationPayload);
       const slug = buildSubmissionSlug(updated.name, updated.id);
 
       return reply.send({
         id: updated.id,
         slug,
         detailPath: `/projeto/${slug}`,
+        description: updated.description,
+        repoUrl: updated.repoUrl ?? null,
+        websiteUrl: updated.websiteUrl ?? null,
+        instagramUrl: updated.instagramUrl ?? null,
+        facebookUrl: updated.facebookUrl ?? null,
+        linkedinUrl: updated.linkedinUrl ?? null,
+        githubUrl: updated.githubUrl ?? null,
         primaryColor: updated.primaryColor,
         secondaryColor: updated.secondaryColor,
         bannerUrl: updated.bannerUrl ?? null,
@@ -723,8 +1600,10 @@ export async function submissionRoutes(app: FastifyInstance, { env }: { env: Ret
 
     protectedApp.register(async (adminApp) => {
       adminApp.register(adminGuard);
+      setDefaultAdminPermission(adminApp, ["OVERVIEW", "SUBMISSIONS", "VOTES", "WINNERS"]);
 
       adminApp.put("/config", {
+      config: requireAdminPermission(["SUBMISSIONS"]),
       schema: {
         body: submissionConfigSchema,
         response: {
@@ -763,6 +1642,20 @@ export async function submissionRoutes(app: FastifyInstance, { env }: { env: Ret
             teamSize: z.number(),
             leaderName: z.string().nullable(),
             leaderPhone: z.string().nullable(),
+            paymentStatus: z.string(),
+            paymentStatusLabel: z.string(),
+            paymentSubmittedAt: z.string().nullable(),
+            paymentReviewedAt: z.string().nullable(),
+            paymentReviewedByStudentNumber: z.string().nullable(),
+            paymentReviewNote: z.string().nullable(),
+            paymentTimeline: z.array(z.object({
+              key: z.string(),
+              label: z.string(),
+              status: z.string(),
+              at: z.string().nullable(),
+              by: z.string().nullable(),
+              note: z.string().nullable(),
+            })),
             needs: z.array(z.string()),
             observations: z.string().nullable(),
             primaryColor: z.string(),
@@ -770,16 +1663,20 @@ export async function submissionRoutes(app: FastifyInstance, { env }: { env: Ret
             bannerUrl: z.string().nullable(),
             isWinner: z.boolean(),
             canVote: z.boolean(),
-            eligibleForAward: z.boolean()
+            eligibleForAward: z.boolean(),
+            ...adminSubmissionTeamStateSchema,
           })),
           401: z.object({ message: z.string() }),
           403: z.object({ message: z.string() })
         }
       }
       }, async (request) => {
-        const { status, type } = request.query as { status?: any; type?: any };
-        const list = await listDetailedSubmissions.execute(status, type);
-        return list.map((submission) => toAdminSubmissionResponse(submission));
+        const query = adminSubmissionQuerySchema.pick({ status: true, type: true }).partial().parse(request.query);
+        const list = await listDetailedSubmissions.execute(query.status, query.type);
+        return Promise.all(list.map(async (submission) => {
+          const team = await buildSubmissionTeamPayload(env, submission);
+          return toAdminSubmissionResponse(submission, team);
+        }));
       });
 
       adminApp.get("/paged", {
@@ -804,6 +1701,20 @@ export async function submissionRoutes(app: FastifyInstance, { env }: { env: Ret
               teamSize: z.number(),
               leaderName: z.string().nullable(),
               leaderPhone: z.string().nullable(),
+              paymentStatus: z.string(),
+              paymentStatusLabel: z.string(),
+              paymentSubmittedAt: z.string().nullable(),
+              paymentReviewedAt: z.string().nullable(),
+              paymentReviewedByStudentNumber: z.string().nullable(),
+              paymentReviewNote: z.string().nullable(),
+              paymentTimeline: z.array(z.object({
+                key: z.string(),
+                label: z.string(),
+                status: z.string(),
+                at: z.string().nullable(),
+                by: z.string().nullable(),
+                note: z.string().nullable(),
+              })),
               needs: z.array(z.string()),
               observations: z.string().nullable(),
               primaryColor: z.string(),
@@ -811,7 +1722,8 @@ export async function submissionRoutes(app: FastifyInstance, { env }: { env: Ret
               bannerUrl: z.string().nullable(),
               isWinner: z.boolean(),
               canVote: z.boolean(),
-              eligibleForAward: z.boolean()
+              eligibleForAward: z.boolean(),
+              ...adminSubmissionTeamStateSchema,
             })),
             total: z.number(),
             page: z.number(),
@@ -827,6 +1739,7 @@ export async function submissionRoutes(app: FastifyInstance, { env }: { env: Ret
         const limit = query.limit;
         const search = query.search?.trim();
         const where = {
+          deletedAt: null,
           ...(query.status ? { status: query.status } : {}),
           ...(query.type ? { type: query.type } : {}),
           ...(search
@@ -868,15 +1781,365 @@ export async function submissionRoutes(app: FastifyInstance, { env }: { env: Ret
           }),
         ]);
 
+        const responseItems = await Promise.all(items.map(async (item) => {
+          const team = await buildSubmissionTeamPayload(env, item);
+          return toAdminSubmissionResponse(item, team);
+        }));
+
         return reply.send({
-          items: items.map((item) => toAdminSubmissionResponse(item)),
+          items: responseItems,
           total,
           page,
           totalPages: Math.max(1, Math.ceil(total / limit)),
         });
       });
 
+      adminApp.patch("/:id/team/members", {
+      config: requireAdminPermission(["SUBMISSIONS"]),
+      schema: {
+        params: z.object({ id: z.coerce.number().int().positive() }),
+        body: updateTeamMembersSchema,
+        response: {
+          200: adminTeamMembersUpdateResponseSchema,
+          400: z.object({ message: z.string() }),
+          401: z.object({ message: z.string() }),
+          403: z.object({ message: z.string() }),
+          404: z.object({ message: z.string() }),
+        }
+      }
+      }, async (request, reply) => {
+        const { id } = request.params as { id: number };
+        const { members } = updateTeamMembersSchema.parse(request.body);
+        const submission = await prisma.submission.findFirst({
+          where: { id, deletedAt: null },
+          select: {
+            id: true,
+            referenceCode: true,
+            type: true,
+            status: true,
+            name: true,
+            area: true,
+            course: true,
+            members: true,
+            leaderName: true,
+            studentId: true,
+            studentNumberSnapshot: true,
+          },
+        });
+
+        if (!submission) {
+          return reply.code(404).send({ message: "Submission not found" });
+        }
+
+        const normalizedMembers = normalizeTeamMembersInput(members);
+
+        try {
+          const team = await replaceSubmissionTeamMembers(env, submission, normalizedMembers);
+
+          await recordAdminAudit({
+            actorStudentNumber: request.student?.studentNumber,
+            action: "submission.team_members_update",
+            entityType: "Submission",
+            entityId: id,
+            summary: `Lista de membros da candidatura ${submission.referenceCode} atualizada pela administração.`,
+            metadata: {
+              members: normalizedMembers,
+              totalMembers: normalizedMembers.length,
+            },
+          });
+
+          return reply.send({
+            success: true as const,
+            members: normalizedMembers.length > 0 ? formatTeamMembersLabel(normalizedMembers) : null,
+            membersList: normalizedMembers,
+            teamSize: normalizedMembers.length,
+            teamInviteUrl: team.inviteUrl,
+            teamJourneyLabel: team.journeyLabel,
+            teamTotalMembers: team.totalMembers,
+            teamConfirmedMembers: team.confirmedMembers,
+            teamAllConfirmed: team.allConfirmed,
+            teamMembers: team.members,
+          });
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Não foi possível atualizar a equipa.";
+          return reply.code(400).send({ message });
+        }
+      });
+
+      adminApp.post("/:id/team/members/:memberId/confirm", {
+      config: requireAdminPermission(["SUBMISSIONS"]),
+      schema: {
+        params: z.object({
+          id: z.coerce.number().int().positive(),
+          memberId: z.coerce.number().int().positive(),
+        }),
+        response: {
+          200: adminTeamMemberConfirmResponseSchema,
+          400: z.object({ message: z.string() }),
+          401: z.object({ message: z.string() }),
+          403: z.object({ message: z.string() }),
+          404: z.object({ message: z.string() }),
+          409: z.object({ message: z.string() }),
+        }
+      }
+      }, async (request, reply) => {
+        const { id, memberId } = request.params as { id: number; memberId: number };
+        const submission = await prisma.submission.findFirst({
+          where: { id, deletedAt: null },
+          select: {
+            id: true,
+            referenceCode: true,
+            type: true,
+            status: true,
+            name: true,
+            area: true,
+            course: true,
+            members: true,
+            leaderName: true,
+            studentId: true,
+            studentNumberSnapshot: true,
+          },
+        });
+
+        if (!submission) {
+          return reply.code(404).send({ message: "Submission not found" });
+        }
+
+        try {
+          const team = await adminConfirmSubmissionTeamMember(env, submission, memberId);
+
+          await recordAdminAudit({
+            actorStudentNumber: request.student?.studentNumber,
+            action: "submission.team_member_confirm_admin",
+            entityType: "SubmissionMember",
+            entityId: memberId,
+            summary: `Membro da candidatura ${submission.referenceCode} confirmado pela administração após login pela Secretaria.`,
+            metadata: {
+              submissionId: id,
+              memberId,
+            },
+          });
+
+          return reply.send({
+            success: true as const,
+            teamInviteUrl: team.inviteUrl,
+            teamJourneyLabel: team.journeyLabel,
+            teamTotalMembers: team.totalMembers,
+            teamConfirmedMembers: team.confirmedMembers,
+            teamAllConfirmed: team.allConfirmed,
+            teamMembers: team.members,
+          });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Não foi possível confirmar este membro.";
+        if (/não encontrado/i.test(message)) {
+          return reply.code(404).send({ message });
+          }
+          if (/já está ligado|já confirmou|outro estudante/i.test(message)) {
+            return reply.code(409).send({ message });
+          }
+          if (/recusada/i.test(message)) {
+            return reply.code(403).send({ message });
+          }
+        return reply.code(400).send({ message });
+      }
+      });
+
+      // adminApp.post("/:id/team/members/:memberId/confirm-external")
+      // is handled by the shared protected route above to avoid duplicate
+      // Fastify registration while allowing both project owners and admins.
+
+      adminApp.patch("/:id/team/members/:memberId/external-exception", {
+      config: requireAdminPermission(["SUBMISSIONS"]),
+      schema: {
+        params: z.object({
+          id: z.coerce.number().int().positive(),
+          memberId: z.coerce.number().int().positive(),
+        }),
+        body: updateTeamMemberExternalExceptionSchema,
+        response: {
+          200: adminTeamMemberConfirmResponseSchema,
+          400: z.object({ message: z.string() }),
+          401: z.object({ message: z.string() }),
+          403: z.object({ message: z.string() }),
+          404: z.object({ message: z.string() }),
+        }
+      }
+      }, async (request, reply) => {
+        const { id, memberId } = request.params as { id: number; memberId: number };
+        const body = updateTeamMemberExternalExceptionSchema.parse(request.body);
+        const submission = await prisma.submission.findFirst({
+          where: { id, deletedAt: null },
+          select: {
+            id: true,
+            referenceCode: true,
+            type: true,
+            status: true,
+            name: true,
+            area: true,
+            course: true,
+            members: true,
+            leaderName: true,
+            studentId: true,
+            studentNumberSnapshot: true,
+          },
+        });
+
+        if (!submission) {
+          return reply.code(404).send({ message: "Submission not found" });
+        }
+
+        const member = await prisma.submissionMember.findFirst({
+          where: { id: memberId, submissionId: id },
+          select: { id: true },
+        });
+
+        if (!member) {
+          return reply.code(404).send({ message: "Submission member not found" });
+        }
+
+        await prisma.submissionMember.update({
+          where: { id: memberId },
+          data: {
+            isExternal: body.isExternal,
+            externalOrganization: body.externalOrganization?.trim() || null,
+            externalReason: body.externalReason.trim(),
+            exceptionApprovedAt: body.isExternal ? new Date() : null,
+            exceptionApprovedByStudentNumber: body.isExternal ? request.student?.studentNumber ?? null : null,
+          },
+        });
+
+        const team = await buildSubmissionTeamPayload(env, submission);
+
+        await recordAdminAudit({
+          actorStudentNumber: request.student?.studentNumber,
+          action: "submission.team_member_external_exception",
+          entityType: "SubmissionMember",
+          entityId: memberId,
+          summary: `Exceção de membro externo atualizada na candidatura ${submission.referenceCode}.`,
+          metadata: {
+            submissionId: id,
+            memberId,
+            isExternal: body.isExternal,
+            externalOrganization: body.externalOrganization ?? null,
+            externalReason: body.externalReason,
+          },
+        });
+
+        return reply.send({
+          success: true as const,
+          teamInviteUrl: team.inviteUrl,
+          teamJourneyLabel: team.journeyLabel,
+          teamTotalMembers: team.totalMembers,
+          teamConfirmedMembers: team.confirmedMembers,
+          teamAllConfirmed: team.allConfirmed,
+          teamMembers: team.members,
+        });
+      });
+
+      adminApp.patch("/:id/payment-status", {
+      config: requireAdminPermission(["SUBMISSIONS"]),
+      schema: {
+        params: z.object({ id: z.coerce.number().int().positive() }),
+        body: paymentReviewBodySchema,
+        response: {
+          200: z.object({
+            success: z.literal(true),
+            paymentStatus: z.string(),
+            paymentStatusLabel: z.string(),
+            paymentReviewedAt: z.string().nullable(),
+            paymentReviewedByStudentNumber: z.string().nullable(),
+            paymentReviewNote: z.string().nullable(),
+            paymentTimeline: z.array(z.object({
+              key: z.string(),
+              label: z.string(),
+              status: z.string(),
+              at: z.string().nullable(),
+              by: z.string().nullable(),
+              note: z.string().nullable(),
+            })),
+          }),
+          401: z.object({ message: z.string() }),
+          403: z.object({ message: z.string() }),
+          404: z.object({ message: z.string() })
+        }
+      }
+      }, async (request, reply) => {
+        const { id } = request.params as { id: number };
+        const body = paymentReviewBodySchema.parse(request.body);
+        const nextStatus = normalizePaymentStatus(body.status);
+        const reviewedAt = ["CONFIRMED_BY_ADMIN", "REJECTED", "CANCELED"].includes(nextStatus) ? new Date() : null;
+
+        const existingSubmission = await prisma.submission.findFirst({
+          where: { id, deletedAt: null },
+          select: { id: true },
+        });
+        if (!existingSubmission) {
+          return reply.code(404).send({ message: "Submission not found" });
+        }
+
+        const updated = await prisma.submission.update({
+          where: { id },
+          data: {
+            paymentStatus: nextStatus,
+            paymentReviewedAt: reviewedAt,
+            paymentReviewedByStudentNumber: reviewedAt ? request.student?.studentNumber ?? (request.jury ? `jury-${request.jury.id}` : null) : null,
+            paymentReviewNote: reviewedAt ? body.note?.trim() || null : null,
+            paymentSubmittedAt: nextStatus === "PENDING_REVIEW" || nextStatus === "SUBMITTED_BY_USER" ? new Date() : undefined,
+          },
+          select: {
+            id: true,
+            referenceCode: true,
+            status: true,
+            paymentStatus: true,
+            paymentSubmittedAt: true,
+            paymentReviewedAt: true,
+            paymentReviewedByStudentNumber: true,
+            paymentReviewNote: true,
+            createdAt: true,
+          },
+        }).catch(() => null);
+
+        if (!updated) {
+          return reply.code(404).send({ message: "Submission not found" });
+        }
+
+        await recordAdminAudit({
+          actorStudentNumber: request.student?.studentNumber,
+          action: "submission.payment_review",
+          entityType: "Submission",
+          entityId: id,
+          summary: `Estado financeiro da candidatura ${updated.referenceCode} atualizado para ${nextStatus}.`,
+          metadata: {
+            paymentStatus: nextStatus,
+            note: updated.paymentReviewNote,
+          },
+        });
+
+        if (updated.status === "APPROVED" && isPaymentConfirmedByAdmin(updated.paymentStatus)) {
+          void generateExhibitorPdfForSubmission(env, id).catch((error) => {
+            request.log.warn({ err: error, submissionId: id }, "automatic exhibitor PDF generation after payment review failed");
+          });
+        }
+
+        return reply.send({
+          success: true as const,
+          paymentStatus: updated.paymentStatus,
+          paymentStatusLabel: paymentStatusLabel(updated.paymentStatus, true),
+          paymentReviewedAt: updated.paymentReviewedAt?.toISOString() ?? null,
+          paymentReviewedByStudentNumber: updated.paymentReviewedByStudentNumber ?? null,
+          paymentReviewNote: updated.paymentReviewNote ?? null,
+          paymentTimeline: buildPaymentTimeline({
+            status: updated.paymentStatus,
+            submittedAt: updated.paymentSubmittedAt ?? updated.createdAt,
+            reviewedAt: updated.paymentReviewedAt,
+            reviewedBy: updated.paymentReviewedByStudentNumber,
+            reviewNote: updated.paymentReviewNote,
+          }),
+        });
+      });
+
       adminApp.patch("/:id/status", {
+      config: requireAdminPermission(["SUBMISSIONS"]),
       schema: {
         params: z.object({ id: z.coerce.number().int().positive() }),
         body: z.object({
@@ -933,6 +2196,19 @@ export async function submissionRoutes(app: FastifyInstance, { env }: { env: Ret
             } catch (error) {
               request.log.warn({ err: error, submissionId: id }, "automatic submission status WhatsApp notification failed");
             }
+
+            if (status === "APPROVED" && isPaymentConfirmedByAdmin(updatedSubmission.paymentStatus)) {
+              void (async () => {
+                const result = await generateExhibitorPdfForSubmission(env, id);
+                if (result.created) {
+                  await notifyExhibitorPdfReady(env, result);
+                }
+              })().catch((error) => {
+                request.log.warn({ err: error, submissionId: id }, "automatic exhibitor PDF generation failed");
+              });
+            } else if (status === "APPROVED") {
+              request.log.info({ submissionId: id }, "exhibitor PDF deferred until payment is confirmed by admin");
+            }
           }
 
           await recordAdminAudit({
@@ -950,6 +2226,7 @@ export async function submissionRoutes(app: FastifyInstance, { env }: { env: Ret
       });
 
       adminApp.patch("/:id/winner", {
+      config: requireAdminPermission(["WINNERS"]),
       schema: {
         params: z.object({ id: z.coerce.number().int().positive() }),
         response: {
@@ -1018,18 +2295,12 @@ export async function submissionRoutes(app: FastifyInstance, { env }: { env: Ret
       });
 
       adminApp.patch("/:id/presentation", {
+      config: requireAdminPermission(["SUBMISSIONS"]),
       schema: {
         params: z.object({ id: z.coerce.number().int().positive() }),
         body: submissionPresentationSchema,
         response: {
-          200: z.object({
-            id: z.number(),
-            slug: z.string(),
-            detailPath: z.string(),
-            primaryColor: z.string(),
-            secondaryColor: z.string(),
-            bannerUrl: z.string().nullable()
-          }),
+          200: submissionPresentationResponseSchema.omit({ status: true }),
           400: z.object({ message: z.string() }),
           401: z.object({ message: z.string() }),
           403: z.object({ message: z.string() }),
@@ -1053,7 +2324,19 @@ export async function submissionRoutes(app: FastifyInstance, { env }: { env: Ret
         return reply.code(400).send({ message: themeError });
       }
 
-      const updated = await updateSubmissionPresentation.execute(id, body);
+      const hasBannerUpdate = Object.prototype.hasOwnProperty.call(body, "bannerUrl");
+      const storedBannerUrl = hasBannerUpdate
+        ? await persistMediaValue(env, body.bannerUrl ?? null, {
+          purpose: "submission-banners",
+          maxImageDimension: 1600,
+        })
+        : undefined;
+      const presentationPayload = {
+        ...body,
+        ...(hasBannerUpdate ? { bannerUrl: storedBannerUrl ?? null } : {}),
+      };
+
+      const updated = await updateSubmissionPresentation.execute(id, presentationPayload);
       const slug = buildSubmissionSlug(updated.name, updated.id);
 
       await recordAdminAudit({
@@ -1073,13 +2356,232 @@ export async function submissionRoutes(app: FastifyInstance, { env }: { env: Ret
         id: updated.id,
         slug,
         detailPath: `/projeto/${slug}`,
+        description: updated.description,
+        repoUrl: updated.repoUrl ?? null,
+        websiteUrl: updated.websiteUrl ?? null,
+        instagramUrl: updated.instagramUrl ?? null,
+        facebookUrl: updated.facebookUrl ?? null,
+        linkedinUrl: updated.linkedinUrl ?? null,
+        githubUrl: updated.githubUrl ?? null,
         primaryColor: updated.primaryColor,
         secondaryColor: updated.secondaryColor,
         bannerUrl: updated.bannerUrl ?? null
       });
       });
 
+      adminApp.post("/:id/exhibitor-pack/regenerate", {
+      config: requireAdminPermission(["SUBMISSIONS"]),
+      schema: {
+        params: z.object({ id: z.coerce.number().int().positive() }),
+        response: {
+          200: z.object({
+            submissionId: z.number(),
+            fileName: z.string(),
+            pdfPath: z.string(),
+            publicUrl: z.string().nullable(),
+            generatedAt: z.string(),
+            version: z.number(),
+            created: z.boolean(),
+          }),
+          400: z.object({ message: z.string() }),
+          401: z.object({ message: z.string() }),
+          403: z.object({ message: z.string() }),
+          404: z.object({ message: z.string() })
+        }
+      }
+      }, async (request, reply) => {
+        const { id } = request.params as { id: number };
+
+        try {
+          const submission = await prisma.submission.findFirst({
+            where: { id, deletedAt: null },
+            select: { paymentStatus: true },
+          });
+          if (!submission) {
+            return reply.code(404).send({ message: "Submission not found" });
+          }
+          if (!isPaymentConfirmedByAdmin(submission.paymentStatus)) {
+            return reply.code(400).send({ message: "Confirma o pagamento pela organização antes de gerar a credencial/PDF de expositor." });
+          }
+
+          const result = await generateExhibitorPdfForSubmission(env, id, { force: true });
+
+          await recordAdminAudit({
+            actorStudentNumber: request.student?.studentNumber,
+            action: "submission.regenerate_exhibitor_pdf",
+            entityType: "Submission",
+            entityId: id,
+            summary: `PDF do expositor regenerado para a candidatura ${id}.`,
+            metadata: {
+              fileName: result.metadata.fileName,
+              version: result.metadata.version,
+            },
+          });
+
+          return reply.send(serializeExhibitorPdfMetadata(result.metadata, result.created));
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Unable to generate exhibitor PDF";
+          if (message === "Submission not found") {
+            return reply.code(404).send({ message });
+          }
+          return reply.code(400).send({ message });
+        }
+      });
+
+      adminApp.get("/:id/exhibitor-pack/link", {
+      config: requireAdminPermission(["SUBMISSIONS"]),
+      schema: {
+        params: z.object({ id: z.coerce.number().int().positive() }),
+        response: {
+          200: z.object({
+            submissionId: z.number(),
+            fileName: z.string(),
+            pdfPath: z.string(),
+            publicUrl: z.string().nullable(),
+            generatedAt: z.string(),
+            version: z.number(),
+            created: z.boolean(),
+          }),
+          400: z.object({ message: z.string() }),
+          401: z.object({ message: z.string() }),
+          403: z.object({ message: z.string() }),
+          404: z.object({ message: z.string() })
+        }
+      }
+      }, async (request, reply) => {
+        const { id } = request.params as { id: number };
+
+        try {
+          const submission = await prisma.submission.findFirst({
+            where: { id, deletedAt: null },
+            select: { paymentStatus: true },
+          });
+          if (!submission) {
+            return reply.code(404).send({ message: "Submission not found" });
+          }
+          if (!isPaymentConfirmedByAdmin(submission.paymentStatus)) {
+            return reply.code(400).send({ message: "Confirma o pagamento pela organização antes de gerar o link de expositor." });
+          }
+
+          const result = await generateExhibitorPdfForSubmission(env, id);
+          return reply.send(serializeExhibitorPdfMetadata(result.metadata, result.created));
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Unable to generate exhibitor PDF link";
+          if (message === "Submission not found") {
+            return reply.code(404).send({ message });
+          }
+          return reply.code(400).send({ message });
+        }
+      });
+
+      adminApp.get("/:id/exhibitor-pack/recipients", {
+      config: requireAdminPermission(["SUBMISSIONS"]),
+      schema: {
+        params: z.object({ id: z.coerce.number().int().positive() }),
+        response: {
+          200: z.object({
+            submissionId: z.number(),
+            teamTotalMembers: z.number(),
+            teamConfirmedMembers: z.number(),
+            recipients: z.array(exhibitorPdfRecipientSchema),
+          }),
+          401: z.object({ message: z.string() }),
+          403: z.object({ message: z.string() }),
+          404: z.object({ message: z.string() }),
+        }
+      }
+      }, async (request, reply) => {
+        const { id } = request.params as { id: number };
+        const submission = await prisma.submission.findFirst({
+          where: { id, deletedAt: null },
+          select: {
+            id: true,
+            referenceCode: true,
+            type: true,
+            status: true,
+            name: true,
+            area: true,
+            course: true,
+            members: true,
+            leaderName: true,
+            leaderPhone: true,
+            studentId: true,
+            studentNumberSnapshot: true,
+            student: {
+              select: {
+                studentNumber: true,
+                name: true,
+                phone: true,
+                alternatePhone: true,
+              },
+            },
+          },
+        });
+
+        if (!submission) {
+          return reply.code(404).send({ message: "Submission not found" });
+        }
+
+        const team = await buildSubmissionTeamPayload(env, submission);
+        const confirmedMembers = await prisma.submissionMember.findMany({
+          where: {
+            submissionId: id,
+            confirmedAt: { not: null },
+          },
+          include: {
+            student: {
+              select: {
+                studentNumber: true,
+                name: true,
+                phone: true,
+                alternatePhone: true,
+              },
+            },
+          },
+          orderBy: [{ confirmedAt: "asc" }, { name: "asc" }],
+        });
+
+        const seenPhones = new Set<string>();
+        const recipients: z.infer<typeof exhibitorPdfRecipientSchema>[] = [];
+        const addRecipient = (recipient: z.infer<typeof exhibitorPdfRecipientSchema>) => {
+          const normalizedPhone = recipient.phone ? normalizeAngolaPhone(recipient.phone) ?? recipient.phone : null;
+          if (normalizedPhone && seenPhones.has(normalizedPhone)) return;
+          if (normalizedPhone) seenPhones.add(normalizedPhone);
+          recipients.push({ ...recipient, phone: normalizedPhone });
+        };
+
+        addRecipient({
+          id: "leader",
+          name: submission.leaderName ?? submission.student?.name ?? "Responsável",
+          phone: submission.student?.alternatePhone ?? submission.leaderPhone ?? submission.student?.phone ?? null,
+          role: "RESPONSAVEL",
+          confirmed: true,
+          studentNumber: submission.studentNumberSnapshot ?? submission.student?.studentNumber ?? null,
+          memberId: null,
+        });
+
+        for (const member of confirmedMembers) {
+          addRecipient({
+            id: `member-${member.id}`,
+            name: member.studentName ?? member.student?.name ?? member.name,
+            phone: member.student?.alternatePhone ?? member.studentPhone ?? member.student?.phone ?? null,
+            role: "MEMBRO",
+            confirmed: true,
+            studentNumber: member.studentNumber ?? member.student?.studentNumber ?? null,
+            memberId: member.id,
+          });
+        }
+
+        return reply.send({
+          submissionId: id,
+          teamTotalMembers: team.totalMembers,
+          teamConfirmedMembers: team.confirmedMembers,
+          recipients,
+        });
+      });
+
       adminApp.delete("/winner", {
+      config: requireAdminPermission(["WINNERS"]),
       schema: {
         response: {
           200: z.object({ success: z.literal(true) }),
@@ -1099,6 +2601,7 @@ export async function submissionRoutes(app: FastifyInstance, { env }: { env: Ret
       });
 
       adminApp.delete("/:id", {
+      config: requireAdminPermission(["SUBMISSIONS"]),
       schema: {
         params: z.object({ id: z.coerce.number().int().positive() }),
         response: {
@@ -1111,8 +2614,8 @@ export async function submissionRoutes(app: FastifyInstance, { env }: { env: Ret
       }, async (request, reply) => {
         const { id } = request.params as { id: number };
         try {
-          const submissionToDelete = await prisma.submission.findUnique({
-            where: { id },
+          const submissionToDelete = await prisma.submission.findFirst({
+            where: { id, deletedAt: null },
             include: {
               student: {
                 select: {
@@ -1165,6 +2668,84 @@ export async function submissionRoutes(app: FastifyInstance, { env }: { env: Ret
     });
   });
 
+  app.get("/team-invitations/:token", {
+    schema: {
+      params: z.object({ token: z.string().trim().min(8) }),
+      response: {
+        200: submissionTeamPayloadSchema,
+        404: z.object({ message: z.string() }),
+      }
+    }
+  }, async (request, reply) => {
+    const { token } = request.params as { token: string };
+    const payload = await loadSubmissionTeamByToken(env, token);
+    if (!payload) {
+      return reply.code(404).send({ message: "Convite de equipa não encontrado." });
+    }
+
+    return reply.send(payload);
+  });
+
+  app.register(async (teamApp) => {
+    teamApp.register(authGuard, { env });
+
+    teamApp.post("/team-invitations/:token/confirm", {
+      schema: {
+        params: z.object({ token: z.string().trim().min(8) }),
+        body: z.object({ memberId: z.coerce.number().int().positive() }),
+        response: {
+          200: z.object({
+            member: submissionTeamMemberSchema,
+            team: submissionTeamPayloadSchema,
+          }),
+          400: z.object({ message: z.string() }),
+          401: z.object({ message: z.string() }),
+          404: z.object({ message: z.string() }),
+          409: z.object({ message: z.string() }),
+        }
+      }
+    }, async (request, reply) => {
+      if (!request.student?.id) {
+        return reply.code(401).send({ message: "Missing or invalid token" });
+      }
+
+      const { token } = request.params as { token: string };
+      const { memberId } = request.body as { memberId: number };
+      const student = await prisma.student.findUnique({
+        where: { id: request.student.id },
+        select: {
+          id: true,
+          studentNumber: true,
+          name: true,
+          course: true,
+          phone: true,
+          academicSyncedAt: true,
+        },
+      });
+
+      if (!student) {
+        return reply.code(401).send({ message: "Missing or invalid token" });
+      }
+
+      try {
+        return reply.send(await confirmSubmissionTeamMember(env, {
+          token,
+          memberId,
+          student,
+        }));
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Não foi possível confirmar este membro.";
+        if (/convite|invitation/i.test(message)) {
+          return reply.code(404).send({ message });
+        }
+        if (/já confirmou|já foi confirmado|outro estudante/i.test(message)) {
+          return reply.code(409).send({ message });
+        }
+        return reply.code(400).send({ message });
+      }
+    });
+  });
+
   app.get("/:id/summary", {
     schema: {
       params: z.object({ id: z.coerce.number().int() }),
@@ -1195,10 +2776,73 @@ export async function submissionRoutes(app: FastifyInstance, { env }: { env: Ret
     };
   });
 
+  app.get("/:id/exhibitor-pack.pdf", {
+    schema: {
+      params: z.object({ id: z.coerce.number().int().positive() }),
+      querystring: z.object({ token: z.string().trim().optional() }),
+      response: {
+        400: z.object({ message: z.string() }),
+        401: z.object({ message: z.string() }),
+        403: z.object({ message: z.string() }),
+        404: z.object({ message: z.string() })
+      }
+    }
+  }, async (request, reply) => {
+    const { id } = request.params as { id: number };
+    const { token } = request.query as { token?: string };
+    const submission = await prisma.submission.findFirst({
+      where: { id, deletedAt: null },
+      select: {
+        id: true,
+        status: true,
+        paymentStatus: true,
+        studentId: true,
+        studentNumberSnapshot: true,
+      },
+    });
+
+    if (!submission) {
+      return reply.code(404).send({ message: "Submission not found" });
+    }
+    if (submission.status !== "APPROVED") {
+      return reply.code(400).send({ message: "Submission not approved" });
+    }
+    if (!isPaymentConfirmedByAdmin(submission.paymentStatus)) {
+      return reply.code(400).send({ message: "Pagamento do expositor ainda não confirmado pela organização." });
+    }
+
+    const latestMetadata = await loadLatestExhibitorPdfMetadata(env, id);
+    const access = await canReadExhibitorPdf(request, env, {
+      submission,
+      token,
+      metadata: latestMetadata,
+      allowConfirmedMembers: true,
+    });
+
+    if (!access.allowed) {
+      return reply.code(access.status).send({ message: access.message });
+    }
+
+    try {
+      const result = await generateExhibitorPdfForSubmission(env, id);
+      const pdf = await readExhibitorPdfFile(env, result.metadata);
+
+      reply.header("Content-Type", "application/pdf");
+      reply.header("Content-Length", String(pdf.byteLength));
+      reply.header("Content-Disposition", `attachment; filename="${result.metadata.fileName}"`);
+      return reply.send(pdf);
+    } catch (error) {
+      request.log.warn({ err: error, submissionId: id }, "exhibitor PDF download failed");
+      return reply.code(400).send({ message: error instanceof Error ? error.message : "Unable to generate exhibitor PDF" });
+    }
+  });
+
   app.get("/:id/boarding-pass.pdf", {
     schema: {
       params: z.object({ id: z.coerce.number().int().positive() }),
       response: {
+        401: z.object({ message: z.string() }),
+        403: z.object({ message: z.string() }),
         404: z.object({ message: z.string() })
       }
     }
@@ -1208,6 +2852,13 @@ export async function submissionRoutes(app: FastifyInstance, { env }: { env: Ret
 
     if (!submission) {
       return reply.code(404).send({ message: "Submission not found" });
+    }
+
+    const access = await canReadSubmissionDocument(request, env, submission, {
+      allowConfirmedMembers: true,
+    });
+    if (!access.allowed) {
+      return reply.code(access.status).send({ message: access.message });
     }
 
     const generatedAt = new Date();
@@ -1233,6 +2884,8 @@ export async function submissionRoutes(app: FastifyInstance, { env }: { env: Ret
     schema: {
       params: z.object({ id: z.coerce.number().int().positive() }),
       response: {
+        401: z.object({ message: z.string() }),
+        403: z.object({ message: z.string() }),
         404: z.object({ message: z.string() }),
         409: z.object({ message: z.string() })
       }
@@ -1245,6 +2898,11 @@ export async function submissionRoutes(app: FastifyInstance, { env }: { env: Ret
       return reply.code(404).send({ message: "Submission not found" });
     }
 
+    const access = await canReadSubmissionDocument(request, env, submission);
+    if (!access.allowed) {
+      return reply.code(access.status).send({ message: access.message });
+    }
+
     const proof = parseStoredProof(submission.paymentProof);
 
     if (proof.kind === "data-url") {
@@ -1252,6 +2910,21 @@ export async function submissionRoutes(app: FastifyInstance, { env }: { env: Ret
       reply.header("Content-Type", proof.mimeType);
       reply.header("Content-Disposition", `inline; filename="${submission.referenceCode.toLowerCase()}-comprovativo.${extension}"`);
       return reply.send(proof.buffer);
+    }
+
+    if (proof.kind === "url" && isSubmissionPaymentProofSelfReference(proof.url, submission.id)) {
+      return reply.code(409).send({ message: "Comprovativo indisponível para esta candidatura." });
+    }
+
+    if (proof.kind === "url" && isStoredMediaUrl(proof.url)) {
+      const media = await resolveStoredMediaFile(env, proof.url).catch(() => null);
+      if (!media) {
+        return reply.code(409).send({ message: "Comprovativo indisponível para esta candidatura." });
+      }
+
+      reply.header("Content-Type", media.mimeType);
+      reply.header("Content-Disposition", `inline; filename="${submission.referenceCode.toLowerCase()}-comprovativo.${media.mimeType.includes("pdf") ? "pdf" : "webp"}"`);
+      return reply.send(media.stream);
     }
 
     if (proof.kind === "url") {

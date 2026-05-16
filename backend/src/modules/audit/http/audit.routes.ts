@@ -4,8 +4,9 @@ import { z } from "zod";
 import type { Env } from "../../../config/env";
 import { prisma } from "../../../shared/prisma";
 import { authGuard } from "../../auth/http/auth.middleware";
-import { adminGuard } from "../../auth/http/admin.middleware";
-import { parseAuditMetadata } from "../application/audit.service";
+import { adminGuard, requireAdminPermission, setDefaultAdminPermission } from "../../auth/http/admin.middleware";
+import { parseAuditMetadata, recordAdminAudit } from "../application/audit.service";
+import { getRetentionPolicy, runDataRetentionCleanup } from "../application/data-retention.service";
 
 const auditFilterSchema = z.object({
   action: z.string().trim().max(80).optional(),
@@ -34,6 +35,24 @@ const auditLogSchema = z.object({
   summary: z.string(),
   metadata: z.record(z.string(), z.unknown()).nullable(),
   createdAt: z.string(),
+});
+
+const retentionPolicySchema = z.object({
+  auditLogRetentionDays: z.number(),
+  credentialValidationLogRetentionDays: z.number(),
+  expiredCredentialRetentionDays: z.number(),
+});
+
+const retentionCleanupResultSchema = z.object({
+  policy: retentionPolicySchema,
+  cutoffs: z.object({
+    auditLogsBefore: z.string(),
+    credentialValidationLogsBefore: z.string(),
+    expiredCredentialsBefore: z.string(),
+  }),
+  deletedAuditLogs: z.number(),
+  deletedCredentialValidationLogs: z.number(),
+  minimizedExpiredCredentials: z.number(),
 });
 
 function buildAuditWhere(query: z.infer<typeof auditFilterSchema>): Prisma.AdminAuditLogWhereInput {
@@ -99,8 +118,10 @@ export async function auditRoutes(app: FastifyInstance, opts: { env: Env }) {
   app.register(async (protectedApp) => {
     protectedApp.register(authGuard, { env: opts.env });
     protectedApp.register(adminGuard);
+    setDefaultAdminPermission(protectedApp, ["AUDIT"]);
 
     protectedApp.get("/admin/logs/export.csv", {
+      config: requireAdminPermission(["DATA_EXPORT"]),
       schema: {
         querystring: auditExportQuerySchema,
         response: {
@@ -116,6 +137,17 @@ export async function auditRoutes(app: FastifyInstance, opts: { env: Env }) {
         take: query.limit,
       });
       const rows = logs.map(serializeAuditLog);
+      await recordAdminAudit({
+        actorStudentNumber: request.student?.studentNumber ?? request.jury?.phone ?? "unknown",
+        actorRole: request.jury ? "jury_admin" : "admin",
+        action: "data_export.audit_logs_csv",
+        entityType: "AdminAuditLog",
+        summary: `Exportação CSV de auditoria com ${rows.length} registo(s).`,
+        metadata: {
+          count: rows.length,
+          filters: query,
+        },
+      });
       const csv = [
         ["Data", "Ator", "Perfil", "Ação", "Entidade", "ID", "Resumo", "Metadados"].map(csvCell).join(","),
         ...rows.map((row) => [
@@ -169,6 +201,37 @@ export async function auditRoutes(app: FastifyInstance, opts: { env: Env }) {
         page: query.page,
         totalPages: Math.max(1, Math.ceil(total / query.limit)),
       };
+    });
+
+    protectedApp.get("/admin/retention-policy", {
+      schema: {
+        response: {
+          200: retentionPolicySchema,
+          401: z.object({ message: z.string() }),
+          403: z.object({ message: z.string() }),
+        },
+      },
+    }, async () => getRetentionPolicy(opts.env));
+
+    protectedApp.post("/admin/retention-run", {
+      schema: {
+        response: {
+          200: retentionCleanupResultSchema,
+          401: z.object({ message: z.string() }),
+          403: z.object({ message: z.string() }),
+        },
+      },
+    }, async (request) => {
+      const result = await runDataRetentionCleanup(prisma, opts.env);
+      await recordAdminAudit({
+        actorStudentNumber: request.student?.studentNumber ?? request.jury?.phone ?? "unknown",
+        actorRole: request.jury ? "jury_admin" : "admin",
+        action: "data_retention.cleanup_run",
+        entityType: "DataRetention",
+        summary: "Política de retenção executada.",
+        metadata: result,
+      });
+      return result;
     });
   });
 }

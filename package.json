@@ -3,9 +3,13 @@
   "private": true,
   "scripts": {
     "dev:frontend": "npm --prefix frontend run dev",
-    "dev:laboratorio": "npm --prefix laboratorio run dev",
     "build:frontend": "npm --prefix frontend run build",
-    "build:laboratorio": "npm --prefix laboratorio run build",
-    "test:frontend": "npm --prefix frontend run test"
+    "test:frontend": "npm --prefix frontend run test",
+    "hoppscotch:check": "node scripts/validate-hoppscotch.mjs",
+    "hoppscotch:run:local": "npx -y @hoppscotch/cli test -e hoppscotch/environments/local.local.json hoppscotch/uor-connect.collection.json",
+    "verify:local": "bash scripts/verify-local.sh"
+  },
+  "devDependencies": {
+    "@pencil.dev/cli": "^0.2.5"
   }
 }

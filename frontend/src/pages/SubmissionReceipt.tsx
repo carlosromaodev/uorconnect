@@ -21,6 +21,35 @@ const celebrationParticles = [
   { size: "h-2.5 w-2.5", color: "bg-primary/40", top: "top-28", left: "right-[30%]", delay: 0.22 },
 ];
 
+function PaymentTimeline({ items }: { items?: StudentSubmissionReceipt["paymentTimeline"] }) {
+  const visibleItems = (items ?? []).filter((item) => item.label);
+  if (visibleItems.length === 0) return null;
+
+  return (
+    <section className="surface-card min-w-0 p-4 sm:p-6">
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Linha do tempo do pagamento</p>
+        <h2 className="mt-2 text-xl font-semibold">Revisão financeira</h2>
+      </div>
+      <div className="mt-5 grid gap-3">
+        {visibleItems.map((item, index) => (
+          <div key={`${item.key}-${index}`} className="grid gap-3 rounded-2xl border border-border/60 bg-muted/20 p-4 sm:grid-cols-[auto_1fr]">
+            <div className={`mt-1 h-3 w-3 rounded-full ${item.status === "done" ? "bg-emerald-500" : item.status === "current" ? "bg-amber-500" : "bg-slate-300"}`} />
+            <div className="min-w-0">
+              <p className="break-words text-sm font-semibold">{item.label}</p>
+              <p className="mt-1 break-words text-xs text-muted-foreground">
+                {item.at ? formatDateTime(item.at) : "Sem data registada"}
+                {item.by ? ` · Por ${item.by}` : ""}
+              </p>
+              {item.note ? <p className="mt-2 whitespace-pre-wrap break-words text-xs leading-5 text-muted-foreground">{item.note}</p> : null}
+            </div>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 export default function SubmissionReceipt() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
@@ -270,6 +299,8 @@ export default function SubmissionReceipt() {
             </div>
           </div>
         </motion.section>
+
+        <PaymentTimeline items={receipt.paymentTimeline} />
 
         <div className="responsive-two-col items-start">
           <section className="surface-card min-w-0 space-y-5 p-4 sm:p-6">

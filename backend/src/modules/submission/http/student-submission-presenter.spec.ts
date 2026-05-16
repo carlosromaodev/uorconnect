@@ -28,6 +28,10 @@ const baseSubmission = {
   observations: "Docente orientador: Prof. Marta",
   repoUrl: "https://github.com/uor/demo",
   websiteUrl: "https://uorconnect.space/demo",
+  instagramUrl: "https://instagram.com/uorconnect",
+  facebookUrl: null,
+  linkedinUrl: "https://linkedin.com/company/uorconnect",
+  githubUrl: "https://github.com/uor/demo",
   primaryColor: "#FD8305",
   secondaryColor: "#223D42",
   bannerUrl: null,
@@ -55,7 +59,8 @@ describe("student submission presenter", () => {
     expect(result.receiptPath).toBe("/submissoes/14");
     expect(result.detailPath).toBe("/projeto/monitorizacao-do-campus-14");
     expect(result.boardingPassPath).toBe("/submissions/14/boarding-pass.pdf");
-    expect(result.communityUrl).toBe("https://chat.whatsapp.com/projetos");
+    expect(result.exhibitorPdfPath).toBeNull();
+    expect(result.communityUrl).toBeNull();
     expect(result.type).toBe("PROJECT");
     expect(result.typeLabel).toBe("Projeto");
     expect(result.members).toBe("Ana Silva, Bruno Costa");
@@ -65,13 +70,14 @@ describe("student submission presenter", () => {
 
   it("desativa edição no recibo quando a submissão foi aprovada", () => {
     const result = buildStudentSubmissionReceiptResponse(
-      { ...baseSubmission, status: "APPROVED" },
-      {}
+      { ...baseSubmission, status: "APPROVED", paymentStatus: "CONFIRMED_BY_ADMIN" },
+      { projectCommunityUrl: "https://chat.whatsapp.com/projetos" }
     );
 
     expect(result.statusLabel).toBe("Aprovado");
     expect(result.canEdit).toBe(false);
-    expect(result.communityUrl).toBeNull();
+    expect(result.communityUrl).toBe("https://chat.whatsapp.com/projetos");
+    expect(result.exhibitorPdfPath).toBe("/submissions/14/exhibitor-pack.pdf");
   });
 
   it("gera item compacto do histórico do estudante", () => {
@@ -81,14 +87,22 @@ describe("student submission presenter", () => {
       id: 14,
       referenceCode: "UOR-2026-0014",
       name: "Monitorização do campus",
+      description: "Projeto com sensores, gateway e dashboard.",
       status: "PENDING",
       statusLabel: "Em análise",
       type: "PROJECT",
       typeLabel: "Projeto",
       createdAt: "2026-03-28T10:00:00.000Z",
       detailPath: "/projeto/monitorizacao-do-campus-14",
+      repoUrl: "https://github.com/uor/demo",
+      websiteUrl: "https://uorconnect.space/demo",
+      instagramUrl: "https://instagram.com/uorconnect",
+      facebookUrl: null,
+      linkedinUrl: "https://linkedin.com/company/uorconnect",
+      githubUrl: "https://github.com/uor/demo",
       bannerUrl: null,
       receiptPath: "/submissoes/14",
+      exhibitorPdfPath: null,
     });
   });
 });

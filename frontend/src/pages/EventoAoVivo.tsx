@@ -105,7 +105,7 @@ export default function EventoAoVivo() {
                     </span>
                   )}
                 </div>
-              {current && (
+              {current ? (
                 <>
                   <h3 className="font-heading font-bold text-lg mb-1">{current.title}</h3>
                   <p className="text-sm text-muted-foreground mb-3">{current.description}</p>
@@ -115,6 +115,10 @@ export default function EventoAoVivo() {
                     {current.speaker && <span className="flex items-center gap-1"><Users className="w-3 h-3 text-primary" />{current.speaker}</span>}
                   </div>
                 </>
+              ) : (
+                <div className="rounded-xl border border-primary/15 bg-white/70 p-4 text-sm text-muted-foreground">
+                  Nenhuma sessão está marcada como ativa neste momento. Consulta o programa completo para veres o próximo ponto da agenda.
+                </div>
               )}
             </div>
           </motion.div>
@@ -166,7 +170,7 @@ export default function EventoAoVivo() {
             Programa Completo
           </h2>
 
-          {Object.values(groupedSchedule).map((day) => (
+          {Object.values(groupedSchedule).length ? Object.values(groupedSchedule).map((day) => (
             <div key={day.day} className="mb-6">
               <div className="flex items-center gap-2 mb-3">
                 <span className="bg-primary text-primary-foreground px-3 py-1.5 rounded-lg text-xs font-heading font-bold">{day.day}</span>
@@ -200,7 +204,11 @@ export default function EventoAoVivo() {
                 })}
               </div>
             </div>
-          ))}
+          )) : (
+            <div className="rounded-xl border border-dashed border-border bg-card p-8 text-center text-sm text-muted-foreground">
+              A programação oficial ainda não foi publicada.
+            </div>
+          )}
         </motion.div>
 
         {/* Venue map */}

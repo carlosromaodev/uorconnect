@@ -12,6 +12,7 @@ export const communicationAudienceTypeSchema = z.enum([
   "SUBMISSION_ENROLLED",
   "COURSE_OR_SUBMISSION_ENROLLED",
   "EXHIBITORS",
+  "GROUP_REPRESENTATIVES",
   "COURSE_OR_EXHIBITORS",
   "WINNERS",
   "SELECTED_STUDENTS",
@@ -25,6 +26,8 @@ export const communicationAudienceSchema = z.object({
   submissionStatuses: z.array(communicationSubmissionStatusSchema).max(3).optional(),
   selectedStudentNumbers: z.array(z.string().trim().min(1)).max(5000).optional(),
   selectedPhones: z.array(z.string().trim().min(1)).max(5000).optional(),
+  includeProviderTos: z.array(z.string().trim().min(1)).max(5000).optional(),
+  excludeProviderTos: z.array(z.string().trim().min(1)).max(5000).optional(),
   cookieMarketingOptIn: z.boolean().optional(),
   cookieAnalyticsOptIn: z.boolean().optional(),
   activeWithinDays: z.coerce.number().int().min(1).max(365).optional(),
@@ -61,6 +64,8 @@ export type CommunicationResolution = {
   skipped: CommunicationSkip[];
   filteredTotal: number;
 };
+
+export type CommunicationConsentChannel = "SMS" | "WHATSAPP";
 
 export function normalizeStudentNumber(value: string) {
   return value.replace(/\D/g, "").trim();
@@ -367,6 +372,76 @@ async function loadSubmissionCandidates(input: { onlyWinners?: boolean; submissi
       studentNumberSnapshot: true,
       leaderName: true,
       leaderPhone: true,
+      memberConfirmations: {
+        where: { confirmedAt: { not: null } },
+        select: {
+          name: true,
+          studentNumber: true,
+          studentName: true,
+          studentCourse: true,
+          studentPhone: true,
+          student: {
+            select: {
+              id: true,
+              studentNumber: true,
+              name: true,
+              course: true,
+              classCode: true,
+              phone: true,
+            },
+          },
+        },
+      },
+      student: {
+        select: {
+          id: true,
+          studentNumber: true,
+          name: true,
+          course: true,
+          classCode: true,
+          phone: true,
+        },
+      },
+    },
+  });
+
+  return submissions.flatMap<CommunicationCandidate>((submission) => {
+    const source = input.onlyWinners ? `winner:${submission.id}` : `submission:${submission.id}`;
+    const leader: CommunicationCandidate = {
+      studentId: submission.student?.id ?? null,
+      studentNumber: submission.student?.studentNumber ?? submission.studentNumberSnapshot ?? null,
+      name: submission.student?.name ?? submission.leaderName ?? null,
+      course: submission.student?.course ?? submission.course ?? null,
+      classCode: submission.student?.classCode ?? null,
+      phone: submission.student?.phone ?? submission.leaderPhone ?? null,
+      source,
+    };
+
+    const members = submission.memberConfirmations.map<CommunicationCandidate>((member) => ({
+      studentId: member.student?.id ?? null,
+      studentNumber: member.student?.studentNumber ?? member.studentNumber ?? null,
+      name: member.student?.name ?? member.studentName ?? member.name,
+      course: member.student?.course ?? member.studentCourse ?? submission.course ?? null,
+      classCode: member.student?.classCode ?? null,
+      phone: member.student?.phone ?? member.studentPhone ?? null,
+      source: `${source}:member`,
+    }));
+
+    return [leader, ...members];
+  });
+}
+
+async function loadSubmissionRepresentativeCandidates(input: { submissionStatuses?: Array<z.infer<typeof communicationSubmissionStatusSchema>> }) {
+  const submissions = await prisma.submission.findMany({
+    where: {
+      status: input.submissionStatuses?.length ? { in: input.submissionStatuses } : undefined,
+    },
+    select: {
+      id: true,
+      course: true,
+      studentNumberSnapshot: true,
+      leaderName: true,
+      leaderPhone: true,
       student: {
         select: {
           id: true,
@@ -387,7 +462,7 @@ async function loadSubmissionCandidates(input: { onlyWinners?: boolean; submissi
     course: submission.student?.course ?? submission.course ?? null,
     classCode: submission.student?.classCode ?? null,
     phone: submission.student?.phone ?? submission.leaderPhone ?? null,
-    source: input.onlyWinners ? `winner:${submission.id}` : `submission:${submission.id}`,
+    source: `group-representative:${submission.id}`,
   }));
 }
 
@@ -457,6 +532,8 @@ export async function resolveAudienceCandidates(audience: CommunicationAudienceI
     case "SUBMISSION_ENROLLED":
     case "EXHIBITORS":
       return loadSubmissionCandidates({ submissionStatuses: audience.submissionStatuses });
+    case "GROUP_REPRESENTATIVES":
+      return loadSubmissionRepresentativeCandidates({ submissionStatuses: audience.submissionStatuses });
     case "COURSE_OR_SUBMISSION_ENROLLED":
     case "COURSE_OR_EXHIBITORS": {
       const [course, submissions] = await Promise.all([
@@ -487,9 +564,13 @@ export function audienceTypeLabel(type: CommunicationAudienceType) {
     case "COURSE_ENROLLED":
       return "Inscritos em cursos";
     case "SUBMISSION_ENROLLED":
+      return "Candidatos com submissões";
     case "EXHIBITORS":
       return "Expositores";
+    case "GROUP_REPRESENTATIVES":
+      return "Representantes de grupo";
     case "COURSE_OR_SUBMISSION_ENROLLED":
+      return "Cursos + candidaturas";
     case "COURSE_OR_EXHIBITORS":
       return "Cursos + expositores";
     case "WINNERS":
@@ -674,6 +755,64 @@ export async function applyCookieAudienceFilters(candidates: CommunicationCandid
       skipped.push({
         ...candidate,
         reason: `Sem atividade recente nos últimos ${audience.activeWithinDays} dias.`,
+      });
+      continue;
+    }
+
+    accepted.push(candidate);
+  }
+
+  return { candidates: accepted, skipped };
+}
+
+export async function applyProfileCommunicationConsent<T extends { studentId: number | null }>(
+  candidates: T[],
+  channel: CommunicationConsentChannel,
+) {
+  const studentIds = Array.from(new Set(
+    candidates
+      .map((candidate) => candidate.studentId)
+      .filter((value): value is number => typeof value === "number" && Number.isInteger(value)),
+  ));
+
+  if (studentIds.length === 0) {
+    return {
+      candidates: [] as T[],
+      skipped: candidates.map((candidate) => ({
+        ...candidate,
+        reason: "Sem vínculo de estudante para validar consentimento de comunicação.",
+      })),
+    };
+  }
+
+  const profileExtras = await prisma.studentProfileExtra.findMany({
+    where: { studentId: { in: studentIds } },
+    select: {
+      studentId: true,
+      consentSms: true,
+      consentWhatsapp: true,
+    },
+  });
+  const consentByStudentId = new Map(profileExtras.map((extra) => [extra.studentId, extra]));
+  const accepted: T[] = [];
+  const skipped: Array<T & { reason: string }> = [];
+  const consentKey = channel === "SMS" ? "consentSms" : "consentWhatsapp";
+  const label = channel === "SMS" ? "SMS" : "WhatsApp";
+
+  for (const candidate of candidates) {
+    if (!candidate.studentId) {
+      skipped.push({
+        ...candidate,
+        reason: "Sem vínculo de estudante para validar consentimento de comunicação.",
+      });
+      continue;
+    }
+
+    const consent = consentByStudentId.get(candidate.studentId);
+    if (!consent?.[consentKey]) {
+      skipped.push({
+        ...candidate,
+        reason: `Utilizador sem consentimento ${label} ativo.`,
       });
       continue;
     }

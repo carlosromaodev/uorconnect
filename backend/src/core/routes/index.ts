@@ -14,18 +14,53 @@ import { homeContentRoutes } from "../../modules/home-content/http/home-content.
 import { coursesRoutes } from "../../modules/courses/http/courses.routes";
 import { reportsRoutes } from "../../modules/reports/http/reports.routes";
 import { analyticsRoutes } from "../../modules/analytics/http/analytics.routes";
-import { contestAuthRoutes } from "../../modules/contest/http/contest-auth.routes";
-import { contestAdminRoutes } from "../../modules/contest/http/contest-admin.routes";
 import { smsRoutes } from "../../modules/sms/http/sms.routes";
 import { whatsappRoutes } from "../../modules/whatsapp/http/whatsapp.routes";
 import { attendanceRoutes } from "../../modules/attendance/http/attendance.routes";
 import { certificatesRoutes } from "../../modules/certificates/http/certificates.routes";
 import { validationRoutes } from "../../modules/validation/http/validation.routes";
 import { auditRoutes } from "../../modules/audit/http/audit.routes";
+import { teamCredentialsRoutes } from "../../modules/team-credentials/http/team-credentials.routes";
+import { adminTasksRoutes } from "../../modules/admin-tasks/http/admin-tasks.routes";
+import { mediaRoutes } from "../../modules/media/http/media.routes";
+import { passportRoutes } from "../../modules/passport/http/passport.routes";
+import { trainersRoutes } from "../../modules/trainers/http/trainers.routes";
+
+const DEFAULT_PUBLIC_APP_URL = "http://localhost:8082";
+
+function stripTrailingSlash(value: string) {
+  return value.replace(/\/+$/, "");
+}
+
+function isApiLikePublicUrl(value: string) {
+  try {
+    const url = new URL(value);
+    return url.hostname.startsWith("api.") || url.pathname.startsWith("/api");
+  } catch {
+    return true;
+  }
+}
+
+function getPublicAppUrl(env: Env) {
+  const configuredAppUrl = env.PUBLIC_APP_URL && !isApiLikePublicUrl(env.PUBLIC_APP_URL)
+    ? env.PUBLIC_APP_URL
+    : null;
+  const corsAppUrl = env.CORS_ORIGIN
+    .split(",")
+    .map((item) => item.trim())
+    .find((item) => item.startsWith("http") && !isApiLikePublicUrl(item));
+
+  return stripTrailingSlash(configuredAppUrl ?? corsAppUrl ?? DEFAULT_PUBLIC_APP_URL);
+}
 
 export function registerRoutes(app: FastifyInstance, env: Env, deps?: AppDependencies) {
   // Basic landing route so hitting "/" does not 404
   app.get("/", async () => ({ status: "ok" }));
+
+  // Compatibility redirect for invitation links accidentally opened on the API host.
+  app.get<{ Params: { token: string } }>("/equipa/credencial/:token", async (request, reply) => {
+    return reply.redirect(`${getPublicAppUrl(env)}/equipa/credencial/${encodeURIComponent(request.params.token)}`);
+  });
 
   app.register(healthRoutes, { prefix: "/health" });
   app.register(authRoutes, { prefix: "/auth", env });
@@ -46,6 +81,9 @@ export function registerRoutes(app: FastifyInstance, env: Env, deps?: AppDepende
   app.register(certificatesRoutes, { prefix: "/certificates", env });
   app.register(validationRoutes, { prefix: "/validation", env });
   app.register(auditRoutes, { prefix: "/audit", env });
-  app.register(contestAuthRoutes, { prefix: "/contest", env });
-  app.register(contestAdminRoutes, { prefix: "/contest", env });
+  app.register(mediaRoutes, { prefix: "/media", env });
+  app.register(passportRoutes, { prefix: "/passport", env });
+  app.register(trainersRoutes, { prefix: "/trainers", env });
+  app.register(teamCredentialsRoutes, { prefix: "/team-credentials", env });
+  app.register(adminTasksRoutes, { prefix: "/admin-tasks", env });
 }

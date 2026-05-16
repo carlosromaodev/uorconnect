@@ -4,7 +4,7 @@ import { PrismaFaqRepository } from "../infra/prisma.faq.repository";
 import { CreateFaqItem, DeleteFaqItem, ListFaqItems, UpdateFaqItem } from "../use-cases/manage-faq";
 import { type Env } from "../../../config/env";
 import { authGuard } from "../../auth/http/auth.middleware";
-import { adminGuard, getAdminAccessResult } from "../../auth/http/admin.middleware";
+import { adminGuard, getAdminAccessResult, setDefaultAdminPermission } from "../../auth/http/admin.middleware";
 
 const faqSchema = z.object({
   id: z.number(),
@@ -55,6 +55,7 @@ export async function faqRoutes(app: FastifyInstance, opts: { env: Env }) {
   app.register(async (adminApp) => {
     adminApp.register(authGuard, { env: opts.env });
     adminApp.register(adminGuard);
+    setDefaultAdminPermission(adminApp, ["FAQ"]);
 
     adminApp.post("/", {
       schema: {

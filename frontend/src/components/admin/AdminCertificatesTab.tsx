@@ -19,7 +19,7 @@ import { Switch } from "@/components/ui/switch";
 import { Textarea } from "@/components/ui/textarea";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { toast } from "@/components/ui/sonner";
-import { api, type CertificateItem, type Course, type PagedResult } from "@/lib/api";
+import { api, type CertificateItem, type CertificateTemplate, type Course, type PagedResult } from "@/lib/api";
 import { downloadBlobFile } from "@/lib/student-documents";
 import { AdminTablePagination } from "@/components/admin/AdminTablePagination";
 
@@ -33,6 +33,7 @@ function formatDate(value: string) {
 function certificateStatusLabel(status: string) {
   if (status === "ISSUED") return "Emitido";
   if (status === "REVOKED") return "Revogado";
+  if (status === "REISSUED") return "Reemitido";
   return status;
 }
 
@@ -48,11 +49,13 @@ function buildCertificateSmsMessage(certificate: CertificateItem) {
 export default function AdminCertificatesTab() {
   const [certificates, setCertificates] = useState<PagedResult<CertificateItem> | null>(null);
   const [courses, setCourses] = useState<Course[]>([]);
+  const [templates, setTemplates] = useState<CertificateTemplate[]>([]);
   const [loading, setLoading] = useState(true);
   const [issuing, setIssuing] = useState(false);
   const [bulkIssuing, setBulkIssuing] = useState(false);
   const [downloadingId, setDownloadingId] = useState<number | null>(null);
   const [revokingId, setRevokingId] = useState<number | null>(null);
+  const [reissuingId, setReissuingId] = useState<number | null>(null);
   const [studentNumber, setStudentNumber] = useState("");
   const [notifyStudentBySms, setNotifyStudentBySms] = useState(true);
   const [notifyStudentByWhatsApp, setNotifyStudentByWhatsApp] = useState(false);
@@ -89,10 +92,23 @@ export default function AdminCertificatesTab() {
 
   useEffect(() => {
     void load();
-    api.courses.list(true)
-      .then((payload) => setCourses(payload.courses))
-      .catch(() => setCourses([]));
+    Promise.all([api.courses.list(true), api.certificates.templates()])
+      .then(([coursesPayload, templatesPayload]) => {
+        setCourses(coursesPayload.courses);
+        setTemplates(templatesPayload.templates);
+      })
+      .catch(() => {
+        setCourses([]);
+        setTemplates([]);
+      });
   }, []);
+
+  const applyTemplate = (templateType: string) => {
+    const template = templates.find((item) => item.type === templateType);
+    if (!template) return;
+    setType(template.type);
+    setTitle(template.title);
+  };
 
   const handleIssue = async () => {
     if (!studentNumber.trim()) {
@@ -192,15 +208,30 @@ export default function AdminCertificatesTab() {
   };
 
   const handleRevoke = async (certificate: CertificateItem) => {
+    const reason = window.prompt("Motivo da revogação", certificate.revokedReason ?? "");
+    if (reason === null) return;
     setRevokingId(certificate.id);
     try {
-      await api.certificates.revoke(certificate.id);
+      await api.certificates.revoke(certificate.id, reason.trim() || "Revogado administrativamente.");
       toast.success("Certificado revogado.");
       await load(page, search.trim(), statusFilter, typeFilter);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Falha ao revogar certificado.");
     } finally {
       setRevokingId(null);
+    }
+  };
+
+  const handleReissue = async (certificate: CertificateItem) => {
+    setReissuingId(certificate.id);
+    try {
+      const result = await api.certificates.reissue(certificate.id);
+      toast.success(`Certificado reemitido: ${result.next.code}.`);
+      await load(page, search.trim(), statusFilter, typeFilter);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Falha ao reemitir certificado.");
+    } finally {
+      setReissuingId(null);
     }
   };
 
@@ -224,8 +255,18 @@ export default function AdminCertificatesTab() {
             </CardTitle>
           </CardHeader>
           <CardContent className="grid gap-3">
-            <div className="grid gap-3 md:grid-cols-3">
+            <div className="grid gap-3 md:grid-cols-4">
               <Input value={studentNumber} onChange={(event) => setStudentNumber(event.target.value)} placeholder="Número estudante" />
+              <select
+                className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+                value={type}
+                onChange={(event) => applyTemplate(event.target.value)}
+              >
+                {templates.length === 0 ? <option value={type}>{type}</option> : null}
+                {templates.map((template) => (
+                  <option key={template.key} value={template.type}>{template.title}</option>
+                ))}
+              </select>
               <Input value={type} onChange={(event) => setType(event.target.value.toUpperCase())} placeholder="Tipo" />
               <Input value={title} onChange={(event) => setTitle(event.target.value)} placeholder="Título do certificado" />
             </div>
@@ -372,6 +413,7 @@ export default function AdminCertificatesTab() {
                       <TableCell>
                         <p className="font-semibold">{certificate.title}</p>
                         <p className="font-mono text-xs text-muted-foreground">{certificate.code}</p>
+                        <p className="text-xs text-muted-foreground">Versão {certificate.version}</p>
                       </TableCell>
                       <TableCell>
                         <p className="font-semibold">{certificate.recipientName}</p>
@@ -391,6 +433,10 @@ export default function AdminCertificatesTab() {
                           </Button>
                           <Button asChild size="sm" variant="outline">
                             <a href={certificate.validationUrl} target="_blank" rel="noreferrer">Validar</a>
+                          </Button>
+                          <Button size="sm" variant="outline" onClick={() => void handleReissue(certificate)} disabled={reissuingId === certificate.id}>
+                            {reissuingId === certificate.id ? <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="mr-1 h-3.5 w-3.5" />}
+                            Reemitir
                           </Button>
                           {certificate.status !== "REVOKED" ? (
                             <AlertDialog>

@@ -6,8 +6,8 @@
   "scripts": {
     "dev": "vite",
     "dev:poll": "CHOKIDAR_USEPOLLING=1 vite",
-    "dev:lan": "vite --host 0.0.0.0 --port 8080",
-    "tunnel": "npx -y ngrok http 8080",
+    "dev:lan": "vite --host 0.0.0.0 --port 8082",
+    "tunnel": "npx -y ngrok http 8082",
     "tunnel:stop": "pkill -x ngrok || true",
     "tunnel:restart": "npm run tunnel:stop && npm run tunnel",
     "tunnel:url": "node -e \"fetch('http://127.0.0.1:4040/api/tunnels').then(r=>r.json()).then(d=>{const u=d?.tunnels?.[0]?.public_url; if(!u){console.error('Nenhum tunel ativo. Execute: npm run tunnel'); process.exit(1);} console.log(u);}).catch(()=>{console.error('Ngrok nao esta ativo. Execute: npm run tunnel'); process.exit(1);});\"",

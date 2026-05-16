@@ -4,7 +4,14 @@ type StudentLike = {
   name?: string | null;
   course?: string | null;
   phone?: string | null;
+  alternatePhone?: string | null;
+  academicSyncedAt?: Date | string | null;
+  registrationSource?: string | null;
 };
+
+export type StudentAccessType = "OFFICIAL" | "TEMPORARY";
+
+const OFFICIAL_REGISTRATION_SOURCES = new Set(["SECRETARIA", "ISPTEC_OFFICIAL"]);
 
 export function normalizeStudentName(value?: string | null): string | undefined {
   if (!value) return undefined;
@@ -47,11 +54,22 @@ export function normalizeAngolaPhone(value?: string | null): string | undefined 
   return value.trim() || undefined;
 }
 
-export function normalizeStudentProfile<T extends StudentLike>(student: T): T {
+export function resolveStudentAccessType(student: Pick<StudentLike, "academicSyncedAt" | "registrationSource">): StudentAccessType {
+  const source = student.registrationSource?.trim().toUpperCase() ?? "";
+  if (OFFICIAL_REGISTRATION_SOURCES.has(source)) return "OFFICIAL";
+  if (student.academicSyncedAt && !source.includes("CONVENTIONAL") && !source.includes("TEMPORARY")) {
+    return "OFFICIAL";
+  }
+  return "TEMPORARY";
+}
+
+export function normalizeStudentProfile<T extends StudentLike>(student: T): T & { accessType: StudentAccessType } {
   return {
     ...student,
     name: normalizeStudentName(student.name) ?? null,
     course: normalizeCourse(student.course) ?? null,
-    phone: normalizeAngolaPhone(student.phone) ?? null
+    phone: normalizeAngolaPhone(student.phone) ?? null,
+    alternatePhone: normalizeAngolaPhone(student.alternatePhone) ?? null,
+    accessType: resolveStudentAccessType(student),
   };
 }

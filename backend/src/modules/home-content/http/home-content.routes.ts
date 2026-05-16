@@ -13,7 +13,7 @@ import {
 } from "../use-cases/manage-home-content";
 import { type Env } from "../../../config/env";
 import { authGuard } from "../../auth/http/auth.middleware";
-import { adminGuard, getAdminAccessResult } from "../../auth/http/admin.middleware";
+import { adminGuard, getAdminAccessResult, requireAdminPermission, setDefaultAdminPermission } from "../../auth/http/admin.middleware";
 
 const courseSchema = z.object({
   id: z.number(),
@@ -187,6 +187,7 @@ export async function homeContentRoutes(app: FastifyInstance, opts: { env: Env }
   app.register(async (adminApp) => {
     adminApp.register(authGuard, { env: opts.env });
     adminApp.register(adminGuard);
+    setDefaultAdminPermission(adminApp, ["PANELS", "EVENTO"]);
 
     adminApp.post("/courses", { schema: { body: courseInputSchema, response: { 201: courseSchema, 401: z.object({ message: z.string() }), 403: z.object({ message: z.string() }) } } }, async (request, reply) => {
       return reply.code(201).send(await createHomeCourse.execute(request.body as z.infer<typeof courseInputSchema>));
@@ -220,11 +221,12 @@ export async function homeContentRoutes(app: FastifyInstance, opts: { env: Env }
       }
     });
 
-    adminApp.post("/panels", { schema: { body: panelInputSchema, response: { 201: panelSchema, 401: z.object({ message: z.string() }), 403: z.object({ message: z.string() }) } } }, async (request, reply) => {
+    adminApp.post("/panels", { config: requireAdminPermission(["PANELS"]), schema: { body: panelInputSchema, response: { 201: panelSchema, 401: z.object({ message: z.string() }), 403: z.object({ message: z.string() }) } } }, async (request, reply) => {
       return reply.code(201).send(await createPanelTopic.execute(request.body as z.infer<typeof panelInputSchema>));
     });
 
     adminApp.patch("/panels/:id", {
+      config: requireAdminPermission(["PANELS"]),
       schema: {
         params: z.object({ id: z.coerce.number().int().positive() }),
         body: panelInputSchema,
@@ -239,6 +241,7 @@ export async function homeContentRoutes(app: FastifyInstance, opts: { env: Env }
     });
 
     adminApp.delete("/panels/:id", {
+      config: requireAdminPermission(["PANELS"]),
       schema: {
         params: z.object({ id: z.coerce.number().int().positive() }),
         response: { 200: z.object({ success: z.literal(true) }), 401: z.object({ message: z.string() }), 403: z.object({ message: z.string() }), 404: z.object({ message: z.string() }) }
@@ -253,6 +256,7 @@ export async function homeContentRoutes(app: FastifyInstance, opts: { env: Env }
     });
 
     adminApp.put("/social-config", {
+      config: requireAdminPermission(["EVENTO"]),
       schema: {
         body: socialConfigInputSchema,
         response: { 200: socialConfigSchema, 401: z.object({ message: z.string() }), 403: z.object({ message: z.string() }) }

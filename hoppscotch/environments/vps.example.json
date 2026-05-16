@@ -1,0 +1,77 @@
+{
+  "name": "UOR Connect VPS",
+  "variables": [
+    {
+      "key": "apiBase",
+      "value": "https://api.exemplo.uorconnect.ao"
+    },
+    {
+      "key": "appBase",
+      "value": "https://exemplo.uorconnect.ao"
+    },
+    {
+      "key": "studentNumber",
+      "value": ""
+    },
+    {
+      "key": "studentPassword",
+      "value": ""
+    },
+    {
+      "key": "exhibitorNumber",
+      "value": ""
+    },
+    {
+      "key": "exhibitorPassword",
+      "value": ""
+    },
+    {
+      "key": "isptecStudentNumber",
+      "value": ""
+    },
+    {
+      "key": "isptecPassword",
+      "value": ""
+    },
+    {
+      "key": "adminStudentNumber",
+      "value": ""
+    },
+    {
+      "key": "adminPassword",
+      "value": ""
+    },
+    {
+      "key": "submissionId",
+      "value": "1"
+    },
+    {
+      "key": "certificateId",
+      "value": "1"
+    },
+    {
+      "key": "passportChallengeId",
+      "value": "1"
+    },
+    {
+      "key": "commentContent",
+      "value": "Feedback qualificado de teste via Hoppscotch."
+    },
+    {
+      "key": "studentToken",
+      "value": ""
+    },
+    {
+      "key": "exhibitorToken",
+      "value": ""
+    },
+    {
+      "key": "isptecToken",
+      "value": ""
+    },
+    {
+      "key": "adminToken",
+      "value": ""
+    }
+  ]
+}

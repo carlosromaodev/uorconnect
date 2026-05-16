@@ -1,5 +1,3 @@
-const DEFAULT_ADMIN_STUDENT_NUMBERS = ["20242099"];
-
 export const ALL_ADMIN_PERMISSIONS = [
   "OVERVIEW",
   "ANALYTICS",
@@ -8,6 +6,10 @@ export const ALL_ADMIN_PERMISSIONS = [
   "ATTENDANCE",
   "CERTIFICATES",
   "AUDIT",
+  "DATA_EXPORT",
+  "NUCLEUS",
+  "CREDENTIALS",
+  "TASKS",
   "SUBMISSIONS",
   "SPEAKERS",
   "SCHEDULE",
@@ -33,6 +35,10 @@ export const ADMIN_PERMISSION_LABELS: Record<AdminPermission, string> = {
   ATTENDANCE: "Check-in",
   CERTIFICATES: "Certificados",
   AUDIT: "Auditoria",
+  DATA_EXPORT: "Exportação de dados",
+  NUCLEUS: "Núcleo",
+  CREDENTIALS: "Credenciais",
+  TASKS: "Tarefas",
   SUBMISSIONS: "Candidaturas",
   SPEAKERS: "Palestrantes",
   SCHEDULE: "Agenda",
@@ -107,7 +113,16 @@ export function normalizeAdminStudentNumber(studentNumber: string) {
   return studentNumber.replace(/\D/g, "").trim();
 }
 
+function configuredDefaultAdminStudentNumbers() {
+  return new Set(
+    (process.env.DEFAULT_ADMIN_STUDENT_NUMBERS ?? "")
+      .split(",")
+      .map(normalizeAdminStudentNumber)
+      .filter(Boolean),
+  );
+}
+
 export function isDefaultAdminStudentNumber(studentNumber: string) {
   const normalized = normalizeAdminStudentNumber(studentNumber);
-  return DEFAULT_ADMIN_STUDENT_NUMBERS.includes(normalized);
+  return configuredDefaultAdminStudentNumbers().has(normalized);
 }

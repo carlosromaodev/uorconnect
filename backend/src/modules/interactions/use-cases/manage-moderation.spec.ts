@@ -17,7 +17,12 @@ function buildRepository(): InteractionModerationRepository {
         studentNumber: "20240001",
         course: "Informática",
         submissionId: 3,
-        submissionName: "Projeto A"
+        submissionName: "Projeto A",
+        moderationStatus: "PENDING",
+        feedbackReviewedAt: null,
+        feedbackReviewedByStudentNumber: null,
+        feedbackReviewNote: null,
+        feedbackScoredAt: null
       }
     ]),
     listLiveChatMessages: vi.fn().mockResolvedValue([

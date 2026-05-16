@@ -7,8 +7,9 @@ import {
   MessageSquare, Clock, MapPin, User, Presentation, BookOpen,
   Target, Award, TrendingUp, HelpCircle, ChevronRight,
   Sparkles, ThumbsUp, Star, ChevronLeft, Briefcase, Package, GraduationCap,
-  Settings, Vote, Rocket, Play, Heart, Loader2,
-  Linkedin, Lock
+  Settings, Vote, Play, Heart, Loader2, Trophy,
+  Linkedin, Lock, Paperclip, X, Reply, Flag, Pin, Megaphone,
+  Flame, Swords, Crown, ScanLine,
 } from "lucide-react";
 import { ProjectQrDialog, type ProjectCardItem } from "@/components/projects/ProjectQrDialog";
 import { ProjectShowcaseCard } from "@/components/projects/ProjectShowcaseCard";
@@ -22,7 +23,7 @@ import {
 } from "@/components/ui/accordion";
 import { toast } from "@/components/ui/sonner";
 import { api, type ActivityFeedItem, type AgendaItem, type AgendaLiveState, type Course, type CoursesContent, type FaqItem, type HomeContent, type LiveChatMessage, type ProjectPublicFeedItem, type Speaker, type Stats, type StudentEnrollmentListItem, getToken, isAuthError, setToken } from "@/lib/api";
-import { getContestAbsoluteUrl } from "@/lib/contest-lab";
+import { resolveAbsoluteApiUrl } from "@/lib/runtime-config";
 import {
   defaultHeroSponsors,
   defaultHomeSocialConfig,
@@ -33,9 +34,23 @@ import {
 import { getHeroIconByName } from "@/lib/phosphor-icons";
 import { canVoteSubmission, getSubmissionAreaLabel, getSubmissionAudienceCopy, normalizeSubmissionType } from "@/lib/submission-meta";
 import { UserAvatar } from "@/components/social/UserAvatar";
+import { getTopProjectsFeedParams } from "@/lib/project-feed-options";
 
 function withAlpha(color?: string | null, alpha = "22") {
   return color ? `${color}${alpha}` : `rgba(249,115,22,0.12)`;
+}
+
+function liveChatImageSrc(url?: string | null) {
+  return url ? resolveAbsoluteApiUrl(url) : "";
+}
+
+function readImageAsDataUrl(file: File) {
+  return new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result ?? ""));
+    reader.onerror = () => reject(new Error("Não foi possível ler a imagem."));
+    reader.readAsDataURL(file);
+  });
 }
 
 function openExternal(url?: string | null, emptyMessage = "Link não disponível.") {
@@ -48,11 +63,11 @@ function openExternal(url?: string | null, emptyMessage = "Link não disponível
 }
 
 const liveTypeColors: Record<string, string> = {
-  Painel: "bg-primary/10 text-primary",
-  Workshop: "bg-accent text-accent-foreground",
-  Apresentação: "bg-secondary text-secondary-foreground",
-  Cerimónia: "bg-primary text-primary-foreground",
-  Intervalo: "bg-muted text-muted-foreground",
+  Painel: "bg-[#e8f3f2] text-[#25636b]",
+  Workshop: "bg-[#f4efe6] text-[#7b5a1f]",
+  Apresentação: "bg-[#eef4f7] text-[#16324f]",
+  Cerimónia: "bg-[#a6312d] text-white",
+  Intervalo: "bg-slate-100 text-slate-600",
 };
 
 const areaColorMap: Record<string, string> = {
@@ -138,7 +153,7 @@ const projectTypes = [
   },
 ];
 
-const AGENDAR_EVENTO_URL = "https://agendar.uorconnect.space/";
+const AGENDAR_EVENTO_URL = (import.meta.env.VITE_SAAS_SHOWCASE_URL as string | undefined)?.trim() || "https://agendar.uorconnect.space/";
 const HIDDEN_EXPOSURE_SECTION_VIEWS_KEY = "uor_home_exposure_types_views";
 
 function readExposureSectionViewCount() {
@@ -333,7 +348,7 @@ function LivePreview({ liveState, agendaItems }: { liveState: AgendaLiveState | 
     return (
       <motion.div
         initial={{ opacity: 0, scale: 0.98 }} whileInView={{ opacity: 1, scale: 1 }} viewport={{ once: true }}
-        className="mx-auto max-w-md rounded-2xl border border-dashed border-border/60 bg-muted/20 p-8 text-center"
+        className="mx-auto max-w-md rounded-2xl border border-dashed border-[#c9d2df] bg-white p-8 text-center"
       >
         <Radio className="mx-auto mb-3 h-10 w-10 text-muted-foreground/25" />
         <p className="text-sm font-medium text-muted-foreground">Ainda não há sessões configuradas.</p>
@@ -349,17 +364,15 @@ function LivePreview({ liveState, agendaItems }: { liveState: AgendaLiveState | 
         initial={{ opacity: 0, y: 16 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}
         whileHover={{ y: -3 }}
         transition={{ type: "spring", stiffness: 300 }}
-        className="group relative overflow-hidden rounded-2xl border-2 border-primary/40 bg-gradient-to-br from-primary/[0.06] to-primary/[0.02] p-5 md:p-6 cursor-pointer"
+        className="group relative cursor-pointer overflow-hidden rounded-2xl border border-[#b9c6d6] bg-[#fffdfb] p-5 shadow-sm transition-colors hover:border-[#a6312d]/40 md:p-6"
       >
-        {/* Decorative corner glow */}
-        <div className="pointer-events-none absolute -right-10 -top-10 h-32 w-32 rounded-full bg-primary/8 blur-2xl transition-all duration-500 group-hover:scale-150 group-hover:bg-primary/12" />
-        <div className="pointer-events-none absolute -bottom-6 -left-6 h-20 w-20 rounded-full bg-primary/5 blur-xl" />
+        <div className="pointer-events-none absolute inset-y-5 left-0 w-1 rounded-r-full bg-[#a6312d]" />
 
         <div className="relative flex items-center gap-2 mb-3">
-          <span className="inline-flex items-center gap-1.5 bg-primary text-primary-foreground text-[10px] font-bold uppercase tracking-wider px-2.5 py-1 rounded-full shadow-sm">
+          <span className="inline-flex items-center gap-1.5 rounded-full bg-[#a6312d] px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-white shadow-sm">
             <span className="relative flex h-1.5 w-1.5">
-              {featuredLabel === "Agora" && <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-primary-foreground opacity-75" />}
-              <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-primary-foreground" />
+              {featuredLabel === "Agora" && <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-white opacity-75" />}
+              <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-white" />
             </span>
             {featuredLabel}
           </span>
@@ -370,10 +383,10 @@ function LivePreview({ liveState, agendaItems }: { liveState: AgendaLiveState | 
         <h3 className="relative font-heading text-base font-bold md:text-lg mb-3 line-clamp-2">{featured.title}</h3>
         <div className="relative flex flex-wrap gap-3 text-xs text-muted-foreground">
           <span className="flex items-center gap-1.5 rounded-md bg-white/60 px-2 py-1">
-            <Clock className="h-3.5 w-3.5 text-primary" />{featured.time} — {featured.endTime}
+            <Clock className="h-3.5 w-3.5 text-[#a6312d]" />{featured.time} — {featured.endTime}
           </span>
           <span className="flex items-center gap-1.5 rounded-md bg-white/60 px-2 py-1">
-            <MapPin className="h-3.5 w-3.5 text-primary" />{featured.local}
+            <MapPin className="h-3.5 w-3.5 text-[#a6312d]" />{featured.local}
           </span>
         </div>
       </motion.div>
@@ -384,11 +397,10 @@ function LivePreview({ liveState, agendaItems }: { liveState: AgendaLiveState | 
           initial={{ opacity: 0, y: 16 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}
           whileHover={{ y: -3 }}
           transition={{ type: "spring", stiffness: 300, delay: 0.08 }}
-          className="group relative overflow-hidden rounded-2xl border border-border/50 bg-white p-5 md:p-6 cursor-pointer transition-colors hover:border-primary/25"
+          className="group relative cursor-pointer overflow-hidden rounded-2xl border border-[#d5dce6] bg-white p-5 shadow-sm transition-colors hover:border-[#25636b]/35 md:p-6"
         >
-          <div className="pointer-events-none absolute -right-8 -top-8 h-24 w-24 rounded-full bg-muted/40 blur-xl transition-all duration-500 group-hover:bg-primary/8" />
           <div className="flex items-center gap-2 mb-3">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground bg-muted/80 px-2.5 py-1 rounded-full">{secondaryLabel}</span>
+            <span className="rounded-full bg-[#e8f3f2] px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-[#25636b]">{secondaryLabel}</span>
             <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full ${liveTypeColors[secondary.type] || "bg-secondary text-secondary-foreground"}`}>
               {secondary.type}
             </span>
@@ -396,10 +408,10 @@ function LivePreview({ liveState, agendaItems }: { liveState: AgendaLiveState | 
           <h3 className="font-heading text-base font-bold md:text-lg mb-3 line-clamp-2">{secondary.title}</h3>
           <div className="flex flex-wrap gap-3 text-xs text-muted-foreground">
             <span className="flex items-center gap-1.5 rounded-md bg-muted/40 px-2 py-1">
-              <Clock className="h-3.5 w-3.5 text-primary/60" />{secondary.time} — {secondary.endTime}
+              <Clock className="h-3.5 w-3.5 text-[#25636b]" />{secondary.time} — {secondary.endTime}
             </span>
             <span className="flex items-center gap-1.5 rounded-md bg-muted/40 px-2 py-1">
-              <MapPin className="h-3.5 w-3.5 text-primary/60" />{secondary.local}
+              <MapPin className="h-3.5 w-3.5 text-[#25636b]" />{secondary.local}
             </span>
           </div>
         </motion.div>
@@ -455,16 +467,20 @@ function TopProjectsCarousel() {
 
   useEffect(() => {
     setLoggedIn(Boolean(getToken()));
-    api.interactions.projects()
-      .then((items) => {
-        setProjects(items.map((item) => ({
+    const params = mode === "now"
+      ? getTopProjectsFeedParams()
+      : { page: 1, limit: 12, likesLimit: 0, commentsLimit: 0, view: "compact" as const, sort: "recent_desc" as const };
+
+    api.interactions.projects(params)
+      .then((payload) => {
+        setProjects(payload.items.map((item) => ({
           ...item,
           userHasLiked: false,
           userHasVoted: false,
         })));
       })
       .catch(() => setProjects([]));
-  }, []);
+  }, [mode]);
 
   const scroll = (dir: "left" | "right") => {
     scrollRef.current?.scrollBy({ left: dir === "left" ? -360 : 360, behavior: "smooth" });
@@ -569,10 +585,10 @@ function TopProjectsCarousel() {
         </Button>
       </div>
 
-      <button onClick={() => scroll("left")} className="absolute -left-4 top-1/2 -translate-y-1/2 z-10 w-10 h-10 rounded-full bg-card border border-border shadow-md flex items-center justify-center hover:bg-muted transition-colors hidden md:flex">
+      <button aria-label="Ver projetos anteriores" onClick={() => scroll("left")} className="absolute -left-4 top-1/2 -translate-y-1/2 z-10 w-10 h-10 rounded-full bg-card border border-border shadow-md flex items-center justify-center hover:bg-muted transition-colors hidden md:flex">
         <ChevronLeft className="w-5 h-5" />
       </button>
-      <button onClick={() => scroll("right")} className="absolute -right-4 top-1/2 -translate-y-1/2 z-10 w-10 h-10 rounded-full bg-card border border-border shadow-md flex items-center justify-center hover:bg-muted transition-colors hidden md:flex">
+      <button aria-label="Ver próximos projetos" onClick={() => scroll("right")} className="absolute -right-4 top-1/2 -translate-y-1/2 z-10 w-10 h-10 rounded-full bg-card border border-border shadow-md flex items-center justify-center hover:bg-muted transition-colors hidden md:flex">
         <ChevronRight className="w-5 h-5" />
       </button>
 
@@ -662,10 +678,10 @@ function TopCoursesCarousel({
         </Button>
       </div>
 
-      <button onClick={() => scroll("left")} className="absolute -left-4 top-1/2 z-10 hidden h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-border bg-card shadow-md transition-colors hover:bg-muted md:flex">
+      <button aria-label="Ver cursos anteriores" onClick={() => scroll("left")} className="absolute -left-4 top-1/2 z-10 hidden h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-border bg-card shadow-md transition-colors hover:bg-muted md:flex">
         <ChevronLeft className="h-5 w-5" />
       </button>
-      <button onClick={() => scroll("right")} className="absolute -right-4 top-1/2 z-10 hidden h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-border bg-card shadow-md transition-colors hover:bg-muted md:flex">
+      <button aria-label="Ver próximos cursos" onClick={() => scroll("right")} className="absolute -right-4 top-1/2 z-10 hidden h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-border bg-card shadow-md transition-colors hover:bg-muted md:flex">
         <ChevronRight className="h-5 w-5" />
       </button>
 
@@ -885,49 +901,168 @@ function getCourseEngagementScore(course: Course) {
   return course.studentCount + course.likesCount;
 }
 
-function HeroLabButton() {
-  const [showUnavailable, setShowUnavailable] = useState(false);
-
-  const handleClick = () => {
-    setShowUnavailable(true);
-    setTimeout(() => setShowUnavailable(false), 2000);
-  };
-
+function HeroChallengeButton() {
   return (
     <Button
+      asChild
       size="sm"
-      variant="outline"
-      className="relative h-10 w-full gap-2 overflow-hidden rounded-lg border-border/50 text-sm font-semibold text-muted-foreground transition-all hover:border-border hover:text-foreground"
-      onClick={handleClick}
+      className="h-10 w-full gap-2 rounded-lg bg-slate-950 text-sm font-semibold text-white shadow-md shadow-slate-950/15 hover:bg-slate-800"
     >
-      <AnimatePresence mode="wait">
-        {showUnavailable ? (
-          <motion.span
-            key="unavailable"
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -8 }}
-            transition={{ duration: 0.2 }}
-            className="flex items-center gap-2 text-amber-600"
-          >
-            <Clock className="h-4 w-4 shrink-0" />
-            Indisponível de momento
-          </motion.span>
-        ) : (
-          <motion.span
-            key="default"
-            initial={{ opacity: 0, y: 8 }}
-            animate={{ opacity: 1, y: 0 }}
-            exit={{ opacity: 0, y: -8 }}
-            transition={{ duration: 0.2 }}
-            className="flex items-center gap-2"
-          >
-            <Rocket className="h-4 w-4 shrink-0" />
-            Laboratório
-          </motion.span>
-        )}
-      </AnimatePresence>
+      <Link to="/minha-area?tab=desafio">
+        <Trophy className="h-4 w-4 shrink-0" />
+        Desafio
+      </Link>
     </Button>
+  );
+}
+
+const passportPrizeCards = [
+  {
+    label: "ChatGPT Pro",
+    detail: "Acesso premium para acelerar estudo, código e pesquisa",
+    className: "border-emerald-300/25 bg-emerald-400/10 text-emerald-50",
+    accent: "text-emerald-300",
+  },
+  {
+    label: "Pagamento de 1 recurso",
+    detail: "Apoio académico para estudante elegível",
+    className: "border-amber-300/25 bg-amber-400/10 text-amber-50",
+    accent: "text-amber-300",
+  },
+  {
+    label: "Prime Video",
+    detail: "1 mês · 1 perfil",
+    className: "border-sky-400/25 bg-sky-400/10 text-sky-100",
+    accent: "text-sky-300",
+  },
+  {
+    label: "HBO Max",
+    detail: "1 mês · 1 perfil",
+    className: "border-violet-400/25 bg-violet-400/10 text-violet-100",
+    accent: "text-violet-300",
+  },
+  {
+    label: "Duolingo Super",
+    detail: "1 mês para aprender com ritmo",
+    className: "border-lime-400/25 bg-lime-400/10 text-lime-100",
+    accent: "text-lime-300",
+  },
+  {
+    label: "Certificado Top 3",
+    detail: "Reconhecimento oficial no ranking final",
+    className: "border-orange-300/25 bg-orange-400/10 text-orange-50",
+    accent: "text-orange-300",
+  },
+];
+
+function PassportChallengePromo() {
+  return (
+    <section className="relative overflow-hidden bg-[#f7faf8] py-12 md:py-16">
+      <div className="pointer-events-none absolute inset-0 opacity-[0.05]"
+        style={{
+          backgroundImage: "linear-gradient(#07130d 1px, transparent 1px), linear-gradient(90deg, #07130d 1px, transparent 1px)",
+          backgroundSize: "38px 38px",
+        }}
+      />
+      <div className="container relative z-10 mx-auto px-4">
+        <div className="grid items-center gap-8 lg:grid-cols-[minmax(0,0.95fr)_minmax(320px,0.8fr)]">
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            whileInView={{ opacity: 1, y: 0 }}
+            viewport={{ once: true }}
+            className="max-w-2xl"
+          >
+            <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-emerald-500/20 bg-emerald-500/10 px-3 py-1.5 text-xs font-bold uppercase tracking-[0.16em] text-emerald-700">
+              <Trophy className="h-3.5 w-3.5" />
+              Passaporte Digital
+            </div>
+            <h2 className="font-heading text-3xl font-black leading-tight text-slate-950 md:text-4xl">
+              Chegou o Desafio UOR Connect
+            </h2>
+            <p className="mt-3 max-w-xl text-sm leading-7 text-slate-600 md:text-base">
+              Aceita o Passaporte Digital, visita stands, escaneia QRs e sobe
+              no ranking durante a atividade. O Top 3 recebe certificado e
+              acesso aos prémios digitais anunciados.
+            </p>
+            <div className="mt-6 flex flex-wrap gap-2">
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm">
+                <ScanLine className="h-3.5 w-3.5 text-emerald-600" />
+                QRs no evento
+              </span>
+              <span className="inline-flex items-center gap-1.5 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-700 shadow-sm">
+                <Crown className="h-3.5 w-3.5 text-amber-500" />
+                Ranking Top 3
+              </span>
+            </div>
+          </motion.div>
+
+          <motion.div
+            initial={{ opacity: 0, y: 16, scale: 0.98 }}
+            whileInView={{ opacity: 1, y: 0, scale: 1 }}
+            viewport={{ once: true }}
+            transition={{ type: "spring", stiffness: 220, damping: 24 }}
+            className="relative mx-auto w-full max-w-[430px]"
+          >
+            <div className="absolute -inset-4 rounded-[2rem] bg-emerald-400/10 blur-2xl" aria-hidden="true" />
+            <div className="relative overflow-hidden rounded-[2rem] border border-emerald-300/20 bg-[#06130c] p-5 text-white shadow-[0_28px_70px_rgba(2,6,23,0.28)]">
+              <div className="absolute -left-4 top-1/2 h-8 w-8 -translate-y-1/2 rounded-full bg-[#f7faf8]" aria-hidden="true" />
+              <div className="absolute -right-4 top-1/2 h-8 w-8 -translate-y-1/2 rounded-full bg-[#f7faf8]" aria-hidden="true" />
+              <div className="pointer-events-none absolute inset-0 opacity-[0.08]"
+                style={{
+                  backgroundImage: "linear-gradient(90deg, rgba(255,255,255,.5) 1px, transparent 1px)",
+                  backgroundSize: "18px 18px",
+                }}
+              />
+
+              <div className="relative border-b border-dashed border-white/20 pb-4">
+                <div className="flex items-center justify-between gap-4">
+                  <span className="text-[10px] font-black uppercase tracking-[0.22em] text-emerald-300">
+                    Boarding pass
+                  </span>
+                  <span className="rounded-full border border-white/15 px-2.5 py-1 text-[10px] font-bold text-emerald-50">
+                    UOR-2026
+                  </span>
+                </div>
+                <h3 className="mt-3 font-heading text-2xl font-black leading-tight sm:text-3xl">
+                  Passaporte do Desafio
+                </h3>
+                <p className="mt-2 text-sm leading-6 text-emerald-50/75">
+                  Missões, pontos, QR surpresa e prémios numa única jornada.
+                </p>
+              </div>
+
+              <div className="passport-prize-grid relative grid gap-2 py-4 sm:grid-cols-2">
+                {passportPrizeCards.map((prize) => (
+                  <div key={prize.label} className={`passport-prize-card rounded-2xl border px-3 py-3 ${prize.className}`}>
+                    <p className={`text-sm font-black leading-tight ${prize.accent}`}>{prize.label}</p>
+                    <p className="mt-1 text-[10px] font-semibold uppercase leading-4 tracking-wide text-white/55">
+                      {prize.detail}
+                    </p>
+                  </div>
+                ))}
+              </div>
+
+              <div className="relative flex flex-col gap-3 border-t border-dashed border-white/20 pt-4 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <p className="text-[10px] font-bold uppercase tracking-[0.2em] text-emerald-300/80">
+                    Destino
+                  </p>
+                  <p className="mt-1 text-sm font-bold text-white">
+                    Minha Área · Desafio
+                  </p>
+                </div>
+                <Button asChild size="sm" className="h-10 rounded-full bg-emerald-500 px-5 text-sm font-black text-emerald-950 shadow-lg shadow-emerald-500/25 hover:bg-emerald-400">
+                  <Link to="/minha-area?tab=desafio">
+                    Aceitar passaporte
+                    <ArrowRight className="ml-2 h-4 w-4" />
+                  </Link>
+                </Button>
+              </div>
+            </div>
+          </motion.div>
+        </div>
+      </div>
+    </section>
   );
 }
 
@@ -949,9 +1084,14 @@ function SponsorsMarquee({
   dashedOpacity: number;
 }) {
   const safeItems = items.length ? items : defaultHeroSponsors;
-  const neicOnlyItems = safeItems.filter((item) => /neic|núcleo|nucleo/i.test(`${item.id} ${item.name} ${item.label ?? ""}`));
-  const visibleItems = (neicOnlyItems.length ? neicOnlyItems : safeItems.slice(0, 1)).slice(0, 1);
-  const marqueeItems = [...visibleItems, ...visibleItems];
+  const visibleItems = safeItems.reduce<typeof defaultHeroSponsors>((acc, item) => {
+    const key = `${item.id}|${item.name}|${item.imageUrl}`.toLowerCase();
+    if (!acc.some((entry) => `${entry.id}|${entry.name}|${entry.imageUrl}`.toLowerCase() === key)) {
+      acc.push(item);
+    }
+    return acc;
+  }, []);
+  const marqueeItems = [...visibleItems, ...visibleItems, ...visibleItems];
 
   return (
     <div className="mb-6">
@@ -959,14 +1099,14 @@ function SponsorsMarquee({
         <span className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">Patrocinadores</span>
         <div className="h-px flex-1 border-t border-dashed" style={{ borderColor: dashedColor, opacity: dashedOpacity / 100 }} />
       </div>
-      <div className="sponsor-marquee overflow-hidden rounded-2xl border border-white/45 bg-white/22 px-3 py-3 shadow-sm backdrop-blur-2xl supports-[backdrop-filter]:bg-white/14">
-        <div className="sponsor-marquee-track flex min-w-max items-center gap-4">
+      <div className="sponsor-marquee overflow-hidden rounded-2xl border border-white/45 bg-white/22 px-3 py-2.5 shadow-sm backdrop-blur-2xl supports-[backdrop-filter]:bg-white/14">
+        <div className="sponsor-marquee-track flex min-w-max items-center gap-3">
           {marqueeItems.map((item, index) => (
             <div
-              key={`${item.id}-${index}`}
-              className="flex shrink-0 items-center justify-center rounded-xl border border-white/55 bg-white/30 px-5 py-3 shadow-sm backdrop-blur-md supports-[backdrop-filter]:bg-white/18"
+              key={`${item.id}-${item.imageUrl}-${index}`}
+              className="flex h-14 w-[126px] shrink-0 items-center justify-center rounded-xl border border-white/55 bg-white/35 px-3 py-2 shadow-sm backdrop-blur-md sm:h-16 sm:w-[150px] supports-[backdrop-filter]:bg-white/20"
             >
-              <img src={item.imageUrl} alt={item.name} className="h-12 w-auto object-contain sm:h-14" />
+              <img src={item.imageUrl} alt={item.name} className="max-h-9 max-w-[112px] object-contain sm:max-h-11 sm:max-w-[132px]" />
             </div>
           ))}
         </div>
@@ -994,7 +1134,13 @@ export default function Index() {
   const [likedCourseIds, setLikedCourseIds] = useState<Set<number>>(new Set());
   const [enrolledCourseIds, setEnrolledCourseIds] = useState<Set<number>>(new Set());
   const [courseEnrollmentsByCourse, setCourseEnrollmentsByCourse] = useState<Record<number, StudentEnrollmentListItem>>({});
+  const [submissionsOpen, setSubmissionsOpen] = useState<boolean | null>(null);
   const [chatInput, setChatInput] = useState("");
+  const [chatAttachment, setChatAttachment] = useState<{ dataUrl: string; fileName: string } | null>(null);
+  const [chatReplyTo, setChatReplyTo] = useState<LiveChatMessage | null>(null);
+  const [chatSending, setChatSending] = useState(false);
+  const [chatImagePreview, setChatImagePreview] = useState<string | null>(null);
+  const [chatReactionBusy, setChatReactionBusy] = useState<number | null>(null);
   const [hideExposureSection] = useState(() => readExposureSectionViewCount() >= 2);
   const exposureSectionRef = useRef<HTMLElement | null>(null);
   const exposureSectionTrackedRef = useRef(false);
@@ -1078,6 +1224,10 @@ export default function Index() {
       .then(setFaqs)
       .catch(() => setFaqs([]));
 
+    api.submissions.config()
+      .then((config) => setSubmissionsOpen(config.isOpen))
+      .catch(() => setSubmissionsOpen(true));
+
     if (getToken()) {
       api.interactions.me()
         .then((res) => setStudentProfile(res.student ?? null))
@@ -1089,6 +1239,16 @@ export default function Index() {
     }
   }, []);
 
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      api.interactions.liveChat()
+        .then(setLiveChat)
+        .catch(() => undefined);
+    }, 10000);
+
+    return () => window.clearInterval(interval);
+  }, []);
+
   const statsData = [
     { value: stats ? `${stats.participants}` : "0", label: "Participantes", icon: Users },
     { value: stats ? `${stats.submissions}` : "0", label: "Projetos Exibidos", icon: FolderOpen },
@@ -1098,17 +1258,18 @@ export default function Index() {
 
   const topCourseSource = coursesContent.courses.length ? coursesContent.courses : coursesContent.topCourses;
   const recentActivity = activityFeed.slice(0, 3);
-  const laboratorioHref = useMemo(() => getContestAbsoluteUrl("/"), []);
+  const liveChatOnlineCount = useMemo(() => new Set(liveChat.slice(0, 20).map((message) => message.studentName)).size, [liveChat]);
+  const submissionsAreOpen = submissionsOpen !== false;
   const quickActions = useMemo(() => ([
     { label: "Votar Projetos", icon: Vote, path: "/projetos", color: "bg-primary hover:bg-primary/90 text-primary-foreground", desc: "Vota nos teus favoritos" },
     { label: "Submeter Projeto", icon: Send, path: "/submeter", color: "bg-[hsl(var(--area-ia))] hover:bg-[hsl(var(--area-ia))]/90 text-primary-foreground", desc: "Inscreve o teu trabalho" },
-    { label: "Entrar no Laboratório", icon: Rocket, href: laboratorioHref, external: true, color: "bg-[linear-gradient(135deg,#041013,#0b1c23,#00b894)] hover:opacity-95 text-white", desc: "Acede à app dedicada do laboratório" },
+    { label: "Desafio", icon: Trophy, path: "/minha-area?tab=desafio", color: "bg-slate-950 hover:bg-slate-800 text-white", desc: "Passaporte digital, QR e ranking" },
     { label: "Agendar Evento", icon: CalendarDays, href: AGENDAR_EVENTO_URL, external: true, color: "bg-emerald-600 hover:bg-emerald-500 text-white", desc: "Leva a plataforma para o teu evento" },
     { label: "Ver Agenda", icon: CalendarDays, path: "/agenda", color: "bg-[hsl(var(--area-web))] hover:bg-[hsl(var(--area-web))]/90 text-primary-foreground", desc: "Horários e sessões" },
     { label: "Palestrantes", icon: Mic, path: "/palestrantes", color: "bg-[hsl(var(--area-negocio))] hover:bg-[hsl(var(--area-negocio))]/90 text-primary-foreground", desc: "Quem vai falar" },
     { label: "Cursos", icon: GraduationCap, path: "/cursos", color: "bg-[hsl(var(--area-iot))] hover:bg-[hsl(var(--area-iot))]/90 text-primary-foreground", desc: "Lista completa de cursos" },
     { label: "Guia do Evento", icon: BookOpen, path: "/guia", color: "bg-[hsl(var(--area-produto))] hover:bg-[hsl(var(--area-produto))]/90 text-primary-foreground", desc: "Tudo o que precisas" },
-  ]), [laboratorioHref]);
+  ]), []);
   const heroConfig = useMemo(() => ({
     ...defaultHomeSocialConfig,
     ...homeContent.socialConfig,
@@ -1197,19 +1358,77 @@ export default function Index() {
     };
   }, [hideExposureSection]);
 
+  const handleLiveChatAttachmentChange = async (file?: File | null) => {
+    if (!file) return;
+    if (!["image/png", "image/jpeg", "image/webp"].includes(file.type)) {
+      toast.error("Usa uma imagem PNG, JPG ou WEBP.");
+      return;
+    }
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("A imagem deve ter no máximo 5 MB.");
+      return;
+    }
+
+    try {
+      setChatAttachment({ dataUrl: await readImageAsDataUrl(file), fileName: file.name });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Falha ao preparar a imagem.");
+    }
+  };
+
   const handleLiveChatSend = async () => {
-    if (!chatInput.trim()) return;
+    if (!chatInput.trim() && !chatAttachment) return;
     if (!getToken()) {
       toast.error("Faz login para comentar no mini-chat.");
       return;
     }
 
     try {
-      const created = await api.interactions.sendLiveChat(chatInput.trim());
+      setChatSending(true);
+      const created = await api.interactions.sendLiveChat({
+        content: chatInput.trim(),
+        attachment: chatAttachment,
+        replyToMessageId: chatReplyTo?.id ?? null,
+      });
       setLiveChat((current) => [created, ...current].slice(0, 30));
       setChatInput("");
+      setChatAttachment(null);
+      setChatReplyTo(null);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Falha ao enviar mensagem");
+    } finally {
+      setChatSending(false);
+    }
+  };
+
+  const handleLiveChatReaction = async (messageId: number, type: "like" | "applause" | "love") => {
+    if (!getToken()) {
+      toast.error("Faz login para reagir.");
+      return;
+    }
+
+    try {
+      setChatReactionBusy(messageId);
+      const result = await api.interactions.reactLiveChat(messageId, type);
+      setLiveChat((current) => current.map((message) => message.id === messageId ? { ...message, reactionCounts: result.reactionCounts } : message));
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Falha ao reagir.");
+    } finally {
+      setChatReactionBusy(null);
+    }
+  };
+
+  const handleLiveChatReport = async (messageId: number) => {
+    if (!getToken()) {
+      toast.error("Faz login para denunciar.");
+      return;
+    }
+
+    try {
+      await api.interactions.reportLiveChat(messageId);
+      toast.success("Mensagem sinalizada para a moderação.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Falha ao denunciar mensagem.");
     }
   };
 
@@ -1313,10 +1532,16 @@ export default function Index() {
               >
                 <Link to="/projetos"><Vote className="h-4 w-4 shrink-0" />Votar Projetos</Link>
               </Button>
-              <Button asChild size="sm" className="h-10 w-full gap-2 rounded-lg bg-emerald-600 text-sm font-semibold text-white shadow-md hover:bg-emerald-700">
-                <Link to="/submeter"><Send className="h-4 w-4 shrink-0" />Submeter Projeto</Link>
-              </Button>
-              <HeroLabButton />
+              {submissionsAreOpen ? (
+                <Button asChild size="sm" className="h-10 w-full gap-2 rounded-lg bg-emerald-600 text-sm font-semibold text-white shadow-md hover:bg-emerald-700">
+                  <Link to="/submeter"><Send className="h-4 w-4 shrink-0" />Submeter Projeto</Link>
+                </Button>
+              ) : (
+                <Button size="sm" disabled className="h-10 w-full gap-2 rounded-lg bg-slate-200 text-sm font-semibold text-slate-600 shadow-none hover:bg-slate-200">
+                  <Lock className="h-4 w-4 shrink-0" />Candidaturas encerradas
+                </Button>
+              )}
+              <HeroChallengeButton />
             </motion.div>
 
             {/* Auth strip */}
@@ -1336,7 +1561,7 @@ export default function Index() {
                 className="inline-flex items-center gap-2.5 rounded-full border px-3 py-2 backdrop-blur-sm"
                 style={{ borderColor: withAlpha(heroConfig.primaryColor, "28"), backgroundColor: withAlpha(heroConfig.primaryColor, "08") }}
               >
-                <UserAvatar name={studentProfile.name || "Estudante"} size="sm" />
+                <UserAvatar name={studentProfile.name || "Estudante"} avatarUrl={studentProfile.avatarUrl} size="sm" />
                 <span className="text-sm font-semibold">{(studentProfile.name ?? "").split(" ").slice(0, 2).join(" ") || "Estudante"}</span>
                 <Button size="sm" variant="ghost" className="ml-1 h-7 shrink-0 rounded-md px-2 text-xs" onClick={handleLogout}>Sair</Button>
               </motion.div>
@@ -1388,6 +1613,8 @@ export default function Index() {
           </motion.div>
         </div>
       </section>
+
+      <PassportChallengePromo />
 
       <SectionDivider />
 
@@ -1455,6 +1682,479 @@ export default function Index() {
           <motion.div initial={{ opacity: 0 }} whileInView={{ opacity: 1 }} viewport={{ once: true }} className="mt-10 text-center">
             <Button asChild size="lg" variant="outline" className="h-12 rounded-xl font-semibold">
               <Link to="/cursos">Ver Todos os Cursos <ArrowRight className="ml-2 h-5 w-5" /></Link>
+            </Button>
+          </motion.div>
+        </div>
+      </section>
+
+      <SectionDivider />
+
+      {/* ══════════════════════════════════════
+          AO VIVO
+      ══════════════════════════════════════ */}
+      <section className="relative overflow-hidden border-y border-[#d7dee8] bg-[#f6f8fb] py-16 md:py-24">
+        <div
+          className="pointer-events-none absolute inset-0 opacity-[0.05]"
+          style={{
+            backgroundImage: "linear-gradient(#16324f 1px, transparent 1px), linear-gradient(90deg, #16324f 1px, transparent 1px)",
+            backgroundSize: "44px 44px",
+          }}
+        />
+
+        <div className="container relative z-10 mx-auto px-4">
+          {/* Section header */}
+          <motion.div initial={{ opacity: 0, y: 16 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="mb-10 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
+            <div>
+              <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-[#a6312d]/25 bg-white px-3 py-1.5 text-xs font-bold uppercase tracking-wider text-[#a6312d]">
+                <span className="relative flex h-2 w-2">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-[#a6312d] opacity-60" />
+                  <span className="relative inline-flex h-2 w-2 rounded-full bg-[#a6312d]" />
+                </span>
+                Em direto
+              </div>
+              <h2 className="font-heading text-3xl font-bold text-[#12263f] md:text-4xl">Ao Vivo</h2>
+              <p className="mt-2 max-w-xl text-sm leading-6 text-slate-600 md:text-base">Acompanha a sessão atual, participa no chat e vê os movimentos recentes do evento.</p>
+            </div>
+            <Link to="/ao-vivo" className="inline-flex h-10 items-center justify-center gap-2 rounded-lg border border-[#16324f]/20 bg-white px-4 text-sm font-semibold text-[#16324f] transition-colors hover:bg-[#edf3f7]">
+              Ver sala ao vivo
+              <ArrowRight className="h-4 w-4" />
+            </Link>
+          </motion.div>
+
+          {/* Live preview cards */}
+          <LivePreview liveState={liveState} agendaItems={agendaItems} />
+
+          {/* ── Live Stands (Featured / Hot) ── */}
+          {(() => {
+            const standMap = new Map<string, { name: string; votes: number; comments: number; submissions: number }>();
+            for (const item of activityFeed) {
+              const subj = item.subject?.trim();
+              if (!subj) continue;
+              const existing = standMap.get(subj);
+              if (existing) {
+                if (item.type === "vote") existing.votes += 1;
+                else if (item.type === "comment") existing.comments += 1;
+                else existing.submissions += 1;
+              } else {
+                standMap.set(subj, {
+                  name: subj,
+                  votes: item.type === "vote" ? 1 : 0,
+                  comments: item.type === "comment" ? 1 : 0,
+                  submissions: item.type === "submission" ? 1 : 0,
+                });
+              }
+            }
+            const stands = Array.from(standMap.values())
+              .map((s) => ({ ...s, total: s.votes + s.comments + s.submissions }))
+              .sort((a, b) => b.total - a.total)
+              .slice(0, 6);
+            const maxTotal = stands[0]?.total ?? 1;
+            const HOT_THRESHOLD = 3;
+
+            if (stands.length === 0) return null;
+
+            return (
+              <motion.div
+                initial={{ opacity: 0, y: 16 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                className="live-stands"
+              >
+                <div className="live-stands__header">
+                  <div className="live-stands__header-icon">
+                    <ScanLine className="h-4 w-4" />
+                  </div>
+                  <div>
+                    <h3 className="font-heading text-sm font-bold text-[#12263f]">Stands em Destaque</h3>
+                    <p className="text-[10px] text-slate-500">Projetos com mais movimentação agora</p>
+                  </div>
+                </div>
+
+                <div className="live-stands__grid">
+                  {stands.map((stand) => {
+                    const isHot = stand.total >= HOT_THRESHOLD;
+                    return (
+                      <div key={stand.name} className={`live-stand-card ${isHot ? "is-hot" : ""}`}>
+                        {isHot ? (
+                          <span className="live-stand-card__hot-badge">
+                            <span className="hot-stand-pulse" />
+                            <Flame className="h-3 w-3" />
+                            Quente
+                          </span>
+                        ) : null}
+                        <p className="live-stand-card__name">{stand.name}</p>
+                        <div className="live-stand-card__stats">
+                          <span className="live-stand-card__stat">
+                            <Vote className="h-3 w-3" />
+                            {stand.votes} votos
+                          </span>
+                          <span className="live-stand-card__stat">
+                            <MessageSquare className="h-3 w-3" />
+                            {stand.comments} coment.
+                          </span>
+                        </div>
+                        <div className="live-stand-card__bar">
+                          <div
+                            className="live-stand-card__bar-fill"
+                            style={{ width: `${Math.round((stand.total / maxTotal) * 100)}%` }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </motion.div>
+            );
+          })()}
+
+          {/* ── Batalha por Cursos (Live) ── */}
+          {(() => {
+            const courseVoteMap = new Map<string, number>();
+            for (const item of activityFeed) {
+              if (item.type !== "vote") continue;
+              const course = item.actorCourse?.trim();
+              if (!course) continue;
+              courseVoteMap.set(course, (courseVoteMap.get(course) ?? 0) + 1);
+            }
+            const courseRanking = Array.from(courseVoteMap.entries())
+              .map(([course, votes]) => ({ course, votes }))
+              .sort((a, b) => b.votes - a.votes);
+            const top3 = courseRanking.slice(0, 3);
+            const podiumClasses = ["is-gold", "is-silver", "is-bronze"];
+            const podiumOrder = top3.length >= 2 ? [top3[1], top3[0], top3[2]].filter(Boolean) : top3;
+
+            if (courseRanking.length < 2) return null;
+
+            return (
+              <motion.div
+                initial={{ opacity: 0, y: 16 }}
+                whileInView={{ opacity: 1, y: 0 }}
+                viewport={{ once: true }}
+                className="course-battle mt-8"
+                style={{ borderColor: 'rgb(213 220 230)' }}
+              >
+                <div className="course-battle__header">
+                  <div className="course-battle__header-left">
+                    <div className="course-battle__header-icon">
+                      <Swords className="h-5 w-5" />
+                    </div>
+                    <div>
+                      <h3 className="text-sm font-bold text-slate-900">Batalha por Cursos</h3>
+                      <p className="text-[11px] text-slate-500">Quem está a votar mais?</p>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Podium */}
+                {top3.length >= 2 ? (
+                  <div className="course-battle__podium">
+                    {podiumOrder.map((item) => {
+                      if (!item) return null;
+                      const originalIndex = top3.indexOf(item);
+                      return (
+                        <div key={item.course} className="course-battle__podium-item">
+                          {originalIndex === 0 ? <Crown className="h-5 w-5 course-battle__crown" /> : <div className="h-5" />}
+                          <div className={`course-battle__podium-bar ${podiumClasses[originalIndex] ?? ''}`}>
+                            <span className="course-battle__podium-position">{originalIndex + 1}º</span>
+                          </div>
+                          <p className="course-battle__podium-name">{item.course}</p>
+                          <p className="course-battle__podium-pts">{item.votes} votos</p>
+                        </div>
+                      );
+                    })}
+                  </div>
+                ) : null}
+
+                {/* Full list */}
+                <div className="course-battle__list">
+                  {courseRanking.slice(0, 8).map((item, index) => (
+                    <div key={item.course} className="course-battle__row">
+                      <span className="course-battle__row-pos">{index + 1}º</span>
+                      <span className="course-battle__row-name">{item.course}</span>
+                      <span className="course-battle__row-pts">{item.votes} votos</span>
+                    </div>
+                  ))}
+                </div>
+              </motion.div>
+            );
+          })()}
+
+          {/* Chat + Activity grid */}
+          <div className="mt-8 grid gap-5 lg:grid-cols-2">
+            <motion.div
+              initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}
+              transition={{ delay: 0.1 }}
+              className="group relative overflow-hidden rounded-2xl border border-[#d5dce6] bg-[#fffdfb] shadow-sm transition-shadow hover:shadow-md"
+            >
+              <div className="h-1 bg-[#25636b]" />
+              <div className="p-5">
+                <div className="mb-4 flex items-center justify-between">
+                  <div className="flex items-center gap-2.5">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-[#e8f3f2]">
+                      <MessageSquare className="h-4 w-4 text-[#25636b]" />
+                    </div>
+                    <div>
+                      <h3 className="font-heading text-sm font-bold">Chat ao vivo</h3>
+                      <p className="text-[10px] text-muted-foreground">{liveChatOnlineCount || 0} participante(s) recente(s)</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {liveState?.current ? (
+                      <span className="hidden max-w-[150px] items-center gap-1 rounded-full bg-[#f8e9e8] px-2 py-1 text-[10px] font-semibold text-[#a6312d] sm:inline-flex">
+                        <Radio className="h-3 w-3" />
+                        <span className="truncate">{liveState.current.title}</span>
+                      </span>
+                    ) : null}
+                    <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{liveChat.length} msg</span>
+                  </div>
+                </div>
+
+                <div className="mb-4 rounded-2xl border border-[#d7dee8] bg-[#f7fafc] p-2.5">
+                  <div className="max-h-72 min-h-[260px] space-y-2 overflow-y-auto pr-1 scrollbar-thin">
+                    {liveChat.length ? liveChat.map((msg, i) => (
+                      <motion.div
+                        key={msg.id}
+                        initial={{ opacity: 0, x: -8 }}
+                        animate={{ opacity: 1, x: 0 }}
+                        transition={{ delay: i * 0.04, duration: 0.25 }}
+                        className={`flex gap-2 rounded-xl border px-2.5 py-2.5 shadow-sm ${
+                          msg.studentName === studentProfile?.name
+                            ? "ml-6 border-[#25636b]/25 bg-[#e8f3f2]"
+                            : msg.isHighlighted
+                              ? "border-[#d0a33d]/45 bg-[#fff8e5]"
+                              : "border-[#dbe2ea] bg-white"
+                        }`}
+                      >
+                        <UserAvatar name={msg.studentName} avatarUrl={msg.studentAvatarUrl} size="sm" className="mt-0.5 shrink-0" />
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                            <span className="text-[13px] font-bold leading-tight text-foreground">{msg.studentName}</span>
+                            {msg.isPinned ? <span className="inline-flex items-center gap-1 rounded-full bg-[#e8f3f2] px-1.5 py-0.5 text-[9px] font-bold text-[#25636b]"><Pin className="h-2.5 w-2.5" />Fixada</span> : null}
+                            {msg.isHighlighted ? <span className="inline-flex items-center gap-1 rounded-full bg-[#fff1c2] px-1.5 py-0.5 text-[9px] font-bold text-[#8c6513]"><Megaphone className="h-2.5 w-2.5" />Destaque</span> : null}
+                            <span className="text-[10px] leading-tight text-muted-foreground/70">
+                              {new Date(msg.createdAt).toLocaleTimeString("pt-PT", { hour: "2-digit", minute: "2-digit" })}
+                            </span>
+                          </div>
+                          {msg.course ? (
+                            <span
+                              className="mt-1 inline-flex max-w-full items-center rounded-md px-1.5 py-0.5 text-[9px] font-semibold leading-none"
+                              style={{ backgroundColor: withAlpha(msg.courseColor, "12"), color: msg.courseColor || "#64748b" }}
+                            >
+                              <span className="truncate">{msg.course}</span>
+                            </span>
+                          ) : null}
+                          {msg.replyTo ? (
+                            <button
+                              type="button"
+                              onClick={() => setChatReplyTo(msg)}
+                              className="mt-2 block w-full rounded-lg border-l-2 border-[#25636b]/50 bg-[#eef4f7] px-2 py-1 text-left"
+                            >
+                              <span className="block text-[10px] font-semibold text-[#25636b]">{msg.replyTo.studentName}</span>
+                              <span className="line-clamp-1 text-[11px] text-muted-foreground">{msg.replyTo.content || "Imagem"}</span>
+                            </button>
+                          ) : null}
+                          <p className="mt-1 text-[13px] leading-snug text-foreground/80">{msg.content}</p>
+                          {msg.attachmentUrl ? (
+                            <button type="button" aria-label="Abrir imagem do chat" className="mt-2 block overflow-hidden rounded-lg border border-border/60 bg-white" onClick={() => setChatImagePreview(liveChatImageSrc(msg.attachmentUrl))}>
+                              <img src={liveChatImageSrc(msg.attachmentUrl)} alt="Imagem enviada no chat" className="max-h-44 w-full object-cover" loading="lazy" />
+                            </button>
+                          ) : null}
+                          <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                            {(["like", "applause", "love"] as const).map((type) => (
+                              <button
+                                key={type}
+                                type="button"
+                                onClick={() => void handleLiveChatReaction(msg.id, type)}
+                                disabled={chatReactionBusy === msg.id}
+                                className="inline-flex h-6 items-center gap-1 rounded-full border border-[#d5dce6] bg-white px-2 text-[10px] font-semibold text-muted-foreground transition-colors hover:border-[#25636b]/35 hover:text-[#25636b] disabled:opacity-50"
+                              >
+                                {type === "like" ? <ThumbsUp className="h-3 w-3" /> : type === "love" ? <Heart className="h-3 w-3" /> : <Sparkles className="h-3 w-3" />}
+                                {msg.reactionCounts?.[type] ?? 0}
+                              </button>
+                            ))}
+                            <button type="button" onClick={() => setChatReplyTo(msg)} className="inline-flex h-6 items-center gap-1 rounded-full px-2 text-[10px] font-semibold text-muted-foreground hover:bg-muted">
+                              <Reply className="h-3 w-3" />
+                              Responder
+                            </button>
+                            <button type="button" onClick={() => void handleLiveChatReport(msg.id)} className="inline-flex h-6 items-center gap-1 rounded-full px-2 text-[10px] font-semibold text-muted-foreground hover:bg-rose-50 hover:text-rose-600">
+                              <Flag className="h-3 w-3" />
+                              Denunciar
+                            </button>
+                          </div>
+                        </div>
+                      </motion.div>
+                    )) : (
+                      <div className="flex min-h-[260px] flex-col items-center justify-center text-center">
+                        <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-white shadow-sm">
+                          <MessageSquare className="h-5 w-5 text-muted-foreground/30" />
+                        </div>
+                        <p className="text-sm font-medium text-muted-foreground/80">Nenhuma mensagem ainda</p>
+                        <p className="mt-0.5 text-[11px] text-muted-foreground/55">As mensagens aparecem aqui durante o evento.</p>
+                      </div>
+                    )}
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-[#d5dce6] bg-[#f7fafc] p-1.5 transition-all focus-within:border-[#25636b]/35 focus-within:bg-white focus-within:shadow-sm">
+                  {chatReplyTo ? (
+                    <div className="mb-1.5 flex items-center justify-between gap-2 rounded-lg bg-white px-2.5 py-1.5 text-xs">
+                      <span className="min-w-0 truncate text-muted-foreground">
+                        A responder <strong className="text-foreground">{chatReplyTo.studentName}</strong>: {chatReplyTo.content || "Imagem"}
+                      </span>
+                      <button type="button" onClick={() => setChatReplyTo(null)} className="shrink-0 rounded-md p-1 hover:bg-muted">
+                        <span className="sr-only">Cancelar resposta</span>
+                        <X className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
+                  ) : null}
+                  {chatAttachment ? (
+                    <div className="mb-1.5 flex items-center gap-2 rounded-lg bg-white p-1.5">
+                      <img src={chatAttachment.dataUrl} alt="Prévia do anexo" className="h-12 w-12 rounded-md object-cover" />
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-xs font-semibold">{chatAttachment.fileName}</p>
+                        <p className="text-[10px] text-muted-foreground">Imagem pronta para enviar</p>
+                      </div>
+                      <button type="button" aria-label="Remover anexo" onClick={() => setChatAttachment(null)} className="rounded-md p-1.5 hover:bg-muted">
+                        <X className="h-4 w-4" />
+                      </button>
+                    </div>
+                  ) : null}
+                  <div className="flex items-center gap-2">
+                    <UserAvatar name={studentProfile?.name || "?"} avatarUrl={studentProfile?.avatarUrl} size="sm" className="ml-0.5 shrink-0" />
+                    <input id="live-chat-attachment" type="file" accept="image/png,image/jpeg,image/webp" className="hidden" onChange={(event) => void handleLiveChatAttachmentChange(event.target.files?.[0])} />
+                    <label htmlFor="live-chat-attachment" className="flex h-8 w-8 shrink-0 cursor-pointer items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-white hover:text-[#25636b]">
+                      <Paperclip className="h-4 w-4" />
+                    </label>
+                    <input
+                      value={chatInput}
+                      onChange={(e) => setChatInput(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === "Enter" && !e.shiftKey && (chatInput.trim() || chatAttachment)) void handleLiveChatSend(); }}
+                      placeholder={studentProfile ? "Mensagem, pergunta ou foto..." : "Inicia sessão para participar"}
+                      disabled={!studentProfile || chatSending}
+                      maxLength={280}
+                      className="h-8 min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground/50 disabled:cursor-not-allowed disabled:opacity-50"
+                    />
+                    <span className="hidden text-[10px] text-muted-foreground sm:inline">{chatInput.length}/280</span>
+                    <Button
+                      size="sm"
+                      className="h-8 w-8 shrink-0 rounded-lg bg-[#25636b] p-0 shadow-none transition-all hover:bg-[#1f555c] disabled:opacity-30"
+                      disabled={(!chatInput.trim() && !chatAttachment) || !studentProfile || chatSending}
+                      onClick={() => void handleLiveChatSend()}
+                    >
+                      {chatSending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+
+            <motion.div
+              initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}
+              transition={{ delay: 0.2 }}
+              className="relative overflow-hidden rounded-2xl border border-[#d5dce6] bg-white shadow-sm"
+            >
+              <div className="p-5 sm:p-6">
+                <div className="mb-5 flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-2.5">
+                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-[#eef4f7]">
+                      <TrendingUp className="h-4 w-4 text-[#16324f]" />
+                    </div>
+                    <div>
+                      <h3 className="font-heading text-base font-bold">Atividade recente</h3>
+                      <p className="text-xs text-muted-foreground">Votos, comentários e submissões</p>
+                    </div>
+                  </div>
+                  {recentActivity.length > 0 && (
+                    <span className="flex h-7 min-w-7 items-center justify-center rounded-full bg-[#eef4f7] px-2 text-xs font-bold text-[#16324f]">
+                      {recentActivity.length}
+                    </span>
+                  )}
+                </div>
+
+                <div className="max-h-[420px] space-y-3 overflow-y-auto pr-1 scrollbar-thin">
+                  {recentActivity.length ? recentActivity.map((item, i) => (
+                    <motion.div
+                      key={item.id}
+                      initial={{ opacity: 0, x: 8 }}
+                      whileInView={{ opacity: 1, x: 0 }}
+                      viewport={{ once: true }}
+                      transition={{ delay: i * 0.06 }}
+                      className="flex items-start gap-3 rounded-2xl border border-[#dce3ec] bg-[#f7fafc] p-3.5"
+                    >
+                      <UserAvatar name={item.actorName} avatarUrl={item.actorAvatarUrl} size="sm" />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="truncate text-sm font-semibold text-foreground">{item.actorName}</span>
+                          <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground">
+                            {new Date(item.createdAt).toLocaleTimeString("pt-PT", { hour: "2-digit", minute: "2-digit" })}
+                          </span>
+                        </div>
+                        <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                          {getActivityLabel(item)} <span className="font-semibold text-foreground/80">{item.subject}</span>
+                        </p>
+                        <span className="mt-1 inline-flex rounded-full px-1.5 py-0.5 text-[9px] font-semibold"
+                          style={{ backgroundColor: withAlpha(item.actorCourseColor, "14"), color: item.actorCourseColor || "#64748b" }}>
+                          {item.actorCourse || "Sem curso"}
+                        </span>
+                      </div>
+                    </motion.div>
+                  )) : (
+                    <div className="flex min-h-[220px] flex-col items-center justify-center text-center">
+                      <TrendingUp className="mb-3 h-8 w-8 text-muted-foreground/25" />
+                      <p className="text-sm font-semibold text-foreground">Sem atividade recente</p>
+                      <p className="mt-1 max-w-xs text-xs leading-5 text-muted-foreground">Os movimentos do evento aparecem assim que forem registados.</p>
+                    </div>
+                  )}
+                </div>
+
+                {recentActivity.length > 0 && (
+                  <div className="mt-4 text-center">
+                    <Button asChild variant="ghost" size="sm" className="h-8 rounded-lg text-xs text-muted-foreground hover:text-foreground">
+                      <Link to="/ao-vivo">Ver toda a atividade <ArrowRight className="ml-1 h-3 w-3" /></Link>
+                    </Button>
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          </div>
+
+          <AnimatePresence>
+            {chatImagePreview ? (
+              <motion.div
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 p-4"
+                onClick={() => setChatImagePreview(null)}
+              >
+                <button type="button" aria-label="Fechar imagem" className="absolute right-4 top-4 rounded-full bg-white/15 p-2 text-white hover:bg-white/25" onClick={() => setChatImagePreview(null)}>
+                  <X className="h-5 w-5" />
+                </button>
+                <motion.img
+                  initial={{ scale: 0.96 }}
+                  animate={{ scale: 1 }}
+                  exit={{ scale: 0.96 }}
+                  src={chatImagePreview}
+                  alt="Imagem do chat ao vivo ampliada"
+                  className="max-h-[86vh] max-w-[92vw] rounded-xl object-contain shadow-2xl"
+                  onClick={(event) => event.stopPropagation()}
+                />
+              </motion.div>
+            ) : null}
+          </AnimatePresence>
+
+          {/* CTA */}
+          <motion.div
+            initial={{ opacity: 0, y: 10 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}
+            transition={{ delay: 0.3 }}
+            className="mt-10 text-center"
+          >
+            <Button asChild size="lg" className="h-11 gap-2.5 rounded-xl bg-[#16324f] font-semibold text-white shadow-sm hover:bg-[#10263d]">
+              <Link to="/ao-vivo">
+                <Radio className="h-4 w-4" />
+                Entrar no Evento Ao Vivo
+                <ArrowRight className="h-4 w-4" />
+              </Link>
             </Button>
           </motion.div>
         </div>
@@ -1620,207 +2320,7 @@ export default function Index() {
         </div>
       </section>
 
-      <SectionDivider />
 
-      {/* ══════════════════════════════════════
-          AO VIVO
-      ══════════════════════════════════════ */}
-      <section className="relative py-16 md:py-24 overflow-hidden">
-        {/* Ambient background glow */}
-        <div className="pointer-events-none absolute inset-0">
-          <div className="absolute -top-32 left-1/2 h-64 w-[600px] -translate-x-1/2 rounded-full bg-destructive/[0.04] blur-[100px]" />
-          <div className="absolute bottom-0 right-0 h-48 w-48 rounded-full bg-primary/[0.03] blur-[80px]" />
-        </div>
-
-        <div className="container relative z-10 mx-auto px-4">
-          {/* Section header */}
-          <motion.div initial={{ opacity: 0, y: 16 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }} className="mb-10 text-center">
-            <motion.div
-              animate={{ scale: [1, 1.06, 1] }}
-              transition={{ repeat: Infinity, duration: 2.5, ease: "easeInOut" }}
-              className="mb-4 inline-flex items-center gap-2 rounded-full bg-destructive/10 px-4 py-1.5"
-            >
-              <span className="relative flex h-2 w-2">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-destructive opacity-75" />
-                <span className="relative inline-flex h-2 w-2 rounded-full bg-destructive" />
-              </span>
-              <span className="text-xs font-bold uppercase tracking-wider text-destructive">Em direto</span>
-            </motion.div>
-            <h2 className="font-heading text-3xl font-bold md:text-4xl">Ao Vivo</h2>
-            <p className="mx-auto mt-2 max-w-md text-sm text-muted-foreground md:text-base">Acompanha o que está a acontecer agora na feira.</p>
-          </motion.div>
-
-          {/* Live preview cards */}
-          <LivePreview liveState={liveState} agendaItems={agendaItems} />
-
-          {/* Chat + Activity grid */}
-          <div className="mt-8 grid gap-5 lg:grid-cols-2">
-            <motion.div
-              initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}
-              transition={{ delay: 0.1 }}
-              className="group relative overflow-hidden rounded-2xl border border-border/50 bg-white shadow-sm transition-shadow hover:shadow-md"
-            >
-              <div className="h-1 bg-gradient-to-r from-primary via-primary/60 to-transparent" />
-              <div className="p-5">
-                <div className="mb-4 flex items-center justify-between">
-                  <div className="flex items-center gap-2.5">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
-                      <MessageSquare className="h-4 w-4 text-primary" />
-                    </div>
-                    <h3 className="font-heading text-sm font-bold">Chat ao vivo</h3>
-                  </div>
-                  <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">{liveChat.length} msg</span>
-                </div>
-
-                <div className="mb-4 rounded-2xl border border-border/70 bg-muted/20 p-3">
-                  <div className="max-h-72 min-h-[260px] space-y-2 overflow-y-auto pr-1 scrollbar-thin">
-                    {liveChat.length ? liveChat.map((msg, i) => (
-                      <motion.div
-                        key={msg.id}
-                        initial={{ opacity: 0, x: -8 }}
-                        animate={{ opacity: 1, x: 0 }}
-                        transition={{ delay: i * 0.04, duration: 0.25 }}
-                        className="flex gap-2 rounded-xl border border-border/45 bg-white/90 px-2.5 py-2.5 shadow-sm"
-                      >
-                        <UserAvatar name={msg.studentName} size="sm" className="mt-0.5 shrink-0" />
-                        <div className="min-w-0 flex-1">
-                          <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
-                            <span className="text-[13px] font-bold leading-tight text-foreground">{msg.studentName}</span>
-                            <span className="text-[10px] leading-tight text-muted-foreground/70">
-                              {new Date(msg.createdAt).toLocaleTimeString("pt-PT", { hour: "2-digit", minute: "2-digit" })}
-                            </span>
-                          </div>
-                          {msg.course ? (
-                            <span
-                              className="mt-1 inline-flex max-w-full items-center rounded-md px-1.5 py-0.5 text-[9px] font-semibold leading-none"
-                              style={{ backgroundColor: withAlpha(msg.courseColor, "12"), color: msg.courseColor || "#64748b" }}
-                            >
-                              <span className="truncate">{msg.course}</span>
-                            </span>
-                          ) : null}
-                          <p className="mt-1 text-[13px] leading-snug text-foreground/80">{msg.content}</p>
-                        </div>
-                      </motion.div>
-                    )) : (
-                      <div className="flex min-h-[260px] flex-col items-center justify-center text-center">
-                        <div className="mb-3 flex h-12 w-12 items-center justify-center rounded-full bg-white shadow-sm">
-                          <MessageSquare className="h-5 w-5 text-muted-foreground/30" />
-                        </div>
-                        <p className="text-sm font-medium text-muted-foreground/80">Nenhuma mensagem ainda</p>
-                        <p className="mt-0.5 text-[11px] text-muted-foreground/55">As mensagens aparecem aqui durante o evento.</p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-
-                <div className="flex items-center gap-2 rounded-xl border border-border/60 bg-muted/20 p-1.5 transition-all focus-within:border-primary/30 focus-within:bg-white focus-within:shadow-sm">
-                  <UserAvatar name={studentProfile?.name || "?"} size="sm" className="ml-0.5 shrink-0" />
-                  <input
-                    value={chatInput}
-                    onChange={(e) => setChatInput(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === "Enter" && chatInput.trim()) void handleLiveChatSend(); }}
-                    placeholder={studentProfile ? "Escreve uma mensagem..." : "Inicia sessão para participar"}
-                    disabled={!studentProfile}
-                    className="h-8 min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground/50 disabled:cursor-not-allowed disabled:opacity-50"
-                  />
-                  <Button
-                    size="sm"
-                    className="h-8 w-8 shrink-0 rounded-lg p-0 shadow-none transition-all disabled:opacity-30"
-                    disabled={!chatInput.trim() || !studentProfile}
-                    onClick={() => void handleLiveChatSend()}
-                  >
-                    <Send className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
-              </div>
-            </motion.div>
-
-            <motion.div
-              initial={{ opacity: 0, y: 20 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}
-              transition={{ delay: 0.2 }}
-              className="relative overflow-hidden rounded-2xl border border-border/60 bg-white shadow-sm"
-            >
-              <div className="p-5 sm:p-6">
-                <div className="mb-5 flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-2.5">
-                    <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10">
-                      <TrendingUp className="h-4 w-4 text-primary" />
-                    </div>
-                    <div>
-                      <h3 className="font-heading text-base font-bold">Atividade recente</h3>
-                      <p className="text-xs text-muted-foreground">Votos, comentários e submissões</p>
-                    </div>
-                  </div>
-                  {recentActivity.length > 0 && (
-                    <span className="flex h-7 min-w-7 items-center justify-center rounded-full bg-primary/10 px-2 text-xs font-bold text-primary">
-                      {recentActivity.length}
-                    </span>
-                  )}
-                </div>
-
-                <div className="max-h-[420px] space-y-3 overflow-y-auto pr-1 scrollbar-thin">
-                  {recentActivity.length ? recentActivity.map((item, i) => (
-                    <motion.div
-                      key={item.id}
-                      initial={{ opacity: 0, x: 8 }}
-                      whileInView={{ opacity: 1, x: 0 }}
-                      viewport={{ once: true }}
-                      transition={{ delay: i * 0.06 }}
-                      className="flex items-start gap-3 rounded-2xl border border-border/50 bg-muted/25 p-3.5"
-                    >
-                      <UserAvatar name={item.actorName} size="sm" />
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="truncate text-sm font-semibold text-foreground">{item.actorName}</span>
-                          <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground">
-                            {new Date(item.createdAt).toLocaleTimeString("pt-PT", { hour: "2-digit", minute: "2-digit" })}
-                          </span>
-                        </div>
-                        <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                          {getActivityLabel(item)} <span className="font-semibold text-foreground/80">{item.subject}</span>
-                        </p>
-                        <span className="mt-1 inline-flex rounded-full px-1.5 py-0.5 text-[9px] font-semibold"
-                          style={{ backgroundColor: withAlpha(item.actorCourseColor, "14"), color: item.actorCourseColor || "#64748b" }}>
-                          {item.actorCourse || "Sem curso"}
-                        </span>
-                      </div>
-                    </motion.div>
-                  )) : (
-                    <div className="flex min-h-[220px] flex-col items-center justify-center text-center">
-                      <TrendingUp className="mb-3 h-8 w-8 text-muted-foreground/25" />
-                      <p className="text-sm font-semibold text-foreground">Sem atividade recente</p>
-                      <p className="mt-1 max-w-xs text-xs leading-5 text-muted-foreground">Os movimentos do evento aparecem assim que forem registados.</p>
-                    </div>
-                  )}
-                </div>
-
-                {recentActivity.length > 0 && (
-                  <div className="mt-4 text-center">
-                    <Button asChild variant="ghost" size="sm" className="h-8 rounded-lg text-xs text-muted-foreground hover:text-foreground">
-                      <Link to="/ao-vivo">Ver toda a atividade <ArrowRight className="ml-1 h-3 w-3" /></Link>
-                    </Button>
-                  </div>
-                )}
-              </div>
-            </motion.div>
-          </div>
-
-          {/* CTA */}
-          <motion.div
-            initial={{ opacity: 0, y: 10 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}
-            transition={{ delay: 0.3 }}
-            className="mt-10 text-center"
-          >
-            <Button asChild size="lg" className="h-11 gap-2.5 rounded-xl font-semibold shadow-md">
-              <Link to="/ao-vivo">
-                <Radio className="h-4 w-4" />
-                Entrar no Evento Ao Vivo
-                <ArrowRight className="h-4 w-4" />
-              </Link>
-            </Button>
-          </motion.div>
-        </div>
-      </section>
 
       {/* Tipos de Exposição — condicional */}
       {!hideExposureSection && (
@@ -1837,14 +2337,9 @@ export default function Index() {
                   <p className="mt-2 text-sm text-muted-foreground">Três formas de participar e mostrar o teu trabalho.</p>
                 </motion.div>
                 <div className="flex gap-4 overflow-x-auto scrollbar-hide pb-2 md:grid md:grid-cols-3 md:overflow-visible">
-                  {projectTypes.map((t, i) => (
-                    <motion.div key={t.key}
-                      initial={{ opacity: 0, y: 16 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}
-                      transition={{ delay: i * 0.1, type: "spring", stiffness: 200 }}
-                      whileHover={{ y: -6, transition: { type: "spring", stiffness: 280, damping: 22 } }}
-                      className="min-w-[260px] md:min-w-0"
-                    >
-                      <Link to="/submeter" className="group relative block overflow-hidden rounded-2xl border border-border/60 bg-white p-7 text-center shadow-sm transition-all hover:shadow-lg">
+                  {projectTypes.map((t, i) => {
+                    const cardContent = (
+                      <>
                         <div className={`absolute inset-0 bg-gradient-to-br ${t.surface} opacity-60`} />
                         <div className="relative z-10">
                           <div className={`mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-2xl shadow-md ${t.color}`}>
@@ -1852,13 +2347,40 @@ export default function Index() {
                           </div>
                           <h3 className="mb-2 font-heading text-base font-bold md:text-lg">{t.label}</h3>
                           <p className="mb-4 text-sm text-muted-foreground">{t.desc}</p>
-                          <span className="inline-flex items-center gap-1.5 text-sm font-semibold text-primary opacity-0 transition-opacity group-hover:opacity-100">
-                            Submeter <ArrowRight className="h-4 w-4" />
+                          <span className={`inline-flex items-center gap-1.5 text-sm font-semibold transition-opacity ${submissionsAreOpen ? "text-primary opacity-0 group-hover:opacity-100" : "text-slate-500 opacity-100"}`}>
+                            {submissionsAreOpen ? (
+                              <>
+                                Submeter <ArrowRight className="h-4 w-4" />
+                              </>
+                            ) : (
+                              <>
+                                <Lock className="h-4 w-4" />Candidaturas encerradas
+                              </>
+                            )}
                           </span>
                         </div>
-                      </Link>
-                    </motion.div>
-                  ))}
+                      </>
+                    );
+
+                    return (
+                      <motion.div key={t.key}
+                        initial={{ opacity: 0, y: 16 }} whileInView={{ opacity: 1, y: 0 }} viewport={{ once: true }}
+                        transition={{ delay: i * 0.1, type: "spring", stiffness: 200 }}
+                        whileHover={submissionsAreOpen ? { y: -6, transition: { type: "spring", stiffness: 280, damping: 22 } } : undefined}
+                        className="min-w-[260px] md:min-w-0"
+                      >
+                        {submissionsAreOpen ? (
+                          <Link to="/submeter" className="group relative block overflow-hidden rounded-2xl border border-border/60 bg-white p-7 text-center shadow-sm transition-all hover:shadow-lg">
+                            {cardContent}
+                          </Link>
+                        ) : (
+                          <button type="button" disabled className="group relative block w-full cursor-not-allowed overflow-hidden rounded-2xl border border-border/60 bg-white p-7 text-center opacity-70 shadow-sm transition-all">
+                            {cardContent}
+                          </button>
+                        )}
+                      </motion.div>
+                    );
+                  })}
                 </div>
               </div>
             </div>
@@ -1935,11 +2457,17 @@ export default function Index() {
                 Submete o teu projeto académico, negócio ou produto e faz parte desta edição.
               </p>
               <div className="flex flex-wrap items-center justify-center gap-3">
-                <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>
-                  <Button asChild size="lg" className="h-12 gap-2.5 rounded-xl px-8 font-bold text-white shadow-lg"
-                    style={{ backgroundColor: heroConfig.primaryColor, boxShadow: `0 16px 36px ${withAlpha(heroConfig.primaryColor, "28")}` }}>
-                    <Link to="/submeter"><Send className="h-5 w-5" />Submeter Projeto</Link>
-                  </Button>
+                <motion.div whileHover={submissionsAreOpen ? { scale: 1.03 } : undefined} whileTap={submissionsAreOpen ? { scale: 0.97 } : undefined}>
+                  {submissionsAreOpen ? (
+                    <Button asChild size="lg" className="h-12 gap-2.5 rounded-xl px-8 font-bold text-white shadow-lg"
+                      style={{ backgroundColor: heroConfig.primaryColor, boxShadow: `0 16px 36px ${withAlpha(heroConfig.primaryColor, "28")}` }}>
+                      <Link to="/submeter"><Send className="h-5 w-5" />Submeter Projeto</Link>
+                    </Button>
+                  ) : (
+                    <Button size="lg" disabled className="h-12 gap-2.5 rounded-xl bg-slate-200 px-8 font-bold text-slate-600 shadow-none hover:bg-slate-200">
+                      <Lock className="h-5 w-5" />Candidaturas encerradas
+                    </Button>
+                  )}
                 </motion.div>
                 <motion.div whileHover={{ scale: 1.03 }} whileTap={{ scale: 0.97 }}>
                   <Button asChild size="lg" variant="outline" className="h-12 gap-2.5 rounded-xl px-8 font-semibold">
