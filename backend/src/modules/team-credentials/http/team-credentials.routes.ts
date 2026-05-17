@@ -25,6 +25,10 @@ import {
   isCredentialPubliclyValid,
   normalizeCredentialStatus,
 } from "../../credentials/application/credential-policy";
+import {
+  applyOfficialMembershipToNucleusBatchCredential,
+  isOfficialNucleusBatchCredential,
+} from "../application/credential-print-batch-policy";
 
 const DEFAULT_PUBLIC_APP_URL = "http://localhost:5173";
 
@@ -5210,6 +5214,8 @@ export async function teamCredentialsRoutes(app: FastifyInstance, opts: { env: E
       const membershipById = new Map(linkedMemberships.map((membership) => [membership.id, membership]));
       const printableMembers = dedupeCredentialsForDisplay(members)
         .filter((member) => isCredentialConsistentWithMembership(member, membershipById.get(member.teamMembershipId ?? -1)))
+        .filter((member) => isOfficialNucleusBatchCredential(member, membershipById.get(member.teamMembershipId ?? -1)))
+        .map((member) => applyOfficialMembershipToNucleusBatchCredential(member, membershipById.get(member.teamMembershipId ?? -1)))
         .filter((member) => isCredentialPrintableForAdminBatch(member, query.includePending));
       if (printableMembers.length === 0) {
         return reply.code(404).send({ message: "Nenhuma credencial pronta para impressao em lote." });

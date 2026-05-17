@@ -618,6 +618,12 @@ function isCredentialPrintableInAdminBatch(member: Pick<TeamCredentialMember, "s
   return !["DISABLED", "REVOKED", "EXPIRED"].includes(member.status);
 }
 
+function isOfficialNucleusCredentialMember(
+  member: Pick<TeamCredentialMember, "category" | "teamMembershipId">,
+) {
+  return member.category !== "NUCLEO" || Boolean(member.teamMembershipId);
+}
+
 function isLikelyApiUrl(value: string) {
   try {
     const url = new URL(value);
@@ -1300,6 +1306,7 @@ export default function AdminSecurityTab({
     const members = (credentialOverview?.members ?? []).filter(
       (member) =>
         member.category === category &&
+        isOfficialNucleusCredentialMember(member) &&
         (includePending
           ? isCredentialPrintableInAdminBatch(member)
           : member.status === "PROFILE_READY"),
@@ -1708,13 +1715,21 @@ export default function AdminSecurityTab({
     (member) => member.category === "PALESTRANTE",
   );
   const readyNucleusCredentialMembers = allCredentialMembers.filter(
-    (member) => member.category === "NUCLEO" && member.status === "PROFILE_READY",
+    (member) =>
+      member.category === "NUCLEO" &&
+      isOfficialNucleusCredentialMember(member) &&
+      member.status === "PROFILE_READY",
   );
   const allNucleusCredentialMembers = allCredentialMembers.filter(
-    (member) => member.category === "NUCLEO",
+    (member) => member.category === "NUCLEO" && isOfficialNucleusCredentialMember(member),
   );
   const allReadyNucleusMembers = (credentialOverview?.members ?? [])
-    .filter((member) => member.category === "NUCLEO" && member.status === "PROFILE_READY")
+    .filter(
+      (member) =>
+        member.category === "NUCLEO" &&
+        isOfficialNucleusCredentialMember(member) &&
+        member.status === "PROFILE_READY",
+    )
     .slice()
     .sort((left, right) => (left.name ?? "").localeCompare(right.name ?? "", "pt"));
   const readyNucleusMembers = allReadyNucleusMembers.slice(0, 8);
