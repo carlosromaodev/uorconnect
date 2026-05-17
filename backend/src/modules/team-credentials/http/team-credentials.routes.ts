@@ -397,11 +397,21 @@ const credentialPassOptionsQuerySchema = z.object({
   bleedMm: z.coerce.number().min(0).max(10).optional().default(4),
 });
 
+const queryBooleanSchema = z.preprocess((value) => {
+  if (value === undefined || value === null || value === "") return undefined;
+  if (typeof value === "boolean") return value;
+  if (typeof value === "string") {
+    return ["1", "true", "sim", "yes", "on"].includes(value.trim().toLowerCase());
+  }
+  return value;
+}, z.boolean());
+
 const adminPassBatchQuerySchema = credentialPassOptionsQuerySchema.extend({
   ids: z.string().trim().optional(),
   category: z.enum(memberCategories).optional(),
   team: z.string().trim().min(1).max(120).optional(),
-  limit: z.coerce.number().int().min(1).max(80).optional().default(40),
+  includePending: queryBooleanSchema.optional().default(false),
+  limit: z.coerce.number().int().min(1).max(1000).optional().default(200),
 });
 
 export type CredentialPassOptions = z.infer<typeof credentialPassOptionsQuerySchema>;
@@ -1111,6 +1121,14 @@ function isCredentialReadyStatus(status: string) {
 
 function isCredentialReadyForPublicUse(member: Pick<EventTeamCredentialRecord, "status" | "expiresAt" | "revokedAt" | "invitationExpiresAt">) {
   return isCredentialReadyStatus(credentialEffectiveStatus(member));
+}
+
+function isCredentialPrintableForAdminBatch(
+  member: Pick<EventTeamCredentialRecord, "status" | "expiresAt" | "revokedAt" | "invitationExpiresAt">,
+  includePending = false,
+) {
+  if (isCredentialReadyForPublicUse(member)) return true;
+  return includePending && isCredentialOperationallyUsable(member);
 }
 
 function sendInvitationExpired(reply: FastifyReply) {
@@ -4979,7 +4997,7 @@ export async function teamCredentialsRoutes(app: FastifyInstance, opts: { env: E
       const membershipById = new Map(linkedMemberships.map((membership) => [membership.id, membership]));
       const printableMembers = dedupeCredentialsForDisplay(members)
         .filter((member) => isCredentialConsistentWithMembership(member, membershipById.get(member.teamMembershipId ?? -1)))
-        .filter(isCredentialReadyForPublicUse);
+        .filter((member) => isCredentialPrintableForAdminBatch(member, query.includePending));
       if (printableMembers.length === 0) {
         return reply.code(404).send({ message: "Nenhuma credencial pronta para impressao em lote." });
       }
@@ -4994,6 +5012,7 @@ export async function teamCredentialsRoutes(app: FastifyInstance, opts: { env: E
           ids: printableMembers.map((member) => member.id),
           category: query.category ?? null,
           team: query.team ?? null,
+          includePending: query.includePending,
           printMode: query.printMode,
           side: query.side,
           marginMm: query.marginMm,
@@ -5842,6 +5861,107 @@ export async function teamCredentialsRoutes(app: FastifyInstance, opts: { env: E
       });
 
       return { created, skipped, membershipsCreated };
+    });
+
+    adminApp.post("/admin/sync-site-guests", {
+      schema: {
+        tags: ["Team Credentials"],
+        response: {
+          200: z.object({
+            created: z.number(),
+            updated: z.number(),
+            skipped: z.number(),
+            speakers: z.number(),
+          }),
+          401: z.object({ message: z.string() }),
+          403: z.object({ message: z.string() }),
+        },
+      },
+    }, async (request) => {
+      const speakers = await prisma.speaker.findMany({
+        orderBy: [{ day: "asc" }, { name: "asc" }],
+      });
+      const actorNumber = request.student?.studentNumber ?? request.jury?.phone ?? null;
+      const now = new Date();
+      let created = 0;
+      let updated = 0;
+      let skipped = 0;
+
+      for (const speaker of speakers) {
+        const sourceMarker = `source:speaker:${speaker.id}`;
+        const name = normalizeOptional(speaker.name);
+        if (!name) {
+          skipped += 1;
+          continue;
+        }
+
+        const existing = await prisma.eventTeamCredential.findFirst({
+          where: {
+            status: { notIn: ["REVOKED", "DISABLED"] },
+            OR: [
+              { notes: { contains: sourceMarker } },
+              {
+                category: "PALESTRANTE",
+                name,
+                role: speaker.talk,
+              },
+            ],
+          },
+          orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
+        });
+
+        const credentialData = {
+          category: "PALESTRANTE",
+          team: "Palestrantes do site",
+          role: normalizeOptional(speaker.talk) ?? "Palestrante",
+          accessLevel: "Convidado",
+          permissions: "EVENTO,SPEAKERS",
+          status: "PROFILE_READY" as const,
+          invitationExpiresAt: null,
+          name,
+          organization: normalizeOptional(speaker.specialty) ?? "UOR Connect",
+          bio: normalizeOptional(speaker.bio),
+          photoUrl: normalizeOptional(speaker.avatarUrl),
+          linkedinUrl: normalizeOptional(speaker.linkedin),
+          consentPhotoCredential: Boolean(normalizeOptional(speaker.avatarUrl)),
+          consentPublicProfile: true,
+          consentSocialLinks: Boolean(normalizeOptional(speaker.linkedin)),
+          notes: `${sourceMarker}; day:${speaker.day}; talk:${speaker.talk}`,
+          issuedAt: existing?.issuedAt ?? now,
+          issuedByStudentNumber: existing?.issuedByStudentNumber ?? actorNumber,
+          submittedAt: existing?.submittedAt ?? now,
+        };
+
+        const credential = existing
+          ? await prisma.eventTeamCredential.update({
+              where: { id: existing.id },
+              data: credentialData,
+            })
+          : await prisma.eventTeamCredential.create({
+              data: {
+                ...credentialData,
+                token: createToken("cred"),
+                publicSlug: await createUniquePublicSlug(name),
+                createdByStudentNumber: actorNumber,
+              },
+            });
+
+        await persistTeamCredentialIssueSnapshot(credential, "SPEAKER_SYNC", actorNumber);
+
+        if (existing) updated += 1;
+        else created += 1;
+      }
+
+      await recordAdminAudit({
+        ...auditActor(request),
+        action: "team_credential.sync_site_guests",
+        entityType: "EventTeamCredential",
+        entityId: "site-speakers",
+        summary: `Convidados/palestrantes do site sincronizados: ${created} novo(s), ${updated} atualizado(s).`,
+        metadata: { created, updated, skipped, speakers: speakers.length },
+      });
+
+      return { created, updated, skipped, speakers: speakers.length };
     });
 
     adminApp.post("/admin/bulk-expositor-invitation", {

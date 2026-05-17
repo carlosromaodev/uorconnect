@@ -1299,6 +1299,13 @@ export interface CredentialPrintBatchInput {
   genericItems?: CredentialPrintBatchGenericInput[];
 }
 
+export interface TeamCredentialSiteGuestsSyncResult {
+  created: number;
+  updated: number;
+  skipped: number;
+  speakers: number;
+}
+
 export interface TeamCredentialPublicSubmission {
   name: string;
   email?: string | null;
@@ -4110,6 +4117,7 @@ export const api = {
         ids?: number[];
         category?: string;
         team?: string;
+        includePending?: boolean;
         limit?: number;
       },
     ) =>
@@ -4125,6 +4133,7 @@ export const api = {
         ids?: number[];
         category?: string;
         team?: string;
+        includePending?: boolean;
         limit?: number;
       },
     ) =>
@@ -4133,6 +4142,13 @@ export const api = {
           ...options,
           ids: options?.ids?.join(","),
         })}`,
+      ),
+    syncSiteGuests: () =>
+      request<TeamCredentialSiteGuestsSyncResult>(
+        "/team-credentials/admin/sync-site-guests",
+        {
+          method: "POST",
+        },
       ),
   },
 

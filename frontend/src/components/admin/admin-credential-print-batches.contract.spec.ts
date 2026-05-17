@@ -31,4 +31,13 @@ describe("admin credential print batches UI contract", () => {
     expect(apiSource).toContain("downloadPrintBatch");
     expect(apiSource).toContain("/team-credentials/admin/print-batches");
   });
+
+  it("connects site guests and exhibitors to batch credential printing", () => {
+    expect(adminSecurityTab).toContain("Sincronizar convidados do site");
+    expect(adminSecurityTab).toContain("Palestrantes do site");
+    expect(adminSecurityTab).toContain("Todos os expositores");
+    expect(adminSecurityTab).toContain("includePending");
+    expect(apiSource).toContain("syncSiteGuests");
+    expect(apiSource).toContain("/team-credentials/admin/sync-site-guests");
+  });
 });

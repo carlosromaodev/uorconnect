@@ -614,6 +614,10 @@ function safePdfFileBase(value: string) {
     .toLowerCase();
 }
 
+function isCredentialPrintableInAdminBatch(member: Pick<TeamCredentialMember, "status">) {
+  return !["DISABLED", "REVOKED", "EXPIRED"].includes(member.status);
+}
+
 function isLikelyApiUrl(value: string) {
   try {
     const url = new URL(value);
@@ -1208,6 +1212,21 @@ export default function AdminSecurityTab({
     }
   };
 
+  const handleSyncSiteGuests = async () => {
+    setCredentialBusyKey("credentials-sync-site-guests");
+    try {
+      const result = await api.teamCredentials.syncSiteGuests();
+      toast.success(
+        `Convidados do site sincronizados: ${result.created} novo(s), ${result.updated} atualizado(s).`,
+      );
+      await loadTeamCredentials();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Falha ao sincronizar convidados do site.");
+    } finally {
+      setCredentialBusyKey(null);
+    }
+  };
+
   const handleCopyCredentialLink = async (value: string) => {
     try {
       await navigator.clipboard.writeText(value);
@@ -1254,9 +1273,14 @@ export default function AdminSecurityTab({
   const handleDownloadCredentialCategoryBatch = async (
     category: string,
     label: string,
+    includePending = false,
   ) => {
     const members = (credentialOverview?.members ?? []).filter(
-      (member) => member.category === category && member.status === "PROFILE_READY",
+      (member) =>
+        member.category === category &&
+        (includePending
+          ? isCredentialPrintableInAdminBatch(member)
+          : member.status === "PROFILE_READY"),
     );
     if (members.length === 0) {
       toast.info(`Ainda nao ha passes prontos para ${label}.`);
@@ -1270,6 +1294,7 @@ export default function AdminSecurityTab({
         ids: members.map((member) => member.id),
         printMode: passPrintMode,
         side: "both",
+        includePending,
         limit: members.length,
       });
       const fileBase = safePdfFileBase(`passes ${label}`) || "passes-uor-connect";
@@ -1642,10 +1667,16 @@ export default function AdminSecurityTab({
   const showCredentialPending = activeCredentialSubpage === "pending";
   const allCredentialMembers = credentialOverview?.members ?? [];
   const readyExhibitorMembers = allCredentialMembers.filter(
-    (member) => member.category === "EXPOSITOR" && member.status === "PROFILE_READY",
+    (member) => member.category === "EXPOSITOR" && isCredentialPrintableInAdminBatch(member),
   );
   const allExhibitorMembers = allCredentialMembers.filter(
     (member) => member.category === "EXPOSITOR",
+  );
+  const readySpeakerCredentialMembers = allCredentialMembers.filter(
+    (member) => member.category === "PALESTRANTE" && member.status === "PROFILE_READY",
+  );
+  const allSpeakerCredentialMembers = allCredentialMembers.filter(
+    (member) => member.category === "PALESTRANTE",
   );
   const readyNucleusCredentialMembers = allCredentialMembers.filter(
     (member) => member.category === "NUCLEO" && member.status === "PROFILE_READY",
@@ -2433,10 +2464,10 @@ export default function AdminSecurityTab({
 	                const stat =
 	                  subpage.id === "links"
 	                    ? `${credentialOverview?.stats.total ?? 0} link(s)`
-		                    : subpage.id === "members"
-		                      ? `${credentialOverview?.stats.teams ?? 0} equipa(s)`
-		                      : subpage.id === "bulk-issue"
-		                        ? `${readyExhibitorMembers.length + readyNucleusCredentialMembers.length} pronto(s)`
+		                      : subpage.id === "members"
+		                        ? `${credentialOverview?.stats.teams ?? 0} equipa(s)`
+		                        : subpage.id === "bulk-issue"
+		                          ? `${readyExhibitorMembers.length + readyNucleusCredentialMembers.length + readySpeakerCredentialMembers.length} imprimível(is)`
 		                      : subpage.id === "printing"
 		                        ? `${printableCredentialMembers.length} passe(s) pronto(s)`
 	                        : subpage.id === "templates"
@@ -2710,41 +2741,58 @@ export default function AdminSecurityTab({
 		                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
 		                    <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
 		                      <div className="min-w-0">
-		                        <p className="text-xs font-semibold uppercase tracking-wider text-slate-600">Passes oficiais já confirmados</p>
+		                        <p className="text-xs font-semibold uppercase tracking-wider text-slate-600">Passes oficiais e convidados do site</p>
 		                        <p className="mt-1 text-xs leading-5 text-slate-500">
-		                          Emite num único PDF os expositores e membros do Núcleo que já completaram o perfil.
+		                          Emite num único PDF expositores, núcleo e palestrantes/convidados cadastrados no site.
 		                        </p>
 		                      </div>
-		                      <div className="inline-flex w-fit rounded-lg border border-slate-200 bg-white p-1">
+		                      <div className="flex flex-wrap items-center gap-2">
 		                        <Button
 		                          size="sm"
-		                          variant={passPrintMode === "color" ? "default" : "ghost"}
-		                          className="h-8 px-2 text-xs"
-		                          onClick={() => setPassPrintMode("color")}
+		                          variant="outline"
+		                          className="h-9 rounded-xl bg-white text-xs"
+		                          disabled={credentialBusyKey === "credentials-sync-site-guests"}
+		                          onClick={() => void handleSyncSiteGuests()}
 		                        >
-		                          <Palette className="mr-1 h-3.5 w-3.5" />
-		                          Cor
+		                          {credentialBusyKey === "credentials-sync-site-guests" ? (
+		                            <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
+		                          ) : (
+		                            <Mic className="mr-1 h-3.5 w-3.5" />
+		                          )}
+		                          Sincronizar convidados do site
 		                        </Button>
-		                        <Button
-		                          size="sm"
-		                          variant={passPrintMode === "black-white" ? "default" : "ghost"}
-		                          className="h-8 px-2 text-xs"
-		                          onClick={() => setPassPrintMode("black-white")}
-		                        >
-		                          <FileBadge2 className="mr-1 h-3.5 w-3.5" />
-		                          P/B
-		                        </Button>
+		                        <div className="inline-flex w-fit rounded-lg border border-slate-200 bg-white p-1">
+		                          <Button
+		                            size="sm"
+		                            variant={passPrintMode === "color" ? "default" : "ghost"}
+		                            className="h-8 px-2 text-xs"
+		                            onClick={() => setPassPrintMode("color")}
+		                          >
+		                            <Palette className="mr-1 h-3.5 w-3.5" />
+		                            Cor
+		                          </Button>
+		                          <Button
+		                            size="sm"
+		                            variant={passPrintMode === "black-white" ? "default" : "ghost"}
+		                            className="h-8 px-2 text-xs"
+		                            onClick={() => setPassPrintMode("black-white")}
+		                          >
+		                            <FileBadge2 className="mr-1 h-3.5 w-3.5" />
+		                            P/B
+		                          </Button>
+		                        </div>
 		                      </div>
 		                    </div>
-		                    <div className="mt-3 grid gap-3 lg:grid-cols-2">
+		                    <div className="mt-3 grid gap-3 xl:grid-cols-3">
 		                      {[
 		                        {
 		                          category: "EXPOSITOR",
 		                          title: "Todos os expositores",
-		                          description: "Baixa os passes CR-80 de todos os projetos com perfil pronto.",
+		                          description: "Baixa passes CR-80 dos expositores importados, mesmo antes do perfil completo.",
 		                          ready: readyExhibitorMembers.length,
 		                          total: allExhibitorMembers.length,
 		                          icon: Rocket,
+		                          includePending: true,
 		                        },
 		                        {
 		                          category: "NUCLEO",
@@ -2753,6 +2801,16 @@ export default function AdminSecurityTab({
 		                          ready: readyNucleusCredentialMembers.length,
 		                          total: allNucleusCredentialMembers.length,
 		                          icon: Users,
+		                          includePending: false,
+		                        },
+		                        {
+		                          category: "PALESTRANTE",
+		                          title: "Palestrantes do site",
+		                          description: "Sincroniza os convidados cadastrados no site e baixa os passes oficiais.",
+		                          ready: readySpeakerCredentialMembers.length,
+		                          total: allSpeakerCredentialMembers.length,
+		                          icon: Mic,
+		                          includePending: false,
 		                        },
 		                      ].map((item) => {
 		                        const Icon = item.icon;
@@ -2782,7 +2840,7 @@ export default function AdminSecurityTab({
 		                              size="sm"
 		                              className="mt-4 w-full rounded-xl"
 		                              disabled={credentialBusyKey === busy || item.ready === 0}
-		                              onClick={() => void handleDownloadCredentialCategoryBatch(item.category, item.title)}
+		                              onClick={() => void handleDownloadCredentialCategoryBatch(item.category, item.title, item.includePending)}
 		                            >
 		                              {credentialBusyKey === busy ? (
 		                                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />

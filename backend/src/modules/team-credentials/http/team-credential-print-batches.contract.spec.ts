@@ -30,4 +30,19 @@ describe("team credential print batches contract", () => {
     expect(routes).toContain("websiteUrl");
     expect(routes).toContain("consentSocialLinks");
   });
+
+  it("lets admin print registered exhibitor passes before full profile completion", () => {
+    expect(routes).toContain("includePending");
+    expect(routes).toContain("isCredentialPrintableForAdminBatch");
+    expect(routes).toContain("isCredentialOperationallyUsable(member)");
+    expect(routes).toContain("max(1000)");
+  });
+
+  it("syncs site speakers and guests into printable credentials", () => {
+    expect(routes).toContain("/admin/sync-site-guests");
+    expect(routes).toContain("prisma.speaker.findMany");
+    expect(routes).toContain("source:speaker");
+    expect(routes).toContain("category: \"PALESTRANTE\"");
+    expect(routes).toContain("SPEAKER_SYNC");
+  });
 });
