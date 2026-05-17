@@ -41,6 +41,11 @@ import {
 import { escapeHtml, loadLogoDataUri, renderPdfFromHtml } from "../../reports/http/pdf-report.utils";
 import { renderQrDataUri } from "../../../shared/qr";
 import { persistMediaValue } from "../../media/application/media-storage";
+import {
+  createOdinDeviceId,
+  recordOdinEvent,
+  resolveOdinDeviceIdFromRequest,
+} from "../../security/application/odin.service";
 
 const AUTH_COOKIE = "uor_auth";
 const CSRF_COOKIE = "uor_csrf";
@@ -730,9 +735,8 @@ export async function authRoutes(app: FastifyInstance, opts: { env?: Env } = {})
   const sharedCookieDomain = resolveSharedCookieDomain(envCache) ?? undefined;
   const scopedLoginUseCase = new LoginUseCase(studentRepository, envCache.JWT_SECRET);
 
-  function appendAuthCookies(reply: FastifyReply, token: string, request: FastifyRequest) {
+  function appendAuthCookies(reply: FastifyReply, token: string, request: FastifyRequest, deviceId = resolveOdinDeviceIdFromRequest(request) ?? createOdinDeviceId()) {
     const csrfToken = randomUUID();
-    const deviceId = getCookie(request, DEVICE_COOKIE) ?? randomUUID();
     const nowIso = new Date().toISOString();
 
     appendCookie(reply, serializeCookie(AUTH_COOKIE, token, {
@@ -793,12 +797,6 @@ export async function authRoutes(app: FastifyInstance, opts: { env?: Env } = {})
       secure: secureCookies,
       sameSite: "Strict"
     });
-    clearCookie(reply, DEVICE_COOKIE, {
-      path: "/",
-      httpOnly: true,
-      secure: secureCookies,
-      sameSite: "Strict"
-    });
     clearCookie(reply, LAST_CONNECTION_COOKIE, {
       path: "/",
       httpOnly: true,
@@ -846,6 +844,7 @@ export async function authRoutes(app: FastifyInstance, opts: { env?: Env } = {})
           const studentNumber = result.studentNumber ?? request.body.studentNumber;
           const token = signStudentToken(result.student!.id, studentNumber, envCache);
           let normalizedStudent = normalizeStudentProfile(result.student!);
+          const deviceId = resolveOdinDeviceIdFromRequest(request) ?? createOdinDeviceId();
 
           // Auto-complete profile for default admin students so they skip the profile step
           if (!normalizedStudent.profileCompletedAt && isDefaultAdminStudentNumber(studentNumber)) {
@@ -859,13 +858,29 @@ export async function authRoutes(app: FastifyInstance, opts: { env?: Env } = {})
           // Run post-login side effects in parallel — none block the response
           await Promise.all([
             studentRepository.recordLoginAudit(normalizedStudent, normalizeLoginOrigin(request.body.origin)),
+            recordOdinEvent({
+              request,
+              deviceId,
+              student: {
+                id: normalizedStudent.id,
+                studentNumber: normalizedStudent.studentNumber,
+                name: normalizedStudent.name,
+                course: normalizedStudent.course,
+              },
+              eventType: "LOGIN_SUCCESS",
+              riskContext: {
+                provider: request.body.provider,
+                identifierType: request.body.identifierType,
+                origin: request.body.origin ?? "uorconnect",
+              },
+            }),
             submissionRepository.assignOwnershipByPhone(
               normalizedStudent.id,
               normalizedStudent.studentNumber,
               normalizedStudent.phone,
             ),
           ]);
-          appendAuthCookies(reply, token, request);
+          appendAuthCookies(reply, token, request, deviceId);
           return reply.status(200).send({
             ...result,
             student: normalizedStudent,

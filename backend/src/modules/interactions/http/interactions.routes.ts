@@ -58,6 +58,7 @@ import {
   recalculateUnlockedExhibitorScoreEvents,
   updateExhibitorScoreConfig,
 } from "../../exhibitor-scoring/application/exhibitor-scoring.admin";
+import { recordOdinEvent } from "../../security/application/odin.service";
 import { renderPdfFromHtml } from "../../reports/http/pdf-report.utils";
 
 let optsEnvCache: Env;
@@ -2571,6 +2572,17 @@ export async function interactionsRoutes(app: FastifyInstance, opts: { env: Env 
         });
 
         const likesCount = await prisma.studentLike.count({ where: { submissionId } });
+        await recordOdinEvent({
+          request,
+          student: {
+            id: student.id,
+            studentNumber: student.studentNumber,
+          },
+          eventType: "PROJECT_LIKE",
+          targetType: "Submission",
+          targetId: submissionId,
+          targetLabel: submission.name,
+        });
         await maybeSendSubmissionEngagementMilestoneNotification(opts.env, request, submissionId, "likes", likesCount);
 
         return reply.send({
@@ -2641,6 +2653,25 @@ export async function interactionsRoutes(app: FastifyInstance, opts: { env: Env 
 
         if (!scoringResult.accepted) {
           return reply.status(403).send({ message: scoringResult.message });
+        }
+
+        if (student) {
+          await recordOdinEvent({
+            request,
+            student: {
+              id: student.id,
+              studentNumber: student.studentNumber,
+            },
+            eventType: "PROJECT_VOTE",
+            targetType: "Submission",
+            targetId: submissionId,
+            targetLabel: submission.name,
+            riskContext: {
+              scoreDelta: scoringResult.scoreDelta,
+              votesCount: scoringResult.votesCount,
+              scoringEvents: scoringResult.scoringEvents.map((event) => event.action),
+            },
+          });
         }
 
         if (!jury && scoringResult.scoreDelta !== 0 && submission.studentId) {
@@ -2742,6 +2773,20 @@ export async function interactionsRoutes(app: FastifyInstance, opts: { env: Env 
         const courseColorMap = await getCourseColorMap();
         const profile = normalizeStudentProfile(comment.student);
         const commentsCount = await prisma.studentComment.count({ where: { submissionId } });
+        await recordOdinEvent({
+          request,
+          student: {
+            id: student.id,
+            studentNumber: student.studentNumber,
+            name: profile.name,
+            course: profile.course,
+          },
+          eventType: "PROJECT_COMMENT",
+          targetType: "Submission",
+          targetId: submissionId,
+          targetLabel: submission.name,
+          riskContext: { commentId: comment.id },
+        });
         await maybeSendSubmissionEngagementMilestoneNotification(opts.env, request, submissionId, "comments", commentsCount);
 
         return reply.code(201).send({

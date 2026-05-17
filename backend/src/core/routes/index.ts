@@ -25,6 +25,7 @@ import { adminTasksRoutes } from "../../modules/admin-tasks/http/admin-tasks.rou
 import { mediaRoutes } from "../../modules/media/http/media.routes";
 import { passportRoutes } from "../../modules/passport/http/passport.routes";
 import { trainersRoutes } from "../../modules/trainers/http/trainers.routes";
+import { odinRoutes } from "../../modules/security/http/odin.routes";
 
 const DEFAULT_PUBLIC_APP_URL = "http://localhost:8082";
 
@@ -83,6 +84,7 @@ export function registerRoutes(app: FastifyInstance, env: Env, deps?: AppDepende
   app.register(auditRoutes, { prefix: "/audit", env });
   app.register(mediaRoutes, { prefix: "/media", env });
   app.register(passportRoutes, { prefix: "/passport", env });
+  app.register(odinRoutes, { prefix: "/security", env });
   app.register(trainersRoutes, { prefix: "/trainers", env });
   app.register(teamCredentialsRoutes, { prefix: "/team-credentials", env });
   app.register(adminTasksRoutes, { prefix: "/admin-tasks", env });

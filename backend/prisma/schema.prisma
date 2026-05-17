@@ -85,6 +85,7 @@ model Student {
   analyticsEvents   AnalyticsEvent[]
   consentRecords    ConsentRecord[]
   loginAudits       StudentLoginAudit[]
+  odinEvents        OdinEvent[]
   accessCodes       StudentAccessCode[]
   smsRecipients     SmsCampaignRecipient[]
   whatsappRecipients WhatsAppCampaignRecipient[]
@@ -474,6 +475,49 @@ model StudentLoginAudit {
   @@index([loggedAt])
   @@index([studentId, loggedAt])
   @@index([origin, loggedAt])
+}
+
+model OdinDevice {
+  id            Int         @id @default(autoincrement())
+  deviceId      String      @unique
+  firstSeenAt   DateTime    @default(now())
+  lastSeenAt    DateTime    @default(now())
+  lastIp        String?
+  lastUserAgent String?
+  loginCount    Int         @default(0)
+  voteCount     Int         @default(0)
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  events        OdinEvent[]
+
+  @@index([lastSeenAt])
+  @@index([lastIp, lastSeenAt])
+}
+
+model OdinEvent {
+  id              Int        @id @default(autoincrement())
+  device          OdinDevice @relation(fields: [deviceId], references: [deviceId], onDelete: Cascade)
+  deviceId        String
+  student         Student?   @relation(fields: [studentId], references: [id], onDelete: SetNull)
+  studentId       Int?
+  studentNumber   String?
+  studentName     String?
+  studentCourse   String?
+  eventType       String
+  targetType      String?
+  targetId        Int?
+  targetLabel     String?
+  ipAddress       String?
+  userAgent       String?
+  riskContextJson String?
+  createdAt       DateTime   @default(now())
+
+  @@index([deviceId, createdAt])
+  @@index([studentId, createdAt])
+  @@index([studentNumber, createdAt])
+  @@index([eventType, createdAt])
+  @@index([targetType, targetId, createdAt])
+  @@index([ipAddress, createdAt])
 }
 
 model CredentialValidationLog {

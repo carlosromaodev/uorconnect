@@ -2978,6 +2978,110 @@ export interface AdminModerationLiveChatMessage extends LiveChatMessage {
   hiddenAt: string | null;
 }
 
+export type OdinRiskLevel = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+
+export interface OdinDeviceRisk {
+  deviceId: string;
+  riskScore: number;
+  riskLevel: OdinRiskLevel;
+  reasons: string[];
+  loginCount: number;
+  voteCount: number;
+  eventCount: number;
+  distinctStudents: number;
+  distinctProjectsVoted: number;
+  lastSeenAt: string;
+  lastIp: string | null;
+  lastUserAgent: string | null;
+  students: Array<{
+    studentId: number | null;
+    studentNumber: string;
+    studentName: string | null;
+    studentCourse: string | null;
+    eventCount: number;
+    voteCount: number;
+    lastSeenAt: string;
+  }>;
+  projects: Array<{
+    submissionId: number;
+    submissionName: string;
+    votes: number;
+    students?: number;
+  }>;
+}
+
+export interface OdinStudentRisk {
+  studentId: number | null;
+  studentNumber: string;
+  studentName: string | null;
+  studentCourse: string | null;
+  riskScore: number;
+  riskLevel: OdinRiskLevel;
+  reasons: string[];
+  devices: string[];
+  voteCount: number;
+  loginCount: number;
+  lastSeenAt: string;
+  projectsVoted: Array<{
+    submissionId: number;
+    submissionName: string;
+    votes: number;
+  }>;
+}
+
+export interface OdinProjectPressure {
+  submissionId: number;
+  submissionName: string;
+  suspiciousVotes: number;
+  suspiciousDevices: number;
+  suspiciousStudents: number;
+}
+
+export interface OdinOverview {
+  generatedAt: string;
+  stats: {
+    totalEvents: number;
+    deviceCount: number;
+    suspiciousDevices: number;
+    suspectStudents: number;
+    suspectVotes: number;
+    multiAccountDevices: number;
+    projectPressureCount: number;
+  };
+  devices: OdinDeviceRisk[];
+  students: OdinStudentRisk[];
+  projects: OdinProjectPressure[];
+  suggestions: string[];
+}
+
+export interface OdinExcludeStudentInput {
+  reason: string;
+  deleteProfile: boolean;
+  removeVotes: boolean;
+  removeLikes: boolean;
+  removeComments: boolean;
+  removePassport: boolean;
+}
+
+export interface OdinExcludeStudentResult {
+  success: true;
+  studentId: number;
+  studentNumber: string;
+  deletedProfile: boolean;
+  removed: {
+    studentVotes: number;
+    studentLikes: number;
+    studentComments: number;
+    qrActionScans: number;
+    passportScans: number;
+    passportChallengeAnswers: number;
+    passportBadges: number;
+    passportSurpriseEffectsRevoked: number;
+    passportPointLedgerRevoked: number;
+    exhibitorScoreEventsRevoked: number;
+  };
+}
+
 export interface AnalyticsConsentState {
   essential: true;
   analytics: boolean;
@@ -3662,6 +3766,21 @@ export const api = {
       request<{ success: boolean }>(`/auth/students/${id}`, {
         method: "DELETE",
       }),
+  },
+
+  odin: {
+    overview: (params?: { windowHours?: number }) =>
+      request<OdinOverview>(
+        `/security/odin/overview${toQueryString(params)}`,
+      ),
+    excludeStudent: (studentId: number, data: OdinExcludeStudentInput) =>
+      request<OdinExcludeStudentResult>(
+        `/security/odin/students/${studentId}/exclude`,
+        {
+          method: "POST",
+          body: JSON.stringify(data),
+        },
+      ),
   },
 
   jury: {

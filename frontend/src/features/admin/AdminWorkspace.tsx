@@ -210,6 +210,9 @@ const AdminAuditTab = lazy(() => import("@/components/admin/AdminAuditTab"));
 const AdminSecurityTab = lazy(
   () => import("@/components/admin/AdminSecurityTab"),
 );
+const AdminOdinTab = lazy(
+  () => import("@/components/admin/AdminOdinTab"),
+);
 const AdminStudentsTab = lazy(
   () => import("@/components/admin/AdminStudentsTab"),
 );
@@ -290,6 +293,7 @@ const tabs = [
   { id: "live", label: "Ao Vivo", icon: Radio, permission: "LIVE" },
   { id: "votes", label: "Votações", icon: ThumbsUp, permission: "VOTES" },
   { id: "security", label: "Segurança", icon: Shield, permission: "SECURITY" },
+  { id: "odin", label: "ODIN", icon: Shield, permission: "SECURITY" },
   { id: "students", label: "Estudantes", icon: Users, permission: "STUDENTS" },
   { id: "winners", label: "Vencedores", icon: Trophy, permission: "WINNERS" },
 ] as const;
@@ -1389,6 +1393,7 @@ const tabGroups = [
       "overview",
       "analytics",
       "security",
+      "odin",
       "nucleus",
       "credentials",
       "audit",
@@ -2323,6 +2328,7 @@ const Admin = ({
       live: ["agenda", "liveConfig"],
       votes: ["base", "moderation"],
       security: ["security"],
+      odin: [],
       nucleus: ["security"],
       credentials: ["security"],
       students: ["students"],
@@ -11873,6 +11879,12 @@ const Admin = ({
                           void handleRevokeAdminStudent(studentNumber)
                         }
                       />
+                    </Suspense>
+                  )}
+
+                  {activeTab === "odin" && (
+                    <Suspense fallback={<AdminPanelFallback label="ODIN" />}>
+                      <AdminOdinTab />
                     </Suspense>
                   )}
 
