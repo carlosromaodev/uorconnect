@@ -4127,6 +4127,15 @@ export const api = {
             isWinner: boolean;
             canVote: boolean;
             eligibleForAward: boolean;
+            exhibitorChallengeStatus:
+              | "MISSING"
+              | "PENDING_APPROVAL"
+              | "APPROVED"
+              | "REJECTED"
+              | "PAUSED";
+            exhibitorChallengeQuestion: string | null;
+            exhibitorChallengeAnswersCount: number;
+            exhibitorChallengeUpdatedAt: string | null;
           } & SubmissionTeamState
         >
       >(`/submissions${qs ? `?${qs}` : ""}`);
@@ -4181,6 +4190,15 @@ export const api = {
             isWinner: boolean;
             canVote: boolean;
             eligibleForAward: boolean;
+            exhibitorChallengeStatus:
+              | "MISSING"
+              | "PENDING_APPROVAL"
+              | "APPROVED"
+              | "REJECTED"
+              | "PAUSED";
+            exhibitorChallengeQuestion: string | null;
+            exhibitorChallengeAnswersCount: number;
+            exhibitorChallengeUpdatedAt: string | null;
           } & SubmissionTeamState
         >
       >(`/submissions/paged${toQueryString(params)}`),

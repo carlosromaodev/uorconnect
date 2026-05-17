@@ -164,6 +164,7 @@ import {
 } from "@/lib/project-media";
 import { createQrDataUrl } from "@/lib/qr";
 import { resolveAbsoluteApiUrl } from "@/lib/runtime-config";
+import { downloadBlobFile } from "@/lib/student-documents";
 
 const EventoTab = lazy(() =>
   import("@/components/admin/EventoTab").then((module) => ({
@@ -299,11 +300,17 @@ const credentialSubpages = [
   { id: "overview", label: "Painel", icon: BarChart3 },
   { id: "links", label: "Criar links", icon: UserPlus },
   { id: "members", label: "Membros", icon: Users },
+  { id: "bulk-issue", label: "Emissão em lote", icon: IdCard },
   { id: "printing", label: "Impressão", icon: Download },
   { id: "templates", label: "Templates", icon: Palette },
   { id: "pending", label: "Pendentes", icon: AlertTriangle },
 ] as const;
 type CredentialAdminSubpage = (typeof credentialSubpages)[number]["id"];
+const submissionSubpages = [
+  { id: "overview", label: "Gestão", icon: ClipboardCheck },
+  { id: "projects", label: "Projetos e obrigações", icon: FolderOpen },
+] as const;
+type SubmissionAdminSubpage = (typeof submissionSubpages)[number]["id"];
 type AdminDataSection =
   | "base"
   | "students"
@@ -380,6 +387,15 @@ type AdminSubmission = {
   teamConfirmedMembers: number;
   teamAllConfirmed: boolean;
   teamMembers: SubmissionTeamMember[];
+  exhibitorChallengeStatus:
+    | "MISSING"
+    | "PENDING_APPROVAL"
+    | "APPROVED"
+    | "REJECTED"
+    | "PAUSED";
+  exhibitorChallengeQuestion: string | null;
+  exhibitorChallengeAnswersCount: number;
+  exhibitorChallengeUpdatedAt: string | null;
 };
 
 type VoteProjectSummary = {
@@ -1243,6 +1259,16 @@ function formatDateLabel(value: string) {
   });
 }
 
+function formatDateTime(value: string) {
+  if (!value) return "Sem data";
+  return new Date(value).toLocaleString("pt-PT", {
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 function submissionCoverGradient(
   submission: Pick<AdminSubmission, "primaryColor" | "secondaryColor">,
 ) {
@@ -1402,6 +1428,8 @@ const Admin = ({
   const [activeTab, setActiveTab] = useState<TabId>("overview");
   const [activeCredentialSubpage, setActiveCredentialSubpage] =
     useState<CredentialAdminSubpage>("overview");
+  const [activeSubmissionSubpage, setActiveSubmissionSubpage] =
+    useState<SubmissionAdminSubpage>("overview");
   const [showLeftGradient, setShowLeftGradient] = useState(false);
   const [showRightGradient, setShowRightGradient] = useState(true);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -1468,6 +1496,13 @@ const Admin = ({
   const [submissionListRows, setSubmissionListRows] = useState<
     AdminSubmission[]
   >([]);
+  const [projectObligationRows, setProjectObligationRows] = useState<
+    AdminSubmission[]
+  >([]);
+  const [loadingProjectObligations, setLoadingProjectObligations] =
+    useState(false);
+  const [projectObligationRefreshKey, setProjectObligationRefreshKey] =
+    useState(0);
   const [submissionBannerDrafts, setSubmissionBannerDrafts] = useState<
     Record<number, string | null | undefined>
   >({});
@@ -1673,6 +1708,11 @@ const Admin = ({
     teamConfirmedMembers: submission.teamConfirmedMembers,
     teamAllConfirmed: submission.teamAllConfirmed,
     teamMembers: submission.teamMembers,
+    exhibitorChallengeStatus: submission.exhibitorChallengeStatus ?? "MISSING",
+    exhibitorChallengeQuestion: submission.exhibitorChallengeQuestion ?? null,
+    exhibitorChallengeAnswersCount:
+      submission.exhibitorChallengeAnswersCount ?? 0,
+    exhibitorChallengeUpdatedAt: submission.exhibitorChallengeUpdatedAt ?? null,
   });
 
   const submissionStatusToApi = (
@@ -2501,6 +2541,63 @@ const Admin = ({
   useEffect(() => {
     if (
       accessState !== "allowed" ||
+      activeTab !== "submissions" ||
+      activeSubmissionSubpage !== "projects" ||
+      !loadedSections.base
+    )
+      return;
+
+    let cancelled = false;
+
+    const loadProjectObligations = async () => {
+      try {
+        setLoadingProjectObligations(true);
+        const payload = await api.submissions.listDetailedPaged({
+          page: 1,
+          limit: 500,
+          sort: "name_asc",
+        });
+        if (cancelled) return;
+        const mapped = payload.items.map((item) => mapSubmissionToAdmin(item));
+        setProjectObligationRows(mapped);
+        setSubmissionBannerDrafts((current) => {
+          const next = { ...current };
+          for (const item of mapped) {
+            if (next[item.id] === undefined) {
+              next[item.id] = item.bannerUrl ?? null;
+            }
+          }
+          return next;
+        });
+      } catch (error) {
+        if (cancelled) return;
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : "Falha ao carregar projetos e obrigações.",
+        );
+      } finally {
+        if (!cancelled) {
+          setLoadingProjectObligations(false);
+        }
+      }
+    };
+
+    void loadProjectObligations();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    accessState,
+    activeSubmissionSubpage,
+    activeTab,
+    loadedSections.base,
+    projectObligationRefreshKey,
+  ]);
+
+  useEffect(() => {
+    if (
+      accessState !== "allowed" ||
       activeTab !== "students" ||
       !loadedSections.students
     )
@@ -2800,6 +2897,38 @@ const Admin = ({
     [submissionListRows, submissionPage, submissionsTotalPages],
   );
 
+  const projectComplianceRows = useMemo(
+    () =>
+      (projectObligationRows.length > 0
+        ? projectObligationRows
+        : submissionListRows
+      ).slice().sort((left, right) => left.nome.localeCompare(right.nome, "pt")),
+    [projectObligationRows, submissionListRows],
+  );
+
+  const projectComplianceSummary = useMemo(() => {
+    const total = projectComplianceRows.length;
+    const withPhoto = projectComplianceRows.filter((item) => item.bannerUrl).length;
+    const withTeamConfirmed = projectComplianceRows.filter((item) => item.teamAllConfirmed).length;
+    const withQuestions = projectComplianceRows.filter(
+      (item) => item.exhibitorChallengeStatus !== "MISSING",
+    ).length;
+    const fullyReady = projectComplianceRows.filter(
+      (item) =>
+        item.bannerUrl &&
+        item.teamAllConfirmed &&
+        item.exhibitorChallengeStatus !== "MISSING",
+    ).length;
+
+    return {
+      total,
+      withPhoto,
+      withTeamConfirmed,
+      withQuestions,
+      fullyReady,
+    };
+  }, [projectComplianceRows]);
+
   const toggleSubmissionDetails = (submissionId: number) => {
     setExpandedSubmissionIds((current) => {
       const next = new Set(current);
@@ -2969,6 +3098,9 @@ const Admin = ({
   const activeCredentialSubpageMeta =
     credentialSubpages.find((item) => item.id === activeCredentialSubpage) ??
     credentialSubpages[0];
+  const activeSubmissionSubpageMeta =
+    submissionSubpages.find((item) => item.id === activeSubmissionSubpage) ??
+    submissionSubpages[0];
   const activeTabGroup = tabGroups.find((group) =>
     group.ids.includes(activeTab),
   );
@@ -3336,9 +3468,12 @@ const Admin = ({
       setSubmissions((current) =>
         current.map((item) => (item.id === id ? { ...item, status } : item)),
       );
-      setSubmissionListRows((current) =>
-        current.map((item) => (item.id === id ? { ...item, status } : item)),
-      );
+	      setSubmissionListRows((current) =>
+	        current.map((item) => (item.id === id ? { ...item, status } : item)),
+	      );
+	      setProjectObligationRows((current) =>
+	        current.map((item) => (item.id === id ? { ...item, status } : item)),
+	      );
       setVoteProjects((current) =>
         current.map((item) => (item.id === id ? { ...item, status } : item)),
       );
@@ -3428,19 +3563,31 @@ const Admin = ({
             : item,
         ),
       );
-      setSubmissionListRows((current) =>
-        current.map((item) =>
-          item.id === submission.id
-            ? {
+	      setSubmissionListRows((current) =>
+	        current.map((item) =>
+	          item.id === submission.id
+	            ? {
                 ...item,
                 bannerUrl: updated.bannerUrl ?? null,
                 primaryColor: updated.primaryColor,
                 secondaryColor: updated.secondaryColor,
               }
             : item,
-        ),
-      );
-      setSubmissionBannerDrafts((current) => ({
+	        ),
+	      );
+	      setProjectObligationRows((current) =>
+	        current.map((item) =>
+	          item.id === submission.id
+	            ? {
+	                ...item,
+	                bannerUrl: updated.bannerUrl ?? null,
+	                primaryColor: updated.primaryColor,
+	                secondaryColor: updated.secondaryColor,
+	              }
+	            : item,
+	        ),
+	      );
+	      setSubmissionBannerDrafts((current) => ({
         ...current,
         [submission.id]: updated.bannerUrl ?? null,
       }));
@@ -3521,19 +3668,31 @@ const Admin = ({
             : item,
         ),
       );
-      setSubmissionListRows((current) =>
-        current.map((item) =>
-          item.id === submission.id
-            ? {
+	      setSubmissionListRows((current) =>
+	        current.map((item) =>
+	          item.id === submission.id
+	            ? {
                 ...item,
                 bannerUrl: null,
                 primaryColor: updated.primaryColor,
                 secondaryColor: updated.secondaryColor,
               }
             : item,
-        ),
-      );
-      setSubmissionBannerDrafts((current) => ({
+	        ),
+	      );
+	      setProjectObligationRows((current) =>
+	        current.map((item) =>
+	          item.id === submission.id
+	            ? {
+	                ...item,
+	                bannerUrl: null,
+	                primaryColor: updated.primaryColor,
+	                secondaryColor: updated.secondaryColor,
+	              }
+	            : item,
+	        ),
+	      );
+	      setSubmissionBannerDrafts((current) => ({
         ...current,
         [submission.id]: null,
       }));
@@ -3597,9 +3756,10 @@ const Admin = ({
             }
           : item;
 
-      setSubmissions((current) => current.map(patchSubmission));
-      setSubmissionListRows((current) => current.map(patchSubmission));
-      setVoteProjects((current) =>
+	      setSubmissions((current) => current.map(patchSubmission));
+	      setSubmissionListRows((current) => current.map(patchSubmission));
+	      setProjectObligationRows((current) => current.map(patchSubmission));
+	      setVoteProjects((current) =>
         current.map((item) =>
           item.id === teamMembersDialogSubmission.id
             ? { ...item, equipa: payload.members ?? "Equipa por confirmar" }
@@ -3652,9 +3812,10 @@ const Admin = ({
             }
           : item;
 
-      setSubmissions((current) => current.map(patchSubmission));
-      setSubmissionListRows((current) => current.map(patchSubmission));
-      setTeamMembersDialogSubmission((current) =>
+	      setSubmissions((current) => current.map(patchSubmission));
+	      setSubmissionListRows((current) => current.map(patchSubmission));
+	      setProjectObligationRows((current) => current.map(patchSubmission));
+	      setTeamMembersDialogSubmission((current) =>
         current && current.id === submission.id ? patchSubmission(current) : current,
       );
       toast.success("Membro confirmado com dados da Secretaria.");
@@ -3730,9 +3891,10 @@ const Admin = ({
             }
           : item;
 
-      setSubmissions((current) => current.map(patchSubmission));
-      setSubmissionListRows((current) => current.map(patchSubmission));
-      setTeamMembersDialogSubmission((current) =>
+	      setSubmissions((current) => current.map(patchSubmission));
+	      setSubmissionListRows((current) => current.map(patchSubmission));
+	      setProjectObligationRows((current) => current.map(patchSubmission));
+	      setTeamMembersDialogSubmission((current) =>
         current && current.id === submission.id ? patchSubmission(current) : current,
       );
       toast.success(
@@ -3744,6 +3906,32 @@ const Admin = ({
           error instanceof Error
             ? error.message
             : "Não foi possível confirmar o membro externo.",
+        );
+      }
+    } finally {
+      setBusyKey((current) => (current === busy ? null : current));
+    }
+  };
+
+  const handleDownloadExhibitorManual = async (submission: AdminSubmission) => {
+    const busy = `submission-manual-${submission.id}`;
+    try {
+      setBusyKey(busy);
+      const blob = await api.submissions.exhibitorPdf(submission.id);
+      const fileBase = submission.referenceCode
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, "-")
+        .replace(/^-+|-+$/g, "");
+      downloadBlobFile(
+        blob,
+        `${fileBase || `projeto-${submission.id}`}-manual-expositor.pdf`,
+      );
+    } catch (error) {
+      if (!handleAdminAuthFailure(error)) {
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : "Não foi possível baixar o manual do expositor.",
         );
       }
     } finally {
@@ -4211,9 +4399,10 @@ const Admin = ({
             }
           : item;
 
-      setSubmissions((current) => current.map(patchSubmission));
-      setSubmissionListRows((current) => current.map(patchSubmission));
-      if (["CONFIRMED_BY_ADMIN", "REJECTED", "CANCELED"].includes(status)) {
+	      setSubmissions((current) => current.map(patchSubmission));
+	      setSubmissionListRows((current) => current.map(patchSubmission));
+	      setProjectObligationRows((current) => current.map(patchSubmission));
+	      if (["CONFIRMED_BY_ADMIN", "REJECTED", "CANCELED"].includes(status)) {
         setSubmissionPaymentReviewNotes((current) => ({
           ...current,
           [submissionId]: "",
@@ -5671,11 +5860,14 @@ const Admin = ({
 	                          <button
 	                            onClick={() => {
 	                              setActiveTab(tab.id);
-	                              if (tab.id === "credentials") {
-	                                setActiveCredentialSubpage("overview");
-	                              }
-	                              setSidebarOpen(false);
-	                            }}
+		                              if (tab.id === "credentials") {
+		                                setActiveCredentialSubpage("overview");
+		                              }
+		                              if (tab.id === "submissions") {
+		                                setActiveSubmissionSubpage("overview");
+		                              }
+		                              setSidebarOpen(false);
+		                            }}
 	                            className={`admin-nav-item group relative flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors ${
 	                              isActive
 	                                ? "admin-nav-item--active bg-muted font-semibold text-foreground"
@@ -5714,9 +5906,38 @@ const Admin = ({
 	                                  </button>
 	                                );
 	                              })}
-	                            </div>
-	                          )}
-	                        </div>
+		                            </div>
+		                          )}
+		                          {tab.id === "submissions" && (
+		                            <div className="admin-nav-subitems ml-6 border-l border-border/70 pl-3">
+		                              {submissionSubpages.map((subpage) => {
+		                                const SubIcon = subpage.icon;
+		                                const isSubpageActive =
+		                                  activeTab === "submissions" &&
+		                                  activeSubmissionSubpage === subpage.id;
+		                                return (
+		                                  <button
+		                                    key={subpage.id}
+		                                    type="button"
+		                                    onClick={() => {
+		                                      setActiveTab("submissions");
+		                                      setActiveSubmissionSubpage(subpage.id);
+		                                      setSidebarOpen(false);
+		                                    }}
+		                                    className={`admin-nav-subitem mt-1 flex w-full min-w-0 items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-xs transition-colors ${
+		                                      isSubpageActive
+		                                        ? "bg-primary/10 font-semibold text-primary"
+		                                        : "font-medium text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+		                                    }`}
+		                                  >
+		                                    <SubIcon className="h-3.5 w-3.5 shrink-0" />
+		                                    <span className="truncate">{subpage.label}</span>
+		                                  </button>
+		                                );
+		                              })}
+		                            </div>
+		                          )}
+		                        </div>
 	                      );
 	                    })}
                   </div>
@@ -5760,9 +5981,11 @@ const Admin = ({
                   {visibleTabs.length} módulo(s) disponíveis
                 </p>
                 <h2 className="mt-0.5 text-lg font-black tracking-tight text-foreground">
-	                  {activeTab === "credentials"
-	                    ? `Credenciais · ${activeCredentialSubpageMeta.label}`
-	                    : activeTabMeta?.label ?? "Administração"}
+		                  {activeTab === "credentials"
+		                    ? `Credenciais · ${activeCredentialSubpageMeta.label}`
+		                    : activeTab === "submissions"
+		                      ? `Candidaturas · ${activeSubmissionSubpageMeta.label}`
+		                    : activeTabMeta?.label ?? "Administração"}
                 </h2>
               </div>
             </div>
@@ -5912,10 +6135,43 @@ const Admin = ({
                     </Suspense>
                   )}
 
-                  {activeTab === "submissions" && (
-                    <>
-                      {/* Config: Status + Payment in a cleaner layout */}
-                      <div className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
+	                  {activeTab === "submissions" && (
+	                    <>
+	                      <div className="grid gap-2 sm:grid-cols-2">
+	                        {submissionSubpages.map((subpage) => {
+	                          const Icon = subpage.icon;
+	                          const isActive = activeSubmissionSubpage === subpage.id;
+	                          return (
+	                            <button
+	                              key={subpage.id}
+	                              type="button"
+	                              onClick={() => setActiveSubmissionSubpage(subpage.id)}
+	                              className={`flex min-h-[72px] items-start gap-3 rounded-2xl border p-3 text-left transition ${
+	                                isActive
+	                                  ? "border-primary/30 bg-primary/5 text-primary shadow-sm"
+	                                  : "border-border/70 bg-card text-muted-foreground hover:border-border hover:bg-muted/40"
+	                              }`}
+	                            >
+	                              <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${isActive ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"}`}>
+	                                <Icon className="h-4 w-4" />
+	                              </span>
+	                              <span className="min-w-0">
+	                                <span className="block truncate text-sm font-bold">{subpage.label}</span>
+	                                <span className="mt-1 line-clamp-2 block text-[11px] leading-4">
+	                                  {subpage.id === "overview"
+	                                    ? "Configuração, filtros e revisão normal das candidaturas."
+	                                    : "Mapa de cumprimento por projeto, membros e manual."}
+	                                </span>
+	                              </span>
+	                            </button>
+	                          );
+	                        })}
+	                      </div>
+
+	                      {activeSubmissionSubpage === "overview" ? (
+	                        <>
+	                      {/* Config: Status + Payment in a cleaner layout */}
+	                      <div className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
                         <div className="space-y-4">
                           <div
                             className={`rounded-2xl border p-5 ${submissionConfig.isOpen ? "border-emerald-500/20 bg-emerald-500/[0.03]" : "border-red-500/20 bg-red-500/[0.03]"}`}
@@ -7075,14 +7331,295 @@ const Admin = ({
                               paginatedSubmissions.currentPage >=
                                 paginatedSubmissions.totalPages
                             }
-                          >
-                            Próximo
-                            <ChevronRight className="ml-1 h-3.5 w-3.5" />
-                          </Button>
-                        </div>
-                      </div>
-                    </>
-                  )}
+	                          >
+	                            Próximo
+	                            <ChevronRight className="ml-1 h-3.5 w-3.5" />
+	                          </Button>
+	                        </div>
+	                      </div>
+	                        </>
+	                      ) : (
+	                        <div className="space-y-4">
+	                          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
+	                            {[
+	                              {
+	                                label: "Projetos",
+	                                value: projectComplianceSummary.total,
+	                                icon: FolderOpen,
+	                              },
+	                              {
+	                                label: "Com foto",
+	                                value: projectComplianceSummary.withPhoto,
+	                                icon: ImagePlus,
+	                              },
+	                              {
+	                                label: "Presença",
+	                                value: projectComplianceSummary.withTeamConfirmed,
+	                                icon: UserCheck,
+	                              },
+	                              {
+	                                label: "Perguntas",
+	                                value: projectComplianceSummary.withQuestions,
+	                                icon: HelpCircle,
+	                              },
+	                              {
+	                                label: "Prontos",
+	                                value: projectComplianceSummary.fullyReady,
+	                                icon: CheckCircle,
+	                              },
+	                            ].map((item) => {
+	                              const Icon = item.icon;
+	                              return (
+	                                <div key={item.label} className="rounded-2xl border border-border/60 bg-card p-4 shadow-sm">
+	                                  <div className="flex items-center justify-between gap-3">
+	                                    <div>
+	                                      <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-muted-foreground">{item.label}</p>
+	                                      <p className="mt-1 text-2xl font-black text-foreground">{item.value}</p>
+	                                    </div>
+	                                    <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-primary/10 text-primary">
+	                                      <Icon className="h-4 w-4" />
+	                                    </span>
+	                                  </div>
+	                                </div>
+	                              );
+	                            })}
+	                          </div>
+
+	                          <div className="rounded-2xl border border-border/60 bg-card p-4 shadow-sm">
+	                            <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+	                              <div>
+	                                <h3 className="text-base font-black text-foreground">Projetos e obrigações</h3>
+	                                <p className="mt-1 text-sm text-muted-foreground">
+	                                  Acompanha foto do projeto, presença dos membros, pergunta do desafio e manual do expositor num único lugar.
+	                                </p>
+	                              </div>
+	                              <Button
+	                                type="button"
+	                                size="sm"
+	                                variant="outline"
+	                                className="w-full rounded-xl lg:w-auto"
+	                                disabled={loadingProjectObligations}
+	                                onClick={() => {
+	                                  setProjectObligationRows([]);
+	                                  setProjectObligationRefreshKey((current) => current + 1);
+	                                }}
+	                              >
+	                                <RefreshCw className={`mr-1.5 h-3.5 w-3.5 ${loadingProjectObligations ? "animate-spin" : ""}`} />
+	                                Atualizar lista
+	                              </Button>
+	                            </div>
+	                          </div>
+
+	                          {loadingProjectObligations && projectComplianceRows.length === 0 ? (
+	                            <div className="flex items-center justify-center rounded-2xl border border-dashed border-border/70 bg-muted/20 py-12 text-sm text-muted-foreground">
+	                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+	                              A carregar projetos e obrigações
+	                            </div>
+	                          ) : projectComplianceRows.length === 0 ? (
+	                            <div className="rounded-2xl border border-dashed border-border/70 bg-muted/20 p-8 text-center text-sm text-muted-foreground">
+	                              Nenhum projeto encontrado nesta vista.
+	                            </div>
+	                          ) : (
+	                            <div className="space-y-4">
+	                              {projectComplianceRows.map((submission) => {
+	                                const teamConfirmed = submission.teamAllConfirmed;
+	                                const hasPhoto = Boolean(submission.bannerUrl);
+	                                const hasQuestion = submission.exhibitorChallengeStatus !== "MISSING";
+	                                const questionLabel =
+	                                  submission.exhibitorChallengeStatus === "APPROVED"
+	                                    ? "Pergunta aprovada"
+	                                    : submission.exhibitorChallengeStatus === "PENDING_APPROVAL"
+	                                      ? "Pergunta em análise"
+	                                      : submission.exhibitorChallengeStatus === "REJECTED"
+	                                        ? "Pergunta recusada"
+	                                        : submission.exhibitorChallengeStatus === "PAUSED"
+	                                          ? "Pergunta pausada"
+	                                          : "Sem pergunta";
+	                                const obligations = [
+	                                  {
+	                                    label: "Foto do projeto",
+	                                    done: hasPhoto,
+	                                    detail: hasPhoto ? "Capa adicionada" : "Sem foto/capa",
+	                                    icon: ImagePlus,
+	                                  },
+	                                  {
+	                                    label: "Confirmar presença",
+	                                    done: teamConfirmed,
+	                                    detail: `${submission.teamConfirmedMembers}/${submission.teamTotalMembers} membro(s)`,
+	                                    icon: UserCheck,
+	                                  },
+	                                  {
+	                                    label: "Submeter perguntas",
+	                                    done: hasQuestion,
+	                                    detail: questionLabel,
+	                                    icon: HelpCircle,
+	                                  },
+	                                  {
+	                                    label: "Baixar manual",
+	                                    done: true,
+	                                    detail: "Disponível para download",
+	                                    icon: FileText,
+	                                  },
+	                                ];
+	                                return (
+	                                  <Card key={submission.id} className="overflow-hidden border-border/60">
+	                                    <CardContent className="p-0">
+	                                      <div className="grid min-w-0 gap-0 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.25fr)]">
+	                                        <div className="min-w-0 border-b border-border/60 p-4 xl:border-b-0 xl:border-r">
+	                                          <div className="flex min-w-0 items-start gap-3">
+	                                            <div className="flex h-12 w-12 shrink-0 items-center justify-center overflow-hidden rounded-2xl border border-border/70 bg-muted text-sm font-black text-muted-foreground">
+	                                              {submission.bannerUrl ? (
+	                                                <img src={submission.bannerUrl} alt={`Foto do projeto ${submission.nome}`} className="h-full w-full object-cover" />
+	                                              ) : (
+	                                                submission.nome.slice(0, 2).toUpperCase()
+	                                              )}
+	                                            </div>
+	                                            <div className="min-w-0 flex-1">
+	                                              <div className="flex flex-wrap items-center gap-2">
+	                                                <h4 className="min-w-0 truncate text-base font-black text-foreground">{submission.nome}</h4>
+	                                                <Badge variant="outline">{submission.referenceCode}</Badge>
+	                                                <Badge variant={submission.status === "aprovado" ? "default" : "outline"}>{submission.status}</Badge>
+	                                              </div>
+	                                              <p className="mt-1 text-xs font-semibold text-muted-foreground">
+	                                                {submission.curso} · {submission.area} · {submission.tipo}
+	                                              </p>
+	                                              <p className="mt-2 line-clamp-3 text-sm leading-6 text-muted-foreground">
+	                                                {submission.descricao}
+	                                              </p>
+	                                            </div>
+	                                          </div>
+
+	                                          <div className="mt-4 grid gap-2 sm:grid-cols-2">
+	                                            <div className="rounded-xl border border-border/60 bg-muted/20 px-3 py-2">
+	                                              <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">Responsável</p>
+	                                              <p className="mt-1 truncate text-sm font-semibold text-foreground">{submission.responsavel}</p>
+	                                              <p className="mt-0.5 truncate text-xs text-muted-foreground">{submission.telefone || "Sem telefone"}</p>
+	                                            </div>
+	                                            <div className="rounded-xl border border-border/60 bg-muted/20 px-3 py-2">
+	                                              <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">Equipa</p>
+	                                              <p className="mt-1 text-sm font-semibold text-foreground">{submission.teamConfirmedMembers}/{submission.teamTotalMembers} confirmados</p>
+	                                              <p className="mt-0.5 truncate text-xs text-muted-foreground">{submission.teamJourneyLabel}</p>
+	                                            </div>
+	                                          </div>
+
+	                                          <div className="mt-4 flex flex-wrap gap-2">
+	                                            <Button size="sm" variant="outline" className="rounded-xl" onClick={() => openSubmissionTeamMembersDialog(submission)}>
+	                                              <Edit className="mr-1 h-3.5 w-3.5" />
+	                                              Editar membros
+	                                            </Button>
+	                                            <Button
+	                                              size="sm"
+	                                              variant="outline"
+	                                              className="rounded-xl"
+	                                              disabled={busyKey === `submission-manual-${submission.id}`}
+	                                              onClick={() => void handleDownloadExhibitorManual(submission)}
+	                                            >
+	                                              {busyKey === `submission-manual-${submission.id}` ? (
+	                                                <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
+	                                              ) : (
+	                                                <Download className="mr-1 h-3.5 w-3.5" />
+	                                              )}
+	                                              Baixar manual
+	                                            </Button>
+	                                            <Button asChild size="sm" variant="outline" className="rounded-xl">
+	                                              <Link to={submission.detailPath}>
+	                                                <ExternalLink className="mr-1 h-3.5 w-3.5" />
+	                                                Ver página
+	                                              </Link>
+	                                            </Button>
+	                                          </div>
+	                                        </div>
+
+	                                        <div className="min-w-0 p-4">
+	                                          <div className="grid gap-2 md:grid-cols-4">
+	                                            {obligations.map((obligation) => {
+	                                              const Icon = obligation.icon;
+	                                              return (
+	                                                <div key={obligation.label} className={`rounded-2xl border px-3 py-2 ${
+	                                                  obligation.done
+	                                                    ? "border-emerald-200 bg-emerald-50 text-emerald-900"
+	                                                    : "border-amber-200 bg-amber-50 text-amber-900"
+	                                                }`}>
+	                                                  <div className="flex items-center justify-between gap-2">
+	                                                    <Icon className="h-4 w-4" />
+	                                                    {obligation.done ? <CheckCircle className="h-4 w-4" /> : <Clock className="h-4 w-4" />}
+	                                                  </div>
+	                                                  <p className="mt-2 text-xs font-black">{obligation.label}</p>
+	                                                  <p className="mt-0.5 text-[11px] leading-4 opacity-80">{obligation.detail}</p>
+	                                                </div>
+	                                              );
+	                                            })}
+	                                          </div>
+
+	                                          <div className="mt-4 rounded-2xl border border-border/60">
+	                                            <div className="flex items-center justify-between gap-2 border-b border-border/60 px-3 py-2">
+	                                              <p className="text-xs font-black uppercase tracking-[0.14em] text-muted-foreground">Membros do projeto</p>
+	                                              <Badge variant="outline">{submission.teamMembers.length || getAdminSubmissionTeamMemberNames(submission).length}</Badge>
+	                                            </div>
+	                                            <div className="max-h-72 space-y-2 overflow-y-auto p-3">
+	                                              {submission.teamMembers.length > 0 ? (
+	                                                submission.teamMembers.map((member) => (
+	                                                  <div key={member.id} className="rounded-xl border border-border/60 bg-muted/10 px-3 py-2">
+	                                                    <div className="flex flex-wrap items-center justify-between gap-2">
+	                                                      <div className="min-w-0">
+	                                                        <p className="truncate text-sm font-bold text-foreground">{member.name}</p>
+	                                                        <p className="mt-0.5 text-xs text-muted-foreground">
+	                                                          {member.roleLabel}
+	                                                          {member.isResponsible ? " · Responsável" : ""}
+	                                                        </p>
+	                                                      </div>
+	                                                      <Badge variant={member.confirmed ? "default" : "outline"}>
+	                                                        {member.confirmed ? "Confirmado" : "Pendente"}
+	                                                      </Badge>
+	                                                    </div>
+	                                                    <div className="mt-2 grid gap-2 text-xs sm:grid-cols-2">
+	                                                      <span className="rounded-lg bg-background px-2 py-1 text-muted-foreground">
+	                                                        Nº esperado: {member.expectedStudentNumber ?? "não definido"}
+	                                                      </span>
+	                                                      <span className="rounded-lg bg-background px-2 py-1 text-muted-foreground">
+	                                                        Nº confirmado: {member.studentNumber ?? "pendente"}
+	                                                      </span>
+	                                                      <span className="rounded-lg bg-background px-2 py-1 text-muted-foreground">
+	                                                        Nome oficial: {member.studentName ?? member.name}
+	                                                      </span>
+	                                                      <span className="rounded-lg bg-background px-2 py-1 text-muted-foreground">
+	                                                        Curso: {member.studentCourse ?? member.externalOrganization ?? "não informado"}
+	                                                      </span>
+	                                                    </div>
+	                                                  </div>
+	                                                ))
+	                                              ) : (
+	                                                getAdminSubmissionTeamMemberNames(submission).map((name) => (
+	                                                  <div key={name} className="rounded-xl border border-dashed border-border/70 bg-muted/10 px-3 py-2 text-sm text-muted-foreground">
+	                                                    {name}
+	                                                  </div>
+	                                                ))
+	                                              )}
+	                                            </div>
+	                                          </div>
+
+	                                          {submission.exhibitorChallengeQuestion ? (
+	                                            <div className="mt-4 rounded-2xl border border-sky-100 bg-sky-50 px-3 py-2">
+	                                              <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-sky-700">Pergunta submetida</p>
+	                                              <p className="mt-1 text-sm font-semibold text-sky-950">{submission.exhibitorChallengeQuestion}</p>
+	                                              <p className="mt-1 text-xs text-sky-700">
+	                                                {submission.exhibitorChallengeAnswersCount} resposta(s) no desafio
+	                                                {submission.exhibitorChallengeUpdatedAt ? ` · atualizado em ${formatDateTime(submission.exhibitorChallengeUpdatedAt)}` : ""}
+	                                              </p>
+	                                            </div>
+	                                          ) : null}
+	                                        </div>
+	                                      </div>
+	                                    </CardContent>
+	                                  </Card>
+	                                );
+	                              })}
+	                            </div>
+	                          )}
+	                        </div>
+	                      )}
+	                    </>
+	                  )}
 
                   {activeTab === "speakers" && (
                     <div className="grid gap-6 xl:grid-cols-[1.05fr_1.4fr]">

@@ -10,8 +10,10 @@ describe("AdminSecurityTab credentials responsiveness", () => {
     const source = readSource("./AdminSecurityTab.tsx");
 
     expect(source).toContain("credentialAdminSubpages");
+    expect(source).toContain('"bulk-issue"');
+    expect(source).toContain("Emissão em lote");
     expect(source).toContain(
-      "grid min-w-0 gap-2 sm:grid-cols-2 xl:grid-cols-6",
+      "grid min-w-0 gap-2 sm:grid-cols-2 xl:grid-cols-[repeat(auto-fit,minmax(140px,1fr))]",
     );
     expect(source).toContain(
       "showCredentialLinks ? \"xl:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)]\" : \"xl:grid-cols-1\"",
@@ -28,6 +30,8 @@ describe("AdminSecurityTab credentials responsiveness", () => {
     expect(source).toContain(
       "grid w-full min-w-0 grid-cols-2 gap-2 min-[430px]:grid-cols-3 2xl:w-[520px]",
     );
+    expect(source).toContain("Todos os expositores");
+    expect(source).toContain("Coordenadora do Curso");
     expect(source).not.toContain(
       "grid w-full grid-cols-2 gap-2 min-[430px]:grid-cols-3 xl:w-[520px]",
     );

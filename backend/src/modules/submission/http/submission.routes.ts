@@ -528,6 +528,19 @@ const adminTeamMemberConfirmResponseSchema = z.object({
   ...adminSubmissionTeamStateSchema,
 });
 
+const adminSubmissionChallengeStateSchema = {
+  exhibitorChallengeStatus: z.enum([
+    "MISSING",
+    "PENDING_APPROVAL",
+    "APPROVED",
+    "REJECTED",
+    "PAUSED",
+  ]),
+  exhibitorChallengeQuestion: z.string().nullable(),
+  exhibitorChallengeAnswersCount: z.number(),
+  exhibitorChallengeUpdatedAt: z.string().nullable(),
+};
+
 const adminExternalTeamMemberConfirmResponseSchema = z.object({
   success: z.literal(true),
   credentials: externalTeamMemberCredentialsSchema,
@@ -637,11 +650,18 @@ type AdminSubmissionLike = Submission | Prisma.SubmissionGetPayload<object>;
 function toAdminSubmissionResponse(
   s: AdminSubmissionLike,
   team?: Awaited<ReturnType<typeof buildSubmissionTeamPayload>> | null,
+  challengeState?: Awaited<ReturnType<typeof buildAdminSubmissionChallengeState>> | null,
 ) {
   const membersList = normalizeTeamMembersInput(s.members);
   const needsList = parseSubmissionNeeds(s.needs);
   const competitionEligible = isCompetitionEligible(s.type, s.area);
   const slug = buildSubmissionSlug(s.name, s.id);
+  const challenge = challengeState ?? {
+    status: "MISSING" as const,
+    question: null,
+    answersCount: 0,
+    updatedAt: null,
+  };
 
   return {
     id: s.id,
@@ -687,6 +707,56 @@ function toAdminSubmissionResponse(
     teamConfirmedMembers: team?.confirmedMembers ?? 0,
     teamAllConfirmed: team?.allConfirmed ?? false,
     teamMembers: team?.members ?? [],
+    exhibitorChallengeStatus: challenge.status,
+    exhibitorChallengeQuestion: challenge.question,
+    exhibitorChallengeAnswersCount: challenge.answersCount,
+    exhibitorChallengeUpdatedAt: challenge.updatedAt,
+  };
+}
+
+async function buildAdminSubmissionChallengeState(submissionId: number) {
+  const qrAction = await prisma.qrAction.findFirst({
+    where: {
+      type: "EXHIBITOR_CHALLENGE",
+      targetId: submissionId,
+    },
+    include: {
+      passportChallenge: {
+        include: {
+          _count: { select: { answers: true } },
+        },
+      },
+    },
+    orderBy: { createdAt: "asc" },
+  });
+
+  const challenge = qrAction?.passportChallenge ?? null;
+  if (!challenge) {
+    return {
+      status: "MISSING" as const,
+      question: null,
+      answersCount: 0,
+      updatedAt: null,
+    };
+  }
+
+  const lifecycle =
+    challenge.status ??
+    (challenge.active ? "APPROVED" : challenge.approvedAt ? "PAUSED" : "PENDING_APPROVAL");
+  const status =
+    lifecycle === "APPROVED" && challenge.active
+      ? "APPROVED"
+      : lifecycle === "REJECTED"
+        ? "REJECTED"
+        : challenge.approvedAt
+          ? "PAUSED"
+          : "PENDING_APPROVAL";
+
+  return {
+    status,
+    question: challenge.question,
+    answersCount: challenge._count?.answers ?? 0,
+    updatedAt: challenge.updatedAt?.toISOString() ?? null,
   };
 }
 
@@ -1664,6 +1734,7 @@ export async function submissionRoutes(app: FastifyInstance, { env }: { env: Ret
             isWinner: z.boolean(),
             canVote: z.boolean(),
             eligibleForAward: z.boolean(),
+            ...adminSubmissionChallengeStateSchema,
             ...adminSubmissionTeamStateSchema,
           })),
           401: z.object({ message: z.string() }),
@@ -1674,8 +1745,11 @@ export async function submissionRoutes(app: FastifyInstance, { env }: { env: Ret
         const query = adminSubmissionQuerySchema.pick({ status: true, type: true }).partial().parse(request.query);
         const list = await listDetailedSubmissions.execute(query.status, query.type);
         return Promise.all(list.map(async (submission) => {
-          const team = await buildSubmissionTeamPayload(env, submission);
-          return toAdminSubmissionResponse(submission, team);
+          const [team, challengeState] = await Promise.all([
+            buildSubmissionTeamPayload(env, submission),
+            buildAdminSubmissionChallengeState(submission.id),
+          ]);
+          return toAdminSubmissionResponse(submission, team, challengeState);
         }));
       });
 
@@ -1723,6 +1797,7 @@ export async function submissionRoutes(app: FastifyInstance, { env }: { env: Ret
               isWinner: z.boolean(),
               canVote: z.boolean(),
               eligibleForAward: z.boolean(),
+              ...adminSubmissionChallengeStateSchema,
               ...adminSubmissionTeamStateSchema,
             })),
             total: z.number(),
@@ -1782,8 +1857,11 @@ export async function submissionRoutes(app: FastifyInstance, { env }: { env: Ret
         ]);
 
         const responseItems = await Promise.all(items.map(async (item) => {
-          const team = await buildSubmissionTeamPayload(env, item);
-          return toAdminSubmissionResponse(item, team);
+          const [team, challengeState] = await Promise.all([
+            buildSubmissionTeamPayload(env, item),
+            buildAdminSubmissionChallengeState(item.id),
+          ]);
+          return toAdminSubmissionResponse(item, team, challengeState);
         }));
 
         return reply.send({

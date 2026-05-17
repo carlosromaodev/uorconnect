@@ -75,6 +75,7 @@ type CredentialAdminSubpage =
   | "overview"
   | "links"
   | "members"
+  | "bulk-issue"
   | "printing"
   | "templates"
   | "pending";
@@ -102,6 +103,12 @@ const credentialAdminSubpages: Array<{
     label: "Membros",
     description: "Equipas, perfis prontos, pesquisa e passes individuais.",
     icon: Users,
+  },
+  {
+    id: "bulk-issue",
+    label: "Emissão em lote",
+    description: "Baixar expositores, núcleo e lotes operacionais prontos.",
+    icon: FileBadge2,
   },
   {
     id: "printing",
@@ -388,6 +395,18 @@ function formatDate(value: string | null | undefined) {
 }
 
 type PrintBatchMode = "NOMINAL" | "GENERIC";
+type BulkIssueGenericKey = "STAFF" | "PROTOCOLO" | "CONVIDADO" | "JURI";
+
+type BulkIssueVipForm = {
+  name: string;
+  role: string;
+  team: string;
+  organization: string;
+  accessLevel: string;
+  instagramUrl: string;
+  linkedinUrl: string;
+  websiteUrl: string;
+};
 
 const defaultPrintBatchGenericForm: CredentialPrintBatchGenericInput = {
   category: "STAFF",
@@ -400,6 +419,98 @@ const defaultPrintBatchGenericForm: CredentialPrintBatchGenericInput = {
   startNumber: 1,
   organization: "",
   notes: "",
+};
+
+const bulkIssueGenericPresets: Array<{
+  key: BulkIssueGenericKey;
+  label: string;
+  description: string;
+}> = [
+  {
+    key: "STAFF",
+    label: "Staff",
+    description: "Passe operacional para apoio geral e equipas de suporte.",
+  },
+  {
+    key: "PROTOCOLO",
+    label: "Protocolo",
+    description: "Passe genérico para acolhimento, entrada e orientação.",
+  },
+  {
+    key: "CONVIDADO",
+    label: "Convidados",
+    description: "Credenciais neutras para convidados confirmados no dia.",
+  },
+  {
+    key: "JURI",
+    label: "Júri",
+    description: "Lote reservado para avaliadores sem dados nominais ainda.",
+  },
+];
+
+const defaultBulkIssueGenericForms: Record<
+  BulkIssueGenericKey,
+  CredentialPrintBatchGenericInput
+> = {
+  STAFF: {
+    category: "STAFF",
+    team: "Staff",
+    role: "Apoio Geral",
+    accessLevel: "Staff",
+    permissions: ["EVENTO"],
+    prefix: "Staff",
+    quantity: 12,
+    startNumber: 1,
+    organization: "UOR Connect",
+    notes: "",
+  },
+  PROTOCOLO: {
+    category: "PROTOCOLO",
+    team: "Protocolo",
+    role: "Acolhimento e Apoio Público",
+    accessLevel: "Protocolo",
+    permissions: ["EVENTO", "ATTENDANCE"],
+    prefix: "Protocolo",
+    quantity: 10,
+    startNumber: 1,
+    organization: "UOR Connect",
+    notes: "",
+  },
+  CONVIDADO: {
+    category: "CONVIDADO",
+    team: "Convidados",
+    role: "Convidado Oficial",
+    accessLevel: "Convidado",
+    permissions: ["EVENTO"],
+    prefix: "Convidado",
+    quantity: 8,
+    startNumber: 1,
+    organization: "UOR Connect",
+    notes: "",
+  },
+  JURI: {
+    category: "JURI",
+    team: "Júri",
+    role: "Avaliador",
+    accessLevel: "Júri",
+    permissions: ["EVENTO", "VOTES"],
+    prefix: "Júri",
+    quantity: 4,
+    startNumber: 1,
+    organization: "UOR Connect",
+    notes: "",
+  },
+};
+
+const defaultBulkIssueVipForm: BulkIssueVipForm = {
+  name: "Coordenadora do Curso",
+  role: "Coordenadora do Curso",
+  team: "Coordenação do Curso",
+  organization: "Universidade Óscar Ribas",
+  accessLevel: "VIP",
+  instagramUrl: "",
+  linkedinUrl: "",
+  websiteUrl: "",
 };
 
 function normalizeBatchCategory(value: string | undefined) {
@@ -492,6 +603,15 @@ function credentialPdfFileName(member: TeamCredentialMember) {
     .replace(/[^a-zA-Z0-9]+/g, "_")
     .replace(/^_+|_+$/g, "");
   return `Passe_${base || "UOR_Connect"}.pdf`;
+}
+
+function safePdfFileBase(value: string) {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-zA-Z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .toLowerCase();
 }
 
 function isLikelyApiUrl(value: string) {
@@ -719,6 +839,11 @@ export default function AdminSecurityTab({
   const [printBatchTitle, setPrintBatchTitle] = useState("Lote de passes");
   const [printBatchNominalText, setPrintBatchNominalText] = useState("Maria Silva | CONVIDADO | Convidados | Convidada | UOR Connect | @maria | linkedin.com/in/maria | maria.ao");
   const [printBatchGenericForm, setPrintBatchGenericForm] = useState<CredentialPrintBatchGenericInput>(defaultPrintBatchGenericForm);
+  const [bulkIssueGenericForms, setBulkIssueGenericForms] = useState<
+    Record<BulkIssueGenericKey, CredentialPrintBatchGenericInput>
+  >(defaultBulkIssueGenericForms);
+  const [bulkIssueVipForm, setBulkIssueVipForm] =
+    useState<BulkIssueVipForm>(defaultBulkIssueVipForm);
   const [internalCredentialSubpage, setInternalCredentialSubpage] =
     useState<CredentialAdminSubpage>("overview");
 
@@ -1126,6 +1251,145 @@ export default function AdminSecurityTab({
     }
   };
 
+  const handleDownloadCredentialCategoryBatch = async (
+    category: string,
+    label: string,
+  ) => {
+    const members = (credentialOverview?.members ?? []).filter(
+      (member) => member.category === category && member.status === "PROFILE_READY",
+    );
+    if (members.length === 0) {
+      toast.info(`Ainda nao ha passes prontos para ${label}.`);
+      return;
+    }
+
+    const busy = `credentials-pass-batch-${category}`;
+    setCredentialBusyKey(busy);
+    try {
+      const blob = await api.teamCredentials.downloadPassBatch({
+        ids: members.map((member) => member.id),
+        printMode: passPrintMode,
+        side: "both",
+        limit: members.length,
+      });
+      const fileBase = safePdfFileBase(`passes ${label}`) || "passes-uor-connect";
+      downloadBlobFile(
+        blob,
+        `${fileBase}-${passPrintMode === "black-white" ? "pb" : "cor"}.pdf`,
+      );
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : `Falha ao baixar passes de ${label}.`,
+      );
+    } finally {
+      setCredentialBusyKey(null);
+    }
+  };
+
+  const updateBulkIssueGenericForm = (
+    key: BulkIssueGenericKey,
+    patch: Partial<CredentialPrintBatchGenericInput>,
+  ) => {
+    setBulkIssueGenericForms((current) => ({
+      ...current,
+      [key]: {
+        ...current[key],
+        ...patch,
+      },
+    }));
+  };
+
+  const createAndDownloadPrintBatch = async (
+    payload: CredentialPrintBatchInput,
+    busy: string,
+    fileLabel: string,
+  ) => {
+    setCredentialBusyKey(busy);
+    try {
+      const created = await api.teamCredentials.createPrintBatch(payload);
+      setSelectedPrintBatch(created);
+      setPrintBatches((current) => [
+        created,
+        ...current.filter((batch) => batch.id !== created.id),
+      ]);
+      const blob = await api.teamCredentials.downloadPrintBatch(created.id, {
+        printMode: passPrintMode,
+        side: "both",
+      });
+      downloadBlobFile(
+        blob,
+        `${safePdfFileBase(fileLabel) || "lote-passes"}-${created.code}.pdf`,
+      );
+      toast.success(`Lote criado e baixado com ${created.totalItems} passe(s).`);
+      await loadTeamCredentials();
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Falha ao criar ou baixar lote de impressão.",
+      );
+    } finally {
+      setCredentialBusyKey(null);
+    }
+  };
+
+  const handleCreateAndDownloadGenericBatch = async (key: BulkIssueGenericKey) => {
+    const preset = bulkIssueGenericPresets.find((item) => item.key === key);
+    const form = bulkIssueGenericForms[key];
+    const quantity = Math.max(1, Math.min(Number(form.quantity) || 1, 80));
+    await createAndDownloadPrintBatch(
+      {
+        title: `Lote ${preset?.label ?? key}`,
+        genericItems: [
+          {
+            ...form,
+            category: form.category ?? key,
+            quantity,
+            startNumber: Math.max(1, Number(form.startNumber) || 1),
+            team: form.team?.trim() || preset?.label || key,
+            role: form.role?.trim() || preset?.label || key,
+            accessLevel: form.accessLevel?.trim() || preset?.label || key,
+            prefix: form.prefix?.trim() || preset?.label || key,
+          },
+        ],
+      },
+      `bulk-issue-generic-${key}`,
+      `Lote ${preset?.label ?? key}`,
+    );
+  };
+
+  const handleCreateAndDownloadVipBatch = async () => {
+    const name = bulkIssueVipForm.name.trim();
+    if (name.length < 2) {
+      toast.info("Indica o nome do passe VIP antes de criar o lote.");
+      return;
+    }
+
+    await createAndDownloadPrintBatch(
+      {
+        title: `Passe VIP - ${name}`,
+        nominalItems: [
+          {
+            name,
+            category: "CONVIDADO",
+            team: bulkIssueVipForm.team.trim() || "Coordenação do Curso",
+            role: bulkIssueVipForm.role.trim() || "Coordenação",
+            accessLevel: bulkIssueVipForm.accessLevel.trim() || "VIP",
+            permissions: ["EVENTO"],
+            organization: bulkIssueVipForm.organization.trim() || null,
+            instagramUrl: bulkIssueVipForm.instagramUrl.trim() || null,
+            linkedinUrl: bulkIssueVipForm.linkedinUrl.trim() || null,
+            websiteUrl: bulkIssueVipForm.websiteUrl.trim() || null,
+          },
+        ],
+      },
+      "bulk-issue-vip",
+      `Passe VIP ${name}`,
+    );
+  };
+
   const handlePreviewPrintBatch = () => {
     const nominalItems = parsePrintBatchNominalText(printBatchNominalText);
     const genericItems = buildGenericPreviewItems(printBatchGenericForm);
@@ -1372,9 +1636,23 @@ export default function AdminSecurityTab({
   const showCredentialOverview = activeCredentialSubpage === "overview";
   const showCredentialLinks = activeCredentialSubpage === "links";
   const showCredentialMembers = activeCredentialSubpage === "members";
+  const showCredentialBulkIssue = activeCredentialSubpage === "bulk-issue";
   const showCredentialPrinting = activeCredentialSubpage === "printing";
   const showCredentialTemplates = activeCredentialSubpage === "templates";
   const showCredentialPending = activeCredentialSubpage === "pending";
+  const allCredentialMembers = credentialOverview?.members ?? [];
+  const readyExhibitorMembers = allCredentialMembers.filter(
+    (member) => member.category === "EXPOSITOR" && member.status === "PROFILE_READY",
+  );
+  const allExhibitorMembers = allCredentialMembers.filter(
+    (member) => member.category === "EXPOSITOR",
+  );
+  const readyNucleusCredentialMembers = allCredentialMembers.filter(
+    (member) => member.category === "NUCLEO" && member.status === "PROFILE_READY",
+  );
+  const allNucleusCredentialMembers = allCredentialMembers.filter(
+    (member) => member.category === "NUCLEO",
+  );
   const allReadyNucleusMembers = (credentialOverview?.members ?? [])
     .filter((member) => member.category === "NUCLEO" && member.status === "PROFILE_READY")
     .slice()
@@ -2119,7 +2397,7 @@ export default function AdminSecurityTab({
           </div>
         </CardHeader>
 	        <CardContent className="min-w-0 space-y-5 p-4 sm:p-5">
-	          <div className="grid min-w-0 gap-2 sm:grid-cols-2 xl:grid-cols-6">
+		          <div className="grid min-w-0 gap-2 sm:grid-cols-2 xl:grid-cols-[repeat(auto-fit,minmax(140px,1fr))]">
 	            {credentialAdminSubpages.map((subpage) => {
 	              const Icon = subpage.icon;
 	              const isActive = activeCredentialSubpage === subpage.id;
@@ -2155,10 +2433,12 @@ export default function AdminSecurityTab({
 	                const stat =
 	                  subpage.id === "links"
 	                    ? `${credentialOverview?.stats.total ?? 0} link(s)`
-	                    : subpage.id === "members"
-	                      ? `${credentialOverview?.stats.teams ?? 0} equipa(s)`
-	                      : subpage.id === "printing"
-	                        ? `${printableCredentialMembers.length} passe(s) pronto(s)`
+		                    : subpage.id === "members"
+		                      ? `${credentialOverview?.stats.teams ?? 0} equipa(s)`
+		                      : subpage.id === "bulk-issue"
+		                        ? `${readyExhibitorMembers.length + readyNucleusCredentialMembers.length} pronto(s)`
+		                      : subpage.id === "printing"
+		                        ? `${printableCredentialMembers.length} passe(s) pronto(s)`
 	                        : subpage.id === "templates"
 	                          ? `${passTemplates.length} modelo(s)`
 	                          : `${incompleteProfiles?.stats.incomplete ?? 0} pendente(s)`;
@@ -2423,10 +2703,291 @@ export default function AdminSecurityTab({
 	                  </Button>
 	                </div>
 	                )}
-	              </div>
+		              </div>
 
-	              {showCredentialPrinting && (
-	              <div className="mt-3 min-w-0 rounded-xl border border-slate-200 bg-slate-50 p-3">
+		              {showCredentialBulkIssue && (
+		                <div className="mt-3 space-y-4">
+		                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+		                    <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+		                      <div className="min-w-0">
+		                        <p className="text-xs font-semibold uppercase tracking-wider text-slate-600">Passes oficiais já confirmados</p>
+		                        <p className="mt-1 text-xs leading-5 text-slate-500">
+		                          Emite num único PDF os expositores e membros do Núcleo que já completaram o perfil.
+		                        </p>
+		                      </div>
+		                      <div className="inline-flex w-fit rounded-lg border border-slate-200 bg-white p-1">
+		                        <Button
+		                          size="sm"
+		                          variant={passPrintMode === "color" ? "default" : "ghost"}
+		                          className="h-8 px-2 text-xs"
+		                          onClick={() => setPassPrintMode("color")}
+		                        >
+		                          <Palette className="mr-1 h-3.5 w-3.5" />
+		                          Cor
+		                        </Button>
+		                        <Button
+		                          size="sm"
+		                          variant={passPrintMode === "black-white" ? "default" : "ghost"}
+		                          className="h-8 px-2 text-xs"
+		                          onClick={() => setPassPrintMode("black-white")}
+		                        >
+		                          <FileBadge2 className="mr-1 h-3.5 w-3.5" />
+		                          P/B
+		                        </Button>
+		                      </div>
+		                    </div>
+		                    <div className="mt-3 grid gap-3 lg:grid-cols-2">
+		                      {[
+		                        {
+		                          category: "EXPOSITOR",
+		                          title: "Todos os expositores",
+		                          description: "Baixa os passes CR-80 de todos os projetos com perfil pronto.",
+		                          ready: readyExhibitorMembers.length,
+		                          total: allExhibitorMembers.length,
+		                          icon: Rocket,
+		                        },
+		                        {
+		                          category: "NUCLEO",
+		                          title: "Membros do núcleo",
+		                          description: "Baixa os passes de operação interna e equipas do evento.",
+		                          ready: readyNucleusCredentialMembers.length,
+		                          total: allNucleusCredentialMembers.length,
+		                          icon: Users,
+		                        },
+		                      ].map((item) => {
+		                        const Icon = item.icon;
+		                        const busy = `credentials-pass-batch-${item.category}`;
+		                        return (
+		                          <div key={item.category} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+		                            <div className="flex min-w-0 items-start justify-between gap-3">
+		                              <div className="min-w-0">
+		                                <p className="text-sm font-bold text-slate-950">{item.title}</p>
+		                                <p className="mt-1 text-xs leading-5 text-slate-500">{item.description}</p>
+		                              </div>
+		                              <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-sky-50 text-sky-700">
+		                                <Icon className="h-4 w-4" />
+		                              </span>
+		                            </div>
+		                            <div className="mt-4 grid grid-cols-2 gap-2 text-center">
+		                              <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2">
+		                                <p className="text-xl font-black text-emerald-700">{item.ready}</p>
+		                                <p className="text-[10px] font-semibold uppercase tracking-wider text-emerald-700/70">Prontos</p>
+		                              </div>
+		                              <div className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2">
+		                                <p className="text-xl font-black text-slate-800">{item.total}</p>
+		                                <p className="text-[10px] font-semibold uppercase tracking-wider text-slate-400">Total</p>
+		                              </div>
+		                            </div>
+		                            <Button
+		                              size="sm"
+		                              className="mt-4 w-full rounded-xl"
+		                              disabled={credentialBusyKey === busy || item.ready === 0}
+		                              onClick={() => void handleDownloadCredentialCategoryBatch(item.category, item.title)}
+		                            >
+		                              {credentialBusyKey === busy ? (
+		                                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+		                              ) : (
+		                                <Download className="mr-1.5 h-3.5 w-3.5" />
+		                              )}
+		                              Baixar lote
+		                            </Button>
+		                          </div>
+		                        );
+		                      })}
+		                    </div>
+		                  </div>
+
+		                  <div className="rounded-xl border border-slate-200 bg-white p-3">
+		                    <div className="flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+		                      <div className="min-w-0">
+		                        <p className="text-xs font-semibold uppercase tracking-wider text-slate-600">Passes genéricos operacionais</p>
+		                        <p className="mt-1 text-xs leading-5 text-slate-500">
+		                          Cria lotes editáveis para staff, protocolo, convidados e júri, sem precisar preencher um por um.
+		                        </p>
+		                      </div>
+		                      <Badge variant="outline" className="w-fit bg-slate-50 text-slate-700">
+		                        Criar e baixar no mesmo fluxo
+		                      </Badge>
+		                    </div>
+		                    <div className="mt-3 grid gap-3 xl:grid-cols-2">
+		                      {bulkIssueGenericPresets.map((preset) => {
+		                        const form = bulkIssueGenericForms[preset.key];
+		                        const previewCount = buildGenericPreviewItems(form).length;
+		                        const theme = credentialVisualThemeFor(
+		                          {
+		                            category: form.category ?? preset.key,
+		                            team: form.team,
+		                            role: form.role,
+		                            accessLevel: form.accessLevel,
+		                          },
+		                          passTemplates,
+		                        );
+		                        const busy = `bulk-issue-generic-${preset.key}`;
+		                        return (
+		                          <div key={preset.key} className="rounded-2xl border p-3" style={credentialPanelStyle(theme)}>
+		                            <div className="flex items-start justify-between gap-3">
+		                              <div className="min-w-0">
+		                                <p className="text-sm font-bold" style={{ color: theme.primaryColor }}>{preset.label}</p>
+		                                <p className="mt-1 text-xs leading-5 text-slate-600">{preset.description}</p>
+		                              </div>
+		                              <Badge variant="outline" style={credentialChipStyle(theme)}>
+		                                {previewCount} passe(s)
+		                              </Badge>
+		                            </div>
+		                            <div className="mt-3 grid gap-2 md:grid-cols-2">
+		                              <label className="space-y-1">
+		                                <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Prefixo</span>
+		                                <Input
+		                                  className="h-9 bg-white text-xs"
+		                                  value={form.prefix ?? ""}
+		                                  onChange={(event) => updateBulkIssueGenericForm(preset.key, { prefix: event.target.value })}
+		                                />
+		                              </label>
+		                              <label className="space-y-1">
+		                                <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Quantidade</span>
+		                                <Input
+		                                  type="number"
+		                                  min={1}
+		                                  max={80}
+		                                  className="h-9 bg-white text-xs"
+		                                  value={form.quantity}
+		                                  onChange={(event) => updateBulkIssueGenericForm(preset.key, { quantity: Number(event.target.value) })}
+		                                />
+		                              </label>
+		                              <label className="space-y-1">
+		                                <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Função</span>
+		                                <Input
+		                                  className="h-9 bg-white text-xs"
+		                                  value={form.role ?? ""}
+		                                  onChange={(event) => updateBulkIssueGenericForm(preset.key, { role: event.target.value, accessLevel: event.target.value })}
+		                                />
+		                              </label>
+		                              <label className="space-y-1">
+		                                <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Início</span>
+		                                <Input
+		                                  type="number"
+		                                  min={1}
+		                                  className="h-9 bg-white text-xs"
+		                                  value={form.startNumber ?? 1}
+		                                  onChange={(event) => updateBulkIssueGenericForm(preset.key, { startNumber: Number(event.target.value) })}
+		                                />
+		                              </label>
+		                            </div>
+		                            <Button
+		                              size="sm"
+		                              className="mt-3 w-full rounded-xl"
+		                              style={{ backgroundColor: theme.primaryColor, borderColor: theme.primaryColor, color: "#ffffff" }}
+		                              disabled={credentialBusyKey === busy}
+		                              onClick={() => void handleCreateAndDownloadGenericBatch(preset.key)}
+		                            >
+		                              {credentialBusyKey === busy ? (
+		                                <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+		                              ) : (
+		                                <FileBadge2 className="mr-1.5 h-3.5 w-3.5" />
+		                              )}
+		                              Criar e baixar lote
+		                            </Button>
+		                          </div>
+		                        );
+		                      })}
+		                    </div>
+		                  </div>
+
+		                  <div className="rounded-xl border border-amber-200 bg-amber-50/70 p-3">
+		                    <div className="flex min-w-0 flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
+		                      <div className="min-w-0">
+		                        <p className="flex items-center gap-2 text-sm font-bold text-amber-950">
+		                          <Crown className="h-4 w-4" />
+		                          Passe VIP da coordenação
+		                        </p>
+		                        <p className="mt-1 text-xs leading-5 text-amber-900/80">
+		                          Usa categoria de convidado com acesso VIP, mantendo nome, função e links editáveis antes da emissão.
+		                        </p>
+		                      </div>
+		                      <Badge variant="outline" className="w-fit border-amber-300 bg-white text-amber-800">VIP</Badge>
+		                    </div>
+		                    <div className="mt-3 grid gap-2 md:grid-cols-2 xl:grid-cols-4">
+		                      <label className="space-y-1">
+		                        <span className="text-[11px] font-semibold uppercase tracking-wider text-amber-900/70">Nome</span>
+		                        <Input
+		                          className="h-9 bg-white text-xs"
+		                          value={bulkIssueVipForm.name}
+		                          onChange={(event) => setBulkIssueVipForm((current) => ({ ...current, name: event.target.value }))}
+		                        />
+		                      </label>
+		                      <label className="space-y-1">
+		                        <span className="text-[11px] font-semibold uppercase tracking-wider text-amber-900/70">Função</span>
+		                        <Input
+		                          className="h-9 bg-white text-xs"
+		                          value={bulkIssueVipForm.role}
+		                          onChange={(event) => setBulkIssueVipForm((current) => ({ ...current, role: event.target.value }))}
+		                        />
+		                      </label>
+		                      <label className="space-y-1">
+		                        <span className="text-[11px] font-semibold uppercase tracking-wider text-amber-900/70">Equipa</span>
+		                        <Input
+		                          className="h-9 bg-white text-xs"
+		                          value={bulkIssueVipForm.team}
+		                          onChange={(event) => setBulkIssueVipForm((current) => ({ ...current, team: event.target.value }))}
+		                        />
+		                      </label>
+		                      <label className="space-y-1">
+		                        <span className="text-[11px] font-semibold uppercase tracking-wider text-amber-900/70">Organização</span>
+		                        <Input
+		                          className="h-9 bg-white text-xs"
+		                          value={bulkIssueVipForm.organization}
+		                          onChange={(event) => setBulkIssueVipForm((current) => ({ ...current, organization: event.target.value }))}
+		                        />
+		                      </label>
+		                      <label className="space-y-1">
+		                        <span className="text-[11px] font-semibold uppercase tracking-wider text-amber-900/70">Instagram</span>
+		                        <Input
+		                          className="h-9 bg-white text-xs"
+		                          value={bulkIssueVipForm.instagramUrl}
+		                          onChange={(event) => setBulkIssueVipForm((current) => ({ ...current, instagramUrl: event.target.value }))}
+		                          placeholder="@uorconnect"
+		                        />
+		                      </label>
+		                      <label className="space-y-1">
+		                        <span className="text-[11px] font-semibold uppercase tracking-wider text-amber-900/70">LinkedIn</span>
+		                        <Input
+		                          className="h-9 bg-white text-xs"
+		                          value={bulkIssueVipForm.linkedinUrl}
+		                          onChange={(event) => setBulkIssueVipForm((current) => ({ ...current, linkedinUrl: event.target.value }))}
+		                          placeholder="linkedin.com/in/..."
+		                        />
+		                      </label>
+		                      <label className="space-y-1">
+		                        <span className="text-[11px] font-semibold uppercase tracking-wider text-amber-900/70">Website</span>
+		                        <Input
+		                          className="h-9 bg-white text-xs"
+		                          value={bulkIssueVipForm.websiteUrl}
+		                          onChange={(event) => setBulkIssueVipForm((current) => ({ ...current, websiteUrl: event.target.value }))}
+		                          placeholder="https://..."
+		                        />
+		                      </label>
+		                      <div className="flex items-end">
+		                        <Button
+		                          size="sm"
+		                          className="h-9 w-full rounded-xl bg-amber-700 text-white hover:bg-amber-800"
+		                          disabled={credentialBusyKey === "bulk-issue-vip"}
+		                          onClick={() => void handleCreateAndDownloadVipBatch()}
+		                        >
+		                          {credentialBusyKey === "bulk-issue-vip" ? (
+		                            <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+		                          ) : (
+		                            <Crown className="mr-1.5 h-3.5 w-3.5" />
+		                          )}
+		                          Criar passe VIP
+		                        </Button>
+		                      </div>
+		                    </div>
+		                  </div>
+		                </div>
+		              )}
+
+		              {showCredentialPrinting && (
+		              <div className="mt-3 min-w-0 rounded-xl border border-slate-200 bg-slate-50 p-3">
                 <div className="flex min-w-0 flex-col gap-3 2xl:flex-row 2xl:items-center 2xl:justify-between">
                   <div className="min-w-0">
                     <p className="text-xs font-semibold uppercase tracking-wider text-slate-600">Impressao de passes</p>

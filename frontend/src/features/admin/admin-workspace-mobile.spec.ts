@@ -139,4 +139,16 @@ describe("AdminWorkspace mobile navigation", () => {
     expect(apiSource).toContain("confirmReset");
     expect(apiSource).toContain("/passport/admin/reset/confirm");
   });
+
+  it("organiza candidaturas com subpagina de projetos e obrigações por membro", () => {
+    const source = readSource("./AdminWorkspace.tsx");
+
+    expect(source).toContain("submissionSubpages");
+    expect(source).toContain("Projetos e obrigações");
+    expect(source).toContain("activeSubmissionSubpage");
+    expect(source).toContain("teamAllConfirmed");
+    expect(source).toContain("teamMembers.map");
+    expect(source).toContain("Foto do projeto");
+    expect(source).toContain("Baixar manual");
+  });
 });
