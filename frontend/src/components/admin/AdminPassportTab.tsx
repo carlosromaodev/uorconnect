@@ -66,6 +66,7 @@ const missionQrTypeOptions = [
 ] as const;
 
 const surpriseEffectOptions = [
+  { value: "UNIVERSAL_DYNAMIC", label: "Dinâmico universal", hint: "Decide no scan: pode dar, tirar, multiplicar, dividir ou revelar pista", color: "border-slate-200 bg-slate-50 text-slate-800", icon: Sparkles },
   { value: "ADD_POINTS", label: "Pontos", hint: "Adiciona pontos", color: "border-emerald-200 bg-emerald-50 text-emerald-800", icon: Gift },
   { value: "SUBTRACT_POINTS", label: "Risco", hint: "Tira pontos", color: "border-rose-200 bg-rose-50 text-rose-800", icon: MinusCircle },
   { value: "MULTIPLY_BONUS", label: "Turbo", hint: "Multiplica pontos", color: "border-orange-200 bg-orange-50 text-orange-800", icon: Zap },
@@ -96,11 +97,19 @@ type ChallengeDraft = {
 type SurpriseDraft = {
   name: string;
   description: string;
-  effectType: "ADD_POINTS" | "SUBTRACT_POINTS" | "MULTIPLY_BONUS" | "DIVIDE_BONUS";
+  effectType: "ADD_POINTS" | "SUBTRACT_POINTS" | "MULTIPLY_BONUS" | "DIVIDE_BONUS" | "UNIVERSAL_DYNAMIC";
   effectValue: string;
   batchQuantity: string;
   codePrefix: string;
   startNumber: string;
+  universalAddWeight: string;
+  universalSubtractWeight: string;
+  universalMultiplyWeight: string;
+  universalDivideWeight: string;
+  universalHintWeight: string;
+  universalRecoveryWeight: string;
+  universalLossAddWeight: string;
+  universalLossSubtractWeight: string;
   convertAfterLosses: string;
   convertToEffectValue: string;
   hintAfterLoss: string;
@@ -150,6 +159,14 @@ const defaultSurpriseDraft: SurpriseDraft = {
   batchQuantity: "12",
   codePrefix: "QR",
   startNumber: "1",
+  universalAddWeight: "50",
+  universalSubtractWeight: "25",
+  universalMultiplyWeight: "10",
+  universalDivideWeight: "10",
+  universalHintWeight: "5",
+  universalRecoveryWeight: "0",
+  universalLossAddWeight: "70",
+  universalLossSubtractWeight: "10",
   convertAfterLosses: "",
   convertToEffectValue: "15",
   hintAfterLoss: "",
@@ -468,6 +485,41 @@ export default function AdminPassportTab() {
   };
 
   const buildSurpriseDynamicRules = () => {
+    if (surpriseDraft.effectType === "UNIVERSAL_DYNAMIC") {
+      const afterLosses = Number(surpriseDraft.convertAfterLosses) || 4;
+      return {
+        mode: "UNIVERSAL_DYNAMIC" as const,
+        weights: {
+          ADD_POINTS: Number(surpriseDraft.universalAddWeight) || 0,
+          SUBTRACT_POINTS: Number(surpriseDraft.universalSubtractWeight) || 0,
+          MULTIPLY_BONUS: Number(surpriseDraft.universalMultiplyWeight) || 0,
+          DIVIDE_BONUS: Number(surpriseDraft.universalDivideWeight) || 0,
+          NEUTRAL_HINT: Number(surpriseDraft.universalHintWeight) || 0,
+          RECOVERY_POINTS: Number(surpriseDraft.universalRecoveryWeight) || 0,
+        },
+        values: {
+          ADD_POINTS: Number(surpriseDraft.effectValue) || 10,
+          SUBTRACT_POINTS: Math.max(1, Math.min(50, Number(surpriseDraft.convertToEffectValue) || 5)),
+          MULTIPLY_BONUS: 2,
+          DIVIDE_BONUS: 2,
+          NEUTRAL_HINT: 0,
+          RECOVERY_POINTS: 10,
+        },
+        lossAdjustment: {
+          afterLosses,
+          weights: {
+            ADD_POINTS: Number(surpriseDraft.universalLossAddWeight) || 0,
+            SUBTRACT_POINTS: Number(surpriseDraft.universalLossSubtractWeight) || 0,
+            MULTIPLY_BONUS: Number(surpriseDraft.universalMultiplyWeight) || 0,
+            DIVIDE_BONUS: Number(surpriseDraft.universalDivideWeight) || 0,
+            NEUTRAL_HINT: Number(surpriseDraft.universalHintWeight) || 0,
+            RECOVERY_POINTS: Number(surpriseDraft.universalRecoveryWeight) || 0,
+          },
+        },
+        hintAfterLoss: surpriseDraft.hintAfterLoss.trim() || null,
+      };
+    }
+
     const convertAfterLosses = Number(surpriseDraft.convertAfterLosses);
     if (!Number.isFinite(convertAfterLosses) || convertAfterLosses < 1) return null;
     const convertToEffectValue = Number(surpriseDraft.convertToEffectValue) || 15;
@@ -1161,6 +1213,67 @@ export default function AdminPassportTab() {
                   />
                 </div>
               </div>
+              {surpriseDraft.effectType === "UNIVERSAL_DYNAMIC" ? (
+                <div className="rounded-2xl border border-slate-200 bg-slate-50 p-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div>
+                      <p className="text-xs font-bold uppercase tracking-wide text-slate-900">Dinâmico universal</p>
+                      <p className="mt-0.5 text-[11px] text-slate-600">Todos os QR do lote podem fazer tudo; a decisão muda por QR individual conforme o histórico daquele código.</p>
+                    </div>
+                    <span className="rounded-full border border-orange-200 bg-orange-50 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-orange-800">Página explicativa a cada 3 páginas</span>
+                  </div>
+                  <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
+                    {[
+                      ["Peso +", "universalAddWeight"],
+                      ["Peso -", "universalSubtractWeight"],
+                      ["Peso x", "universalMultiplyWeight"],
+                      ["Peso /", "universalDivideWeight"],
+                      ["Peso pista", "universalHintWeight"],
+                      ["Peso recuperação", "universalRecoveryWeight"],
+                    ].map(([label, key]) => (
+                      <div key={key}>
+                        <label className="mb-1 block text-[11px] font-semibold text-slate-600">{label}</label>
+                        <Input
+                          value={String(surpriseDraft[key as keyof SurpriseDraft] ?? "")}
+                          onChange={(event) => setSurpriseDraft((current) => ({ ...current, [key]: event.target.value.replace(/\D/g, "") }))}
+                          className="h-9 rounded-xl bg-white text-sm"
+                          inputMode="numeric"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                  <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
+                    <div>
+                      <label className="mb-1 block text-[11px] font-semibold text-slate-600">Após X perdas</label>
+                      <Input
+                        value={surpriseDraft.convertAfterLosses}
+                        onChange={(event) => setSurpriseDraft((current) => ({ ...current, convertAfterLosses: event.target.value.replace(/\D/g, "") }))}
+                        className="h-9 rounded-xl bg-white text-sm"
+                        inputMode="numeric"
+                        placeholder="4"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-[11px] font-semibold text-slate-600">Peso + após perdas</label>
+                      <Input
+                        value={surpriseDraft.universalLossAddWeight}
+                        onChange={(event) => setSurpriseDraft((current) => ({ ...current, universalLossAddWeight: event.target.value.replace(/\D/g, "") }))}
+                        className="h-9 rounded-xl bg-white text-sm"
+                        inputMode="numeric"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-[11px] font-semibold text-slate-600">Peso - após perdas</label>
+                      <Input
+                        value={surpriseDraft.universalLossSubtractWeight}
+                        onChange={(event) => setSurpriseDraft((current) => ({ ...current, universalLossSubtractWeight: event.target.value.replace(/\D/g, "") }))}
+                        className="h-9 rounded-xl bg-white text-sm"
+                        inputMode="numeric"
+                      />
+                    </div>
+                  </div>
+                </div>
+              ) : null}
               <div className="grid grid-cols-2 gap-2">
                 <div>
                   <label className="mb-1.5 block text-xs font-semibold text-slate-600">Raridade</label>

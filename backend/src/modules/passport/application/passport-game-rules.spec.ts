@@ -957,6 +957,140 @@ describe("passport game rules", () => {
     });
   });
 
+  it("resolves a universal dynamic QR from that QR's own loss history only", async () => {
+    prismaMock.passportPointLedger.aggregate.mockResolvedValue({ _sum: { points: 30 } });
+    prismaMock.passportSurpriseEffectLedger.aggregate.mockResolvedValue({ _sum: { deltaPoints: 0 } });
+    prismaMock.passportSurpriseEffectLedger.count.mockImplementation(({ where }) => {
+      if (where?.studentNumber) return Promise.resolve(0);
+      if (where?.surpriseQrId === 901 && where?.deltaPoints?.lt === 0) return Promise.resolve(4);
+      if (where?.surpriseQrId === 902 && where?.deltaPoints?.lt === 0) return Promise.resolve(0);
+      return Promise.resolve(0);
+    });
+
+    const dynamicRulesJson = JSON.stringify({
+      mode: "UNIVERSAL_DYNAMIC",
+      weights: {
+        ADD_POINTS: 0,
+        SUBTRACT_POINTS: 100,
+        MULTIPLY_BONUS: 0,
+        DIVIDE_BONUS: 0,
+        NEUTRAL_HINT: 0,
+        RECOVERY_POINTS: 0,
+      },
+      values: {
+        ADD_POINTS: 18,
+        SUBTRACT_POINTS: 5,
+      },
+      lossAdjustment: {
+        afterLosses: 4,
+        weights: {
+          ADD_POINTS: 100,
+          SUBTRACT_POINTS: 0,
+          MULTIPLY_BONUS: 0,
+          DIVIDE_BONUS: 0,
+          NEUTRAL_HINT: 0,
+          RECOVERY_POINTS: 0,
+        },
+      },
+    });
+
+    prismaMock.passportSurpriseQr.findUnique
+      .mockResolvedValueOnce({
+        id: 901,
+        qrActionId: 9010,
+        displayCode: "QR-001",
+        batchCode: "surprise-test",
+        name: "QR Universal #001",
+        description: "QR polivalente",
+        effectType: "UNIVERSAL_DYNAMIC",
+        effectValue: 0,
+        dynamicRulesJson,
+        targetScope: "SURPRISE_BONUS",
+        rarity: "COMMON",
+        visibility: "VISIBLE",
+        maxUsesTotal: null,
+        maxUsesPerStudent: 1,
+        negativeCapPerStudent: 20,
+        active: true,
+        startsAt: null,
+        endsAt: null,
+      })
+      .mockResolvedValueOnce({
+        id: 902,
+        qrActionId: 9020,
+        displayCode: "QR-002",
+        batchCode: "surprise-test",
+        name: "QR Universal #002",
+        description: "QR polivalente",
+        effectType: "UNIVERSAL_DYNAMIC",
+        effectValue: 0,
+        dynamicRulesJson,
+        targetScope: "SURPRISE_BONUS",
+        rarity: "COMMON",
+        visibility: "VISIBLE",
+        maxUsesTotal: null,
+        maxUsesPerStudent: 1,
+        negativeCapPerStudent: 20,
+        active: true,
+        startsAt: null,
+        endsAt: null,
+      });
+
+    const boosted = await awardPassportForQrActionScan({
+      student,
+      action: {
+        id: 9010,
+        type: "FAIR_BONUS_QR",
+        label: "QR Universal #001",
+        targetId: null,
+        targetMeta: null,
+        eventKey: "passport-surprise",
+        eventLabel: "Caça aos QR",
+        passportMissionId: null,
+      },
+      qrActionScan: {
+        id: 8001,
+        result: "SUCCESS",
+        message: "QR surpresa validado.",
+        scannedAt: new Date("2026-05-18T09:15:00.000Z"),
+      },
+    });
+
+    const stillRisky = await awardPassportForQrActionScan({
+      student,
+      action: {
+        id: 9020,
+        type: "FAIR_BONUS_QR",
+        label: "QR Universal #002",
+        targetId: null,
+        targetMeta: null,
+        eventKey: "passport-surprise",
+        eventLabel: "Caça aos QR",
+        passportMissionId: null,
+      },
+      qrActionScan: {
+        id: 8002,
+        result: "SUCCESS",
+        message: "QR surpresa validado.",
+        scannedAt: new Date("2026-05-18T09:16:00.000Z"),
+      },
+    });
+
+    expect(boosted.pointsAwarded).toBe(18);
+    expect(boosted.surprise?.effectType).toBe("ADD_POINTS");
+    expect(stillRisky.pointsAwarded).toBe(-5);
+    expect(stillRisky.surprise?.effectType).toBe("SUBTRACT_POINTS");
+
+    const firstLedgerCreate = prismaMock.passportSurpriseEffectLedger.create.mock.calls[0]?.[0];
+    const firstMetadata = JSON.parse(firstLedgerCreate.data.metadataJson);
+    expect(firstMetadata.dynamicActivated).toBe(true);
+    expect(firstMetadata.resolverVersion).toBe("universal-dynamic-v1");
+    expect(firstMetadata.seed).toContain("901");
+    expect(firstMetadata.selectedEffectType).toBe("ADD_POINTS");
+    expect(firstMetadata.adjustedWeights.ADD_POINTS).toBe(100);
+    expect(firstMetadata.qrStats.lossCount).toBe(4);
+  });
+
   it("resets the passport challenge without deleting mission and challenge configuration", async () => {
     const result = await resetPassportChallengeProgress();
 

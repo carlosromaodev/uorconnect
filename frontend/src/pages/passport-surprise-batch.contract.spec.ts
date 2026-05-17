@@ -15,6 +15,9 @@ describe("admin passport surprise batch UI contract", () => {
     expect(source).toContain("Quantidade");
     expect(source).toContain("QR #001");
     expect(source).toContain("Após X perdas");
+    expect(source).toContain("Dinâmico universal");
+    expect(source).toContain("Peso +");
+    expect(source).toContain("Página explicativa a cada 3 páginas");
     expect(source).toContain("Baixar lote");
   });
 
@@ -25,6 +28,9 @@ describe("admin passport surprise batch UI contract", () => {
     );
 
     expect(apiSource).toContain("DigitalPassportSurpriseQrBatchInput");
+    expect(apiSource).toContain("UNIVERSAL_DYNAMIC");
+    expect(apiSource).toContain("lossAdjustment");
+    expect(apiSource).toContain("NEUTRAL_HINT");
     expect(apiSource).toContain("createSurpriseQrBatch");
     expect(apiSource).toContain("surpriseQrBatchPdf");
   });

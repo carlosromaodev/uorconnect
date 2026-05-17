@@ -106,9 +106,30 @@ export const PASSPORT_SURPRISE_POINTS_CAP = 120;
 export const PASSPORT_RECOVERY_PRICE_KZ = 300;
 export const PASSPORT_RECOVERY_POINTS = 60;
 
-export type PassportSurpriseEffectType = "ADD_POINTS" | "SUBTRACT_POINTS" | "MULTIPLY_BONUS" | "DIVIDE_BONUS";
+export type PassportSurpriseConcreteEffectType =
+  | "ADD_POINTS"
+  | "SUBTRACT_POINTS"
+  | "MULTIPLY_BONUS"
+  | "DIVIDE_BONUS"
+  | "NEUTRAL_HINT"
+  | "RECOVERY_POINTS";
+
+export type PassportSurpriseEffectType =
+  | PassportSurpriseConcreteEffectType
+  | "UNIVERSAL_DYNAMIC";
+
+type PassportSurpriseEffectWeights = Partial<Record<PassportSurpriseConcreteEffectType, number>>;
+type PassportSurpriseEffectValues = Partial<Record<PassportSurpriseConcreteEffectType, number>>;
 
 type PassportSurpriseDynamicRules = {
+  mode?: "UNIVERSAL_DYNAMIC" | null;
+  weights?: PassportSurpriseEffectWeights | null;
+  values?: PassportSurpriseEffectValues | null;
+  lossAdjustment?: {
+    afterLosses?: number | null;
+    weights?: PassportSurpriseEffectWeights | null;
+    values?: PassportSurpriseEffectValues | null;
+  } | null;
   convertAfterLosses?: number | null;
   convertToEffectType?: PassportSurpriseEffectType | null;
   convertToEffectValue?: number | null;
@@ -936,10 +957,24 @@ export async function recordPassportReferralJoin(input: {
 }
 
 function normalizeSurpriseEffectType(value: string): PassportSurpriseEffectType {
-  if (value === "ADD_POINTS" || value === "SUBTRACT_POINTS" || value === "MULTIPLY_BONUS" || value === "DIVIDE_BONUS") {
+  if (
+    value === "ADD_POINTS" ||
+    value === "SUBTRACT_POINTS" ||
+    value === "MULTIPLY_BONUS" ||
+    value === "DIVIDE_BONUS" ||
+    value === "NEUTRAL_HINT" ||
+    value === "RECOVERY_POINTS" ||
+    value === "UNIVERSAL_DYNAMIC"
+  ) {
     return value;
   }
   throw new Error("Efeito de QR surpresa inválido.");
+}
+
+function normalizeConcreteSurpriseEffectType(value: string): PassportSurpriseConcreteEffectType {
+  const normalized = normalizeSurpriseEffectType(value);
+  if (normalized === "UNIVERSAL_DYNAMIC") return "ADD_POINTS";
+  return normalized;
 }
 
 function qrActionTypeForSurpriseEffect(effectType: string) {
@@ -962,10 +997,90 @@ function normalizeSurpriseVisibility(value?: string | null) {
 
 function clampSurpriseEffectValue(effectType: PassportSurpriseEffectType, value: number) {
   const normalized = Number.isFinite(value) ? Math.round(value) : 0;
+  if (effectType === "UNIVERSAL_DYNAMIC" || effectType === "NEUTRAL_HINT") {
+    return Math.max(0, Math.min(500, normalized));
+  }
   if (effectType === "MULTIPLY_BONUS" || effectType === "DIVIDE_BONUS") {
     return Math.max(2, Math.min(5, normalized || 2));
   }
   return Math.max(0, Math.min(500, normalized));
+}
+
+const universalSurpriseEffectTypes: PassportSurpriseConcreteEffectType[] = [
+  "ADD_POINTS",
+  "SUBTRACT_POINTS",
+  "MULTIPLY_BONUS",
+  "DIVIDE_BONUS",
+  "NEUTRAL_HINT",
+  "RECOVERY_POINTS",
+];
+
+const defaultUniversalSurpriseWeights: Record<PassportSurpriseConcreteEffectType, number> = {
+  ADD_POINTS: 50,
+  SUBTRACT_POINTS: 25,
+  MULTIPLY_BONUS: 10,
+  DIVIDE_BONUS: 10,
+  NEUTRAL_HINT: 5,
+  RECOVERY_POINTS: 0,
+};
+
+const defaultUniversalSurpriseValues: Record<PassportSurpriseConcreteEffectType, number> = {
+  ADD_POINTS: 10,
+  SUBTRACT_POINTS: 5,
+  MULTIPLY_BONUS: 2,
+  DIVIDE_BONUS: 2,
+  NEUTRAL_HINT: 0,
+  RECOVERY_POINTS: 10,
+};
+
+function parseSurpriseWeights(value: unknown): PassportSurpriseEffectWeights | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  const weights: PassportSurpriseEffectWeights = {};
+  for (const effectType of universalSurpriseEffectTypes) {
+    const numeric = Number(record[effectType]);
+    if (Number.isFinite(numeric)) {
+      weights[effectType] = Math.max(0, Math.min(1000, Math.floor(numeric)));
+    }
+  }
+  return Object.keys(weights).length > 0 ? weights : null;
+}
+
+function parseSurpriseValues(value: unknown): PassportSurpriseEffectValues | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const record = value as Record<string, unknown>;
+  const values: PassportSurpriseEffectValues = {};
+  for (const effectType of universalSurpriseEffectTypes) {
+    const numeric = Number(record[effectType]);
+    if (Number.isFinite(numeric)) {
+      values[effectType] = clampSurpriseEffectValue(effectType, numeric);
+    }
+  }
+  return Object.keys(values).length > 0 ? values : null;
+}
+
+function normalizeSurpriseWeights(input?: PassportSurpriseEffectWeights | null) {
+  if (!input) return null;
+  const weights: PassportSurpriseEffectWeights = {};
+  for (const effectType of universalSurpriseEffectTypes) {
+    const numeric = Number(input[effectType]);
+    if (Number.isFinite(numeric)) {
+      weights[effectType] = Math.max(0, Math.min(1000, Math.floor(numeric)));
+    }
+  }
+  return Object.keys(weights).length > 0 ? weights : null;
+}
+
+function normalizeSurpriseValues(input?: PassportSurpriseEffectValues | null) {
+  if (!input) return null;
+  const values: PassportSurpriseEffectValues = {};
+  for (const effectType of universalSurpriseEffectTypes) {
+    const numeric = Number(input[effectType]);
+    if (Number.isFinite(numeric)) {
+      values[effectType] = clampSurpriseEffectValue(effectType, numeric);
+    }
+  }
+  return Object.keys(values).length > 0 ? values : null;
 }
 
 function parseSurpriseDynamicRules(value?: string | null): PassportSurpriseDynamicRules | null {
@@ -979,7 +1094,24 @@ function parseSurpriseDynamicRules(value?: string | null): PassportSurpriseDynam
       ? normalizeSurpriseEffectType(record.convertToEffectType)
       : null;
     const convertToEffectValue = Number(record.convertToEffectValue);
+    const lossAdjustmentRecord =
+      record.lossAdjustment && typeof record.lossAdjustment === "object" && !Array.isArray(record.lossAdjustment)
+        ? record.lossAdjustment as Record<string, unknown>
+        : null;
+    const lossAdjustmentAfterLosses = Number(lossAdjustmentRecord?.afterLosses);
     return {
+      mode: record.mode === "UNIVERSAL_DYNAMIC" ? "UNIVERSAL_DYNAMIC" : null,
+      weights: parseSurpriseWeights(record.weights),
+      values: parseSurpriseValues(record.values),
+      lossAdjustment: lossAdjustmentRecord
+        ? {
+            afterLosses: Number.isFinite(lossAdjustmentAfterLosses) && lossAdjustmentAfterLosses > 0
+              ? Math.min(999, Math.floor(lossAdjustmentAfterLosses))
+              : null,
+            weights: parseSurpriseWeights(lossAdjustmentRecord.weights),
+            values: parseSurpriseValues(lossAdjustmentRecord.values),
+          }
+        : null,
       convertAfterLosses: Number.isFinite(convertAfterLosses) && convertAfterLosses > 0
         ? Math.min(999, Math.floor(convertAfterLosses))
         : null,
@@ -995,13 +1127,42 @@ function parseSurpriseDynamicRules(value?: string | null): PassportSurpriseDynam
 }
 
 function normalizeSurpriseDynamicRules(input?: PassportSurpriseDynamicRules | null) {
-  if (!input?.convertAfterLosses) return null;
+  if (!input) return null;
+  const weights = normalizeSurpriseWeights(input.weights);
+  const values = normalizeSurpriseValues(input.values);
+  const lossAdjustmentWeights = normalizeSurpriseWeights(input.lossAdjustment?.weights);
+  const lossAdjustmentValues = normalizeSurpriseValues(input.lossAdjustment?.values);
+  const lossAdjustmentAfterLosses = Number(input.lossAdjustment?.afterLosses);
+  const hasUniversalRules = input.mode === "UNIVERSAL_DYNAMIC" || Boolean(weights) || Boolean(values) || Boolean(lossAdjustmentWeights);
+  const normalized: PassportSurpriseDynamicRules = {};
+
+  if (hasUniversalRules) {
+    normalized.mode = "UNIVERSAL_DYNAMIC";
+    if (weights) normalized.weights = weights;
+    if (values) normalized.values = values;
+    if (
+      Number.isFinite(lossAdjustmentAfterLosses) &&
+      lossAdjustmentAfterLosses > 0
+    ) {
+      normalized.lossAdjustment = {
+        afterLosses: Math.max(1, Math.min(999, Math.floor(lossAdjustmentAfterLosses))),
+        ...(lossAdjustmentWeights ? { weights: lossAdjustmentWeights } : {}),
+        ...(lossAdjustmentValues ? { values: lossAdjustmentValues } : {}),
+      };
+    }
+  }
+
+  if (!input.convertAfterLosses) {
+    return Object.keys(normalized).length > 0 ? JSON.stringify(normalized) : null;
+  }
+
   const convertToEffectType = input.convertToEffectType ?? "ADD_POINTS";
   const convertToEffectValue = clampSurpriseEffectValue(
     convertToEffectType,
     input.convertToEffectValue ?? PASSPORT_RECOVERY_POINTS,
   );
   return JSON.stringify({
+    ...normalized,
     convertAfterLosses: Math.max(1, Math.min(999, Math.floor(input.convertAfterLosses))),
     convertToEffectType,
     convertToEffectValue,
@@ -1011,15 +1172,123 @@ function normalizeSurpriseDynamicRules(input?: PassportSurpriseDynamicRules | nu
 
 export function resolveDynamicSurpriseEffect(
   surprise: PassportSurpriseQrContext,
-  stats: { lossCount: number },
+  stats: {
+    lossCount: number;
+    gainCount?: number;
+    neutralCount?: number;
+    studentLossCount?: number;
+    qrActionScanId?: number;
+    studentNumber?: string;
+    scannedAt?: Date;
+  },
 ) {
   const rules = parseSurpriseDynamicRules(surprise.dynamicRulesJson);
+  const isUniversalDynamic = surprise.effectType === "UNIVERSAL_DYNAMIC" || rules?.mode === "UNIVERSAL_DYNAMIC";
+
+  if (isUniversalDynamic) {
+    const baseWeights = {
+      ...defaultUniversalSurpriseWeights,
+      ...(rules?.weights ?? {}),
+    };
+    let adjustedWeights = { ...baseWeights };
+    let values = {
+      ...defaultUniversalSurpriseValues,
+      ...(rules?.values ?? {}),
+    };
+    const reasons = ["UNIVERSAL_DYNAMIC"];
+
+    if (
+      rules?.lossAdjustment?.afterLosses &&
+      stats.lossCount >= rules.lossAdjustment.afterLosses
+    ) {
+      adjustedWeights = {
+        ...adjustedWeights,
+        ...(rules.lossAdjustment.weights ?? {}),
+      };
+      values = {
+        ...values,
+        ...(rules.lossAdjustment.values ?? {}),
+      };
+      reasons.push(`QR_LOSS_THRESHOLD_${rules.lossAdjustment.afterLosses}`);
+    }
+
+    if ((stats.studentLossCount ?? 0) >= 2) {
+      adjustedWeights.SUBTRACT_POINTS = 0;
+      reasons.push("STUDENT_LOSS_GUARD");
+    }
+
+    const totalWeight = universalSurpriseEffectTypes.reduce(
+      (sum, effectType) => sum + Math.max(0, adjustedWeights[effectType] ?? 0),
+      0,
+    );
+    const safeWeights = totalWeight > 0
+      ? adjustedWeights
+      : { ...defaultUniversalSurpriseWeights, SUBTRACT_POINTS: 0 };
+    const safeTotalWeight = universalSurpriseEffectTypes.reduce(
+      (sum, effectType) => sum + Math.max(0, safeWeights[effectType] ?? 0),
+      0,
+    );
+    const seed = [
+      "passport-surprise-universal-v1",
+      surprise.id,
+      surprise.displayCode ?? "",
+      stats.studentNumber ?? "",
+      stats.qrActionScanId ?? "",
+      stats.scannedAt?.toISOString() ?? "",
+      stats.lossCount,
+      stats.gainCount ?? 0,
+    ].join("|");
+    const hash = createHash("sha256").update(seed).digest("hex");
+    const randomRoll = safeTotalWeight > 0
+      ? parseInt(hash.slice(0, 12), 16) % safeTotalWeight
+      : 0;
+    let cursor = 0;
+    let selectedEffectType: PassportSurpriseConcreteEffectType = "ADD_POINTS";
+
+    for (const effectType of universalSurpriseEffectTypes) {
+      cursor += Math.max(0, safeWeights[effectType] ?? 0);
+      if (randomRoll < cursor) {
+        selectedEffectType = effectType;
+        break;
+      }
+    }
+
+    const effectValue = clampSurpriseEffectValue(
+      selectedEffectType,
+      values[selectedEffectType] ?? defaultUniversalSurpriseValues[selectedEffectType],
+    );
+
+    return {
+      surprise: {
+        ...surprise,
+        effectType: selectedEffectType,
+        effectValue,
+      },
+      dynamicActivated: true,
+      rules,
+      resolver: {
+        resolverVersion: "universal-dynamic-v1",
+        seed,
+        randomRoll,
+        baseWeights,
+        adjustedWeights: safeWeights,
+        selectedEffectType,
+        reasons,
+        qrStats: {
+          lossCount: stats.lossCount,
+          gainCount: stats.gainCount ?? 0,
+          neutralCount: stats.neutralCount ?? 0,
+        },
+      },
+    };
+  }
+
   const shouldConvert = surprise.effectType === "SUBTRACT_POINTS"
     && Boolean(rules?.convertAfterLosses)
     && stats.lossCount >= Number(rules?.convertAfterLosses);
 
   if (!shouldConvert) {
-    return { surprise, dynamicActivated: false, rules };
+    return { surprise, dynamicActivated: false, rules, resolver: null };
   }
 
   const effectType = rules?.convertToEffectType ?? "ADD_POINTS";
@@ -1032,6 +1301,7 @@ export function resolveDynamicSurpriseEffect(
     },
     dynamicActivated: true,
     rules,
+    resolver: null,
   };
 }
 
@@ -1080,7 +1350,7 @@ function computeSurpriseEffect(input: {
   beforePoints: number;
   previousNegativeTotal: number;
 }) {
-  const effectType = normalizeSurpriseEffectType(input.surprise.effectType);
+  const effectType = normalizeConcreteSurpriseEffectType(input.surprise.effectType);
   const effectValue = clampSurpriseEffectValue(effectType, input.surprise.effectValue);
   let afterPoints = input.beforePoints;
 
@@ -1095,6 +1365,10 @@ function computeSurpriseEffect(input: {
     afterPoints = input.beforePoints > 0 ? input.beforePoints * effectValue : input.beforePoints;
   } else if (effectType === "DIVIDE_BONUS") {
     afterPoints = input.beforePoints > 0 ? Math.floor(input.beforePoints / effectValue) : input.beforePoints;
+  } else if (effectType === "RECOVERY_POINTS") {
+    afterPoints = input.beforePoints < 0 ? Math.min(0, input.beforePoints + effectValue) : input.beforePoints;
+  } else if (effectType === "NEUTRAL_HINT") {
+    afterPoints = input.beforePoints;
   }
 
   return {
@@ -2888,14 +3162,31 @@ async function applyPassportSurpriseQrEffect(input: {
     return { pointsAwarded: 0, missionKey: input.mission.key, result: "ALREADY_AWARDED", message };
   }
 
-  const [beforePoints, previousNegativeTotal, qrLossCount] = await Promise.all([
+  const [beforePoints, previousNegativeTotal, qrLossCount, qrGainCount, qrNeutralCount, studentLossCount] = await Promise.all([
     passportPointBalance(input.student.studentNumber),
     negativeSurpriseTotal(input.student.studentNumber),
     prisma.passportSurpriseEffectLedger.count({
       where: { surpriseQrId: surprise.id, status: "VALID", deltaPoints: { lt: 0 } },
     }),
+    prisma.passportSurpriseEffectLedger.count({
+      where: { surpriseQrId: surprise.id, status: "VALID", deltaPoints: { gt: 0 } },
+    }),
+    prisma.passportSurpriseEffectLedger.count({
+      where: { surpriseQrId: surprise.id, status: "VALID", deltaPoints: 0 },
+    }),
+    prisma.passportSurpriseEffectLedger.count({
+      where: { studentNumber: input.student.studentNumber, status: "VALID", deltaPoints: { lt: 0 } },
+    }),
   ]);
-  const dynamic = resolveDynamicSurpriseEffect(surprise, { lossCount: qrLossCount });
+  const dynamic = resolveDynamicSurpriseEffect(surprise, {
+    lossCount: qrLossCount,
+    gainCount: qrGainCount,
+    neutralCount: qrNeutralCount,
+    studentLossCount,
+    qrActionScanId: input.qrActionScan.id,
+    studentNumber: input.student.studentNumber,
+    scannedAt: input.qrActionScan.scannedAt,
+  });
   const computed = computeSurpriseEffect({ surprise: dynamic.surprise, beforePoints, previousNegativeTotal });
   const message = surpriseMessage({
     name: dynamic.surprise.name,
@@ -2916,6 +3207,7 @@ async function applyPassportSurpriseQrEffect(input: {
     batchCode: surprise.batchCode,
     dynamicActivated: dynamic.dynamicActivated,
     dynamicRules: dynamic.rules,
+    ...(dynamic.resolver ?? {}),
     rarity: surprise.rarity,
     visibility: surprise.visibility,
     beforePoints: computed.beforePoints,

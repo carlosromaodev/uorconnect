@@ -2545,6 +2545,14 @@ export interface DigitalPassportAdminSurpriseQr {
   effectType: string;
   effectValue: number;
   dynamicRules: {
+    mode?: "UNIVERSAL_DYNAMIC" | null;
+    weights?: Partial<Record<DigitalPassportSurpriseConcreteEffect, number>> | null;
+    values?: Partial<Record<DigitalPassportSurpriseConcreteEffect, number>> | null;
+    lossAdjustment?: {
+      afterLosses?: number | null;
+      weights?: Partial<Record<DigitalPassportSurpriseConcreteEffect, number>> | null;
+      values?: Partial<Record<DigitalPassportSurpriseConcreteEffect, number>> | null;
+    } | null;
     convertAfterLosses?: number | null;
     convertToEffectType?: string | null;
     convertToEffectValue?: number | null;
@@ -2615,6 +2623,14 @@ export interface DigitalPassportOwnedProjectChallengeInput {
   maxAttempts?: number | null;
 }
 
+export type DigitalPassportSurpriseConcreteEffect =
+  | "ADD_POINTS"
+  | "SUBTRACT_POINTS"
+  | "MULTIPLY_BONUS"
+  | "DIVIDE_BONUS"
+  | "NEUTRAL_HINT"
+  | "RECOVERY_POINTS";
+
 export interface DigitalPassportSurpriseQrInput {
   name?: string;
   description?: string | null;
@@ -2624,15 +2640,26 @@ export interface DigitalPassportSurpriseQrInput {
     | "ADD_POINTS"
     | "SUBTRACT_POINTS"
     | "MULTIPLY_BONUS"
-    | "DIVIDE_BONUS";
+    | "DIVIDE_BONUS"
+    | "UNIVERSAL_DYNAMIC";
   effectValue?: number;
   dynamicRules?: {
+    mode?: "UNIVERSAL_DYNAMIC" | null;
+    weights?: Partial<Record<DigitalPassportSurpriseConcreteEffect, number>> | null;
+    values?: Partial<Record<DigitalPassportSurpriseConcreteEffect, number>> | null;
+    lossAdjustment?: {
+      afterLosses?: number | null;
+      weights?: Partial<Record<DigitalPassportSurpriseConcreteEffect, number>> | null;
+      values?: Partial<Record<DigitalPassportSurpriseConcreteEffect, number>> | null;
+    } | null;
     convertAfterLosses?: number | null;
     convertToEffectType?:
       | "ADD_POINTS"
       | "SUBTRACT_POINTS"
       | "MULTIPLY_BONUS"
       | "DIVIDE_BONUS"
+      | "NEUTRAL_HINT"
+      | "RECOVERY_POINTS"
       | null;
     convertToEffectValue?: number | null;
     hintAfterLoss?: string | null;
@@ -2655,7 +2682,8 @@ export interface DigitalPassportSurpriseQrBatchInput
     | "ADD_POINTS"
     | "SUBTRACT_POINTS"
     | "MULTIPLY_BONUS"
-    | "DIVIDE_BONUS";
+    | "DIVIDE_BONUS"
+    | "UNIVERSAL_DYNAMIC";
   effectValue: number;
   quantity: number;
   codePrefix?: string | null;
