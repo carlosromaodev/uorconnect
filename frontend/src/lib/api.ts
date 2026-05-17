@@ -1204,7 +1204,7 @@ export interface TeamCredentialInput {
 
 export type TeamCredentialPassPrintMode = "color" | "black-white";
 export type TeamCredentialPassSide = "front" | "back" | "both";
-export type TeamCredentialPassLayout = "single" | "a4-3up" | "a4-4up";
+export type TeamCredentialPassLayout = "single" | "a4-3up" | "a4-4up" | "a4-2up-landscape";
 export type TeamCredentialPassDuplexMode = "long-edge" | "short-edge" | "same-position";
 
 export interface TeamCredentialPassOptions {
@@ -3908,7 +3908,7 @@ export const api = {
       requestBlob(
         `/team-credentials/admin/members/pass-batch.pdf${toQueryString({
           ...options,
-          layout: "a4-3up",
+          layout: options?.layout ?? "a4-2up-landscape",
           calibration: true,
         })}`,
         { timeoutMs: 90_000 } as RequestInit & { timeoutMs: number },

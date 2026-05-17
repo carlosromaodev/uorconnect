@@ -26,10 +26,19 @@ function parseArgs(argv: string[]) {
   const outputArg = argv.find((arg) => arg.startsWith("--output="));
   const printModeArg = argv.find((arg) => arg.startsWith("--print-mode="));
   const layoutArg = argv.find((arg) => arg.startsWith("--layout="));
+  const limitArg = argv.find((arg) => arg.startsWith("--limit="));
   const output = outputArg?.split("=")[1] ?? "storage/samples/passes-modelo-categorias-areas.pdf";
   const printMode = printModeArg?.split("=")[1] === "black-white" ? "black-white" : "color";
-  const layout = layoutArg?.split("=")[1] === "a4-3up" ? "a4-3up" : "single";
-  return { output, printMode, layout } as const;
+  const requestedLayout = layoutArg?.split("=")[1];
+  const layout = requestedLayout === "a4-2up-landscape"
+    ? "a4-2up-landscape"
+    : requestedLayout === "a4-4up"
+      ? "a4-4up"
+      : requestedLayout === "a4-3up"
+        ? "a4-3up"
+        : "single";
+  const limit = Math.max(1, Math.min(100, Number(limitArg?.split("=")[1] ?? 100)));
+  return { output, printMode, layout, limit } as const;
 }
 
 function sampleMember(input: SamplePassInput, index: number): EventTeamCredentialRecord {
@@ -141,7 +150,7 @@ async function main() {
     laminationMarginMm: 3,
   };
 
-  const samples = [...nucleusAreaSamples, ...categorySamples].map(sampleMember);
+  const samples = [...nucleusAreaSamples, ...categorySamples].slice(0, args.limit).map(sampleMember);
   const siteUrl = "https://uorconnect.space";
   const [logoDataUri, frontQrDataUri] = await Promise.all([
     loadLogoDataUri(),
@@ -172,7 +181,7 @@ async function main() {
   await writeFile(outputPath, buffer);
 
   console.log(`PDF de amostra gerado: ${outputPath}`);
-  console.log(`${samples.length} modelos · ${samples.length * 2} páginas, frente e verso.`);
+  console.log(`${samples.length} modelos · frente e verso · layout ${args.layout}.`);
 }
 
 main()

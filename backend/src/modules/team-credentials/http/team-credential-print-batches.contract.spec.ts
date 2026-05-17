@@ -50,6 +50,8 @@ describe("team credential print batches contract", () => {
     expect(routes).toContain("credentialPassLayouts");
     expect(routes).toContain("\"a4-3up\"");
     expect(routes).toContain("\"a4-4up\"");
+    expect(routes).toContain("\"a4-2up-landscape\"");
+    expect(routes).toContain("default(\"a4-2up-landscape\")");
     expect(routes).toContain("laminationMarginMm");
     expect(routes).toContain("credentialPassDuplexModes");
     expect(routes).toContain("\"long-edge\"");
@@ -57,6 +59,9 @@ describe("team credential print batches contract", () => {
     expect(routes).toContain("Corte do passe");
     expect(routes).toContain("Corte plastificacao");
     expect(routes).toContain("layout-3up");
+    expect(routes).toContain("layout-2up-landscape");
+    expect(routes).toContain("@page{size:A4 landscape;margin:0}");
+    expect(routes).toContain("2 por pagina");
     expect(routes).toContain("3 por pagina");
   });
 });

@@ -22,6 +22,7 @@ describe("team credential print helpers", () => {
       ids: [10, 20],
       printMode: "black-white",
       side: "both",
+      layout: "a4-2up-landscape",
       marginMm: 16,
       bleedMm: 3,
       limit: 2,
@@ -31,6 +32,7 @@ describe("team credential print helpers", () => {
     expect(url.searchParams.get("ids")).toBe("10,20");
     expect(url.searchParams.get("printMode")).toBe("black-white");
     expect(url.searchParams.get("side")).toBe("both");
+    expect(url.searchParams.get("layout")).toBe("a4-2up-landscape");
     expect(url.searchParams.get("marginMm")).toBe("16");
     expect(url.searchParams.get("bleedMm")).toBe("3");
     expect(url.searchParams.get("limit")).toBe("2");

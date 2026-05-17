@@ -46,17 +46,18 @@ describe("admin credential print batches UI contract", () => {
     expect(apiSource).toContain("/team-credentials/admin/sync-site-guests");
   });
 
-  it("downloads readable 3-up A4 pass batches with lamination settings", () => {
+  it("downloads readable 2-up landscape A4 pass batches with lamination settings", () => {
     expect(apiSource).toContain("TeamCredentialPassLayout");
-    expect(apiSource).toContain("a4-3up");
+    expect(apiSource).toContain("a4-2up-landscape");
     expect(apiSource).toContain("laminationMarginMm");
     expect(apiSource).toContain("duplexMode");
     expect(apiSource).toContain("calibration");
-    expect(adminSecurityTab).toContain("3 por pagina");
+    expect(adminSecurityTab).toContain("2 por pagina");
+    expect(adminSecurityTab).toContain("A4 horizontal");
     expect(adminSecurityTab).toContain("plastificacao");
     expect(adminSecurityTab).toContain("downloadPassCalibration");
-    expect(adminSecurityTab).toContain('layout: "a4-3up"');
+    expect(adminSecurityTab).toContain('layout: "a4-2up-landscape"');
     expect(adminSecurityTab).toContain("laminationMarginMm: passLaminationMarginMm");
-    expect(adminSecurityTab).toContain("3porpagina");
+    expect(adminSecurityTab).toContain("2porpagina-horizontal");
   });
 });
