@@ -130,6 +130,17 @@ type MissionQrDraft = {
   active: boolean;
 };
 
+type SurpriseQrBatchSummary = {
+  batchCode: string;
+  quantity: number;
+  activeCount: number;
+  printedCount: number;
+  firstCode: string | null;
+  lastCode: string | null;
+  effectType: string;
+  createdAt: string;
+};
+
 const defaultMissionDraft: MissionDraft = {
   key: "",
   type: "WORKSHOP_CHECKIN",
@@ -293,6 +304,44 @@ export default function AdminPassportTab() {
       `${mission.title} ${mission.key} ${mission.type}`.toLowerCase().includes(query)
     ));
   }, [missions, search]);
+
+  const surpriseQrBatches = useMemo<SurpriseQrBatchSummary[]>(() => {
+    const batches = new Map<string, SurpriseQrBatchSummary>();
+
+    for (const item of surpriseQrs) {
+      if (!item.batchCode) continue;
+
+      const batch = batches.get(item.batchCode) ?? {
+        batchCode: item.batchCode,
+        quantity: 0,
+        activeCount: 0,
+        printedCount: 0,
+        firstCode: item.displayCode,
+        lastCode: item.displayCode,
+        effectType: item.effectType,
+        createdAt: item.createdAt,
+      };
+
+      batch.quantity += 1;
+      batch.activeCount += item.active ? 1 : 0;
+      batch.printedCount += item.printedAt ? 1 : 0;
+      batch.firstCode = batch.firstCode ?? item.displayCode;
+      batch.lastCode = item.displayCode ?? batch.lastCode;
+
+      if (Date.parse(item.createdAt) > Date.parse(batch.createdAt)) {
+        batch.createdAt = item.createdAt;
+        batch.effectType = item.effectType;
+      }
+
+      batches.set(item.batchCode, batch);
+    }
+
+    return Array.from(batches.values()).sort((left, right) => (
+      Date.parse(right.createdAt) - Date.parse(left.createdAt)
+    ));
+  }, [surpriseQrs]);
+
+  const latestSurpriseBatch = surpriseQrBatches[0] ?? null;
 
   const load = async () => {
     setLoading(true);
@@ -1338,16 +1387,13 @@ export default function AdminPassportTab() {
                     <p className="text-xs font-bold uppercase tracking-wide text-orange-900">Lote de QR surpresa</p>
                     <p className="mt-0.5 text-[11px] text-orange-800">Imprime vários códigos numerados, como QR #001, para mudar o jogo durante a feira.</p>
                   </div>
-                  {surpriseQrs.find((item) => item.batchCode) ? (
+                  {latestSurpriseBatch ? (
                     <Button
                       type="button"
                       variant="outline"
                       size="sm"
                       className="h-8 shrink-0 rounded-lg px-2 text-[11px]"
-                      onClick={() => {
-                        const batchCode = surpriseQrs.find((item) => item.batchCode)?.batchCode;
-                        if (batchCode) void handleDownloadSurpriseQrBatchPdf(batchCode);
-                      }}
+                      onClick={() => void handleDownloadSurpriseQrBatchPdf(latestSurpriseBatch.batchCode)}
                       disabled={Boolean(downloadingSurpriseBatchCode)}
                     >
                       {downloadingSurpriseBatchCode ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <Download className="mr-1 h-3 w-3" />}
@@ -1442,6 +1488,60 @@ export default function AdminPassportTab() {
                 Guardar QR surpresa
               </Button>
             </form>
+
+            {surpriseQrBatches.length > 0 ? (
+              <div className="border-t border-orange-100 bg-orange-50/30 p-4 sm:p-5">
+                <div className="flex flex-col gap-1 sm:flex-row sm:items-end sm:justify-between">
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-wide text-orange-900">Lotes recentes</p>
+                    <p className="mt-0.5 text-[11px] text-slate-500">Baixa novamente qualquer PDF gerado em lote para impressão do desafio.</p>
+                  </div>
+                  <span className="text-[11px] font-semibold text-orange-800">
+                    {surpriseQrBatches.length} lote(s) disponível(is)
+                  </span>
+                </div>
+                <div className="mt-3 space-y-2">
+                  {surpriseQrBatches.slice(0, 6).map((batch) => {
+                    const meta = surpriseEffectMeta(batch.effectType);
+                    const EffectIcon = meta.icon;
+                    const range = batch.firstCode && batch.lastCode
+                      ? `${batch.firstCode} - ${batch.lastCode}`
+                      : batch.batchCode;
+
+                    return (
+                      <div key={batch.batchCode} className="flex flex-col gap-3 rounded-xl border border-orange-100 bg-white px-3 py-3 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${meta.color}`}>
+                              <EffectIcon className="h-3 w-3" />
+                              {meta.label}
+                            </span>
+                            <span className="text-[11px] font-black uppercase tracking-wide text-slate-400">{batch.batchCode}</span>
+                          </div>
+                          <p className="mt-1 text-xs font-bold text-slate-900">
+                            {batch.quantity} QR · {range}
+                          </p>
+                          <p className="mt-0.5 text-[11px] text-slate-500">
+                            {batch.activeCount} ativo(s) · {batch.printedCount} impresso(s)
+                          </p>
+                        </div>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          className="h-9 w-full rounded-lg border-orange-200 bg-orange-50 text-xs font-bold text-orange-900 hover:bg-orange-100 sm:w-auto"
+                          onClick={() => void handleDownloadSurpriseQrBatchPdf(batch.batchCode)}
+                          disabled={downloadingSurpriseBatchCode === batch.batchCode}
+                        >
+                          {downloadingSurpriseBatchCode === batch.batchCode ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> : <Download className="mr-2 h-3.5 w-3.5" />}
+                          Baixar PDF do lote
+                        </Button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            ) : null}
 
             {surpriseQrs.length > 0 ? (
               <div className="border-t border-slate-100 p-4 sm:p-5">

@@ -19,6 +19,10 @@ describe("admin passport surprise batch UI contract", () => {
     expect(source).toContain("Peso +");
     expect(source).toContain("Página explicativa a cada 3 páginas");
     expect(source).toContain("Baixar lote");
+    expect(source).toContain("Lotes recentes");
+    expect(source).toContain("Baixar PDF do lote");
+    expect(source).toContain("surpriseQrBatches");
+    expect(source).toContain("handleDownloadSurpriseQrBatchPdf(batch.batchCode)");
   });
 
   it("types and calls the batch endpoints from the API client", () => {
