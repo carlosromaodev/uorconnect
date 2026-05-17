@@ -17,7 +17,7 @@ describe("admin passport surprise batch UI contract", () => {
     expect(source).toContain("Após X perdas");
     expect(source).toContain("Dinâmico universal");
     expect(source).toContain("Peso +");
-    expect(source).toContain("Página explicativa a cada 3 páginas");
+    expect(source).toContain("1 QR por página");
     expect(source).toContain("Baixar lote");
     expect(source).toContain("Lotes recentes");
     expect(source).toContain("Baixar PDF do lote");

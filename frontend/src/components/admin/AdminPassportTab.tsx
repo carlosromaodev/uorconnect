@@ -1269,7 +1269,7 @@ export default function AdminPassportTab() {
                       <p className="text-xs font-bold uppercase tracking-wide text-slate-900">Dinâmico universal</p>
                       <p className="mt-0.5 text-[11px] text-slate-600">Todos os QR do lote podem fazer tudo; a decisão muda por QR individual conforme o histórico daquele código.</p>
                     </div>
-                    <span className="rounded-full border border-orange-200 bg-orange-50 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-orange-800">Página explicativa a cada 3 páginas</span>
+                    <span className="rounded-full border border-orange-200 bg-orange-50 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-orange-800">1 QR por página</span>
                   </div>
                   <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-3">
                     {[

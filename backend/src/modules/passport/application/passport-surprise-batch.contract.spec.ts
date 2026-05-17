@@ -42,9 +42,10 @@ describe("passport surprise QR batch and dynamic rules contract", () => {
     expect(routes).toContain("/admin/surprise-qrs/batch/:batchCode/pdf");
     expect(routes).toContain("displayCode");
     expect(routes).toContain("dynamicRules");
-    expect(routes).toContain("Encontraste um QR do Passaporte Digital");
-    expect(routes).toContain("explanation-page");
     expect(routes).toContain("qr-page");
+    expect(routes).toContain("qr-poster");
+    expect(routes).toContain("QR gigante");
+    expect(routes).toContain("renderQrDataUri(buildValidationUrl(env, surprise.qrAction.token), 1000)");
     expect(routes).toContain("Passaporte Digital UOR Connect");
   });
 });

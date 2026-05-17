@@ -1,6 +1,6 @@
 import QRCode from "qrcode";
 
-type QrSize = 180 | 220 | 280 | 720;
+type QrSize = 180 | 220 | 280 | 720 | 1000;
 
 type QrRenderOptions = {
   transparentBackground?: boolean;

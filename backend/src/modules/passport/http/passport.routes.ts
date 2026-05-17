@@ -1128,68 +1128,45 @@ async function renderSurpriseQrBatchPdf(
     Promise.all(surprises.map(async (surprise) => ({
       ...surprise,
       validationUrl: buildValidationUrl(env, surprise.qrAction.token),
-      qrDataUri: await renderQrDataUri(buildValidationUrl(env, surprise.qrAction.token), 280),
+      qrDataUri: await renderQrDataUri(buildValidationUrl(env, surprise.qrAction.token), 1000),
     }))),
   ]);
 
-  const itemsPerQrPage = 9;
-  const qrPages: Array<typeof qrItems> = [];
-  for (let index = 0; index < qrItems.length; index += itemsPerQrPage) {
-    qrPages.push(qrItems.slice(index, index + itemsPerQrPage));
-  }
-
-  const renderHeader = (title: string, subtitle: string) => `
-    <header>
-      <div>${logoDataUri ? `<img src="${logoDataUri}" alt="UOR Connect" />` : "<h1>UOR Connect</h1>"}</div>
-      <div>
-        <h1>${escapeHtml(title)}</h1>
-        <p>${escapeHtml(subtitle)}</p>
-      </div>
-    </header>
-  `;
-
-  const renderQrPage = (items: typeof qrItems, pageNumber: number) => `
+  const renderQrPage = (item: typeof qrItems[number], pageNumber: number) => `
     <section class="page qr-page">
-      ${renderHeader("Lote de QR surpresa", `${surprises.length} códigos numerados · página ${pageNumber}`)}
-      <main class="grid">
-        ${items.map((item) => `
-          <article class="qr-card">
-            <div class="code">${escapeHtml(item.displayCode ?? "QR")}</div>
+      <article class="qr-poster">
+        <header class="poster-top">
+          <div class="brand">${logoDataUri ? `<img src="${logoDataUri}" alt="UOR Connect" />` : "UOR Connect"}</div>
+          <div class="batch-meta">
+            <strong>${String(pageNumber).padStart(2, "0")}</strong>
+            <span>de ${surprises.length}</span>
+          </div>
+        </header>
+        <main class="poster-body">
+          <p class="eyebrow">Passaporte Digital UOR Connect</p>
+          <h1>${escapeHtml(item.displayCode ?? "QR Surpresa")}</h1>
+          <p class="name">${escapeHtml(item.name)}</p>
+          <div class="qr-wrap" aria-label="QR gigante">
             <img src="${item.qrDataUri}" alt="${escapeHtml(item.displayCode ?? item.name)}" />
-            <strong>${escapeHtml(item.name)}</strong>
-            <span>Passaporte Digital</span>
-          </article>
-        `).join("")}
-      </main>
+          </div>
+          <p class="scan-hint">Escaneia na Minha Área para descobrir o efeito deste QR.</p>
+        </main>
+        <footer class="poster-footer">
+          <div>
+            <span>Leitura</span>
+            <strong>Passaporte Digital</strong>
+          </div>
+          <div>
+            <span>Resultado</span>
+            <strong>Revelado no telemóvel</strong>
+          </div>
+          <p>${escapeHtml(item.validationUrl)}</p>
+        </footer>
+      </article>
     </section>
   `;
 
-  const renderExplanationPage = (pageNumber: number) => `
-    <section class="page explanation-page">
-      <div class="explanation-shell">
-        <div class="explanation-brand">${logoDataUri ? `<img src="${logoDataUri}" alt="UOR Connect" />` : "UOR Connect"}</div>
-        <p class="eyebrow">Passaporte Digital UOR Connect</p>
-        <h1>Encontraste um QR do Passaporte Digital</h1>
-        <p class="lead">Entra em <strong>uorconnect.space</strong>, faz login, abre a Minha Área e participa no desafio.</p>
-        <div class="steps">
-          <div><span>1</span><strong>Faz login oficial</strong><small>Usa o teu acesso UOR/ISPTEC para entrar no sistema.</small></div>
-          <div><span>2</span><strong>Escaneia os QR</strong><small>Cada código pode revelar pontos, pistas, bónus ou pequenos riscos.</small></div>
-          <div><span>3</span><strong>Acompanha o ranking</strong><small>Os teus pontos aparecem na Minha Área com histórico auditável.</small></div>
-        </div>
-        <p class="notice">O efeito só aparece depois do scan. Repetir o mesmo QR pode não gerar novos pontos.</p>
-        <p class="page-mark">Guia do desafio · página explicativa ${pageNumber}</p>
-      </div>
-    </section>
-  `;
-
-  const pages = qrPages.flatMap((items, index) => {
-    const pageNumber = index + 1;
-    const page = renderQrPage(items, pageNumber);
-    if (pageNumber % 3 === 0) {
-      return [page, renderExplanationPage(Math.floor(pageNumber / 3))];
-    }
-    return [page];
-  }).join("");
+  const pages = qrItems.map((item, index) => renderQrPage(item, index + 1)).join("");
 
   const html = `<!doctype html>
 <html lang="pt-AO">
@@ -1197,36 +1174,31 @@ async function renderSurpriseQrBatchPdf(
   <meta charset="utf-8" />
   <title>Lote de QR Surpresa · UOR Connect</title>
   <style>
-    @page { size: A4; margin: 10mm; }
+    @page { size: A4; margin: 0; }
     * { box-sizing: border-box; }
-    body { margin: 0; font-family: Arial, Helvetica, sans-serif; color: #111827; background: #fff; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
-    .page { min-height: 277mm; break-after: page; page-break-after: always; }
+    body { margin: 0; width: 210mm; min-height: 297mm; font-family: Arial, Helvetica, sans-serif; color: #111827; background: #f8fafc; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+    .page { width: 210mm; min-height: 297mm; padding: 12mm; display: grid; place-items: center; background: #f8fafc; break-after: page; page-break-after: always; }
     .page:last-child { break-after: auto; page-break-after: auto; }
-    header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 7mm; border-bottom: .35mm solid #e5e7eb; padding-bottom: 4mm; }
-    header img { max-width: 34mm; max-height: 11mm; object-fit: contain; }
-    header h1 { margin: 0; font-size: 18px; letter-spacing: .06em; text-transform: uppercase; }
-    header p { margin: 1mm 0 0; color: #6b7280; font-size: 10px; text-align: right; }
-    .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 5mm; }
-    .qr-card { break-inside: avoid; min-height: 72mm; border: .35mm dashed #cbd5e1; border-radius: 4mm; padding: 4mm; display: grid; place-items: center; text-align: center; }
-    .code { width: 100%; border-radius: 999px; background: #111827; color: #fff; padding: 1.8mm 3mm; font-size: 12px; font-weight: 900; letter-spacing: .12em; }
-    .qr-card img { width: 42mm; height: 42mm; margin: 2mm auto; }
-    .qr-card strong { display: block; max-width: 100%; font-size: 10px; line-height: 1.2; }
-    .qr-card span { color: #64748b; font-size: 8px; font-weight: 800; text-transform: uppercase; letter-spacing: .1em; }
-    .explanation-page { display: grid; place-items: center; color: #fff; background: radial-gradient(circle at 78% 18%, rgba(249,115,22,.32), transparent 30%), linear-gradient(145deg, #05070c 0%, #111827 58%, #05070c 100%); margin: -10mm; padding: 18mm; min-height: 297mm; }
-    .explanation-shell { width: 100%; min-height: 261mm; border: .35mm solid rgba(255,255,255,.12); border-radius: 8mm; padding: 13mm; display: grid; align-content: center; gap: 7mm; position: relative; overflow: hidden; }
-    .explanation-shell::before { content: ""; position: absolute; inset: 0; background-image: linear-gradient(rgba(255,255,255,.045) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.035) 1px, transparent 1px); background-size: 10mm 10mm; opacity: .45; }
-    .explanation-shell > * { position: relative; z-index: 1; }
-    .explanation-brand img { max-width: 42mm; max-height: 13mm; object-fit: contain; filter: brightness(0) invert(1); }
-    .eyebrow { margin: 0; color: #fb923c; font-size: 11px; font-weight: 950; letter-spacing: .2em; text-transform: uppercase; }
-    .explanation-page h1 { max-width: 150mm; margin: 0; font-size: 40px; line-height: 1.02; letter-spacing: -.01em; }
-    .lead { max-width: 136mm; margin: 0; color: rgba(255,255,255,.78); font-size: 17px; line-height: 1.48; }
-    .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4mm; }
-    .steps div { min-height: 42mm; border: .3mm solid rgba(255,255,255,.13); border-radius: 5mm; background: rgba(255,255,255,.07); padding: 5mm; }
-    .steps span { display: grid; place-items: center; width: 10mm; height: 10mm; border-radius: 999px; background: #f97316; color: #111827; font-size: 13px; font-weight: 950; }
-    .steps strong { display: block; margin-top: 4mm; font-size: 14px; }
-    .steps small { display: block; margin-top: 2mm; color: rgba(255,255,255,.68); font-size: 10px; line-height: 1.45; }
-    .notice { margin: 0; border-left: 1mm solid #f97316; padding: 3mm 4mm; background: rgba(249,115,22,.12); color: rgba(255,255,255,.82); font-size: 13px; line-height: 1.45; }
-    .page-mark { margin: 0; color: rgba(255,255,255,.42); font-size: 9px; font-weight: 800; letter-spacing: .12em; text-transform: uppercase; }
+    .qr-poster { width: 100%; min-height: 273mm; padding: 10mm; display: grid; grid-template-rows: auto 1fr auto; gap: 8mm; overflow: hidden; position: relative; border: .45mm solid #dbe3ef; border-radius: 8mm; background: #fff; box-shadow: 0 9mm 30mm rgba(15, 23, 42, .08); }
+    .qr-poster::before { content: ""; position: absolute; inset: 0; background: radial-gradient(circle at 50% 26%, rgba(249,115,22,.13), transparent 34%), linear-gradient(180deg, rgba(15,23,42,.04), transparent 40%); pointer-events: none; }
+    .qr-poster > * { position: relative; z-index: 1; }
+    .poster-top { display: flex; align-items: center; justify-content: space-between; gap: 8mm; }
+    .brand { min-height: 14mm; display: flex; align-items: center; color: #0f172a; font-size: 12px; font-weight: 950; letter-spacing: .16em; text-transform: uppercase; }
+    .brand img { max-width: 42mm; max-height: 13mm; object-fit: contain; }
+    .batch-meta { min-width: 28mm; border: .3mm solid #e2e8f0; border-radius: 999px; padding: 2mm 4mm; display: flex; align-items: baseline; justify-content: center; gap: 1.5mm; background: #f8fafc; color: #64748b; font-size: 9px; font-weight: 900; text-transform: uppercase; }
+    .batch-meta strong { color: #0f172a; font-size: 15px; }
+    .poster-body { display: grid; place-items: center; align-content: center; text-align: center; }
+    .eyebrow { margin: 0; color: #f97316; font-size: 11px; font-weight: 950; letter-spacing: .18em; text-transform: uppercase; }
+    h1 { margin: 3mm 0 0; color: #0f172a; font-size: 36px; line-height: 1; font-weight: 950; letter-spacing: .04em; text-transform: uppercase; }
+    .name { margin: 3mm 0 0; max-width: 150mm; color: #475569; font-size: 15px; line-height: 1.35; font-weight: 800; }
+    .qr-wrap { width: 160mm; height: 160mm; margin: 8mm auto 0; display: grid; place-items: center; border: 1.5mm solid #0f172a; border-radius: 7mm; background: #fff; box-shadow: 0 8mm 24mm rgba(15, 23, 42, .12); }
+    .qr-wrap img { width: 149mm; height: 149mm; display: block; }
+    .scan-hint { margin: 6mm auto 0; max-width: 148mm; color: #334155; font-size: 15px; line-height: 1.4; font-weight: 900; }
+    .poster-footer { display: grid; grid-template-columns: 1fr 1fr; gap: 4mm; border-top: .35mm solid #e2e8f0; padding-top: 5mm; }
+    .poster-footer div { min-height: 20mm; border: .3mm solid #e2e8f0; border-radius: 4mm; padding: 4mm; background: #f8fafc; }
+    .poster-footer span { display: block; color: #64748b; font-size: 8px; font-weight: 950; letter-spacing: .14em; text-transform: uppercase; }
+    .poster-footer strong { display: block; margin-top: 1.8mm; color: #111827; font-size: 12px; line-height: 1.2; }
+    .poster-footer p { grid-column: 1 / -1; margin: 0; color: #94a3b8; font-size: 8px; overflow-wrap: anywhere; }
   </style>
 </head>
 <body>
