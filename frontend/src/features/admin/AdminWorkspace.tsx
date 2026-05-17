@@ -162,6 +162,18 @@ import {
   readCompressedImageFileAsDataUrl,
   readImageFileAsDataUrl,
 } from "@/lib/project-media";
+import {
+  buildProjectObligationMessage,
+  getProjectObligationNoticeTargets,
+  projectObligationChannelOptions,
+  projectObligationChannelUsesSms,
+  projectObligationChannelUsesWhatsApp,
+  projectObligationNoticeCampaignTitle,
+  projectObligationNoticeOptions,
+  uniqueProjectObligationPhones,
+  type ProjectObligationNoticeChannel,
+  type ProjectObligationNoticeType,
+} from "./project-obligation-notices";
 import { createQrDataUrl } from "@/lib/qr";
 import { resolveAbsoluteApiUrl } from "@/lib/runtime-config";
 import { downloadBlobFile } from "@/lib/student-documents";
@@ -402,11 +414,6 @@ type AdminSubmission = {
   exhibitorChallengeUpdatedAt: string | null;
 };
 
-type ProjectObligationNoticeType =
-  | "member_confirmation"
-  | "project_photo"
-  | "challenge_question";
-
 type ProjectObligationNoticeResult = {
   processedProjects: number;
   skippedProjects: number;
@@ -415,31 +422,6 @@ type ProjectObligationNoticeResult = {
   failedCount: number;
   failures: string[];
 };
-
-const projectObligationNoticeOptions: Array<{
-  id: ProjectObligationNoticeType;
-  label: string;
-  description: string;
-}> = [
-  {
-    id: "member_confirmation",
-    label: "Membro por confirmar",
-    description:
-      "Envia SMS aos membros já confirmados para cobrarem quem ainda não confirmou presença.",
-  },
-  {
-    id: "project_photo",
-    label: "Foto do projeto",
-    description:
-      "Envia SMS aos grupos sem foto/capa do projeto no sistema.",
-  },
-  {
-    id: "challenge_question",
-    label: "Pergunta do desafio",
-    description:
-      "Envia SMS aos grupos sem pergunta válida e reforça o risco de -10 pontos.",
-  },
-];
 
 type VoteProjectSummary = {
   id: number;
@@ -531,104 +513,6 @@ function getAdminSubmissionTeamMemberNames(submission: AdminSubmission) {
 
   if (structuredNames.length > 0) return structuredNames;
   return parseTeamMembersDraft(submission.equipa);
-}
-
-function getPendingTeamMemberNames(submission: AdminSubmission) {
-  const structuredPending = submission.teamMembers
-    .filter((member) => !member.confirmed)
-    .map((member) => member.name.trim())
-    .filter(Boolean);
-
-  if (structuredPending.length > 0) return structuredPending;
-  const missingCount = Math.max(
-    submission.teamTotalMembers - submission.teamConfirmedMembers,
-    0,
-  );
-  return missingCount > 0
-    ? [`${missingCount} membro(s) por confirmar`]
-    : [];
-}
-
-function projectHasValidChallengeQuestion(submission: AdminSubmission) {
-  return (
-    submission.exhibitorChallengeStatus === "APPROVED" ||
-    submission.exhibitorChallengeStatus === "PENDING_APPROVAL" ||
-    submission.exhibitorChallengeStatus === "PAUSED"
-  );
-}
-
-function submissionNeedsProjectObligationNotice(
-  submission: AdminSubmission,
-  noticeType: ProjectObligationNoticeType,
-) {
-  if (noticeType === "member_confirmation") {
-    return (
-      !submission.teamAllConfirmed &&
-      getPendingTeamMemberNames(submission).length > 0 &&
-      Boolean(submission.teamInviteUrl)
-    );
-  }
-
-  if (noticeType === "project_photo") {
-    return !submission.bannerUrl;
-  }
-
-  return !projectHasValidChallengeQuestion(submission);
-}
-
-function getProjectObligationNoticeTargets(
-  submissions: AdminSubmission[],
-  noticeType: ProjectObligationNoticeType,
-) {
-  return submissions.filter((submission) =>
-    submissionNeedsProjectObligationNotice(submission, noticeType),
-  );
-}
-
-function buildProjectObligationSmsMessage(
-  submission: AdminSubmission,
-  noticeType: ProjectObligationNoticeType,
-) {
-  if (noticeType === "member_confirmation") {
-    const pendingMembers = getPendingTeamMemberNames(submission).join(", ");
-    return [
-      `UOR Connect: no projeto "${submission.nome}", ainda falta ${pendingMembers} confirmar presença.`,
-      `Partilhem este link com o membro pendente para confirmar: ${submission.teamInviteUrl}`,
-      "A regularização evita bloqueios no manual, passes e organização da feira.",
-    ].join("\n");
-  }
-
-  if (noticeType === "project_photo") {
-    return [
-      `UOR Connect: o projeto "${submission.nome}" ainda está sem foto/capa no sistema.`,
-      "Entrem em Minha Área e adicionem uma imagem clara do projeto para melhorar a apresentação pública e o manual do expositor.",
-    ].join("\n");
-  }
-
-  return [
-    `UOR Connect: o projeto "${submission.nome}" ainda não tem pergunta válida no Desafio do Expositor.`,
-    "Entrem em Minha Área e submetam/corrijam a pergunta. A falta de responsabilidade pode fazer o grupo iniciar a feira com -10 pontos.",
-  ].join("\n");
-}
-
-function projectObligationNoticeCampaignTitle(
-  submission: AdminSubmission,
-  noticeType: ProjectObligationNoticeType,
-) {
-  const option = projectObligationNoticeOptions.find(
-    (item) => item.id === noticeType,
-  );
-  return `Obrigação ${option?.label ?? "Projeto"} · ${submission.referenceCode}`;
-}
-
-function uniqueProjectObligationPhones(recipients: ExhibitorPdfRecipient[]) {
-  return Array.from(
-    new Set(
-      recipients
-        .map((recipient) => recipient.phone?.trim())
-        .filter((phone): phone is string => Boolean(phone)),
-    ),
-  );
 }
 
 function SubmissionPdfShareAction({
@@ -1647,6 +1531,8 @@ const Admin = ({
     useState(0);
   const [projectObligationNoticeType, setProjectObligationNoticeType] =
     useState<ProjectObligationNoticeType>("member_confirmation");
+  const [projectObligationNoticeChannel, setProjectObligationNoticeChannel] =
+    useState<ProjectObligationNoticeChannel>("sms");
   const [
     sendingProjectObligationNotices,
     setSendingProjectObligationNotices,
@@ -3093,6 +2979,10 @@ const Admin = ({
     projectObligationNoticeOptions.find(
       (item) => item.id === projectObligationNoticeType,
     ) ?? projectObligationNoticeOptions[0];
+  const selectedProjectObligationChannelOption =
+    projectObligationChannelOptions.find(
+      (item) => item.id === projectObligationNoticeChannel,
+    ) ?? projectObligationChannelOptions[0];
 
   const toggleSubmissionDetails = (submissionId: number) => {
     setExpandedSubmissionIds((current) => {
@@ -4138,30 +4028,71 @@ const Admin = ({
           continue;
         }
 
-        const message = buildProjectObligationSmsMessage(
+        const message = buildProjectObligationMessage(
           submission,
           projectObligationNoticeType,
         );
-        const payload = await api.sms.sendCampaign({
-          title: projectObligationNoticeCampaignTitle(
-            submission,
-            projectObligationNoticeType,
-          ),
-          sender: "UOR CONNECT",
-          message,
-          audience: {
-            type: "SELECTED_STUDENTS",
-            selectedPhones,
-          },
-        });
-
         result.processedProjects += 1;
-        result.totalRecipients += payload.totalRecipients;
-        result.successCount += payload.successCount;
-        result.failedCount += payload.failedCount;
+        const title = projectObligationNoticeCampaignTitle(
+          submission,
+          projectObligationNoticeType,
+        );
+        const audience = {
+          type: "SELECTED_STUDENTS" as const,
+          selectedPhones,
+        };
 
-        for (const failure of payload.failures.slice(0, 3)) {
-          result.failures.push(`${submission.nome}: ${failure.reason}`);
+        if (projectObligationChannelUsesSms(projectObligationNoticeChannel)) {
+          try {
+            const payload = await api.sms.sendCampaign({
+              title,
+              sender: "UOR CONNECT",
+              message,
+              audience,
+            });
+            result.totalRecipients += payload.totalRecipients;
+            result.successCount += payload.successCount;
+            result.failedCount += payload.failedCount;
+            for (const failure of payload.failures.slice(0, 3)) {
+              result.failures.push(`${submission.nome} (SMS): ${failure.reason}`);
+            }
+          } catch (error) {
+            result.totalRecipients += selectedPhones.length;
+            result.failedCount += selectedPhones.length;
+            result.failures.push(
+              `${submission.nome} (SMS): ${
+                error instanceof Error
+                  ? error.message
+                  : "não foi possível enviar o aviso."
+              }`,
+            );
+          }
+        }
+
+        if (projectObligationChannelUsesWhatsApp(projectObligationNoticeChannel)) {
+          try {
+            const payload = await api.whatsapp.sendCampaign({
+              title,
+              message,
+              audience,
+            });
+            result.totalRecipients += payload.totalRecipients;
+            result.successCount += payload.successCount;
+            result.failedCount += payload.failedCount;
+            for (const failure of payload.failures.slice(0, 3)) {
+              result.failures.push(`${submission.nome} (WhatsApp): ${failure.reason}`);
+            }
+          } catch (error) {
+            result.totalRecipients += selectedPhones.length;
+            result.failedCount += selectedPhones.length;
+            result.failures.push(
+              `${submission.nome} (WhatsApp): ${
+                error instanceof Error
+                  ? error.message
+                  : "não foi possível enviar o aviso."
+              }`,
+            );
+          }
         }
       } catch (error) {
         result.skippedProjects += 1;
@@ -4183,13 +4114,13 @@ const Admin = ({
 
     if (result.successCount > 0) {
       toast.success(
-        `Avisos enviados: ${result.successCount}/${result.totalRecipients} SMS entregues ao provedor.`,
+        `Avisos enviados: ${result.successCount}/${result.totalRecipients} envio(s) entregues ao provedor.`,
       );
       return;
     }
 
     toast.warning(
-      "Nenhum SMS foi enviado. Verifica contactos confirmados e a central SMS.",
+      "Nenhum aviso foi enviado. Verifica contactos confirmados e as centrais SMS/WhatsApp.",
     );
   };
 
@@ -7663,7 +7594,7 @@ const Admin = ({
 	                              </Button>
 	                            </div>
 
-	                            <div className="mt-4 grid gap-3 rounded-2xl border border-border/60 bg-muted/20 p-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] lg:items-end">
+	                            <div className="mt-4 grid gap-3 rounded-2xl border border-border/60 bg-muted/20 p-3 lg:grid-cols-[minmax(0,1fr)_minmax(0,0.9fr)_minmax(0,0.9fr)_auto] lg:items-end">
 	                              <div className="min-w-0">
 	                                <label className="text-[11px] font-black uppercase tracking-[0.14em] text-muted-foreground">
 	                                  Tipo de aviso
@@ -7686,6 +7617,31 @@ const Admin = ({
 	                                </select>
 	                                <p className="mt-1 text-xs leading-5 text-muted-foreground">
 	                                  {selectedProjectObligationNoticeOption.description}
+	                                </p>
+	                              </div>
+
+	                              <div className="min-w-0">
+	                                <label className="text-[11px] font-black uppercase tracking-[0.14em] text-muted-foreground">
+	                                  Canal de envio
+	                                </label>
+	                                <select
+	                                  className="mt-1 h-10 w-full rounded-xl border border-input bg-background px-3 text-sm font-semibold"
+	                                  value={projectObligationNoticeChannel}
+	                                  onChange={(event) => {
+	                                    setProjectObligationNoticeChannel(
+	                                      event.target.value as ProjectObligationNoticeChannel,
+	                                    );
+	                                    setProjectObligationNoticeResult(null);
+	                                  }}
+	                                >
+	                                  {projectObligationChannelOptions.map((option) => (
+	                                    <option key={option.id} value={option.id}>
+	                                      {option.label}
+	                                    </option>
+	                                  ))}
+	                                </select>
+	                                <p className="mt-1 text-xs leading-5 text-muted-foreground">
+	                                  {selectedProjectObligationChannelOption.description}
 	                                </p>
 	                              </div>
 
@@ -7716,7 +7672,7 @@ const Admin = ({
 	                                ) : (
 	                                  <Send className="mr-2 h-4 w-4" />
 	                                )}
-	                                Enviar avisos por SMS
+	                                Enviar avisos
 	                              </Button>
 	                            </div>
 
@@ -7727,7 +7683,7 @@ const Admin = ({
 	                                    {projectObligationNoticeResult.processedProjects} projeto(s) processado(s)
 	                                  </Badge>
 	                                  <Badge variant="outline">
-	                                    {projectObligationNoticeResult.successCount}/{projectObligationNoticeResult.totalRecipients} SMS
+	                                    {projectObligationNoticeResult.successCount}/{projectObligationNoticeResult.totalRecipients} envio(s)
 	                                  </Badge>
 	                                  <Badge variant="outline">
 	                                    {projectObligationNoticeResult.skippedProjects} ignorado(s)
