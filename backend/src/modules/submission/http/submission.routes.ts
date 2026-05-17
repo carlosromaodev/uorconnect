@@ -810,7 +810,7 @@ async function canReadExhibitorPdf(request: FastifyRequest, env: ReturnType<type
 
   const authToken = getRequestAuthToken(request);
   if (!authToken) {
-    return { allowed: false as const, status: 401 as const, message: "Missing or invalid token" };
+    return { allowed: false as const, status: 401 as const, message: "Sessão inválida ou expirada. Inicia sessão novamente." };
   }
 
   try {
@@ -980,7 +980,7 @@ export async function submissionRoutes(app: FastifyInstance, { env }: { env: Ret
       }
     }, async (request, reply) => {
       if (!request.student?.id) {
-        return reply.code(401).send({ message: "Missing or invalid token" });
+        return reply.code(401).send({ message: "Sessão inválida ou expirada. Inicia sessão novamente." });
       }
 
       const payload = request.body as z.infer<typeof createSubmissionSchema>;
@@ -1003,7 +1003,7 @@ export async function submissionRoutes(app: FastifyInstance, { env }: { env: Ret
       });
 
       if (!student) {
-        return reply.code(401).send({ message: "Missing or invalid token" });
+        return reply.code(401).send({ message: "Sessão inválida ou expirada. Inicia sessão novamente." });
       }
 
       let result;
@@ -1146,7 +1146,7 @@ export async function submissionRoutes(app: FastifyInstance, { env }: { env: Ret
       }
     }, async (request, reply) => {
       if (!request.student?.id) {
-        return reply.code(401).send({ message: "Missing or invalid token" });
+        return reply.code(401).send({ message: "Sessão inválida ou expirada. Inicia sessão novamente." });
       }
 
       const submissions = await submissionRepo.listByStudent(request.student.id);
@@ -1181,7 +1181,7 @@ export async function submissionRoutes(app: FastifyInstance, { env }: { env: Ret
       }
     }, async (request, reply) => {
       if (!request.student?.id) {
-        return reply.code(401).send({ message: "Missing or invalid token" });
+        return reply.code(401).send({ message: "Sessão inválida ou expirada. Inicia sessão novamente." });
       }
 
       return reply.send(await getStudentExhibitorPassportSummary({
@@ -1201,7 +1201,7 @@ export async function submissionRoutes(app: FastifyInstance, { env }: { env: Ret
       }
     }, async (request, reply) => {
       if (!request.student?.id) {
-        return reply.code(401).send({ message: "Missing or invalid token" });
+        return reply.code(401).send({ message: "Sessão inválida ou expirada. Inicia sessão novamente." });
       }
 
       const submission = await submissionRepo.findOwnedById((request.params as { id: number }).id, request.student.id);
@@ -1226,7 +1226,7 @@ export async function submissionRoutes(app: FastifyInstance, { env }: { env: Ret
       }
     }, async (request, reply) => {
       if (!request.student?.id) {
-        return reply.code(401).send({ message: "Missing or invalid token" });
+        return reply.code(401).send({ message: "Sessão inválida ou expirada. Inicia sessão novamente." });
       }
 
       const submission = await submissionRepo.findOwnedById((request.params as { id: number }).id, request.student.id);
@@ -1266,7 +1266,7 @@ export async function submissionRoutes(app: FastifyInstance, { env }: { env: Ret
       }
     }, async (request, reply) => {
       if (!request.student?.id) {
-        return reply.code(401).send({ message: "Missing or invalid token" });
+        return reply.code(401).send({ message: "Sessão inválida ou expirada. Inicia sessão novamente." });
       }
 
       const params = request.params as { id: number; memberId: number };
@@ -1307,7 +1307,7 @@ export async function submissionRoutes(app: FastifyInstance, { env }: { env: Ret
       }
     }, async (request, reply) => {
       if (!request.student?.id) {
-        return reply.code(401).send({ message: "Missing or invalid token" });
+        return reply.code(401).send({ message: "Sessão inválida ou expirada. Inicia sessão novamente." });
       }
 
       const params = request.params as { id: number; memberId: number };
@@ -1361,7 +1361,7 @@ export async function submissionRoutes(app: FastifyInstance, { env }: { env: Ret
       }
     }, async (request, reply) => {
       if (!request.student?.id) {
-        return reply.code(401).send({ message: "Missing or invalid token" });
+        return reply.code(401).send({ message: "Sessão inválida ou expirada. Inicia sessão novamente." });
       }
 
       const params = request.params as { id: number; memberId: number };
@@ -1428,7 +1428,7 @@ export async function submissionRoutes(app: FastifyInstance, { env }: { env: Ret
       }
     }, async (request, reply) => {
       if (!request.student?.id) {
-        return reply.code(401).send({ message: "Missing or invalid token" });
+        return reply.code(401).send({ message: "Sessão inválida ou expirada. Inicia sessão novamente." });
       }
 
       const submission = await submissionRepo.findById((request.params as { id: number }).id);
@@ -1466,7 +1466,7 @@ export async function submissionRoutes(app: FastifyInstance, { env }: { env: Ret
       }
     }, async (request, reply) => {
       if (!request.student?.id) {
-        return reply.code(401).send({ message: "Missing or invalid token" });
+        return reply.code(401).send({ message: "Sessão inválida ou expirada. Inicia sessão novamente." });
       }
 
       const submissionId = (request.params as { id: number }).id;
@@ -1494,7 +1494,7 @@ export async function submissionRoutes(app: FastifyInstance, { env }: { env: Ret
       });
 
       if (!student) {
-        return reply.code(401).send({ message: "Missing or invalid token" });
+        return reply.code(401).send({ message: "Sessão inválida ou expirada. Inicia sessão novamente." });
       }
 
       const paymentProof = isSubmissionPaymentProofSelfReference(payload.paymentProof, submissionId)
@@ -1542,7 +1542,7 @@ export async function submissionRoutes(app: FastifyInstance, { env }: { env: Ret
       }
     }, async (request, reply) => {
       if (!request.student?.id) {
-        return reply.code(401).send({ message: "Missing or invalid token" });
+        return reply.code(401).send({ message: "Sessão inválida ou expirada. Inicia sessão novamente." });
       }
 
       const { id } = request.params as { id: number };
@@ -2706,7 +2706,7 @@ export async function submissionRoutes(app: FastifyInstance, { env }: { env: Ret
       }
     }, async (request, reply) => {
       if (!request.student?.id) {
-        return reply.code(401).send({ message: "Missing or invalid token" });
+        return reply.code(401).send({ message: "Sessão inválida ou expirada. Inicia sessão novamente." });
       }
 
       const { token } = request.params as { token: string };
@@ -2724,7 +2724,7 @@ export async function submissionRoutes(app: FastifyInstance, { env }: { env: Ret
       });
 
       if (!student) {
-        return reply.code(401).send({ message: "Missing or invalid token" });
+        return reply.code(401).send({ message: "Sessão inválida ou expirada. Inicia sessão novamente." });
       }
 
       try {

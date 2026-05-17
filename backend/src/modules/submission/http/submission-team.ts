@@ -48,6 +48,20 @@ type SubmissionMemberView = {
   isResponsible: boolean;
 };
 
+type SubmissionMemberViewSource = {
+  id: number;
+  name: string;
+  confirmedAt?: Date | string | null;
+  expectedStudentNumber?: string | null;
+  studentNumber?: string | null;
+  studentName?: string | null;
+  studentCourse?: string | null;
+  isExternal?: boolean | null;
+  externalOrganization?: string | null;
+  externalReason?: string | null;
+  exceptionApprovedAt?: Date | string | null;
+};
+
 type StudentForConfirmation = {
   id: number;
   studentNumber: string;
@@ -64,6 +78,41 @@ type ExternalTeamMemberConfirmationInput = {
   externalReason?: string | null;
   actorStudentNumber?: string | null;
 };
+
+function toIsoString(value?: Date | string | null) {
+  if (!value) return null;
+  return value instanceof Date ? value.toISOString() : value;
+}
+
+export function buildSubmissionTeamMemberView(
+  member: SubmissionMemberViewSource,
+  options: {
+    role?: "RESPONSAVEL" | "MEMBRO";
+    roleLabel?: string;
+    isResponsible?: boolean;
+  } = {},
+): SubmissionMemberView {
+  const role = options.role ?? "MEMBRO";
+  const isResponsible = options.isResponsible ?? role === "RESPONSAVEL";
+
+  return {
+    id: member.id,
+    name: member.name,
+    confirmed: Boolean(member.confirmedAt),
+    confirmedAt: toIsoString(member.confirmedAt),
+    expectedStudentNumber: member.expectedStudentNumber ?? null,
+    studentNumber: member.studentNumber ?? null,
+    studentName: member.studentName ?? null,
+    studentCourse: member.studentCourse ?? null,
+    isExternal: member.isExternal ?? false,
+    externalOrganization: member.externalOrganization ?? null,
+    externalReason: member.externalReason ?? null,
+    exceptionApprovedAt: toIsoString(member.exceptionApprovedAt),
+    role,
+    roleLabel: options.roleLabel ?? (role === "RESPONSAVEL" ? "Responsável" : "Membro"),
+    isResponsible,
+  };
+}
 
 export function normalizeSubmissionMemberKey(value: string) {
   return value
@@ -468,23 +517,7 @@ export async function buildSubmissionTeamPayload(env: Env, submission: Submissio
     : null;
   const memberViews: SubmissionMemberView[] = members
     .filter((member) => existingLeaderMember ? member.id !== existingLeaderMember.id : true)
-    .map((member) => ({
-      id: member.id,
-      name: member.name,
-      confirmed: Boolean(member.confirmedAt),
-      confirmedAt: member.confirmedAt?.toISOString() ?? null,
-      expectedStudentNumber: member.expectedStudentNumber ?? null,
-      studentNumber: member.studentNumber ?? null,
-      studentName: member.studentName ?? null,
-      studentCourse: member.studentCourse ?? null,
-      isExternal: member.isExternal ?? false,
-      externalOrganization: member.externalOrganization ?? null,
-      externalReason: member.externalReason ?? null,
-      exceptionApprovedAt: member.exceptionApprovedAt?.toISOString() ?? null,
-      role: "MEMBRO",
-      roleLabel: "Membro",
-      isResponsible: false,
-    }));
+    .map((member) => buildSubmissionTeamMemberView(member));
   const teamMembers = responsibleMember ? [responsibleMember, ...memberViews] : memberViews;
   const total = teamMembers.length;
   const confirmed = teamMembers.filter((member) => member.confirmed).length;
@@ -1013,7 +1046,7 @@ export async function confirmSubmissionTeamMember(env: Env, input: {
   });
 
   if (!submission) {
-    throw new Error("Invitation not found");
+    throw new Error("Convite de equipa não encontrado.");
   }
 
   if (submission.status === "REJECTED") {
@@ -1079,19 +1112,7 @@ export async function confirmSubmissionTeamMember(env: Env, input: {
   });
 
   return {
-    member: {
-      id: updated.id,
-      name: updated.name,
-      confirmed: true,
-      confirmedAt: updated.confirmedAt?.toISOString() ?? null,
-      expectedStudentNumber: updated.expectedStudentNumber ?? null,
-      studentNumber: updated.studentNumber ?? null,
-      studentName: updated.studentName ?? null,
-      studentCourse: updated.studentCourse ?? null,
-      role: "MEMBRO",
-      roleLabel: "Membro",
-      isResponsible: false,
-    },
+    member: buildSubmissionTeamMemberView(updated),
     team: await buildSubmissionTeamPayload(env, submission),
   };
 }

@@ -3189,6 +3189,38 @@ export function isForbiddenError(error: unknown) {
   );
 }
 
+function localizeApiErrorMessage(status: number, message: string) {
+  const normalized = message.trim();
+
+  if (/response doesn't match the schema/i.test(normalized)) {
+    return "O servidor devolveu uma resposta inesperada. A equipa técnica já foi notificada. Tenta novamente.";
+  }
+
+  if (/request doesn't match the schema|invalid input/i.test(normalized)) {
+    return "Dados inválidos. Revê os campos e tenta novamente.";
+  }
+
+  if (/missing or invalid token|unauthorized|invalid token/i.test(normalized)) {
+    return "Sessão inválida ou expirada. Inicia sessão novamente.";
+  }
+
+  if (/forbidden|access denied/i.test(normalized)) {
+    return "Não tens permissão para realizar esta ação.";
+  }
+
+  if (/not found/i.test(normalized)) {
+    return "Registo não encontrado.";
+  }
+
+  if (!normalized || normalized === "Request failed") {
+    return status >= 500
+      ? "Não foi possível concluir o pedido agora. Tenta novamente em instantes."
+      : "Não foi possível concluir o pedido. Revê os dados e tenta novamente.";
+  }
+
+  return normalized;
+}
+
 function shouldClearStoredAuthTokenOnUnauthorized(path: string) {
   return !/\.pdf(?:$|\?)/i.test(path);
 }
@@ -3267,9 +3299,15 @@ async function requestRaw(path: string, options?: RequestInit) {
       const errorPayload = await res
         .json()
         .catch(() => ({ message: res.statusText }));
+      const rawErrorMessage =
+        typeof errorPayload.message === "string"
+          ? errorPayload.message
+          : typeof errorPayload.error === "string"
+            ? errorPayload.error
+            : "Request failed";
       const error = new ApiError(
         res.status,
-        errorPayload.message || errorPayload.error || "Request failed",
+        localizeApiErrorMessage(res.status, rawErrorMessage),
       );
 
       if (

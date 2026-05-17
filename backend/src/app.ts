@@ -5,6 +5,7 @@ import rateLimit from "@fastify/rate-limit";
 import { serializerCompiler, validatorCompiler, type ZodTypeProvider } from "fastify-type-provider-zod";
 import { registerRoutes } from "./core/routes";
 import { type Env } from "./config/env";
+import { registerPortugueseErrorHandler } from "./shared/http-errors";
 
 export type AppDependencies = Record<string, unknown>;
 
@@ -46,6 +47,7 @@ export function buildApp(env: Env, deps?: AppDependencies) {
 
   app.setValidatorCompiler(validatorCompiler);
   app.setSerializerCompiler(serializerCompiler);
+  registerPortugueseErrorHandler(app);
 
   const corsOrigin = env.CORS_ORIGIN.trim() === "*"
     ? true

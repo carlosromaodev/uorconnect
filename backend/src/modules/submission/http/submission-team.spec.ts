@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildMemberJourneyLabel,
+  buildSubmissionTeamMemberView,
   buildSubmissionMemberStudentNumberReservation,
   canShareSubmissionTeamInvite,
   isStudentAllowedForSubmissionMember,
@@ -176,5 +177,39 @@ describe("submission team confirmation rules", () => {
         leaderName: "Ana Responsavel",
       }),
     ).toThrow("O responsável não pode ser removido da equipa.");
+  });
+
+  it("serializes confirmed members with the full team member contract", () => {
+    expect(
+      buildSubmissionTeamMemberView({
+        id: 12,
+        name: "Membro Externo",
+        confirmedAt: new Date("2026-05-17T08:15:00.000Z"),
+        expectedStudentNumber: "800000000001",
+        studentNumber: "800000000001",
+        studentName: "Membro Externo",
+        studentCourse: "Outra instituição",
+        isExternal: true,
+        externalOrganization: "Instituto Médio Teste",
+        externalReason: "Membro externo comunicado à organização.",
+        exceptionApprovedAt: new Date("2026-05-16T12:00:00.000Z"),
+      }),
+    ).toEqual({
+      id: 12,
+      name: "Membro Externo",
+      confirmed: true,
+      confirmedAt: "2026-05-17T08:15:00.000Z",
+      expectedStudentNumber: "800000000001",
+      studentNumber: "800000000001",
+      studentName: "Membro Externo",
+      studentCourse: "Outra instituição",
+      isExternal: true,
+      externalOrganization: "Instituto Médio Teste",
+      externalReason: "Membro externo comunicado à organização.",
+      exceptionApprovedAt: "2026-05-16T12:00:00.000Z",
+      role: "MEMBRO",
+      roleLabel: "Membro",
+      isResponsible: false,
+    });
   });
 });
