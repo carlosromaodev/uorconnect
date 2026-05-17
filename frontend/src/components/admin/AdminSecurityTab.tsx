@@ -1,5 +1,6 @@
 import { type CSSProperties, type ReactNode, useEffect, useMemo, useState } from "react";
 import {
+  AlertTriangle,
   Award,
   BadgeCheck,
   BookOpen,
@@ -57,6 +58,7 @@ import { downloadBlobFile } from "@/lib/student-documents";
 
 type AdminSecurityTabProps = {
   scope?: "security" | "nucleus" | "credentials";
+  credentialSubpage?: CredentialAdminSubpage;
   accessForm: AdminAccessForm;
   adminAccessConflicts: AdminAccessConflict[];
   authorizedAdminStudents: AdminAuthorizedStudent[];
@@ -65,8 +67,61 @@ type AdminSecurityTabProps = {
   onAccessFormChange: (value: AdminAccessForm | ((current: AdminAccessForm) => AdminAccessForm)) => void;
   onAuthorizeAdminStudent: () => void;
   onAuthorizedStudentNumberChange: (value: string) => void;
+  onCredentialSubpageChange?: (value: CredentialAdminSubpage) => void;
   onRevokeAdminStudent: (studentNumber: string) => void;
 };
+
+type CredentialAdminSubpage =
+  | "overview"
+  | "links"
+  | "members"
+  | "printing"
+  | "templates"
+  | "pending";
+
+const credentialAdminSubpages: Array<{
+  id: CredentialAdminSubpage;
+  label: string;
+  description: string;
+  icon: typeof Shield;
+}> = [
+  {
+    id: "overview",
+    label: "Painel",
+    description: "Resumo e atalhos principais da operação.",
+    icon: IdCard,
+  },
+  {
+    id: "links",
+    label: "Criar links",
+    description: "Convites individuais, coletivos e de expositores.",
+    icon: Link2,
+  },
+  {
+    id: "members",
+    label: "Membros",
+    description: "Equipas, perfis prontos, pesquisa e passes individuais.",
+    icon: Users,
+  },
+  {
+    id: "printing",
+    label: "Impressão",
+    description: "PDFs, lotes nominais e passes genéricos.",
+    icon: Download,
+  },
+  {
+    id: "templates",
+    label: "Templates",
+    description: "Cores e rodapés oficiais por categoria.",
+    icon: Palette,
+  },
+  {
+    id: "pending",
+    label: "Pendentes",
+    description: "Perfis incompletos e correspondências por resolver.",
+    icon: AlertTriangle,
+  },
+];
 
 type AdminAccessForm = {
   team: string;
@@ -624,6 +679,7 @@ function AuthorizedAdminCard({
 
 export default function AdminSecurityTab({
   scope = "security",
+  credentialSubpage,
   accessForm,
   adminAccessConflicts,
   authorizedAdminStudents,
@@ -632,6 +688,7 @@ export default function AdminSecurityTab({
   onAccessFormChange,
   onAuthorizeAdminStudent,
   onAuthorizedStudentNumberChange,
+  onCredentialSubpageChange,
   onRevokeAdminStudent,
 }: AdminSecurityTabProps) {
   const [credentialOverview, setCredentialOverview] = useState<TeamCredentialOverview | null>(null);
@@ -662,6 +719,8 @@ export default function AdminSecurityTab({
   const [printBatchTitle, setPrintBatchTitle] = useState("Lote de passes");
   const [printBatchNominalText, setPrintBatchNominalText] = useState("Maria Silva | CONVIDADO | Convidados | Convidada | UOR Connect | @maria | linkedin.com/in/maria | maria.ao");
   const [printBatchGenericForm, setPrintBatchGenericForm] = useState<CredentialPrintBatchGenericInput>(defaultPrintBatchGenericForm);
+  const [internalCredentialSubpage, setInternalCredentialSubpage] =
+    useState<CredentialAdminSubpage>("overview");
 
   const selectedPermissions = accessForm.role === "SUPER_ADMIN"
     ? allPermissionValues
@@ -1299,6 +1358,23 @@ export default function AdminSecurityTab({
   }, [filteredCredentialMembers]);
 
   const incompleteProfileMembers = incompleteProfiles?.members.slice(0, 4) ?? [];
+  const activeCredentialSubpage = credentialSubpage ?? internalCredentialSubpage;
+  const activeCredentialSubpageMeta =
+    credentialAdminSubpages.find((item) => item.id === activeCredentialSubpage) ??
+    credentialAdminSubpages[0];
+  const handleCredentialSubpageChange = (value: CredentialAdminSubpage) => {
+    if (onCredentialSubpageChange) {
+      onCredentialSubpageChange(value);
+      return;
+    }
+    setInternalCredentialSubpage(value);
+  };
+  const showCredentialOverview = activeCredentialSubpage === "overview";
+  const showCredentialLinks = activeCredentialSubpage === "links";
+  const showCredentialMembers = activeCredentialSubpage === "members";
+  const showCredentialPrinting = activeCredentialSubpage === "printing";
+  const showCredentialTemplates = activeCredentialSubpage === "templates";
+  const showCredentialPending = activeCredentialSubpage === "pending";
   const allReadyNucleusMembers = (credentialOverview?.members ?? [])
     .filter((member) => member.category === "NUCLEO" && member.status === "PROFILE_READY")
     .slice()
@@ -1730,9 +1806,9 @@ export default function AdminSecurityTab({
               </div>
             </div>
           </CardContent>
-        </Card>
+	        </Card>
 
-        {bulkInvitation && (
+	        {bulkInvitation && (
           <div className="uor-vital-card rounded-2xl border border-cyan-200 bg-gradient-to-br from-cyan-50 to-white p-4 text-cyan-950">
             <div className="grid gap-3 lg:grid-cols-[1fr_auto] lg:items-center">
               <div className="min-w-0">
@@ -1837,10 +1913,10 @@ export default function AdminSecurityTab({
                         })}
                       </div>
                     </div>
-                    );
-                  })
-                )}
-              </div>
+	                    );
+	                  })
+		                )}
+			              </div>
             </CardContent>
           </Card>
 
@@ -2042,9 +2118,78 @@ export default function AdminSecurityTab({
             </div>
           </div>
         </CardHeader>
-        <CardContent className="min-w-0 space-y-5 p-4 sm:p-5">
-          <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)]">
-            <div className="rounded-2xl border p-4 min-w-0" style={credentialPanelStyle(credentialFormTheme)}>
+	        <CardContent className="min-w-0 space-y-5 p-4 sm:p-5">
+	          <div className="grid min-w-0 gap-2 sm:grid-cols-2 xl:grid-cols-6">
+	            {credentialAdminSubpages.map((subpage) => {
+	              const Icon = subpage.icon;
+	              const isActive = activeCredentialSubpage === subpage.id;
+	              return (
+	                <button
+	                  key={subpage.id}
+	                  type="button"
+	                  onClick={() => handleCredentialSubpageChange(subpage.id)}
+	                  className={`flex min-h-[76px] min-w-0 items-start gap-3 rounded-2xl border p-3 text-left transition ${
+	                    isActive
+	                      ? "border-sky-300 bg-sky-50 text-sky-950 shadow-sm"
+	                      : "border-slate-200 bg-white/80 text-slate-600 hover:border-slate-300 hover:bg-white"
+	                  }`}
+	                >
+	                  <span className={`flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ${isActive ? "bg-sky-700 text-white" : "bg-slate-100 text-slate-500"}`}>
+	                    <Icon className="h-4 w-4" />
+	                  </span>
+	                  <span className="min-w-0">
+	                    <span className="block truncate text-sm font-bold">{subpage.label}</span>
+	                    <span className="mt-1 line-clamp-2 block text-[11px] leading-4 text-slate-500">
+	                      {subpage.description}
+	                    </span>
+	                  </span>
+	                </button>
+	              );
+	            })}
+	          </div>
+
+	          {showCredentialOverview ? (
+	            <div className="grid min-w-0 gap-4 lg:grid-cols-3">
+	              {credentialAdminSubpages.filter((subpage) => subpage.id !== "overview").map((subpage) => {
+	                const Icon = subpage.icon;
+	                const stat =
+	                  subpage.id === "links"
+	                    ? `${credentialOverview?.stats.total ?? 0} link(s)`
+	                    : subpage.id === "members"
+	                      ? `${credentialOverview?.stats.teams ?? 0} equipa(s)`
+	                      : subpage.id === "printing"
+	                        ? `${printableCredentialMembers.length} passe(s) pronto(s)`
+	                        : subpage.id === "templates"
+	                          ? `${passTemplates.length} modelo(s)`
+	                          : `${incompleteProfiles?.stats.incomplete ?? 0} pendente(s)`;
+	                return (
+	                  <button
+	                    key={subpage.id}
+	                    type="button"
+	                    onClick={() => handleCredentialSubpageChange(subpage.id)}
+	                    className="group min-w-0 rounded-2xl border border-slate-200 bg-white p-4 text-left shadow-sm transition hover:-translate-y-0.5 hover:border-sky-200 hover:shadow-md"
+	                  >
+	                    <div className="flex min-w-0 items-start justify-between gap-3">
+	                      <div className="min-w-0">
+	                        <p className="truncate text-sm font-bold text-slate-950">{subpage.label}</p>
+	                        <p className="mt-1 text-xs leading-5 text-slate-500">{subpage.description}</p>
+	                      </div>
+	                      <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-slate-100 text-slate-600 transition group-hover:bg-sky-700 group-hover:text-white">
+	                        <Icon className="h-4 w-4" />
+	                      </span>
+	                    </div>
+	                    <div className="mt-4 rounded-xl border border-slate-100 bg-slate-50 px-3 py-2">
+	                      <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Estado atual</p>
+	                      <p className="mt-1 text-sm font-bold text-slate-800">{stat}</p>
+	                    </div>
+	                  </button>
+	                );
+	              })}
+	            </div>
+	          ) : (
+	          <div className={`grid min-w-0 gap-4 ${showCredentialLinks ? "xl:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)]" : "xl:grid-cols-1"}`}>
+	            {showCredentialLinks && (
+	            <div className="rounded-2xl border p-4 min-w-0" style={credentialPanelStyle(credentialFormTheme)}>
               <div className="flex items-center justify-between gap-3">
                 <div className="min-w-0">
                   <h3 className="text-sm font-semibold" style={{ color: credentialFormTheme.primaryColor }}>Criar link de candidatura</h3>
@@ -2247,18 +2392,20 @@ export default function AdminSecurityTab({
                       </button>
                     );
                   })}
-                </div>
-              </div>
-            </div>
+	                </div>
+	              </div>
+	            </div>
+	            )}
 
-            <div className="rounded-2xl border border-border/60 p-4 min-w-0 overflow-hidden">
-              <div className="flex min-w-0 flex-col gap-3 2xl:flex-row 2xl:items-center 2xl:justify-between">
-                <div className="min-w-0">
-                  <h3 className="text-sm font-semibold text-slate-900">Membros por equipa</h3>
-                  <p className="mt-1 text-xs text-slate-500">Gera links coletivos e acompanha o progresso das tomadas de posse aprovadas.</p>
-                </div>
-                <div className="grid w-full min-w-0 grid-cols-1 gap-2 min-[430px]:grid-cols-2 2xl:w-auto 2xl:grid-cols-4">
-                  <Button size="sm" className="min-w-0" disabled={credentialBusyKey === "credentials-bulk"} onClick={() => void handleBulkInvitation()}>
+	            <div className="rounded-2xl border border-border/60 p-4 min-w-0 overflow-hidden">
+	              <div className="flex min-w-0 flex-col gap-3 2xl:flex-row 2xl:items-center 2xl:justify-between">
+	                <div className="min-w-0">
+	                  <h3 className="text-sm font-semibold text-slate-900">{activeCredentialSubpageMeta.label}</h3>
+	                  <p className="mt-1 text-xs text-slate-500">{activeCredentialSubpageMeta.description}</p>
+	                </div>
+	                {(showCredentialLinks || showCredentialMembers) && (
+	                <div className="grid w-full min-w-0 grid-cols-1 gap-2 min-[430px]:grid-cols-2 2xl:w-auto 2xl:grid-cols-4">
+	                  <Button size="sm" className="min-w-0" disabled={credentialBusyKey === "credentials-bulk"} onClick={() => void handleBulkInvitation()}>
                     {credentialBusyKey === "credentials-bulk" ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Users className="mr-1.5 h-3.5 w-3.5" />}
                     Link Núcleo
                   </Button>
@@ -2272,12 +2419,14 @@ export default function AdminSecurityTab({
                   </Button>
                   <Button size="sm" variant="outline" className="min-w-0" disabled={credentialBusyKey === "credentials-load"} onClick={() => void loadTeamCredentials()}>
                     <RefreshCw className={`mr-1.5 h-3.5 w-3.5 ${credentialBusyKey === "credentials-load" ? "animate-spin" : ""}`} />
-                    Atualizar
-                  </Button>
-                </div>
-              </div>
+	                    Atualizar
+	                  </Button>
+	                </div>
+	                )}
+	              </div>
 
-              <div className="mt-3 min-w-0 rounded-xl border border-slate-200 bg-slate-50 p-3">
+	              {showCredentialPrinting && (
+	              <div className="mt-3 min-w-0 rounded-xl border border-slate-200 bg-slate-50 p-3">
                 <div className="flex min-w-0 flex-col gap-3 2xl:flex-row 2xl:items-center 2xl:justify-between">
                   <div className="min-w-0">
                     <p className="text-xs font-semibold uppercase tracking-wider text-slate-600">Impressao de passes</p>
@@ -2495,15 +2644,18 @@ export default function AdminSecurityTab({
                               <Eye className="h-3.5 w-3.5 shrink-0" />
                             </button>
                           ))}
-                          {printBatches.length === 0 && (
-                            <p className="rounded-md border border-dashed border-slate-200 px-3 py-3 text-center text-xs text-slate-500">Nenhum lote criado ainda.</p>
-                          )}
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-                <div className="mt-3 grid min-w-0 gap-3 border-t border-slate-200 pt-3 2xl:grid-cols-[180px_minmax(0,1fr)_auto] 2xl:items-end">
+	                          {printBatches.length === 0 && (
+	                            <p className="rounded-md border border-dashed border-slate-200 px-3 py-3 text-center text-xs text-slate-500">Nenhum lote criado ainda.</p>
+	                          )}
+	                        </div>
+	                      </div>
+	                    </div>
+	                  </div>
+	                </div>
+	              </div>
+	              )}
+	              {showCredentialTemplates && (
+	                <div className="mt-3 grid min-w-0 gap-3 rounded-xl border border-slate-200 bg-slate-50 p-3 2xl:grid-cols-[180px_minmax(0,1fr)_auto] 2xl:items-end">
                   <label className="space-y-1">
                     <span className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">Template</span>
                     <select
@@ -2550,14 +2702,14 @@ export default function AdminSecurityTab({
                     disabled={!selectedPassTemplate || credentialBusyKey === "pass-template-save"}
                     onClick={() => void handleSavePassTemplate()}
                   >
-                    {credentialBusyKey === "pass-template-save" ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Palette className="mr-1.5 h-3.5 w-3.5" />}
-                    Guardar
-                  </Button>
-                </div>
-              </div>
+	                    {credentialBusyKey === "pass-template-save" ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Palette className="mr-1.5 h-3.5 w-3.5" />}
+	                    Guardar
+	                  </Button>
+	                </div>
+	              )}
 
-              {/* ── Bulk invitation link ── */}
-              {bulkInvitation && (
+	              {/* ── Bulk invitation link ── */}
+	              {(showCredentialLinks || showCredentialMembers) && bulkInvitation && (
                 <div className="mt-3 rounded-xl border border-blue-200 bg-blue-50/60 p-3">
                   <div className="flex min-w-0 flex-col gap-3 min-[430px]:flex-row min-[430px]:items-center min-[430px]:justify-between">
                     <div className="min-w-0 flex-1">
@@ -2577,7 +2729,7 @@ export default function AdminSecurityTab({
               )}
 
               {/* ── Bulk expositor invitation link ── */}
-              {bulkExpositorInvitation && (
+	              {(showCredentialLinks || showCredentialMembers) && bulkExpositorInvitation && (
                 <div className="mt-3 rounded-xl border border-violet-200 bg-violet-50/60 p-3">
                   <div className="flex min-w-0 flex-col gap-3 min-[430px]:flex-row min-[430px]:items-center min-[430px]:justify-between">
                     <div className="min-w-0 flex-1">
@@ -2594,10 +2746,16 @@ export default function AdminSecurityTab({
                     </Button>
                   </div>
                 </div>
-              )}
+	              )}
 
-              {/* ── Claim progress per team ── */}
-              {credentialOverview && credentialOverview.teams.length > 0 && (
+	              {showCredentialLinks && !bulkInvitation && !bulkExpositorInvitation && (
+	                <div className="mt-4 rounded-xl border border-dashed border-sky-200 bg-sky-50/60 p-4 text-sm text-sky-900">
+	                  Usa os botões acima para gerar links coletivos ou acompanha aqui os links criados nesta sessão.
+	                </div>
+	              )}
+
+	              {/* ── Claim progress per team ── */}
+		              {showCredentialMembers && credentialOverview && credentialOverview.teams.length > 0 && (
                 <div className="mt-4 min-w-0 rounded-xl border border-slate-200 bg-white p-3">
                   <div className="flex items-center gap-2 mb-3">
                     <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-emerald-600 text-white">
@@ -2639,7 +2797,8 @@ export default function AdminSecurityTab({
               )}
 
               {/* ── Member search + invite ── */}
-              <div className="mt-4 rounded-xl border border-slate-200 bg-white p-3">
+	              {showCredentialMembers && (
+	              <div className="mt-4 rounded-xl border border-slate-200 bg-white p-3">
                 <div className="flex items-center gap-2 mb-3">
                   <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-slate-900 text-white">
                     <Search className="h-3.5 w-3.5" />
@@ -2742,9 +2901,11 @@ export default function AdminSecurityTab({
                     )}
                   </div>
                 )}
-              </div>
+	              </div>
+	              )}
 
-              <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-emerald-950">
+	              {showCredentialMembers && (
+	              <div className="mt-4 rounded-xl border border-emerald-200 bg-emerald-50 p-3 text-emerald-950">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <p className="text-sm font-semibold">Cadastro digital da equipa</p>
@@ -2778,9 +2939,11 @@ export default function AdminSecurityTab({
                     ))}
                   </div>
                 )}
-              </div>
+	              </div>
+	              )}
 
-              <div className="mt-4 rounded-xl border border-sky-200 bg-sky-50 p-3 text-sky-950">
+	              {showCredentialMembers && (
+	              <div className="mt-4 rounded-xl border border-sky-200 bg-sky-50 p-3 text-sky-950">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <p className="text-sm font-semibold">Perfis do Núcleo concluídos</p>
@@ -2834,9 +2997,11 @@ export default function AdminSecurityTab({
                     Ainda não há membros do Núcleo com perfil concluído nesta lista.
                   </div>
                 )}
-              </div>
+	              </div>
+	              )}
 
-              <div className="mt-4 rounded-xl border border-blue-200 bg-blue-50 p-3 text-blue-950">
+	              {showCredentialPending && (
+	              <div className="mt-4 rounded-xl border border-blue-200 bg-blue-50 p-3 text-blue-950">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <p className="text-sm font-semibold">Correspondência nome/número</p>
@@ -2887,9 +3052,11 @@ export default function AdminSecurityTab({
                     ))}
                   </div>
                 )}
-              </div>
+	              </div>
+	              )}
 
-              <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-amber-950">
+	              {showCredentialPending && (
+	              <div className="mt-4 rounded-xl border border-amber-200 bg-amber-50 p-3 text-amber-950">
                 <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                   <div>
                     <p className="text-sm font-semibold">Relatório de perfis incompletos</p>
@@ -2922,31 +3089,35 @@ export default function AdminSecurityTab({
                     ))}
                   </div>
                 )}
-              </div>
+	              </div>
+	              )}
 
-              <div className="mt-4 flex min-w-0 flex-col gap-2 sm:flex-row">
-                <div className="relative min-w-0 flex-1">
-                  <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
-                  <Input
-                    className="h-9 pl-9"
-                    value={credentialSearch}
-                    onChange={(event) => setCredentialSearch(event.target.value)}
-                    placeholder="Filtrar por nome, função ou telefone..."
-                  />
-                </div>
-                <select
-                  className="h-9 w-full rounded-md border border-input bg-background px-2 text-xs focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary sm:w-56"
-                  value={teamFilter}
-                  onChange={(event) => setTeamFilter(event.target.value)}
-                >
-                  <option value="all">Todas as equipas</option>
-                  {(credentialOverview?.teams ?? []).map((team) => (
-                    <option key={team.name} value={team.name}>{team.name} ({team.total})</option>
-                  ))}
-                </select>
-              </div>
+	              {showCredentialMembers && (
+	                  <div className="mt-4 flex min-w-0 flex-col gap-2 sm:flex-row">
+	                    <div className="relative min-w-0 flex-1">
+	                      <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground" />
+	                      <Input
+	                        className="h-9 pl-9"
+	                        value={credentialSearch}
+	                        onChange={(event) => setCredentialSearch(event.target.value)}
+	                        placeholder="Filtrar por nome, função ou telefone..."
+	                      />
+	                    </div>
+	                    <select
+	                      className="h-9 w-full rounded-md border border-input bg-background px-2 text-xs focus:border-primary focus:outline-none focus:ring-1 focus:ring-primary sm:w-56"
+	                      value={teamFilter}
+	                      onChange={(event) => setTeamFilter(event.target.value)}
+	                    >
+	                      <option value="all">Todas as equipas</option>
+	                      {(credentialOverview?.teams ?? []).map((team) => (
+	                        <option key={team.name} value={team.name}>{team.name} ({team.total})</option>
+	                      ))}
+	                    </select>
+		                  </div>
+	              )}
 
-              <div className="mt-4 min-w-0 space-y-3 lg:max-h-[620px] lg:overflow-y-auto lg:pr-1">
+	              {showCredentialMembers && (
+	              <div className="mt-4 min-w-0 space-y-3 lg:max-h-[620px] lg:overflow-y-auto lg:pr-1">
                 {credentialBusyKey === "credentials-load" && !credentialOverview ? (
                   <div className="flex items-center justify-center rounded-xl border border-dashed border-border/60 py-12 text-muted-foreground">
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -2956,8 +3127,8 @@ export default function AdminSecurityTab({
                   <div className="rounded-xl border border-dashed border-border/60 bg-muted/10 p-6 text-center text-sm text-muted-foreground">
                     Nenhuma credencial encontrada.
                   </div>
-                ) : (
-                  credentialMembersByTeam.map(({ team, members }) => {
+	                ) : (
+	                  credentialMembersByTeam.map(({ team, members }) => {
                     const groupTheme = credentialVisualThemeFor(members[0] ?? { category: "OUTRO", team }, passTemplates);
                     return (
                     <div key={team} className="min-w-0 overflow-hidden rounded-2xl border bg-white/90 shadow-sm shadow-slate-900/5" style={{ borderColor: `${groupTheme.accentColor}44` }}>
@@ -2970,13 +3141,13 @@ export default function AdminSecurityTab({
                           <span className="text-[10px] text-emerald-600 font-medium">
                             {members.filter((m) => m.status === "PROFILE_READY").length} pronto(s)
                           </span>
-                          {members.some((m) => m.status === "INVITED") && (
-                            <span className="text-[10px] text-amber-600 font-medium">
-                              {members.filter((m) => m.status === "INVITED").length} pendente(s)
-                            </span>
-                          )}
-                        </div>
-                      </div>
+	                          {members.some((m) => m.status === "INVITED") && (
+	                            <span className="text-[10px] text-amber-600 font-medium">
+	                              {members.filter((m) => m.status === "INVITED").length} pendente(s)
+	                            </span>
+	                          )}
+	                        </div>
+	                      </div>
                       <div className="space-y-2 p-2">
                         {members.map((member) => {
                           const inviteUrl = credentialInviteUrl(member);
@@ -3122,10 +3293,12 @@ export default function AdminSecurityTab({
                     );
                   })
                 )}
-              </div>
-            </div>
-          </div>
-        </CardContent>
+	              </div>
+	              )}
+	            </div>
+	          </div>
+	          )}
+	        </CardContent>
       </Card>}
 
       {scope === "security" && <div className="space-y-5">

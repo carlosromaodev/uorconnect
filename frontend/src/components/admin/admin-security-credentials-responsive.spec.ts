@@ -9,8 +9,12 @@ describe("AdminSecurityTab credentials responsiveness", () => {
   it("keeps credential panels and member actions inside narrow admin columns", () => {
     const source = readSource("./AdminSecurityTab.tsx");
 
+    expect(source).toContain("credentialAdminSubpages");
     expect(source).toContain(
-      "grid min-w-0 gap-4 xl:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)]",
+      "grid min-w-0 gap-2 sm:grid-cols-2 xl:grid-cols-6",
+    );
+    expect(source).toContain(
+      "showCredentialLinks ? \"xl:grid-cols-[minmax(0,0.92fr)_minmax(0,1.08fr)]\" : \"xl:grid-cols-1\"",
     );
     expect(source).toContain(
       "rounded-2xl border p-4 min-w-0",

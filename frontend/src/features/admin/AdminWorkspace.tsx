@@ -295,6 +295,15 @@ const tabs = [
 
 type TabId = (typeof tabs)[number]["id"];
 type AdminPermission = (typeof tabs)[number]["permission"];
+const credentialSubpages = [
+  { id: "overview", label: "Painel", icon: BarChart3 },
+  { id: "links", label: "Criar links", icon: UserPlus },
+  { id: "members", label: "Membros", icon: Users },
+  { id: "printing", label: "Impressão", icon: Download },
+  { id: "templates", label: "Templates", icon: Palette },
+  { id: "pending", label: "Pendentes", icon: AlertTriangle },
+] as const;
+type CredentialAdminSubpage = (typeof credentialSubpages)[number]["id"];
 type AdminDataSection =
   | "base"
   | "students"
@@ -1391,6 +1400,8 @@ const Admin = ({
   adminAccess?: AdminAccessProfile | null;
 }) => {
   const [activeTab, setActiveTab] = useState<TabId>("overview");
+  const [activeCredentialSubpage, setActiveCredentialSubpage] =
+    useState<CredentialAdminSubpage>("overview");
   const [showLeftGradient, setShowLeftGradient] = useState(false);
   const [showRightGradient, setShowRightGradient] = useState(true);
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -2955,6 +2966,9 @@ const Admin = ({
 
   const activeTabMeta =
     visibleTabs.find((tab) => tab.id === activeTab) ?? visibleTabs[0];
+  const activeCredentialSubpageMeta =
+    credentialSubpages.find((item) => item.id === activeCredentialSubpage) ??
+    credentialSubpages[0];
   const activeTabGroup = tabGroups.find((group) =>
     group.ids.includes(activeTab),
   );
@@ -5652,26 +5666,59 @@ const Admin = ({
                     {groupTabs.map((tab) => {
                       const Icon = tab.icon;
                       const isActive = activeTab === tab.id;
-                      return (
-                        <button
-                          key={tab.id}
-                          onClick={() => {
-                            setActiveTab(tab.id);
-                            setSidebarOpen(false);
-                          }}
-                          className={`admin-nav-item group relative flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors ${
-                            isActive
-                              ? "admin-nav-item--active bg-muted font-semibold text-foreground"
-                              : "font-medium text-muted-foreground hover:bg-muted/60 hover:text-foreground"
-                          }`}
-                        >
-                          <span className="admin-nav-icon flex h-7 w-7 shrink-0 items-center justify-center rounded-lg">
-                            <Icon className="h-4 w-4" />
-                          </span>
-                          <span className="truncate">{tab.label}</span>
-                        </button>
-                      );
-                    })}
+	                      return (
+	                        <div key={tab.id} className="space-y-1">
+	                          <button
+	                            onClick={() => {
+	                              setActiveTab(tab.id);
+	                              if (tab.id === "credentials") {
+	                                setActiveCredentialSubpage("overview");
+	                              }
+	                              setSidebarOpen(false);
+	                            }}
+	                            className={`admin-nav-item group relative flex w-full items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors ${
+	                              isActive
+	                                ? "admin-nav-item--active bg-muted font-semibold text-foreground"
+	                                : "font-medium text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+	                            }`}
+	                          >
+	                            <span className="admin-nav-icon flex h-7 w-7 shrink-0 items-center justify-center rounded-lg">
+	                              <Icon className="h-4 w-4" />
+	                            </span>
+	                            <span className="truncate">{tab.label}</span>
+	                          </button>
+	                          {tab.id === "credentials" && (
+	                            <div className="admin-nav-subitems ml-6 border-l border-border/70 pl-3">
+	                              {credentialSubpages.map((subpage) => {
+	                                const SubIcon = subpage.icon;
+	                                const isSubpageActive =
+	                                  activeTab === "credentials" &&
+	                                  activeCredentialSubpage === subpage.id;
+	                                return (
+	                                  <button
+	                                    key={subpage.id}
+	                                    type="button"
+	                                    onClick={() => {
+	                                      setActiveTab("credentials");
+	                                      setActiveCredentialSubpage(subpage.id);
+	                                      setSidebarOpen(false);
+	                                    }}
+	                                    className={`admin-nav-subitem mt-1 flex w-full min-w-0 items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-xs transition-colors ${
+	                                      isSubpageActive
+	                                        ? "bg-primary/10 font-semibold text-primary"
+	                                        : "font-medium text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+	                                    }`}
+	                                  >
+	                                    <SubIcon className="h-3.5 w-3.5 shrink-0" />
+	                                    <span className="truncate">{subpage.label}</span>
+	                                  </button>
+	                                );
+	                              })}
+	                            </div>
+	                          )}
+	                        </div>
+	                      );
+	                    })}
                   </div>
                 </div>
               );
@@ -5713,7 +5760,9 @@ const Admin = ({
                   {visibleTabs.length} módulo(s) disponíveis
                 </p>
                 <h2 className="mt-0.5 text-lg font-black tracking-tight text-foreground">
-                  {activeTabMeta?.label ?? "Administração"}
+	                  {activeTab === "credentials"
+	                    ? `Credenciais · ${activeCredentialSubpageMeta.label}`
+	                    : activeTabMeta?.label ?? "Administração"}
                 </h2>
               </div>
             </div>
@@ -11317,9 +11366,11 @@ const Admin = ({
                     <Suspense
                       fallback={<AdminPanelFallback label="Credenciais" />}
                     >
-                      <AdminSecurityTab
-                        scope="credentials"
-                        accessForm={adminAccessForm}
+	                      <AdminSecurityTab
+	                        scope="credentials"
+	                        credentialSubpage={activeCredentialSubpage}
+	                        onCredentialSubpageChange={setActiveCredentialSubpage}
+	                        accessForm={adminAccessForm}
                         adminAccessConflicts={adminAccessConflicts}
                         authorizedAdminStudents={authorizedAdminStudents}
                         authorizedStudentNumber={authorizedStudentNumber}
