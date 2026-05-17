@@ -551,7 +551,7 @@ const adminSubmissionQuerySchema = z.object({
   status: z.enum(["PENDING", "APPROVED", "REJECTED"]).optional(),
   type: z.enum(["PROJECT", "BUSINESS", "PRODUCT"]).optional(),
   page: z.coerce.number().int().min(1).default(1),
-  limit: z.coerce.number().int().min(10).max(200).default(50),
+  limit: z.coerce.number().int().min(10).max(500).default(50),
   search: z.string().trim().max(160).optional(),
   sort: z.enum([
     "created_desc",

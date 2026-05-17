@@ -10,6 +10,11 @@ import { registerPortugueseErrorHandler } from "./shared/http-errors";
 export type AppDependencies = Record<string, unknown>;
 
 const requestBodyLimitBytes = 10 * 1024 * 1024;
+const officialUorConnectOrigins = new Set([
+  "https://uorconnect.space",
+  "https://www.uorconnect.space",
+  "https://admin.uorconnect.space",
+]);
 
 function normalizeAllowedOrigins(value: string) {
   return value
@@ -62,7 +67,9 @@ export function buildApp(env: Env, deps?: AppDependencies) {
             return;
           }
 
-          const isAllowedOrigin = corsOrigin.includes(origin) || isAllowedVercelPreview(origin);
+          const isAllowedOrigin = corsOrigin.includes(origin)
+            || officialUorConnectOrigins.has(origin)
+            || isAllowedVercelPreview(origin);
           callback(null, isAllowedOrigin ? origin : false);
         },
     methods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
