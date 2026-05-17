@@ -27,7 +27,6 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { ScrollArea } from "@/components/ui/scroll-area";
 import { toast } from "@/components/ui/sonner";
 import { StudentLoginForm } from "@/components/auth/StudentLoginForm";
 import {
@@ -305,8 +304,8 @@ function ProjectDetailModal({
 
   return (
     <Dialog open={open} onOpenChange={onClose}>
-      <DialogContent className="h-[92vh] w-[96vw] max-w-6xl overflow-hidden border-border/70 bg-card p-0">
-        <div className="grid h-full lg:grid-cols-[1.15fr_0.85fr]">
+      <DialogContent className="project-detail-dialog max-h-[calc(100dvh-1rem)] w-[96vw] max-w-6xl gap-0 overflow-y-auto overscroll-contain border-border/70 bg-card p-0 lg:h-[92vh] lg:max-h-[92vh] lg:overflow-hidden">
+        <div className="min-h-0 lg:grid lg:h-full lg:grid-cols-[1.15fr_0.85fr]">
           <div className="relative hidden lg:flex flex-col justify-between overflow-hidden bg-[radial-gradient(circle_at_top_left,rgba(217,119,6,0.18),transparent_28%),linear-gradient(160deg,rgba(2,132,199,0.18),rgba(15,23,42,0.03))] border-r border-border/60">
             <div className={`absolute inset-x-0 top-0 h-1.5 ${areaUi.topBar}`} />
             <div className="p-8">
@@ -354,7 +353,7 @@ function ProjectDetailModal({
             </div>
           </div>
 
-          <div className="flex min-h-0 flex-col">
+          <div className="flex min-h-0 flex-col lg:h-full">
             <div className={`h-1.5 lg:hidden ${areaUi.topBar}`} />
             <div className="border-b border-border/60 px-4 py-4 sm:px-6">
               <div className="flex items-start gap-3">
@@ -415,7 +414,7 @@ function ProjectDetailModal({
               </div>
             </div>
 
-            <ScrollArea className="min-h-0 flex-1 px-4 sm:px-6">
+            <div className="px-4 sm:px-6 lg:min-h-0 lg:flex-1 lg:overflow-y-auto">
               <div className="space-y-5 py-5">
                 <div className="lg:hidden rounded-2xl border border-border/60 bg-muted/30 p-4">
                   <p className="text-xs font-semibold uppercase tracking-[0.16em] text-muted-foreground">Equipa</p>
@@ -451,7 +450,7 @@ function ProjectDetailModal({
                   </div>
                 </div>
               </div>
-            </ScrollArea>
+            </div>
 
             <div className="border-t border-border/60 bg-background/95 px-4 py-4 backdrop-blur sm:px-6">
               {!loggedIn ? (
