@@ -144,7 +144,7 @@ async function main() {
     printMode: args.printMode,
     side: "both",
     layout: args.layout,
-    duplexMode: "long-edge",
+    duplexMode: args.layout === "a4-2up-landscape" ? "short-edge" : "long-edge",
     marginMm: 18,
     bleedMm: 4,
     laminationMarginMm: 3,

@@ -57,6 +57,11 @@ describe("admin credential print batches UI contract", () => {
     expect(adminSecurityTab).toContain("plastificacao");
     expect(adminSecurityTab).toContain("downloadPassCalibration");
     expect(adminSecurityTab).toContain('layout: "a4-2up-landscape"');
+    expect(adminSecurityTab).toContain('useState<TeamCredentialPassDuplexMode>("short-edge")');
+    expect(adminSecurityTab).toContain("duplexMode: passDuplexMode");
+    expect(adminSecurityTab).toContain("Virar na margem curta");
+    expect(adminSecurityTab).toContain('<option value="short-edge">margem curta</option>');
+    expect(adminSecurityTab).toContain('<option value="same-position">mesma posição</option>');
     expect(adminSecurityTab).toContain("laminationMarginMm: passLaminationMarginMm");
     expect(adminSecurityTab).toContain("2porpagina-horizontal");
   });

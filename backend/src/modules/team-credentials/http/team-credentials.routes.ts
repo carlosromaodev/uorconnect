@@ -421,6 +421,7 @@ const queryBooleanSchema = z.preprocess((value) => {
 
 const adminPassBatchQuerySchema = credentialPassOptionsQuerySchema.extend({
   layout: z.enum(credentialPassLayouts).optional().default("a4-2up-landscape"),
+  duplexMode: z.enum(credentialPassDuplexModes).optional().default("short-edge"),
   ids: z.string().trim().optional(),
   category: z.enum(memberCategories).optional(),
   team: z.string().trim().min(1).max(120).optional(),
@@ -3098,7 +3099,7 @@ export function buildCredentialPassPrintContent(params: {
           </div>
           <div>
             <strong>Imprimir em 100%</strong>
-            <span>Duplex recomendado: long-edge em folha horizontal · pág. ${pageNumberOffset + pageIndex}</span>
+            <span>Duplex recomendado: short-edge em folha horizontal · virar na margem curta · pág. ${pageNumberOffset + pageIndex}</span>
           </div>
         </div>
         <span class="registration-mark tl"></span><span class="registration-mark tr"></span><span class="registration-mark bl"></span><span class="registration-mark br"></span>

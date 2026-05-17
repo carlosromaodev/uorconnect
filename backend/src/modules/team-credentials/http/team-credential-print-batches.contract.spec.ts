@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 
 const routes = readFileSync(path.join(__dirname, "team-credentials.routes.ts"), "utf8");
 const schema = readFileSync(path.join(__dirname, "../../../../prisma/schema.prisma"), "utf8");
+const sampleScript = readFileSync(path.join(__dirname, "../../../scripts/generate-sample-credential-passes.ts"), "utf8");
 
 describe("team credential print batches contract", () => {
   it("supports guest credentials and persistent print batches", () => {
@@ -55,6 +56,7 @@ describe("team credential print batches contract", () => {
     expect(routes).toContain("laminationMarginMm");
     expect(routes).toContain("credentialPassDuplexModes");
     expect(routes).toContain("\"long-edge\"");
+    expect(routes).toContain('duplexMode: z.enum(credentialPassDuplexModes).optional().default("short-edge")');
     expect(routes).toContain("buildCredentialPassCalibrationHtml");
     expect(routes).toContain("Corte do passe");
     expect(routes).toContain("Corte plastificacao");
@@ -62,6 +64,9 @@ describe("team credential print batches contract", () => {
     expect(routes).toContain("layout-2up-landscape");
     expect(routes).toContain("@page{size:A4 landscape;margin:0}");
     expect(routes).toContain("2 por pagina");
+    expect(routes).toContain("Duplex recomendado: short-edge em folha horizontal");
+    expect(routes).toContain("backSlotOrder.map((sourceIndex) => chunk[sourceIndex] ?? null)");
+    expect(sampleScript).toContain('duplexMode: args.layout === "a4-2up-landscape" ? "short-edge" : "long-edge"');
     expect(routes).toContain("3 por pagina");
   });
 });

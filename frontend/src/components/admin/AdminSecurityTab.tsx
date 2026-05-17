@@ -53,7 +53,7 @@ import { Input } from "@/components/ui/input";
 import { AdminBulkSmsAction } from "@/components/admin/AdminBulkSmsAction";
 import { ContextualSmsAction } from "@/components/admin/ContextualSmsAction";
 import { toast } from "@/components/ui/sonner";
-import { api, type AdminAccessConflict, type AdminAuthorizedStudent, type BulkInvitationResponse, type CredentialPrintBatch, type CredentialPrintBatchGenericInput, type CredentialPrintBatchInput, type CredentialPrintBatchNominalInput, type CredentialPrintTemplate, type CredentialPrintTemplateInput, type TeamCredentialIncompleteProfiles, type TeamCredentialInput, type TeamCredentialMember, type TeamCredentialMembershipMatchOverview, type TeamCredentialOverview, type TeamCredentialPassOptions, type TeamCredentialPassPrintMode, type TeamMembership, type TeamMembershipClaim, type TeamMembershipClaimOverview, type TeamMembershipInput, type TeamMembershipOverview, type TeamMembershipSearchResult, type TeamProfilePreset } from "@/lib/api";
+import { api, type AdminAccessConflict, type AdminAuthorizedStudent, type BulkInvitationResponse, type CredentialPrintBatch, type CredentialPrintBatchGenericInput, type CredentialPrintBatchInput, type CredentialPrintBatchNominalInput, type CredentialPrintTemplate, type CredentialPrintTemplateInput, type TeamCredentialIncompleteProfiles, type TeamCredentialInput, type TeamCredentialMember, type TeamCredentialMembershipMatchOverview, type TeamCredentialOverview, type TeamCredentialPassDuplexMode, type TeamCredentialPassOptions, type TeamCredentialPassPrintMode, type TeamMembership, type TeamMembershipClaim, type TeamMembershipClaimOverview, type TeamMembershipInput, type TeamMembershipOverview, type TeamMembershipSearchResult, type TeamProfilePreset } from "@/lib/api";
 import { downloadBlobFile } from "@/lib/student-documents";
 
 type AdminSecurityTabProps = {
@@ -840,6 +840,7 @@ export default function AdminSecurityTab({
   const [bulkExpositorInvitation, setBulkExpositorInvitation] = useState<{ token: string; url: string; totalExpositors: number; claimed: number; pending: number } | null>(null);
   const [teamFilter, setTeamFilter] = useState<string>("all");
   const [passPrintMode, setPassPrintMode] = useState<TeamCredentialPassPrintMode>("color");
+  const [passDuplexMode, setPassDuplexMode] = useState<TeamCredentialPassDuplexMode>("short-edge");
   const [passLaminationMarginMm, setPassLaminationMarginMm] = useState(3);
   const [passTemplates, setPassTemplates] = useState<CredentialPrintTemplate[]>([]);
   const [selectedPassTemplateCategory, setSelectedPassTemplateCategory] = useState("NUCLEO");
@@ -1259,7 +1260,7 @@ export default function AdminSecurityTab({
     printMode: passPrintMode,
     side: "both",
     layout: "a4-2up-landscape",
-    duplexMode: "long-edge",
+    duplexMode: passDuplexMode,
     laminationMarginMm: passLaminationMarginMm,
   });
 
@@ -3124,6 +3125,21 @@ export default function AdminSecurityTab({
                     </div>
                     <div className="flex min-w-[220px] flex-wrap items-center gap-2 rounded-lg border border-cyan-100 bg-white px-2 py-1.5">
                       <span className="text-[11px] font-bold uppercase tracking-wider text-cyan-800">2 por pagina · A4 horizontal</span>
+                      <span className="rounded-full bg-cyan-50 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider text-cyan-700">
+                        Virar na margem curta
+                      </span>
+                      <label className="flex items-center gap-1 text-[11px] font-medium text-slate-500">
+                        verso
+                        <select
+                          className="h-8 rounded-lg border border-slate-200 bg-white px-2 text-xs font-semibold text-slate-700"
+                          value={passDuplexMode}
+                          onChange={(event) => setPassDuplexMode(event.target.value as TeamCredentialPassDuplexMode)}
+                        >
+                          <option value="short-edge">margem curta</option>
+                          <option value="same-position">mesma posição</option>
+                          <option value="long-edge">margem longa</option>
+                        </select>
+                      </label>
                       <label className="flex items-center gap-1 text-[11px] font-medium text-slate-500">
                         plastificacao
                         <Input
