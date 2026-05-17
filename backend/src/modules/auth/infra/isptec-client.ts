@@ -140,11 +140,86 @@ function firstDefined(...values: Array<string | undefined>) {
   return values.find((value) => value && value.trim().length > 0)?.trim();
 }
 
+function containsIsptecUiNoise(value: string) {
+  const normalized = stripAccents(value).toLowerCase();
+  return [
+    "dados complementares",
+    "senha para acesso",
+    "senha atual",
+    "nova senha",
+    "confirme nova senha",
+    "cancelar salvar",
+    "login senha",
+  ].some((marker) => normalized.includes(marker));
+}
+
+function cleanProfileField(value?: string | null, maxLength = 160) {
+  const cleaned = cleanText(value);
+  if (!cleaned || cleaned.length > maxLength || containsIsptecUiNoise(cleaned)) {
+    return undefined;
+  }
+  return cleaned;
+}
+
 function normalizeIsptecCourse(value?: string | null) {
-  return cleanText(value)
+  const cleaned = cleanProfileField(value);
+  if (!cleaned) return undefined;
+  const normalized = stripAccents(cleaned).toLowerCase();
+  if (normalized === "isptec" || normalized === "academico") return undefined;
+  return cleaned
     ?.replace(/^curso\s+de\s+/i, "")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function normalizeIsptecEmail(value?: string | null) {
+  const cleaned = cleanText(value);
+  const match = cleaned?.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)?.[0];
+  return match?.toLowerCase();
+}
+
+function normalizeIsptecPhone(value?: string | null) {
+  const cleaned = cleanProfileField(value, 80);
+  if (!cleaned) return undefined;
+  const normalized = stripAccents(cleaned).toLowerCase();
+  if (normalized.includes("sem telefone") || normalized.includes("sem telemovel")) {
+    return undefined;
+  }
+  const match = cleaned.match(/(?:\+?244[\s.-]*)?9\d{2}[\s.-]*\d{3}[\s.-]*\d{3}/);
+  if (!match) return undefined;
+  const compact = match[0].replace(/[\s.-]/g, "");
+  return compact.startsWith("244") ? `+${compact}` : compact;
+}
+
+function normalizeIsptecClassCode(value?: string | null) {
+  const cleaned = cleanProfileField(value, 60)?.replace(/^turma\s*:?\s*/i, "");
+  if (!cleaned) return undefined;
+  const match = cleaned.match(/\b[A-Z]{2,}[A-Z0-9]*\d+[A-Z0-9_]*\b/i);
+  return match?.[0].toUpperCase();
+}
+
+function readIsptecYearPeriod(value?: string | null) {
+  const cleaned = cleanProfileField(value, 80);
+  if (!cleaned) return {};
+
+  const compactMatch = cleaned.match(/^\s*(\d{4})([12])\s*$/);
+  if (compactMatch) {
+    return { academicYear: compactMatch[1], academicPeriod: compactMatch[2] };
+  }
+
+  const separatedMatch = cleaned.match(/\b(\d{4})\s*(?:[\/.\-·]|ano\s*lectivo|ano\s*letivo)?\s*([12])?\b/i);
+  if (!separatedMatch) return {};
+  return {
+    academicYear: separatedMatch[1],
+    academicPeriod: separatedMatch[2],
+  };
+}
+
+function normalizeIsptecCurricularYear(value?: string | null) {
+  const cleaned = cleanProfileField(value, 40);
+  if (!cleaned || /\b\d{4}\b/.test(cleaned)) return undefined;
+  const match = cleaned.match(/\b([1-7])(?:[ºoaª])?(?:\s*ano)?\b/i);
+  return match?.[1];
 }
 
 function readAttributes(tag: string) {
@@ -305,7 +380,7 @@ function readByLabel(html: string, labels: string[]) {
   for (const label of labels) {
     const labelPattern = stripAccents(label).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
     const normalizedText = stripAccents(text);
-    const regex = new RegExp(`${labelPattern}\\s*:?\\s+(.+?)(?=\\s+(?:Numero|Nº|N\\.º|Nome|Curso|E-mail|Email|Telefone|Telemovel|Nacionalidade|Data de nascimento|Nascimento|Turma|Ano)\\s*:?|$)`, "i");
+    const regex = new RegExp(`(?:^|\\s)${labelPattern}\\s*:?\\s+(.+?)(?=\\s+(?:Numero|Nº|N\\.º|Nome|Curso|E-mail|Email|Telefone|Telemovel|Nacionalidade|Data de nascimento|Nascimento|Turma|Ano)\\s*:?|$)`, "i");
     const match = regex.exec(normalizedText);
     if (!match?.[1]) continue;
     const originalStart = match.index + match[0].length - match[1].length;
@@ -318,56 +393,107 @@ function readByLabel(html: string, labels: string[]) {
 }
 
 function readEmail(html: string) {
-  return cleanText(html.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i)?.[0]);
+  return normalizeIsptecEmail(html);
 }
 
 function readPhone(html: string) {
-  return firstDefined(
+  return normalizeIsptecPhone(firstDefined(
     readByLabel(html, ["Telefone", "Telemóvel", "Telemovel", "Contacto", "Contato"]),
     stripTags(html)?.match(/(?:\+244\s*)?9\d{2}\s*\d{3}\s*\d{3}/)?.[0],
-  );
+  ));
+}
+
+function readVisibleLines(html: string) {
+  const withBreaks = html
+    .replace(/<script[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style[\s\S]*?<\/style>/gi, " ")
+    .replace(/<\s*br\s*\/?>/gi, "\n")
+    .replace(/<\/(?:p|div|li|tr|td|th|section|h[1-6]|label)>/gi, "\n")
+    .replace(/<\s*(?:p|div|li|tr|td|th|section|h[1-6]|label)\b[^>]*>/gi, "\n")
+    .replace(/<[^>]+>/g, " ");
+
+  return decodeHtml(withBreaks)
+    .split(/\n+/)
+    .map((line) => cleanProfileField(line))
+    .filter((line): line is string => Boolean(line));
+}
+
+function looksLikeIsptecCourse(value: string) {
+  const normalized = stripAccents(value).toLowerCase();
+  return /\b(engenharia|arquitectura|arquitetura|gestao|gestão|informatica|informática|comunicacoes|comunicações|electrotecnica|eletrotecnica|ciencias|ciências)\b/.test(normalized)
+    && !normalized.includes("turma")
+    && normalized !== "academico"
+    && normalized !== "pessoal";
+}
+
+function readIsptecSummary(html: string) {
+  const lines = readVisibleLines(html);
+  const course = lines.map(normalizeIsptecCourse).find((line) => line && looksLikeIsptecCourse(line));
+  const classCode = lines.map(normalizeIsptecClassCode).find(Boolean);
+  const yearPeriod = lines.map(readIsptecYearPeriod).find((item) => item.academicYear) ?? {};
+  const nationality = lines.find((line) => /^angolan[ao]$/i.test(stripAccents(line)));
+  const birthDateText = lines
+    .map((line) => line.match(/nascimento\s*:?\s*(\d{2}[/-]\d{2}[/-]\d{4})/i)?.[1])
+    .find(Boolean);
+
+  return {
+    course,
+    classCode,
+    academicYear: yearPeriod.academicYear,
+    academicPeriod: yearPeriod.academicPeriod,
+    nationality,
+    birthDate: parseDate(birthDateText),
+  };
 }
 
 export function extractIsptecProfile(html: string, _studentNumber: string): StudentProfile {
+  const summary = readIsptecSummary(html);
   const name = normalizeStudentName(firstDefined(
-    readInputValue(html, "nm_pessoa"),
-    readInputValue(html, "nome"),
-    readInputValue(html, "nome_aluno"),
-    readInputValue(html, "ds_login"),
-    readByLabel(html, ["Nome completo", "Nome"]),
+    cleanProfileField(readInputValue(html, "nm_pessoa")),
+    cleanProfileField(readInputValue(html, "nome")),
+    cleanProfileField(readInputValue(html, "nome_aluno")),
+    cleanProfileField(readInputValue(html, "ds_login")),
+    cleanProfileField(readByLabel(html, ["Nome completo", "Nome"])),
   ));
   const course = normalizeIsptecCourse(firstDefined(
     readInputValue(html, "ds_curso_origem"),
     readInputValue(html, "curso"),
     readByLabel(html, ["Curso", "Curso do estudante"]),
+    summary.course,
   ));
   const email = firstDefined(
-    readInputValue(html, "ds_contato_04"),
-    readInputValue(html, "email"),
-    readByLabel(html, ["E-mail", "Email"]),
+    normalizeIsptecEmail(readInputValue(html, "ds_contato_04")),
+    normalizeIsptecEmail(readInputValue(html, "email")),
+    normalizeIsptecEmail(readByLabel(html, ["E-mail", "Email"])),
     readEmail(html),
   );
   const nationality = firstDefined(
-    readInputValue(html, "ds_nacionalidade"),
-    readInputValue(html, "nacionalidade"),
-    readByLabel(html, ["Nacionalidade"]),
+    cleanProfileField(readInputValue(html, "ds_nacionalidade")),
+    cleanProfileField(readInputValue(html, "nacionalidade")),
+    cleanProfileField(readByLabel(html, ["Nacionalidade"])),
+    cleanProfileField(summary.nationality),
   );
   const birthDate = parseDate(firstDefined(
     readInputValue(html, "dt_nascimento"),
     readInputValue(html, "data_nascimento"),
     readInputValue(html, "dataNascimento"),
     readByLabel(html, ["Data de nascimento", "Nascimento"]),
-  ));
+  )) ?? summary.birthDate;
   const phone = firstDefined(
-    readInputValue(html, "ds_contato_03"),
-    readInputValue(html, "telemovel"),
-    readInputValue(html, "telemóvel"),
+    normalizeIsptecPhone(readInputValue(html, "ds_contato_03")),
+    normalizeIsptecPhone(readInputValue(html, "telemovel")),
+    normalizeIsptecPhone(readInputValue(html, "telemóvel")),
     readPhone(html),
   );
   const alternatePhone = firstDefined(
-    readInputValue(html, "ds_contato_01"),
-    readInputValue(html, "ds_contato_02"),
+    normalizeIsptecPhone(readInputValue(html, "ds_contato_01")),
+    normalizeIsptecPhone(readInputValue(html, "ds_contato_02")),
   );
+  const yearPeriod = readIsptecYearPeriod(firstDefined(
+    readInputValue(html, "nr_anosemestre_origem"),
+    readByLabel(html, ["Ano letivo", "Ano lectivo"]),
+    summary.academicYear && summary.academicPeriod ? `${summary.academicYear}/${summary.academicPeriod}` : summary.academicYear,
+  ));
 
   return {
     name,
@@ -379,9 +505,18 @@ export function extractIsptecProfile(html: string, _studentNumber: string): Stud
     alternatePhone: alternatePhone && alternatePhone !== phone ? alternatePhone : undefined,
     university: "ISPTEC",
     academicSyncedAt: new Date(),
-    classCode: firstDefined(readInputValue(html, "ds_turma_origem"), readByLabel(html, ["Turma"]), readInputValue(html, "turma")),
-    academicYear: firstDefined(readInputValue(html, "nr_anosemestre_origem"), readByLabel(html, ["Ano letivo", "Ano lectivo"])),
-    curricularYear: firstDefined(readByLabel(html, ["Ano curricular", "Ano"]), readInputValue(html, "ano")),
+    classCode: firstDefined(
+      normalizeIsptecClassCode(readInputValue(html, "ds_turma_origem")),
+      normalizeIsptecClassCode(readByLabel(html, ["Turma"])),
+      normalizeIsptecClassCode(readInputValue(html, "turma")),
+      summary.classCode,
+    ),
+    academicYear: yearPeriod.academicYear ?? summary.academicYear,
+    academicPeriod: yearPeriod.academicPeriod ?? summary.academicPeriod,
+    curricularYear: firstDefined(
+      normalizeIsptecCurricularYear(readByLabel(html, ["Ano curricular", "Ano do curso"])),
+      normalizeIsptecCurricularYear(readInputValue(html, "ano")),
+    ),
   };
 }
 

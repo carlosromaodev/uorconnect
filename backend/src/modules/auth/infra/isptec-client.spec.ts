@@ -96,10 +96,53 @@ describe("isptec-client", () => {
       nationality: "Angolana",
       university: "ISPTEC",
       classCode: "EI3A",
-      academicYear: "20252",
+      academicYear: "2025",
+      academicPeriod: "2",
     }));
     expect(profile.course).toContain("Informática");
     expect(profile.birthDate).toEqual(new Date(2000, 8, 4));
+  });
+
+  it("does not treat ISPTEC password/profile panels as student identity fields", () => {
+    const profile = extractIsptecProfile(
+      `
+        <main>
+          <section>
+            <h3>Dados Complementares</h3>
+            <label>E-mail:</label><br>
+            Dados Complementares Senha para acesso posterior aos serviços:
+            Login Senha Atual Nova Senha Confirme Nova Senha Cancelar Salvar
+            <label>Nome:</label><br>
+            Dados Complementares Senha Atual Nova Senha Confirme Nova Senha
+            <label>Telefone:</label><br>
+            Sem telefone
+          </section>
+          <section>
+            <h3>Académico</h3>
+            <p>Engenharia Informática e Comunicações</p>
+            <p>ISPTEC</p>
+            <p>Turma: EIN2_ESP</p>
+            <p>2025 · 2</p>
+          </section>
+          <section>
+            <h3>Pessoal</h3>
+            <p>Angolana</p>
+            <p>Nascimento: 04/11/2005</p>
+          </section>
+        </main>
+      `,
+      "20259999",
+    );
+
+    expect(profile.name).toBeUndefined();
+    expect(profile.email).toBeUndefined();
+    expect(profile.phone).toBeUndefined();
+    expect(profile.course).toBe("Engenharia Informática e Comunicações");
+    expect(profile.classCode).toBe("EIN2_ESP");
+    expect(profile.academicYear).toBe("2025");
+    expect(profile.academicPeriod).toBe("2");
+    expect(profile.nationality).toBe("Angolana");
+    expect(profile.birthDate).toEqual(new Date(2005, 10, 4));
   });
 
   it("builds the ISPTEC student-group selection request from the real group page", () => {
