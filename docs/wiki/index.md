@@ -8,6 +8,15 @@
 - [Schema](schema.md): regras de manutenção, organização e evolução.
 - [Log](log.md): histórico cronológico da wiki.
 - [Organização de Arquivos](pages/organizacao-de-arquivos.md): onde colocar código, docs, fontes e entregáveis.
+- [Vault Obsidian](pages/obsidian-vault.md): como o antigo `cofre/` foi migrado para a wiki.
+
+## Sínteses Vivas do Projeto
+
+- [Estado Atual do UOR Connect](pages/uor-connect-estado-atual.md): visão consolidada do produto, infraestrutura, áreas e pendências.
+- [Deploy na Nova VPS](pages/deploy-nova-vps.md): operação principal de deploy e saúde da VPS.
+- [Passaporte UOR Connect](pages/passaporte-uor-connect.md): regras do desafio, mapa, QR surpresa, convites e proteções.
+- [Relatórios Gerais da Admin](pages/relatorios-gerais-admin.md): objetivo, cálculos, PDFs e cuidados.
+- [Formadores - Link Genérico](pages/formadores-link-generico.md): especificação do fluxo de cadastro de formadores.
 
 ## Requisitos e Regras de Negócio
 
@@ -55,3 +64,12 @@
 ## Fontes da Mentalidade LLM Wiki
 
 - [`backend/llm-wiki.md`](../../backend/llm-wiki.md): fonte original usada para criar a skill local `llm-wiki`.
+
+## Fontes Importadas do Antigo Cofre Obsidian
+
+- [`raw/obsidian-cofre/Bem-vindo.md`](raw/obsidian-cofre/Bem-vindo.md): nota inicial do cofre antigo.
+- [`raw/obsidian-cofre/UOR Connect - Estado atual do projeto.md`](raw/obsidian-cofre/UOR%20Connect%20-%20Estado%20atual%20do%20projeto.md): mapa geral antigo.
+- [`raw/obsidian-cofre/Deploy - Nova VPS.md`](raw/obsidian-cofre/Deploy%20-%20Nova%20VPS.md): nota operacional antiga.
+- [`raw/obsidian-cofre/Passaporte UOR Connect - Regras e estado.md`](raw/obsidian-cofre/Passaporte%20UOR%20Connect%20-%20Regras%20e%20estado.md): nota antiga do desafio.
+- [`raw/obsidian-cofre/Relatorios gerais - Estado e calculos.md`](raw/obsidian-cofre/Relatorios%20gerais%20-%20Estado%20e%20calculos.md): nota antiga dos relatórios.
+- [`raw/obsidian-cofre/Formadores - Link generico.md`](raw/obsidian-cofre/Formadores%20-%20Link%20generico.md): nota antiga dos formadores.

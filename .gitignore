@@ -33,13 +33,17 @@ backups/
 frontend/dev-dist/
 tmp/
 .superpowers/
-cofre/
 designs/
 backend/storage/
 backend/public/live-chat/
 backend/isptec.md
 skillpencil.md
 *.pid
+
+# Obsidian local UI state for the project wiki vault.
+docs/wiki/.obsidian/workspace.json
+docs/wiki/.obsidian/workspace-mobile.json
+docs/wiki/.obsidian/cache/
 
 # Hoppscotch local environments can contain real tokens/passwords.
 hoppscotch/environments/*.local.json

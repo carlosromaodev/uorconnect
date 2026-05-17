@@ -2,8 +2,11 @@
 
 Esta pasta organiza o conhecimento persistente do projeto. A regra é simples: documentos soltos continuam a existir quando já são usados, mas o entendimento consolidado fica aqui, com índice e log.
 
+Esta pasta também é agora o **vault do Obsidian** do projeto. Para abrir no Obsidian, escolha a pasta `docs/wiki/` como cofre.
+
 ## Estrutura
 
+- `.obsidian/`: configuração partilhada do vault. O estado local de janela/workspace fica ignorado no Git.
 - `schema.md`: regras de manutenção da wiki.
 - `index.md`: catálogo vivo dos documentos e páginas principais.
 - `log.md`: histórico cronológico das atualizações da wiki.

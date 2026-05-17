@@ -16,6 +16,7 @@ Exemplos atuais:
 - Planos em `docs/superpowers/plans/`
 - Specs em `docs/superpowers/specs/`
 - Notas técnicas em `backend/*.md`, `frontend/*.md`, `deploy/*.md`
+- Notas antigas do Obsidian em `docs/wiki/raw/obsidian-cofre/`
 
 ### Wiki
 
@@ -71,3 +72,13 @@ Documentação:
 - Requisitos duráveis em `docs/wiki/pages/` ou `docs/superpowers/specs/`.
 - Planos de execução em `docs/superpowers/plans/`.
 - Relatórios antigos podem ficar onde estão, mas devem ser indexados.
+
+## Obsidian
+
+`docs/wiki/` é o cofre oficial do Obsidian para o projeto.
+
+- Guardar fontes importadas em `docs/wiki/raw/`.
+- Guardar sínteses em `docs/wiki/pages/`.
+- Usar links Markdown relativos em páginas novas.
+- Evitar criar notas soltas na raiz do vault, exceto `README.md`, `schema.md`, `index.md` e `log.md`.
+- Não versionar `workspace.json`, porque é estado local da interface.
