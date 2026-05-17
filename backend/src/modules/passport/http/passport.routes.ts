@@ -1115,7 +1115,7 @@ async function renderSurpriseQrPdf(
   });
 }
 
-async function renderSurpriseQrBatchPdf(
+export async function renderSurpriseQrBatchPdf(
   env: Env,
   surprises: Array<{
     name: string;
@@ -1123,6 +1123,14 @@ async function renderSurpriseQrBatchPdf(
     qrAction: { token: string; active: boolean };
   }>,
 ) {
+  const chunkQrItemsForGuidePages = <T,>(items: T[], chunkSize = 3) => {
+    const chunks: T[][] = [];
+    for (let index = 0; index < items.length; index += chunkSize) {
+      chunks.push(items.slice(index, index + chunkSize));
+    }
+    return chunks;
+  };
+
   const [logoDataUri, qrItems] = await Promise.all([
     loadLogoDataUri(),
     Promise.all(surprises.map(async (surprise) => ({
@@ -1166,7 +1174,80 @@ async function renderSurpriseQrBatchPdf(
     </section>
   `;
 
-  const pages = qrItems.map((item, index) => renderQrPage(item, index + 1)).join("");
+  const renderChallengeGuidePage = (params: {
+    groupNumber: number;
+    totalGroups: number;
+    totalQrCodes: number;
+    codes: string[];
+  }) => `
+    <section class="page challenge-guide-page">
+      <article class="guide-card">
+        <header class="guide-header">
+          <div class="brand">${logoDataUri ? `<img src="${logoDataUri}" alt="UOR Connect" />` : "UOR Connect"}</div>
+          <div class="guide-pill">Guia ${String(params.groupNumber).padStart(2, "0")} / ${String(params.totalGroups).padStart(2, "0")}</div>
+        </header>
+        <main class="guide-body">
+          <p class="eyebrow">Passaporte Digital UOR Connect</p>
+          <h1>Como funciona o desafio</h1>
+          <p class="guide-lead">
+            Estes QR surpresa fazem parte da caça aos pontos da feira. Cada código pode dar pontos,
+            tirar pontos, multiplicar, dividir ou revelar uma pista. O efeito aparece apenas no telemóvel,
+            depois de escanear pela Minha Área.
+          </p>
+          <div class="guide-steps">
+            <div class="guide-step">
+              <span>1</span>
+              <strong>Entra no sistema</strong>
+              <p>Acede a uorconnect.space, faz login oficial e abre a aba Desafio.</p>
+            </div>
+            <div class="guide-step">
+              <span>2</span>
+              <strong>Escaneia o QR</strong>
+              <p>Usa a câmera dentro da Minha Área. Não uses apenas a câmera normal do telefone.</p>
+            </div>
+            <div class="guide-step">
+              <span>3</span>
+              <strong>Revela o efeito</strong>
+              <p>O resultado pode mudar por código, consumo e regras do jogo em tempo real.</p>
+            </div>
+            <div class="guide-step">
+              <span>4</span>
+              <strong>Continua atento</strong>
+              <p>Se ficares negativo, vai ao stand da UOR Connect para pedir recuperação de pontos.</p>
+            </div>
+          </div>
+          <div class="guide-highlight">
+            <strong>Depois de 3 QR, este guia volta a aparecer.</strong>
+            <span>Este bloco acompanha ${escapeHtml(params.codes.join(", ")) || "os próximos QR"} · ${params.totalQrCodes} código(s) no lote.</span>
+          </div>
+        </main>
+        <footer class="guide-footer">
+          <span>Joga com atenção. Pontos, perdas e bónus são registados automaticamente.</span>
+          <strong>uorconnect.space</strong>
+        </footer>
+      </article>
+    </section>
+  `;
+
+  let printedQrCount = 0;
+  const chunks = chunkQrItemsForGuidePages(qrItems);
+  const pages = chunks
+    .map((chunk, groupIndex) => {
+      const qrPages = chunk
+        .map((item) => {
+          printedQrCount += 1;
+          return renderQrPage(item, printedQrCount);
+        })
+        .join("");
+      const guidePage = renderChallengeGuidePage({
+        groupNumber: groupIndex + 1,
+        totalGroups: chunks.length,
+        totalQrCodes: qrItems.length,
+        codes: chunk.map((item) => item.displayCode ?? item.name),
+      });
+      return `${qrPages}${guidePage}`;
+    })
+    .join("");
 
   const html = `<!doctype html>
 <html lang="pt-AO">
@@ -1176,10 +1257,10 @@ async function renderSurpriseQrBatchPdf(
   <style>
     @page { size: A4; margin: 0; }
     * { box-sizing: border-box; }
-    body { margin: 0; width: 210mm; min-height: 297mm; font-family: Arial, Helvetica, sans-serif; color: #111827; background: #f8fafc; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
-    .page { width: 210mm; min-height: 297mm; padding: 12mm; display: grid; place-items: center; background: #f8fafc; break-after: page; page-break-after: always; }
+    body { margin: 0; width: 210mm; font-family: Arial, Helvetica, sans-serif; color: #111827; background: #f8fafc; print-color-adjust: exact; -webkit-print-color-adjust: exact; }
+    .page { width: 210mm; height: 297mm; padding: 12mm; display: grid; place-items: center; overflow: hidden; background: #f8fafc; break-after: page; page-break-after: always; }
     .page:last-child { break-after: auto; page-break-after: auto; }
-    .qr-poster { width: 100%; min-height: 273mm; padding: 10mm; display: grid; grid-template-rows: auto 1fr auto; gap: 8mm; overflow: hidden; position: relative; border: .45mm solid #dbe3ef; border-radius: 8mm; background: #fff; box-shadow: 0 9mm 30mm rgba(15, 23, 42, .08); }
+    .qr-poster { width: 100%; height: 273mm; padding: 10mm; display: grid; grid-template-rows: auto 1fr auto; gap: 8mm; overflow: hidden; position: relative; border: .45mm solid #dbe3ef; border-radius: 8mm; background: #fff; box-shadow: 0 9mm 30mm rgba(15, 23, 42, .08); }
     .qr-poster::before { content: ""; position: absolute; inset: 0; background: radial-gradient(circle at 50% 26%, rgba(249,115,22,.13), transparent 34%), linear-gradient(180deg, rgba(15,23,42,.04), transparent 40%); pointer-events: none; }
     .qr-poster > * { position: relative; z-index: 1; }
     .poster-top { display: flex; align-items: center; justify-content: space-between; gap: 8mm; }
@@ -1199,6 +1280,28 @@ async function renderSurpriseQrBatchPdf(
     .poster-footer span { display: block; color: #64748b; font-size: 8px; font-weight: 950; letter-spacing: .14em; text-transform: uppercase; }
     .poster-footer strong { display: block; margin-top: 1.8mm; color: #111827; font-size: 12px; line-height: 1.2; }
     .poster-footer p { grid-column: 1 / -1; margin: 0; color: #94a3b8; font-size: 8px; overflow-wrap: anywhere; }
+    .challenge-guide-page { background: #0f172a; color: #fff; }
+    .guide-card { width: 100%; height: 273mm; padding: 11mm; display: grid; grid-template-rows: auto 1fr auto; gap: 9mm; position: relative; overflow: hidden; border: .45mm solid rgba(255,255,255,.14); border-radius: 8mm; background: radial-gradient(circle at 16% 18%, rgba(249,115,22,.24), transparent 29%), radial-gradient(circle at 82% 18%, rgba(34,197,94,.18), transparent 26%), linear-gradient(145deg, #0f172a 0%, #111827 54%, #020617 100%); }
+    .guide-card::before { content: ""; position: absolute; inset: 0; background-image: linear-gradient(rgba(255,255,255,.055) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,.04) 1px, transparent 1px); background-size: 9mm 9mm; mask-image: radial-gradient(circle at center, #000 0%, transparent 72%); pointer-events: none; }
+    .guide-card > * { position: relative; z-index: 1; }
+    .guide-header, .guide-footer { display: flex; align-items: center; justify-content: space-between; gap: 8mm; }
+    .guide-card .brand { color: rgba(255,255,255,.86); }
+    .guide-card .brand img { filter: brightness(0) invert(1); }
+    .guide-pill { border: .3mm solid rgba(255,255,255,.18); border-radius: 999px; padding: 2.4mm 5mm; background: rgba(255,255,255,.08); color: #fdba74; font-size: 10px; font-weight: 950; letter-spacing: .16em; text-transform: uppercase; }
+    .guide-body { align-self: center; }
+    .guide-body .eyebrow { color: #fdba74; }
+    .guide-body h1 { max-width: 150mm; margin: 4mm 0 0; color: #fff; font-size: 40px; line-height: 1.03; letter-spacing: -.02em; text-transform: none; }
+    .guide-lead { max-width: 158mm; margin: 6mm 0 0; color: rgba(255,255,255,.78); font-size: 17px; line-height: 1.5; font-weight: 700; }
+    .guide-steps { margin-top: 10mm; display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4mm; }
+    .guide-step { min-height: 38mm; padding: 5mm; border: .3mm solid rgba(255,255,255,.13); border-radius: 5mm; background: rgba(255,255,255,.08); }
+    .guide-step span { width: 10mm; height: 10mm; display: grid; place-items: center; border-radius: 999px; background: #f97316; color: #111827; font-size: 14px; font-weight: 950; }
+    .guide-step strong { display: block; margin-top: 4mm; color: #fff; font-size: 15px; }
+    .guide-step p { margin: 2mm 0 0; color: rgba(255,255,255,.68); font-size: 11.5px; line-height: 1.45; font-weight: 700; }
+    .guide-highlight { margin-top: 8mm; padding: 5mm 6mm; border: .35mm solid rgba(253,186,116,.34); border-radius: 5mm; background: rgba(249,115,22,.14); }
+    .guide-highlight strong { display: block; color: #fed7aa; font-size: 14px; }
+    .guide-highlight span { display: block; margin-top: 1.5mm; color: rgba(255,255,255,.7); font-size: 10px; font-weight: 800; }
+    .guide-footer { border-top: .35mm solid rgba(255,255,255,.12); padding-top: 5mm; color: rgba(255,255,255,.68); font-size: 10px; font-weight: 800; }
+    .guide-footer strong { color: #fdba74; font-size: 13px; letter-spacing: .08em; text-transform: uppercase; }
   </style>
 </head>
 <body>

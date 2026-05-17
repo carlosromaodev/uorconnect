@@ -43,8 +43,16 @@ describe("passport surprise QR batch and dynamic rules contract", () => {
     expect(routes).toContain("displayCode");
     expect(routes).toContain("dynamicRules");
     expect(routes).toContain("qr-page");
+    expect(routes).toContain("challenge-guide-page");
     expect(routes).toContain("qr-poster");
+    expect(routes).toContain("renderChallengeGuidePage");
+    expect(routes).toContain("chunkQrItemsForGuidePages");
+    expect(routes).toContain(".page { width: 210mm; height: 297mm;");
+    expect(routes).toContain(".qr-poster { width: 100%; height: 273mm;");
+    expect(routes).toContain(".guide-card { width: 100%; height: 273mm;");
     expect(routes).toContain("QR gigante");
+    expect(routes).toContain("Como funciona o desafio");
+    expect(routes).toContain("Depois de 3 QR, este guia volta a aparecer");
     expect(routes).toContain("renderQrDataUri(buildValidationUrl(env, surprise.qrAction.token), 1000)");
     expect(routes).toContain("Passaporte Digital UOR Connect");
   });
