@@ -1275,6 +1275,7 @@ export default function AdminSecurityTab({
     label: string,
     includePending = false,
   ) => {
+    const shouldSyncExpositors = category === "EXPOSITOR" && includePending;
     const members = (credentialOverview?.members ?? []).filter(
       (member) =>
         member.category === category &&
@@ -1282,7 +1283,7 @@ export default function AdminSecurityTab({
           ? isCredentialPrintableInAdminBatch(member)
           : member.status === "PROFILE_READY"),
     );
-    if (members.length === 0) {
+    if (!shouldSyncExpositors && members.length === 0) {
       toast.info(`Ainda nao ha passes prontos para ${label}.`);
       return;
     }
@@ -1290,18 +1291,29 @@ export default function AdminSecurityTab({
     const busy = `credentials-pass-batch-${category}`;
     setCredentialBusyKey(busy);
     try {
+      if (shouldSyncExpositors) {
+        const result = await api.teamCredentials.importExpositors();
+        if (result.created > 0 || result.membershipsCreated > 0) {
+          toast.success(`Expositores sincronizados: ${result.created} credencial(is), ${result.membershipsCreated} membro(s).`);
+        }
+      }
+
       const blob = await api.teamCredentials.downloadPassBatch({
-        ids: members.map((member) => member.id),
+        ids: shouldSyncExpositors ? undefined : members.map((member) => member.id),
+        category: shouldSyncExpositors ? category : undefined,
         printMode: passPrintMode,
         side: "both",
         includePending,
-        limit: members.length,
+        limit: shouldSyncExpositors ? 1000 : members.length,
       });
       const fileBase = safePdfFileBase(`passes ${label}`) || "passes-uor-connect";
       downloadBlobFile(
         blob,
         `${fileBase}-${passPrintMode === "black-white" ? "pb" : "cor"}.pdf`,
       );
+      if (shouldSyncExpositors) {
+        await loadTeamCredentials();
+      }
     } catch (error) {
       toast.error(
         error instanceof Error
@@ -2793,6 +2805,7 @@ export default function AdminSecurityTab({
 		                          total: allExhibitorMembers.length,
 		                          icon: Rocket,
 		                          includePending: true,
+		                          autoSyncBeforeDownload: true,
 		                        },
 		                        {
 		                          category: "NUCLEO",
@@ -2802,6 +2815,7 @@ export default function AdminSecurityTab({
 		                          total: allNucleusCredentialMembers.length,
 		                          icon: Users,
 		                          includePending: false,
+		                          autoSyncBeforeDownload: false,
 		                        },
 		                        {
 		                          category: "PALESTRANTE",
@@ -2811,10 +2825,12 @@ export default function AdminSecurityTab({
 		                          total: allSpeakerCredentialMembers.length,
 		                          icon: Mic,
 		                          includePending: false,
+		                          autoSyncBeforeDownload: false,
 		                        },
 		                      ].map((item) => {
 		                        const Icon = item.icon;
 		                        const busy = `credentials-pass-batch-${item.category}`;
+		                        const canAttemptBatchDownload = item.autoSyncBeforeDownload || item.ready > 0;
 		                        return (
 		                          <div key={item.category} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
 		                            <div className="flex min-w-0 items-start justify-between gap-3">
@@ -2839,7 +2855,7 @@ export default function AdminSecurityTab({
 		                            <Button
 		                              size="sm"
 		                              className="mt-4 w-full rounded-xl"
-		                              disabled={credentialBusyKey === busy || item.ready === 0}
+		                              disabled={credentialBusyKey === busy || !canAttemptBatchDownload}
 		                              onClick={() => void handleDownloadCredentialCategoryBatch(item.category, item.title, item.includePending)}
 		                            >
 		                              {credentialBusyKey === busy ? (
@@ -2847,7 +2863,7 @@ export default function AdminSecurityTab({
 		                              ) : (
 		                                <Download className="mr-1.5 h-3.5 w-3.5" />
 		                              )}
-		                              Baixar lote
+		                              {item.autoSyncBeforeDownload ? "Sincronizar e baixar" : "Baixar lote"}
 		                            </Button>
 		                          </div>
 		                        );

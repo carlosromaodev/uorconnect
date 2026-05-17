@@ -37,6 +37,11 @@ describe("admin credential print batches UI contract", () => {
     expect(adminSecurityTab).toContain("Palestrantes do site");
     expect(adminSecurityTab).toContain("Todos os expositores");
     expect(adminSecurityTab).toContain("includePending");
+    expect(adminSecurityTab).toContain('const shouldSyncExpositors = category === "EXPOSITOR" && includePending');
+    expect(adminSecurityTab).toContain("await api.teamCredentials.importExpositors()");
+    expect(adminSecurityTab).toContain("category: shouldSyncExpositors ? category : undefined");
+    expect(adminSecurityTab).toContain("ids: shouldSyncExpositors ? undefined");
+    expect(adminSecurityTab).toContain("Sincronizar e baixar");
     expect(apiSource).toContain("syncSiteGuests");
     expect(apiSource).toContain("/team-credentials/admin/sync-site-guests");
   });
