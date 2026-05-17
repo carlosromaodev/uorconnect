@@ -194,6 +194,7 @@ export function AnalyticsProvider({ children }: { children: ReactNode }) {
   const lastScrollDepth = useRef(0);
   const emittedDepths = useRef<Set<number>>(new Set());
   const pendingMarketingRef = useRef<URLSearchParams | null>(null);
+  const suppressConsentBanner = location.pathname === "/votacao-ao-vivo";
 
   const visitorId = useMemo(() => getCookie(VISITOR_COOKIE), [consent?.analytics]);
   const sessionId = useMemo(() => getCookie(SESSION_COOKIE), [consent?.analytics]);
@@ -475,7 +476,7 @@ export function AnalyticsProvider({ children }: { children: ReactNode }) {
 
       {/* ── Cookie Consent Banner ── */}
       <AnimatePresence>
-        {!consent && (
+        {!consent && !suppressConsentBanner && (
           <motion.div
             initial={{ opacity: 0, y: 40 }}
             animate={{ opacity: 1, y: 0 }}

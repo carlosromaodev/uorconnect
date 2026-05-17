@@ -10,15 +10,26 @@ describe("voting visual design contract", () => {
   it("uses an institutional broadcast structure for the live vote screen", () => {
     const liveVotes = source("src/pages/VotacaoAoVivo.tsx");
     const styles = source("src/index.css");
+    const analyticsProvider = source("src/components/analytics/AnalyticsProvider.tsx");
 
     expect(liveVotes).toContain("live-votes-broadcast-shell");
+    expect(liveVotes).toContain("live-votes-control-room");
     expect(liveVotes).toContain("live-votes-scoreboard");
+    expect(liveVotes).toContain("live-votes-kpi-strip");
+    expect(liveVotes).toContain("live-votes-main-grid");
     expect(liveVotes).toContain("live-votes-ranking-table");
     expect(liveVotes).toContain("Placar oficial");
     expect(liveVotes).not.toContain("Sparkles");
+    expect(liveVotes).not.toContain("Ranking projetável");
+    expect(liveVotes).not.toContain("Ver projetos participantes");
     expect(styles).toContain(".live-votes-broadcast-shell");
+    expect(styles).toContain(".live-votes-control-room");
     expect(styles).toContain(".live-votes-scoreboard");
+    expect(styles).toContain(".live-votes-kpi-strip");
+    expect(styles).toContain(".live-votes-main-grid");
     expect(styles).toContain(".live-votes-ranking-table");
+    expect(analyticsProvider).toContain('location.pathname === "/votacao-ao-vivo"');
+    expect(analyticsProvider).toContain("!suppressConsentBanner");
   });
 
   it("keeps project voting cards closer to a ballot than a generic AI card", () => {
