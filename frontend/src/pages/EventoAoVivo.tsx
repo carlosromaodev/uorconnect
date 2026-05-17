@@ -17,6 +17,10 @@ const typeColors: Record<string, string> = {
   CEREMONY: "bg-primary text-primary-foreground",
 };
 
+function isGeneralAgendaTheme(theme: string | null | undefined) {
+  return theme?.trim().toLocaleLowerCase("pt-PT") === "geral";
+}
+
 export default function EventoAoVivo() {
   const [schedule, setSchedule] = useState<AgendaItem[]>([]);
   const [venues, setVenues] = useState<Venue[]>([]);
@@ -49,7 +53,9 @@ export default function EventoAoVivo() {
     return () => window.clearInterval(interval);
   }, []);
 
-  const sortedActivities = [...schedule].sort((a, b) => new Date(`${a.date.slice(0, 10)}T${a.startTime}:00`).getTime() - new Date(`${b.date.slice(0, 10)}T${b.startTime}:00`).getTime());
+  const sortedActivities = schedule
+    .filter((item) => isGeneralAgendaTheme(item.theme))
+    .sort((a, b) => new Date(`${a.date.slice(0, 10)}T${a.startTime}:00`).getTime() - new Date(`${b.date.slice(0, 10)}T${b.startTime}:00`).getTime());
   const current = liveState.current;
   const next = liveState.next;
 

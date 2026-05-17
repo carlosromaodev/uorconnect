@@ -19,9 +19,9 @@ describe("course enrollment helpers", () => {
 
   it("gera referência e labels de estado consistentes", () => {
     expect(buildEnrollmentReference(3, 7)).toBe("CUR-3-0007");
-    expect(getEnrollmentStatusLabel("CONFIRMED", "/proof")).toBe("Confirmado");
-    expect(getEnrollmentStatusLabel("PENDING", "/proof")).toBe("Em análise");
-    expect(getEnrollmentStatusLabel("PENDING", null)).toBe("Pendente de comprovativo");
+    expect(getEnrollmentStatusLabel("CONFIRMED", "/proof")).toBe("Confirmado pela equipa");
+    expect(getEnrollmentStatusLabel("PENDING", "/proof")).toBe("Em análise financeira");
+    expect(getEnrollmentStatusLabel("PENDING", null)).toBe("Em análise financeira");
   });
 
   it("gera link de WhatsApp com primeiro nome e curso", () => {
@@ -85,7 +85,7 @@ describe("course enrollment helpers", () => {
       companyName: "Parceiro Tech",
       referenceCode: "CUR-5-0011",
       paymentStatus: "PENDING",
-      statusLabel: "Em análise",
+      statusLabel: "Em análise financeira",
       enrolledAt: "2026-03-28T10:00:00.000Z",
       receiptPath: "/cursos/inscricoes/11",
       ticketPath: "/courses/enrollments/11/ticket.pdf",
@@ -117,7 +117,7 @@ describe("course enrollment helpers", () => {
     });
 
     expect(receipt.referenceCode).toBe("CUR-5-0011");
-    expect(receipt.statusLabel).toBe("Confirmado");
+    expect(receipt.statusLabel).toBe("Confirmado pela equipa");
     expect(receipt.receiptPath).toBe("/cursos/inscricoes/11");
     expect(receipt.communityUrl).toBe("https://chat.whatsapp.com/curso");
   });
@@ -139,7 +139,7 @@ describe("course enrollment helpers", () => {
       },
     });
 
-    expect(receipt.statusLabel).toBe("Em análise");
+    expect(receipt.statusLabel).toBe("Em análise financeira");
     expect(receipt.communityUrl).toBeNull();
   });
 });

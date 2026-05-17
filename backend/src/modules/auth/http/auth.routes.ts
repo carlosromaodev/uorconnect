@@ -262,6 +262,80 @@ const studentResponseSchema = z.object({
   updatedAt: z.coerce.date()
 });
 
+const studentStatsCountSchema = z.object({
+  likes: z.number(),
+  votes: z.number(),
+  comments: z.number(),
+  courseEnrollments: z.number(),
+  certificates: z.number(),
+  attendanceCheckIns: z.number(),
+  submissions: z.number(),
+  submissionMemberships: z.number(),
+  liveChatMessages: z.number(),
+  passportScans: z.number(),
+  passportPointLedger: z.number(),
+  passportChallengeAnswers: z.number(),
+  passportStudentBadges: z.number(),
+  passportSurpriseEffects: z.number(),
+  exhibitorVoteScoreEvents: z.number(),
+  exhibitorActorScoreEvents: z.number(),
+});
+
+const studentActivityProjectSchema = z.object({
+  id: z.number(),
+  referenceCode: z.string(),
+  name: z.string(),
+  type: z.string(),
+  status: z.string(),
+  role: z.enum(["RESPONSAVEL", "MEMBRO"]),
+  course: z.string().nullable().optional(),
+  area: z.string().nullable().optional(),
+  createdAt: z.coerce.date(),
+  confirmedAt: z.coerce.date().nullable().optional(),
+});
+
+const studentActivitySummarySchema = z.object({
+  projects: z.array(studentActivityProjectSchema),
+  businesses: z.array(studentActivityProjectSchema),
+  products: z.array(studentActivityProjectSchema),
+  courses: z.array(z.object({
+    id: z.number(),
+    name: z.string(),
+    paymentStatus: z.string(),
+    createdAt: z.coerce.date(),
+  })),
+  challenges: z.object({
+    digitalPassportEvents: z.number(),
+    exhibitorEvents: z.number(),
+    badges: z.number(),
+  }),
+  recentEvents: z.array(z.object({
+    id: z.string(),
+    type: z.enum([
+      "AUTH",
+      "PROJECT",
+      "BUSINESS",
+      "PRODUCT",
+      "COURSE",
+      "CERTIFICATE",
+      "ATTENDANCE",
+      "DIGITAL_PASSPORT",
+      "EXHIBITOR_CHALLENGE",
+      "LIVE_CHAT",
+    ]),
+    title: z.string(),
+    description: z.string().nullable().optional(),
+    status: z.string().nullable().optional(),
+    points: z.number().nullable().optional(),
+    happenedAt: z.coerce.date(),
+  })),
+});
+
+const studentWithStatsResponseSchema = studentResponseSchema.extend({
+  _count: studentStatsCountSchema,
+  activitySummary: studentActivitySummarySchema.optional(),
+});
+
 const studentProfileExtraResponseSchema = z.object({
   bio: z.string().nullable(),
   address: z.string().nullable(),
@@ -1688,22 +1762,24 @@ export async function authRoutes(app: FastifyInstance, opts: { env?: Env } = {})
           querystring: studentsPagedQuerySchema,
           response: {
             200: z.object({
-              items: z.array(
-                studentResponseSchema.extend({
-                  _count: z.object({
-                    likes: z.number(),
-                    votes: z.number(),
-                    comments: z.number(),
-                    courseEnrollments: z.number(),
-                    certificates: z.number(),
-                    attendanceCheckIns: z.number(),
-                    submissions: z.number(),
-                  })
-                })
-              ),
+              items: z.array(studentWithStatsResponseSchema),
               total: z.number(),
               page: z.number(),
               totalPages: z.number(),
+              stats: z.object({
+                total: z.number(),
+                official: z.number(),
+                temporary: z.number(),
+                universities: z.number(),
+                synced: z.number(),
+                profileComplete: z.number(),
+                withEmail: z.number(),
+                withPhone: z.number(),
+              }),
+              facets: z.object({
+                courses: z.array(z.string()),
+                universities: z.array(z.string()),
+              }),
             }),
             401: z.object({ message: z.string() }),
             403: z.object({ message: z.string() })
@@ -1728,17 +1804,7 @@ export async function authRoutes(app: FastifyInstance, opts: { env?: Env } = {})
           tags: ["Students"],
           response: {
             200: z.array(
-              studentResponseSchema.extend({
-                _count: z.object({
-                  likes: z.number(),
-                  votes: z.number(),
-                  comments: z.number(),
-                  courseEnrollments: z.number(),
-                  certificates: z.number(),
-                  attendanceCheckIns: z.number(),
-                  submissions: z.number(),
-                })
-              })
+              studentWithStatsResponseSchema
             ),
             401: z.object({ message: z.string() }),
             403: z.object({ message: z.string() })

@@ -7,13 +7,18 @@ export type AgendaLiveState = {
 };
 
 const ANGOLA_TIMEZONE_OFFSET = "+01:00";
+const LIVE_GENERAL_THEME = "geral";
 
 export function getAgendaTimestamp(item: AgendaItem, time: string) {
   return new Date(`${item.date.toISOString().slice(0, 10)}T${time}:00.000${ANGOLA_TIMEZONE_OFFSET}`).getTime();
 }
 
+export function isGeneralAgendaTheme(theme?: string | null) {
+  return theme?.trim().toLocaleLowerCase("pt-PT") === LIVE_GENERAL_THEME;
+}
+
 export function resolveAgendaLiveState(items: AgendaItem[], now: Date): AgendaLiveState {
-  const sorted = [...items].sort(
+  const sorted = items.filter((item) => isGeneralAgendaTheme(item.theme)).sort(
     (left, right) => getAgendaTimestamp(left, left.startTime) - getAgendaTimestamp(right, right.startTime)
   );
 

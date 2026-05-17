@@ -150,6 +150,8 @@ import {
   type SubmissionTeamMember,
   type StudentWithStats,
   type StudentProfile,
+  type StudentPagedFacets,
+  type StudentPagedStats,
   type VenueInput,
   getToken,
   isAuthError,
@@ -953,6 +955,10 @@ const defaultLiveConfigForm: AgendaLiveConfigInput = {
   },
 };
 
+function isGeneralAgendaTheme(theme: string | null | undefined) {
+  return theme?.trim().toLocaleLowerCase("pt-PT") === "geral";
+}
+
 const defaultFaqForm: FaqInput = {
   question: "",
   answer: "",
@@ -1426,6 +1432,12 @@ const Admin = ({
   const [studentPage, setStudentPage] = useState(1);
   const [studentsTotal, setStudentsTotal] = useState(0);
   const [studentsTotalPages, setStudentsTotalPages] = useState(1);
+  const [studentStatsSummary, setStudentStatsSummary] =
+    useState<StudentPagedStats | null>(null);
+  const [studentFacets, setStudentFacets] = useState<StudentPagedFacets>({
+    courses: [],
+    universities: [],
+  });
   const [loadingStudentsList, setLoadingStudentsList] = useState(false);
   const [groupStudentsByCourse, setGroupStudentsByCourse] = useState(true);
   const [moderationSearchTerm, setModerationSearchTerm] = useState("");
@@ -1951,6 +1963,8 @@ const Admin = ({
         setStudentListRows(payload.items);
         setStudentsTotal(payload.total);
         setStudentsTotalPages(payload.totalPages);
+        setStudentStatsSummary(payload.stats);
+        setStudentFacets(payload.facets);
         if (payload.total > payload.items.length) {
           toast.info(
             `A mostrar ${payload.items.length} de ${payload.total} estudantes para garantir rapidez no painel.`,
@@ -2505,6 +2519,8 @@ const Admin = ({
         setStudentsTotal(payload.total);
         setStudentsTotalPages(payload.totalPages);
         setStudentPage(payload.page);
+        setStudentStatsSummary(payload.stats);
+        setStudentFacets(payload.facets);
       } catch (error) {
         if (cancelled) return;
         if (isAuthError(error)) {
@@ -2797,27 +2813,31 @@ const Admin = ({
   }, [studentListRows]);
 
   const availableStudentCourses = useMemo(
-    () =>
-      Array.from(
+    () => {
+      if (studentFacets.courses.length) return studentFacets.courses;
+      return Array.from(
         new Set(
           [...students, ...studentListRows]
             .map((student) => student.course)
             .filter(Boolean) as string[],
         ),
-      ).sort((left, right) => left.localeCompare(right, "pt")),
-    [students, studentListRows],
+      ).sort((left, right) => left.localeCompare(right, "pt"));
+    },
+    [students, studentFacets.courses, studentListRows],
   );
 
   const availableStudentUniversities = useMemo(
-    () =>
-      Array.from(
+    () => {
+      if (studentFacets.universities.length) return studentFacets.universities;
+      return Array.from(
         new Set(
           [...students, ...studentListRows]
             .map((student) => student.university?.trim())
             .filter(Boolean) as string[],
         ),
-      ).sort((left, right) => left.localeCompare(right, "pt")),
-    [students, studentListRows],
+      ).sort((left, right) => left.localeCompare(right, "pt"));
+    },
+    [students, studentFacets.universities, studentListRows],
   );
 
   const filteredProjectComments = useMemo(() => {
@@ -4340,6 +4360,10 @@ const Admin = ({
         !current.theme
       ) {
         toast.error("Preenche os campos obrigatórios do conteúdo ao vivo.");
+        return;
+      }
+      if (!isGeneralAgendaTheme(current.theme)) {
+        toast.error('O Ao Vivo só aceita conteúdos com o tema "Geral".');
         return;
       }
     }
@@ -11332,6 +11356,7 @@ const Admin = ({
                         studentPageSize={studentPageSize}
                         studentSearchTerm={studentSearchTerm}
                         studentSortBy={studentSortBy}
+                        studentStatsSummary={studentStatsSummary}
                         studentsTotal={studentsTotal}
                         studentsTotalPages={studentsTotalPages}
                         onGroupStudentsByCourseChange={setGroupStudentsByCourse}

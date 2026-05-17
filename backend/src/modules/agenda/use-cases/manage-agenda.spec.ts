@@ -1,7 +1,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import type { LiveContentConfig } from "@prisma/client";
 import type { AgendaInput, AgendaRepository } from "../domain/agenda.repository";
-import { CreateAgendaItem, DeleteAgendaItem, ListAgendaItems, UpdateAgendaItem } from "./manage-agenda";
+import { CreateAgendaItem, DeleteAgendaItem, ListAgendaItems, UpdateAgendaItem, UpdateAgendaLiveConfig } from "./manage-agenda";
 
 class InMemoryAgendaRepository implements AgendaRepository {
   items: any[] = [];
@@ -87,5 +87,14 @@ describe("Agenda use cases", () => {
     const created = await new CreateAgendaItem(repository).execute(baseInput);
     await new DeleteAgendaItem(repository).execute(created.id);
     expect(repository.items).toHaveLength(0);
+  });
+
+  it("bloqueia conteúdo manual do Ao Vivo fora do tema Geral", async () => {
+    await expect(
+      new UpdateAgendaLiveConfig(repository).execute({
+        mode: "MANUAL",
+        current: { ...baseInput, theme: "Carreira" }
+      })
+    ).rejects.toThrow('O Ao Vivo só aceita conteúdos com o tema "Geral" da agenda.');
   });
 });

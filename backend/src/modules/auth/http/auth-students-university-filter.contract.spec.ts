@@ -24,6 +24,12 @@ describe("admin students university filter contract", () => {
     expect(repository).toContain("...(university && university !== \"all\"");
     expect(repository).toContain("{ university }");
     expect(repository).toContain("buildStudentAccessWhere(accessType)");
+    expect(repository).toContain("buildPagedStats(where)");
+    expect(repository).toContain("buildStudentFacets()");
+    expect(repository).toContain("activitySummary");
+    expect(routes).toContain("stats: z.object");
+    expect(routes).toContain("facets: z.object");
+    expect(routes).toContain("studentActivitySummarySchema");
     expect(formatter).toContain("resolveStudentAccessType");
     expect(formatter).toContain('return "OFFICIAL"');
     expect(formatter).toContain('return "TEMPORARY"');

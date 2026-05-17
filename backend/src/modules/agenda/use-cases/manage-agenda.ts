@@ -1,5 +1,5 @@
 import type { AgendaInput, AgendaLiveConfigInput, AgendaRepository } from "../domain/agenda.repository";
-import { resolveAgendaLiveState } from "./get-live-state";
+import { isGeneralAgendaTheme, resolveAgendaLiveState } from "./get-live-state";
 
 export class ListAgendaItems {
   constructor(private readonly agendaRepository: AgendaRepository) {}
@@ -39,7 +39,11 @@ export class UpdateAgendaLiveConfig {
 
   async execute(data: AgendaLiveConfigInput, now = new Date()) {
     if (data.mode === "MANUAL" && !data.current) {
-      throw new Error("Current live content is required for manual mode");
+      throw new Error("O conteúdo atual é obrigatório no modo manual.");
+    }
+
+    if (data.mode === "MANUAL" && data.current && !isGeneralAgendaTheme(data.current.theme)) {
+      throw new Error('O Ao Vivo só aceita conteúdos com o tema "Geral" da agenda.');
     }
 
     const updatedConfig = await this.agendaRepository.updateLiveConfig(data);

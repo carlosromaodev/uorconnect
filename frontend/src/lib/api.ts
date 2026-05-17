@@ -382,7 +382,82 @@ export interface StudentWithStats extends StudentProfile {
     certificates: number;
     attendanceCheckIns: number;
     submissions: number;
+    submissionMemberships: number;
+    liveChatMessages: number;
+    passportScans: number;
+    passportPointLedger: number;
+    passportChallengeAnswers: number;
+    passportStudentBadges: number;
+    passportSurpriseEffects: number;
+    exhibitorVoteScoreEvents: number;
+    exhibitorActorScoreEvents: number;
   };
+  activitySummary?: StudentActivitySummary;
+}
+
+export interface StudentActivityProject {
+  id: number;
+  referenceCode: string;
+  name: string;
+  type: string;
+  status: string;
+  role: "RESPONSAVEL" | "MEMBRO";
+  course?: string | null;
+  area?: string | null;
+  createdAt: string;
+  confirmedAt?: string | null;
+}
+
+export interface StudentActivitySummary {
+  projects: StudentActivityProject[];
+  businesses: StudentActivityProject[];
+  products: StudentActivityProject[];
+  courses: Array<{
+    id: number;
+    name: string;
+    paymentStatus: string;
+    createdAt: string;
+  }>;
+  challenges: {
+    digitalPassportEvents: number;
+    exhibitorEvents: number;
+    badges: number;
+  };
+  recentEvents: Array<{
+    id: string;
+    type:
+      | "AUTH"
+      | "PROJECT"
+      | "BUSINESS"
+      | "PRODUCT"
+      | "COURSE"
+      | "CERTIFICATE"
+      | "ATTENDANCE"
+      | "DIGITAL_PASSPORT"
+      | "EXHIBITOR_CHALLENGE"
+      | "LIVE_CHAT";
+    title: string;
+    description?: string | null;
+    status?: string | null;
+    points?: number | null;
+    happenedAt: string;
+  }>;
+}
+
+export interface StudentPagedStats {
+  total: number;
+  official: number;
+  temporary: number;
+  universities: number;
+  synced: number;
+  profileComplete: number;
+  withEmail: number;
+  withPhone: number;
+}
+
+export interface StudentPagedFacets {
+  courses: string[];
+  universities: string[];
 }
 
 export interface PagedResult<T> {
@@ -390,6 +465,11 @@ export interface PagedResult<T> {
   total: number;
   page: number;
   totalPages: number;
+}
+
+export interface StudentsPagedResult extends PagedResult<StudentWithStats> {
+  stats: StudentPagedStats;
+  facets: StudentPagedFacets;
 }
 
 export interface PublicLiveVoteProject {
@@ -3558,7 +3638,7 @@ export const api = {
         | "university_desc"
         | "interactions_desc";
     }) =>
-      request<PagedResult<StudentWithStats>>(
+      request<StudentsPagedResult>(
         `/auth/students/paged${toQueryString(params)}`,
       ),
     securityOverview: () => request<AdminSecurityOverview>("/auth/security"),

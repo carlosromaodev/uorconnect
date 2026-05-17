@@ -23,6 +23,7 @@ import {
   Mail,
   MapPin,
   MessageSquare,
+  Radio,
   Phone,
   RefreshCw,
   Search,
@@ -38,7 +39,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { ContextualSmsAction } from "@/components/admin/ContextualSmsAction";
-import type { StudentWithStats } from "@/lib/api";
+import type { StudentPagedStats, StudentWithStats } from "@/lib/api";
 
 type StudentSort = "interacoes" | "nome" | "numero" | "curso" | "universidade";
 
@@ -56,6 +57,7 @@ type AdminStudentsTabProps = {
   studentPageSize: number;
   studentSearchTerm: string;
   studentSortBy: StudentSort;
+  studentStatsSummary: StudentPagedStats | null;
   studentsTotal: number;
   studentsTotalPages: number;
   onGroupStudentsByCourseChange: (value: boolean) => void;
@@ -78,7 +80,15 @@ function totalInteractions(student: StudentWithStats) {
     (c?.courseEnrollments ?? 0) +
     (c?.certificates ?? 0) +
     (c?.attendanceCheckIns ?? 0) +
-    (c?.submissions ?? 0)
+    (c?.submissions ?? 0) +
+    (c?.submissionMemberships ?? 0) +
+    (c?.liveChatMessages ?? 0) +
+    (c?.passportScans ?? 0) +
+    (c?.passportPointLedger ?? 0) +
+    (c?.passportChallengeAnswers ?? 0) +
+    (c?.passportSurpriseEffects ?? 0) +
+    (c?.exhibitorVoteScoreEvents ?? 0) +
+    (c?.exhibitorActorScoreEvents ?? 0)
   );
 }
 
@@ -189,6 +199,12 @@ function StudentCard({
   const isProfileComplete = !!student.profileCompletedAt;
   const hasProfilePhoto = !!student.avatarUrl;
   const isOfficialAccess = student.accessType === "OFFICIAL";
+  const activity = student.activitySummary;
+  const projectActivityTotal = (activity?.projects.length ?? 0)
+    + (activity?.businesses.length ?? 0)
+    + (activity?.products.length ?? 0);
+  const challengeActivityTotal = (activity?.challenges.digitalPassportEvents ?? 0)
+    + (activity?.challenges.exhibitorEvents ?? 0);
   const profileLinks = [
     { label: "Instagram", url: student.instagramUrl, icon: Instagram },
     { label: "Facebook", url: student.facebookUrl, icon: Facebook },
@@ -504,8 +520,112 @@ function StudentCard({
                 value={student._count?.submissions ?? 0}
                 color="border-rose-500/20 bg-rose-500/10 text-rose-600 dark:text-rose-400"
               />
+              <StatBadge
+                icon={Users}
+                label="Membro de projetos"
+                value={student._count?.submissionMemberships ?? 0}
+                color="border-orange-500/20 bg-orange-500/10 text-orange-600 dark:text-orange-400"
+              />
+              <StatBadge
+                icon={Radio}
+                label="Atividade no Ao Vivo"
+                value={student._count?.liveChatMessages ?? 0}
+                color="border-pink-500/20 bg-pink-500/10 text-pink-600 dark:text-pink-400"
+              />
+              <StatBadge
+                icon={Award}
+                label="Passaporte digital"
+                value={(student._count?.passportPointLedger ?? 0) + (student._count?.passportScans ?? 0)}
+                color="border-violet-500/20 bg-violet-500/10 text-violet-600 dark:text-violet-400"
+              />
             </div>
           </div>
+
+          {activity && (
+            <div className="border-t border-border/30 px-4 py-3">
+              <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Mapa de atividade no sistema
+              </p>
+              <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                <div className="rounded-lg border border-border/50 bg-background/70 p-3">
+                  <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Projetos</p>
+                  <p className="mt-1 text-lg font-semibold">{projectActivityTotal}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {activity.projects.length} projeto(s), {activity.businesses.length} negócio(s), {activity.products.length} produto(s)
+                  </p>
+                </div>
+                <div className="rounded-lg border border-border/50 bg-background/70 p-3">
+                  <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Cursos e formação</p>
+                  <p className="mt-1 text-lg font-semibold">{activity.courses.length}</p>
+                  <p className="text-xs text-muted-foreground">Inscrições associadas ao estudante</p>
+                </div>
+                <div className="rounded-lg border border-border/50 bg-background/70 p-3">
+                  <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Desafios</p>
+                  <p className="mt-1 text-lg font-semibold">{challengeActivityTotal}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {activity.challenges.digitalPassportEvents} passaporte · {activity.challenges.exhibitorEvents} expositor
+                  </p>
+                </div>
+                <div className="rounded-lg border border-border/50 bg-background/70 p-3">
+                  <p className="text-[11px] uppercase tracking-wide text-muted-foreground">Selos</p>
+                  <p className="mt-1 text-lg font-semibold">{activity.challenges.badges}</p>
+                  <p className="text-xs text-muted-foreground">Conquistas desbloqueadas</p>
+                </div>
+              </div>
+
+              {(activity.projects.length > 0 || activity.businesses.length > 0 || activity.products.length > 0) && (
+                <div className="mt-3 grid gap-2 lg:grid-cols-2">
+                  {[...activity.projects, ...activity.businesses, ...activity.products].slice(0, 4).map((project) => (
+                    <div key={`${project.role}-${project.id}`} className="rounded-lg border border-border/50 bg-background/70 p-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-semibold">{project.name}</p>
+                          <p className="mt-0.5 text-xs text-muted-foreground">
+                            {project.type} · {project.role === "RESPONSAVEL" ? "Responsável" : "Membro"}
+                          </p>
+                        </div>
+                        <Badge variant="outline" className="shrink-0 text-[10px]">
+                          {project.status}
+                        </Badge>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              <div className="mt-3">
+                <p className="mb-2 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Histórico recente
+                </p>
+                {activity.recentEvents.length > 0 ? (
+                  <div className="space-y-2">
+                    {activity.recentEvents.slice(0, 6).map((event) => (
+                      <div key={event.id} className="flex flex-col gap-1 rounded-lg border border-border/50 bg-background/70 p-3 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-medium">{event.title}</p>
+                          <p className="line-clamp-2 text-xs text-muted-foreground">
+                            {event.description || event.type}
+                          </p>
+                        </div>
+                        <div className="flex shrink-0 items-center gap-2 text-xs text-muted-foreground">
+                          {typeof event.points === "number" && (
+                            <Badge variant={event.points >= 0 ? "default" : "destructive"} className="text-[10px]">
+                              {event.points > 0 ? "+" : ""}{event.points} pts
+                            </Badge>
+                          )}
+                          <span>{formatDateTime(event.happenedAt)}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="rounded-lg border border-dashed border-border/60 bg-background/60 p-3 text-sm text-muted-foreground">
+                    Ainda não há atividade registada para este estudante.
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* Timestamps & actions */}
           <div className="flex flex-col gap-3 border-t border-border/30 px-4 py-3 sm:flex-row sm:items-center sm:justify-between">
@@ -573,6 +693,7 @@ export default function AdminStudentsTab({
   studentPageSize,
   studentSearchTerm,
   studentSortBy,
+  studentStatsSummary,
   studentsTotal,
   studentsTotalPages,
   onGroupStudentsByCourseChange,
@@ -588,7 +709,7 @@ export default function AdminStudentsTab({
   const [expandedId, setExpandedId] = useState<number | null>(null);
 
   /* ---- Computed stats ---- */
-  const stats = useMemo(() => {
+  const pageStats = useMemo(() => {
     const rows = studentListRows;
     let withEmail = 0;
     let withPhone = 0;
@@ -619,6 +740,7 @@ export default function AdminStudentsTab({
       universities: universities.size,
     };
   }, [studentListRows]);
+  const stats = studentStatsSummary ?? pageStats;
 
   const sortLabels: Record<StudentSort, string> = {
     interacoes: "Mais interações",
@@ -692,7 +814,7 @@ export default function AdminStudentsTab({
             </div>
             <div>
               <p className="text-2xl font-bold">{stats.universities}</p>
-              <p className="text-xs text-muted-foreground">universidades nesta página</p>
+              <p className="text-xs text-muted-foreground">universidades no resultado</p>
             </div>
           </CardContent>
         </Card>

@@ -99,17 +99,35 @@ describe("GetAgendaLiveState", () => {
       type: "PANEL",
       theme: "Carreira"
     });
+    await repository.create({
+      day: "DAY1",
+      date: new Date("2026-05-17T00:00:00.000Z"),
+      startTime: "12:00",
+      endTime: "13:00",
+      title: "Encerramento geral",
+      local: "Auditório",
+      speaker: "Organização",
+      description: "Fecho do bloco geral",
+      type: "CEREMONY",
+      theme: "Geral"
+    });
   });
 
-  it("retorna sessão atual e próxima usando horário de Luanda", async () => {
+  it("retorna sessão atual e próxima usando apenas o tema Geral", async () => {
     const result = await new GetAgendaLiveState(repository).execute(new Date("2026-05-17T08:15:00.000Z"));
     expect(result.current?.title).toBe("Abertura");
-    expect(result.next?.title).toBe("Painel");
+    expect(result.next?.title).toBe("Encerramento geral");
   });
 
   it("retorna próxima quando ainda não começou", async () => {
     const result = await new GetAgendaLiveState(repository).execute(new Date("2026-05-17T07:00:00.000Z"));
     expect(result.current).toBeNull();
     expect(result.next?.title).toBe("Abertura");
+  });
+
+  it("ignora atividade ativa quando o tema não é Geral", async () => {
+    const result = await new GetAgendaLiveState(repository).execute(new Date("2026-05-17T09:45:00.000Z"));
+    expect(result.current).toBeNull();
+    expect(result.next?.title).toBe("Encerramento geral");
   });
 });

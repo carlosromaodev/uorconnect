@@ -1,7 +1,7 @@
 import type { FastifyInstance } from "fastify";
 import { z } from "zod";
 import { PrismaAgendaRepository } from "../infra/prisma.agenda.repository";
-import { GetAgendaLiveState } from "../use-cases/get-live-state";
+import { GetAgendaLiveState, isGeneralAgendaTheme } from "../use-cases/get-live-state";
 import { CreateAgendaItem, DeleteAgendaItem, GetAgendaLiveConfig, ListAgendaItems, UpdateAgendaItem, UpdateAgendaLiveConfig } from "../use-cases/manage-agenda";
 import { type Env } from "../../../config/env";
 import { authGuard } from "../../auth/http/auth.middleware";
@@ -88,7 +88,7 @@ export async function agendaRoutes(app: FastifyInstance, opts: { env: Env }) {
       getAgendaLiveConfig.execute()
     ]);
 
-    const manualCurrent = config.mode === "MANUAL" && config.title && config.local && config.description && config.type && config.theme && config.day && config.date && config.startTime && config.endTime
+    const manualCurrent = config.mode === "MANUAL" && config.title && config.local && config.description && config.type && config.theme && isGeneralAgendaTheme(config.theme) && config.day && config.date && config.startTime && config.endTime
       ? {
           id: live.current?.id ?? 0,
           day: config.day,
@@ -109,8 +109,8 @@ export async function agendaRoutes(app: FastifyInstance, opts: { env: Env }) {
     return {
       current: manualCurrent ?? (live.current ? { ...live.current, date: live.current.date.toISOString() } : null),
       next: live.next ? { ...live.next, date: live.next.date.toISOString() } : null,
-      mode: config.mode === "MANUAL" ? "MANUAL" : "AGENDA",
-      source: config.mode === "MANUAL" ? "admin" : "agenda"
+      mode: manualCurrent ? "MANUAL" : "AGENDA",
+      source: manualCurrent ? "admin" : "agenda"
     };
   });
 
@@ -208,7 +208,7 @@ export async function agendaRoutes(app: FastifyInstance, opts: { env: Env }) {
           updatedAt: updated.updatedAt
         });
       } catch (error) {
-        return reply.code(400).send({ message: error instanceof Error ? error.message : "Invalid live config" });
+        return reply.code(400).send({ message: error instanceof Error ? error.message : "Não foi possível guardar a configuração do Ao Vivo." });
       }
     });
 

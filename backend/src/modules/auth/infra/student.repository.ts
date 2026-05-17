@@ -3,6 +3,11 @@ import {
   type AdminAccessConflict,
   type AdminAuthorizedStudent,
   type Student,
+  type StudentActivityEvent,
+  type StudentActivityProject,
+  type StudentActivitySummary,
+  type StudentPagedFacets,
+  type StudentPagedStats,
   type StudentLoginAudit,
   type StudentLoginOrigin,
   type StudentProfile,
@@ -32,6 +37,204 @@ function buildStudentAccessWhere(accessType: StudentAccessFilter): Prisma.Studen
 function hasExplicitAdminPermissions(permissions?: string | null) {
   return Boolean(permissions?.split(",").some((permission) => permission.trim().length > 0));
 }
+
+const studentStatsCountSelect = Prisma.validator<Prisma.StudentCountOutputTypeSelect>()({
+  likes: true,
+  votes: true,
+  comments: true,
+  courseEnrollments: true,
+  certificates: true,
+  attendanceCheckIns: true,
+  submissions: true,
+  submissionMemberships: true,
+  liveChatMessages: true,
+  passportScans: true,
+  passportPointLedger: true,
+  passportChallengeAnswers: true,
+  passportStudentBadges: true,
+  passportSurpriseEffects: true,
+  exhibitorVoteScoreEvents: true,
+  exhibitorActorScoreEvents: true,
+});
+
+const studentPagedInclude = Prisma.validator<Prisma.StudentInclude>()({
+  _count: {
+    select: studentStatsCountSelect,
+  },
+  submissions: {
+    select: {
+      id: true,
+      referenceCode: true,
+      name: true,
+      type: true,
+      status: true,
+      course: true,
+      area: true,
+      createdAt: true,
+    },
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    take: 6,
+  },
+  submissionMemberships: {
+    select: {
+      id: true,
+      confirmedAt: true,
+      createdAt: true,
+      submission: {
+        select: {
+          id: true,
+          referenceCode: true,
+          name: true,
+          type: true,
+          status: true,
+          course: true,
+          area: true,
+          createdAt: true,
+        },
+      },
+    },
+    orderBy: [{ confirmedAt: "desc" }, { updatedAt: "desc" }],
+    take: 6,
+  },
+  courseEnrollments: {
+    select: {
+      id: true,
+      paymentStatus: true,
+      createdAt: true,
+      course: { select: { name: true } },
+    },
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    take: 5,
+  },
+  certificates: {
+    select: {
+      id: true,
+      title: true,
+      type: true,
+      status: true,
+      issuedAt: true,
+    },
+    orderBy: [{ issuedAt: "desc" }, { id: "desc" }],
+    take: 5,
+  },
+  attendanceCheckIns: {
+    select: {
+      id: true,
+      eventLabel: true,
+      checkedInAt: true,
+      notes: true,
+    },
+    orderBy: [{ checkedInAt: "desc" }, { id: "desc" }],
+    take: 5,
+  },
+  loginAudits: {
+    select: {
+      id: true,
+      origin: true,
+      loggedAt: true,
+    },
+    orderBy: [{ loggedAt: "desc" }, { id: "desc" }],
+    take: 4,
+  },
+  liveChatMessages: {
+    select: {
+      id: true,
+      content: true,
+      createdAt: true,
+      hiddenAt: true,
+    },
+    orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+    take: 4,
+  },
+  passportScans: {
+    select: {
+      id: true,
+      result: true,
+      pointsAwarded: true,
+      message: true,
+      scannedAt: true,
+      mission: { select: { title: true } },
+    },
+    orderBy: [{ scannedAt: "desc" }, { id: "desc" }],
+    take: 6,
+  },
+  passportPointLedger: {
+    select: {
+      id: true,
+      sourceType: true,
+      points: true,
+      status: true,
+      reason: true,
+      awardedAt: true,
+      mission: { select: { title: true } },
+    },
+    orderBy: [{ awardedAt: "desc" }, { id: "desc" }],
+    take: 6,
+  },
+  passportChallengeAnswers: {
+    select: {
+      id: true,
+      correct: true,
+      pointsAwarded: true,
+      message: true,
+      answeredAt: true,
+      challenge: { select: { question: true } },
+    },
+    orderBy: [{ answeredAt: "desc" }, { id: "desc" }],
+    take: 5,
+  },
+  passportStudentBadges: {
+    select: {
+      id: true,
+      awardedAt: true,
+      badge: { select: { label: true } },
+    },
+    orderBy: [{ awardedAt: "desc" }, { id: "desc" }],
+    take: 5,
+  },
+  passportSurpriseEffects: {
+    select: {
+      id: true,
+      effectType: true,
+      effectValue: true,
+      deltaPoints: true,
+      status: true,
+      message: true,
+      appliedAt: true,
+      surpriseQr: { select: { name: true, displayCode: true } },
+    },
+    orderBy: [{ appliedAt: "desc" }, { id: "desc" }],
+    take: 5,
+  },
+  exhibitorVoteScoreEvents: {
+    select: {
+      id: true,
+      action: true,
+      points: true,
+      status: true,
+      reason: true,
+      awardedAt: true,
+      submission: { select: { id: true, referenceCode: true, name: true, type: true } },
+    },
+    orderBy: [{ awardedAt: "desc" }, { id: "desc" }],
+    take: 6,
+  },
+  exhibitorActorScoreEvents: {
+    select: {
+      id: true,
+      action: true,
+      points: true,
+      status: true,
+      reason: true,
+      awardedAt: true,
+      submission: { select: { id: true, referenceCode: true, name: true, type: true } },
+    },
+    orderBy: [{ awardedAt: "desc" }, { id: "desc" }],
+    take: 6,
+  },
+});
+
+type StudentPagedRecord = Prisma.StudentGetPayload<{ include: typeof studentPagedInclude }>;
 
 export class StudentRepository {
   constructor(private prisma: PrismaClient) {}
@@ -140,11 +343,7 @@ export class StudentRepository {
       where: { deletedAt: null },
       include: {
         _count: {
-          select: {
-            likes: true,
-            votes: true,
-            comments: true
-          }
+          select: studentStatsCountSelect,
         }
       },
       orderBy: { createdAt: "desc" }
@@ -218,34 +417,334 @@ export class StudentRepository {
       return [{ createdAt: "desc" as const }];
     })();
 
-    const [total, items] = await Promise.all([
+    const [total, items, stats, facets] = await Promise.all([
       this.prisma.student.count({ where }),
       this.prisma.student.findMany({
         where,
-        include: {
-          _count: {
-            select: {
-              likes: true,
-              votes: true,
-              comments: true,
-              courseEnrollments: true,
-              certificates: true,
-              attendanceCheckIns: true,
-              submissions: true,
-            },
-          },
-        },
+        include: studentPagedInclude,
         orderBy,
         skip: (page - 1) * limit,
         take: limit,
       }),
+      this.buildPagedStats(where),
+      this.buildStudentFacets(),
     ]);
 
     return {
-      items,
+      items: items.map((student) => this.toStudentWithActivity(student)),
       total,
       page,
       totalPages: Math.max(1, Math.ceil(total / limit)),
+      stats,
+      facets,
+    };
+  }
+
+  private withStudentWhere(where: Prisma.StudentWhereInput, extra: Prisma.StudentWhereInput): Prisma.StudentWhereInput {
+    return { AND: [where, extra] };
+  }
+
+  private async buildPagedStats(where: Prisma.StudentWhereInput): Promise<StudentPagedStats> {
+    const officialWhere = this.withStudentWhere(where, buildStudentAccessWhere("OFFICIAL"));
+    const temporaryWhere = this.withStudentWhere(where, buildStudentAccessWhere("TEMPORARY"));
+    const nonEmptyEmailWhere = this.withStudentWhere(where, { email: { not: null }, NOT: { email: "" } });
+    const nonEmptyPhoneWhere = this.withStudentWhere(where, { phone: { not: null }, NOT: { phone: "" } });
+
+    const [
+      total,
+      official,
+      temporary,
+      synced,
+      profileComplete,
+      withEmail,
+      withPhone,
+      universityRows,
+    ] = await Promise.all([
+      this.prisma.student.count({ where }),
+      this.prisma.student.count({ where: officialWhere }),
+      this.prisma.student.count({ where: temporaryWhere }),
+      this.prisma.student.count({ where: this.withStudentWhere(where, { academicSyncedAt: { not: null } }) }),
+      this.prisma.student.count({ where: this.withStudentWhere(where, { profileCompletedAt: { not: null } }) }),
+      this.prisma.student.count({ where: nonEmptyEmailWhere }),
+      this.prisma.student.count({ where: nonEmptyPhoneWhere }),
+      this.prisma.student.findMany({
+        where: this.withStudentWhere(where, { university: { not: null }, NOT: { university: "" } }),
+        select: { university: true },
+      }),
+    ]);
+
+    return {
+      total,
+      official,
+      temporary,
+      universities: new Set(universityRows.map((row) => row.university?.trim()).filter(Boolean)).size,
+      synced,
+      profileComplete,
+      withEmail,
+      withPhone,
+    };
+  }
+
+  private async buildStudentFacets(): Promise<StudentPagedFacets> {
+    const [courseRows, universityRows] = await Promise.all([
+      this.prisma.student.findMany({
+        where: { deletedAt: null, course: { not: null }, NOT: { course: "" } },
+        select: { course: true },
+      }),
+      this.prisma.student.findMany({
+        where: { deletedAt: null, university: { not: null }, NOT: { university: "" } },
+        select: { university: true },
+      }),
+    ]);
+
+    const normalize = (value?: string | null) => value?.trim() ?? "";
+    const byPt = (left: string, right: string) => left.localeCompare(right, "pt");
+
+    return {
+      courses: Array.from(new Set(courseRows.map((row) => normalize(row.course)).filter(Boolean))).sort(byPt),
+      universities: Array.from(new Set(universityRows.map((row) => normalize(row.university)).filter(Boolean))).sort(byPt),
+    };
+  }
+
+  private toStudentWithActivity(student: StudentPagedRecord): StudentWithStats {
+    const activitySummary = this.buildActivitySummary(student);
+    const {
+      submissions: _submissions,
+      submissionMemberships: _submissionMemberships,
+      courseEnrollments: _courseEnrollments,
+      certificates: _certificates,
+      attendanceCheckIns: _attendanceCheckIns,
+      loginAudits: _loginAudits,
+      liveChatMessages: _liveChatMessages,
+      passportScans: _passportScans,
+      passportPointLedger: _passportPointLedger,
+      passportChallengeAnswers: _passportChallengeAnswers,
+      passportStudentBadges: _passportStudentBadges,
+      passportSurpriseEffects: _passportSurpriseEffects,
+      exhibitorVoteScoreEvents: _exhibitorVoteScoreEvents,
+      exhibitorActorScoreEvents: _exhibitorActorScoreEvents,
+      ...profile
+    } = student;
+
+    void _submissions;
+    void _submissionMemberships;
+    void _courseEnrollments;
+    void _certificates;
+    void _attendanceCheckIns;
+    void _loginAudits;
+    void _liveChatMessages;
+    void _passportScans;
+    void _passportPointLedger;
+    void _passportChallengeAnswers;
+    void _passportStudentBadges;
+    void _passportSurpriseEffects;
+    void _exhibitorVoteScoreEvents;
+    void _exhibitorActorScoreEvents;
+
+    return {
+      ...profile,
+      activitySummary,
+    } as StudentWithStats;
+  }
+
+  private buildActivitySummary(student: StudentPagedRecord): StudentActivitySummary {
+    const projectMap = new Map<number, StudentActivityProject>();
+    const addProject = (project: StudentActivityProject) => {
+      const existing = projectMap.get(project.id);
+      if (!existing || existing.role !== "RESPONSAVEL") {
+        projectMap.set(project.id, project);
+      }
+    };
+
+    for (const submission of student.submissions) {
+      addProject({
+        id: submission.id,
+        referenceCode: submission.referenceCode,
+        name: submission.name,
+        type: String(submission.type),
+        status: String(submission.status),
+        role: "RESPONSAVEL",
+        course: submission.course,
+        area: submission.area,
+        createdAt: submission.createdAt,
+        confirmedAt: null,
+      });
+    }
+
+    for (const membership of student.submissionMemberships) {
+      addProject({
+        id: membership.submission.id,
+        referenceCode: membership.submission.referenceCode,
+        name: membership.submission.name,
+        type: String(membership.submission.type),
+        status: String(membership.submission.status),
+        role: "MEMBRO",
+        course: membership.submission.course,
+        area: membership.submission.area,
+        createdAt: membership.submission.createdAt,
+        confirmedAt: membership.confirmedAt,
+      });
+    }
+
+    const projects = Array.from(projectMap.values()).sort((left, right) => right.createdAt.getTime() - left.createdAt.getTime());
+    const recentEvents: StudentActivityEvent[] = [];
+
+    for (const audit of student.loginAudits) {
+      recentEvents.push({
+        id: `login-${audit.id}`,
+        type: "AUTH",
+        title: audit.origin === "CONVENTIONAL" ? "Login temporário" : "Login oficial",
+        description: "Entrada registada na plataforma.",
+        happenedAt: audit.loggedAt,
+      });
+    }
+
+    for (const project of projects) {
+      recentEvents.push({
+        id: `submission-${project.id}-${project.role}`,
+        type: project.type === "BUSINESS" ? "BUSINESS" : project.type === "PRODUCT" ? "PRODUCT" : "PROJECT",
+        title: project.role === "RESPONSAVEL" ? `Responsável por ${project.name}` : `Membro de ${project.name}`,
+        description: project.area ?? project.course ?? null,
+        status: project.status,
+        happenedAt: project.confirmedAt ?? project.createdAt,
+      });
+    }
+
+    for (const enrollment of student.courseEnrollments) {
+      recentEvents.push({
+        id: `course-${enrollment.id}`,
+        type: "COURSE",
+        title: `Inscrição em ${enrollment.course.name}`,
+        status: enrollment.paymentStatus,
+        happenedAt: enrollment.createdAt,
+      });
+    }
+
+    for (const certificate of student.certificates) {
+      recentEvents.push({
+        id: `certificate-${certificate.id}`,
+        type: "CERTIFICATE",
+        title: certificate.title,
+        description: certificate.type,
+        status: certificate.status,
+        happenedAt: certificate.issuedAt,
+      });
+    }
+
+    for (const checkIn of student.attendanceCheckIns) {
+      recentEvents.push({
+        id: `attendance-${checkIn.id}`,
+        type: "ATTENDANCE",
+        title: `Check-in: ${checkIn.eventLabel}`,
+        description: checkIn.notes,
+        happenedAt: checkIn.checkedInAt,
+      });
+    }
+
+    for (const scan of student.passportScans) {
+      recentEvents.push({
+        id: `passport-scan-${scan.id}`,
+        type: "DIGITAL_PASSPORT",
+        title: scan.mission?.title ? `QR do passaporte: ${scan.mission.title}` : "QR do passaporte digital",
+        description: scan.message,
+        status: scan.result,
+        points: scan.pointsAwarded,
+        happenedAt: scan.scannedAt,
+      });
+    }
+
+    for (const ledger of student.passportPointLedger) {
+      recentEvents.push({
+        id: `passport-ledger-${ledger.id}`,
+        type: "DIGITAL_PASSPORT",
+        title: ledger.mission?.title ?? "Pontuação no passaporte digital",
+        description: ledger.reason ?? ledger.sourceType,
+        status: ledger.status,
+        points: ledger.points,
+        happenedAt: ledger.awardedAt,
+      });
+    }
+
+    for (const answer of student.passportChallengeAnswers) {
+      recentEvents.push({
+        id: `passport-answer-${answer.id}`,
+        type: "DIGITAL_PASSPORT",
+        title: answer.correct ? "Resposta correta no desafio" : "Resposta registada no desafio",
+        description: answer.challenge.question,
+        status: answer.correct ? "CORRETA" : "INCORRETA",
+        points: answer.pointsAwarded,
+        happenedAt: answer.answeredAt,
+      });
+    }
+
+    for (const badge of student.passportStudentBadges) {
+      recentEvents.push({
+        id: `passport-badge-${badge.id}`,
+        type: "DIGITAL_PASSPORT",
+        title: `Selo desbloqueado: ${badge.badge.label}`,
+        happenedAt: badge.awardedAt,
+      });
+    }
+
+    for (const surprise of student.passportSurpriseEffects) {
+      recentEvents.push({
+        id: `passport-surprise-${surprise.id}`,
+        type: "DIGITAL_PASSPORT",
+        title: surprise.surpriseQr?.displayCode
+          ? `QR surpresa ${surprise.surpriseQr.displayCode}`
+          : surprise.surpriseQr?.name ?? "QR surpresa",
+        description: surprise.message ?? surprise.effectType,
+        status: surprise.status,
+        points: surprise.deltaPoints,
+        happenedAt: surprise.appliedAt,
+      });
+    }
+
+    for (const event of [...student.exhibitorActorScoreEvents, ...student.exhibitorVoteScoreEvents]) {
+      recentEvents.push({
+        id: `exhibitor-score-${event.id}`,
+        type: "EXHIBITOR_CHALLENGE",
+        title: `${event.action} em ${event.submission.name}`,
+        description: event.reason ?? event.submission.referenceCode,
+        status: event.status,
+        points: Math.round(event.points),
+        happenedAt: event.awardedAt,
+      });
+    }
+
+    for (const message of student.liveChatMessages) {
+      recentEvents.push({
+        id: `live-chat-${message.id}`,
+        type: "LIVE_CHAT",
+        title: message.hiddenAt ? "Mensagem ocultada no Ao Vivo" : "Mensagem no Ao Vivo",
+        description: message.content,
+        status: message.hiddenAt ? "OCULTA" : "VISÍVEL",
+        happenedAt: message.createdAt,
+      });
+    }
+
+    return {
+      projects: projects.filter((project) => project.type === "PROJECT"),
+      businesses: projects.filter((project) => project.type === "BUSINESS"),
+      products: projects.filter((project) => project.type === "PRODUCT"),
+      courses: student.courseEnrollments.map((enrollment) => ({
+        id: enrollment.id,
+        name: enrollment.course.name,
+        paymentStatus: enrollment.paymentStatus,
+        createdAt: enrollment.createdAt,
+      })),
+      challenges: {
+        digitalPassportEvents:
+          student._count.passportScans
+          + student._count.passportPointLedger
+          + student._count.passportChallengeAnswers
+          + student._count.passportSurpriseEffects,
+        exhibitorEvents: student._count.exhibitorActorScoreEvents + student._count.exhibitorVoteScoreEvents,
+        badges: student._count.passportStudentBadges,
+      },
+      recentEvents: recentEvents
+        .sort((left, right) => right.happenedAt.getTime() - left.happenedAt.getTime())
+        .slice(0, 10),
     };
   }
 

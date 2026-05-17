@@ -22,6 +22,13 @@ const prismaMock = vi.hoisted(() => ({
   credentialPrintTemplate: {
     findUnique: vi.fn(),
   },
+  passportMission: {
+    findUnique: vi.fn(),
+  },
+  qrAction: {
+    findFirst: vi.fn(),
+    create: vi.fn(),
+  },
 }));
 
 vi.mock("../../../shared/prisma", () => ({
@@ -229,6 +236,9 @@ describe("exhibitor manual generation", () => {
     prismaMock.submissionMember.upsert.mockResolvedValue({});
     prismaMock.submissionMember.findMany.mockResolvedValue(confirmedMembers);
     prismaMock.credentialPrintTemplate.findUnique.mockResolvedValue(null);
+    prismaMock.passportMission.findUnique.mockResolvedValue({ id: 1 });
+    prismaMock.qrAction.findFirst.mockResolvedValue(null);
+    prismaMock.qrAction.create.mockResolvedValue({ token: "qra_exhibitor_manual_test" });
     prismaMock.eventTeamCredential.findMany.mockImplementation(({ where }) => {
       const allowedStatuses = where?.status?.in as string[] | undefined;
       return Promise.resolve(
@@ -258,7 +268,7 @@ describe("exhibitor manual generation", () => {
     const projectQrCalls = vi.mocked(renderQrDataUri).mock.calls
       .filter(([value]) => value === projectUrl);
 
-    expect(projectQrCalls).toHaveLength(4);
+    expect(projectQrCalls).toHaveLength(2);
   });
 
   it("uses non-competitive exhibitor copy for business and product submissions", async () => {
