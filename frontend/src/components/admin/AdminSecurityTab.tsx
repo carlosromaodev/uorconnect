@@ -53,7 +53,7 @@ import { Input } from "@/components/ui/input";
 import { AdminBulkSmsAction } from "@/components/admin/AdminBulkSmsAction";
 import { ContextualSmsAction } from "@/components/admin/ContextualSmsAction";
 import { toast } from "@/components/ui/sonner";
-import { api, type AdminAccessConflict, type AdminAuthorizedStudent, type BulkInvitationResponse, type CredentialPrintBatch, type CredentialPrintBatchGenericInput, type CredentialPrintBatchInput, type CredentialPrintBatchNominalInput, type CredentialPrintTemplate, type CredentialPrintTemplateInput, type TeamCredentialIncompleteProfiles, type TeamCredentialInput, type TeamCredentialMember, type TeamCredentialMembershipMatchOverview, type TeamCredentialOverview, type TeamCredentialPassPrintMode, type TeamMembership, type TeamMembershipClaim, type TeamMembershipClaimOverview, type TeamMembershipInput, type TeamMembershipOverview, type TeamMembershipSearchResult, type TeamProfilePreset } from "@/lib/api";
+import { api, type AdminAccessConflict, type AdminAuthorizedStudent, type BulkInvitationResponse, type CredentialPrintBatch, type CredentialPrintBatchGenericInput, type CredentialPrintBatchInput, type CredentialPrintBatchNominalInput, type CredentialPrintTemplate, type CredentialPrintTemplateInput, type TeamCredentialIncompleteProfiles, type TeamCredentialInput, type TeamCredentialMember, type TeamCredentialMembershipMatchOverview, type TeamCredentialOverview, type TeamCredentialPassOptions, type TeamCredentialPassPrintMode, type TeamMembership, type TeamMembershipClaim, type TeamMembershipClaimOverview, type TeamMembershipInput, type TeamMembershipOverview, type TeamMembershipSearchResult, type TeamProfilePreset } from "@/lib/api";
 import { downloadBlobFile } from "@/lib/student-documents";
 
 type AdminSecurityTabProps = {
@@ -834,6 +834,7 @@ export default function AdminSecurityTab({
   const [bulkExpositorInvitation, setBulkExpositorInvitation] = useState<{ token: string; url: string; totalExpositors: number; claimed: number; pending: number } | null>(null);
   const [teamFilter, setTeamFilter] = useState<string>("all");
   const [passPrintMode, setPassPrintMode] = useState<TeamCredentialPassPrintMode>("color");
+  const [passLaminationMarginMm, setPassLaminationMarginMm] = useState(3);
   const [passTemplates, setPassTemplates] = useState<CredentialPrintTemplate[]>([]);
   const [selectedPassTemplateCategory, setSelectedPassTemplateCategory] = useState("NUCLEO");
   const [passTemplateForm, setPassTemplateForm] = useState<CredentialPrintTemplateInput>(defaultPrintTemplateForm);
@@ -1248,6 +1249,27 @@ export default function AdminSecurityTab({
     }
   };
 
+  const fourUpPassBatchOptions = (): TeamCredentialPassOptions => ({
+    printMode: passPrintMode,
+    side: "both",
+    layout: "a4-4up",
+    duplexMode: "long-edge",
+    laminationMarginMm: passLaminationMarginMm,
+  });
+
+  const handleDownloadPassCalibration = async () => {
+    setCredentialBusyKey("credentials-pass-calibration");
+    try {
+      const blob = await api.teamCredentials.downloadPassCalibration(fourUpPassBatchOptions());
+      downloadBlobFile(blob, `teste-alinhamento-passes-4porpagina-${passLaminationMarginMm}mm.pdf`);
+      toast.success("Teste de alinhamento pronto. Imprime em 100%, sem ajustar à página.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Falha ao baixar teste de alinhamento.");
+    } finally {
+      setCredentialBusyKey(null);
+    }
+  };
+
   const handleDownloadCredentialBatch = async () => {
     const ids = printableCredentialMembers.map((member) => member.id);
     if (ids.length === 0) {
@@ -1258,11 +1280,10 @@ export default function AdminSecurityTab({
     try {
       const blob = await api.teamCredentials.downloadPassBatch({
         ids,
-        printMode: passPrintMode,
-        side: "both",
+        ...fourUpPassBatchOptions(),
         limit: ids.length,
       });
-      downloadBlobFile(blob, `passes-uor-connect-${passPrintMode === "black-white" ? "pb" : "cor"}.pdf`);
+      downloadBlobFile(blob, `passes-uor-connect-4porpagina-${passPrintMode === "black-white" ? "pb" : "cor"}.pdf`);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Falha ao baixar lote de passes.");
     } finally {
@@ -1301,15 +1322,14 @@ export default function AdminSecurityTab({
       const blob = await api.teamCredentials.downloadPassBatch({
         ids: shouldSyncExpositors ? undefined : members.map((member) => member.id),
         category: shouldSyncExpositors ? category : undefined,
-        printMode: passPrintMode,
-        side: "both",
+        ...fourUpPassBatchOptions(),
         includePending,
         limit: shouldSyncExpositors ? 1000 : members.length,
       });
       const fileBase = safePdfFileBase(`passes ${label}`) || "passes-uor-connect";
       downloadBlobFile(
         blob,
-        `${fileBase}-${passPrintMode === "black-white" ? "pb" : "cor"}.pdf`,
+        `${fileBase}-4porpagina-${passPrintMode === "black-white" ? "pb" : "cor"}.pdf`,
       );
       if (shouldSyncExpositors) {
         await loadTeamCredentials();
@@ -1351,13 +1371,10 @@ export default function AdminSecurityTab({
         created,
         ...current.filter((batch) => batch.id !== created.id),
       ]);
-      const blob = await api.teamCredentials.downloadPrintBatch(created.id, {
-        printMode: passPrintMode,
-        side: "both",
-      });
+      const blob = await api.teamCredentials.downloadPrintBatch(created.id, fourUpPassBatchOptions());
       downloadBlobFile(
         blob,
-        `${safePdfFileBase(fileLabel) || "lote-passes"}-${created.code}.pdf`,
+        `${safePdfFileBase(fileLabel) || "lote-passes"}-${created.code}-4porpagina.pdf`,
       );
       toast.success(`Lote criado e baixado com ${created.totalItems} passe(s).`);
       await loadTeamCredentials();
@@ -1483,8 +1500,8 @@ export default function AdminSecurityTab({
     }
     setCredentialBusyKey(`print-batch-download-${batch.id}`);
     try {
-      const blob = await api.teamCredentials.downloadPrintBatch(batch.id, { printMode: passPrintMode, side: "both" });
-      downloadBlobFile(blob, `lote-passes-${batch.code}-${passPrintMode === "black-white" ? "pb" : "cor"}.pdf`);
+      const blob = await api.teamCredentials.downloadPrintBatch(batch.id, fourUpPassBatchOptions());
+      downloadBlobFile(blob, `lote-passes-${batch.code}-4porpagina-${passPrintMode === "black-white" ? "pb" : "cor"}.pdf`);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Falha ao baixar lote de impressão.");
     } finally {
@@ -3090,6 +3107,34 @@ export default function AdminSecurityTab({
                         P/B
                       </Button>
                     </div>
+                    <div className="flex min-w-[220px] flex-wrap items-center gap-2 rounded-lg border border-cyan-100 bg-white px-2 py-1.5">
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-cyan-800">4 por pagina</span>
+                      <label className="flex items-center gap-1 text-[11px] font-medium text-slate-500">
+                        plastificacao
+                        <Input
+                          type="number"
+                          min={0}
+                          max={8}
+                          step={0.5}
+                          className="h-8 w-16 rounded-lg px-2 text-xs"
+                          value={passLaminationMarginMm}
+                          onChange={(event) => {
+                            const value = Number(event.target.value);
+                            setPassLaminationMarginMm(Number.isFinite(value) ? Math.max(0, Math.min(8, value)) : 3);
+                          }}
+                        />
+                        mm
+                      </label>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={credentialBusyKey === "credentials-pass-calibration"}
+                      onClick={() => void handleDownloadPassCalibration()}
+                    >
+                      {credentialBusyKey === "credentials-pass-calibration" ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Eye className="mr-1.5 h-3.5 w-3.5" />}
+                      Teste alinhamento
+                    </Button>
                     <Button
                       size="sm"
                       variant="outline"
@@ -3097,7 +3142,7 @@ export default function AdminSecurityTab({
                       onClick={() => void handleDownloadCredentialBatch()}
                     >
                       {credentialBusyKey === "credentials-pass-batch" ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Download className="mr-1.5 h-3.5 w-3.5" />}
-                      Lote A4
+                      Lote A4 4x
                     </Button>
                   </div>
                 </div>

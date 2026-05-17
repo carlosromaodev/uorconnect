@@ -132,8 +132,11 @@ async function main() {
   const options: CredentialPassOptions = {
     printMode: args.printMode,
     side: "both",
+    layout: "single",
+    duplexMode: "long-edge",
     marginMm: 18,
     bleedMm: 4,
+    laminationMarginMm: 3,
   };
 
   const samples = [...nucleusAreaSamples, ...categorySamples].map(sampleMember);

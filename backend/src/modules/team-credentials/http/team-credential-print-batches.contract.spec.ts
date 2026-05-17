@@ -45,4 +45,16 @@ describe("team credential print batches contract", () => {
     expect(routes).toContain("category: \"PALESTRANTE\"");
     expect(routes).toContain("SPEAKER_SYNC");
   });
+
+  it("supports economical 4-up A4 pass batches with lamination guides", () => {
+    expect(routes).toContain("credentialPassLayouts");
+    expect(routes).toContain("\"a4-4up\"");
+    expect(routes).toContain("laminationMarginMm");
+    expect(routes).toContain("credentialPassDuplexModes");
+    expect(routes).toContain("\"long-edge\"");
+    expect(routes).toContain("buildCredentialPassCalibrationHtml");
+    expect(routes).toContain("Corte do passe");
+    expect(routes).toContain("Corte plastificacao");
+    expect(routes).toContain("layout-4up");
+  });
 });

@@ -168,6 +168,8 @@ const teamMembershipClaimStatuses = ["PENDING_REVIEW", "APPROVED", "REJECTED", "
 const credentialStatuses = ["DRAFT", "INVITED", "ISSUED", "PROFILE_READY", "ACTIVE", "REVOKED", "DISABLED"] as const;
 const credentialPassPrintModes = ["color", "black-white"] as const;
 const credentialPassSides = ["front", "back", "both"] as const;
+const credentialPassLayouts = ["single", "a4-4up"] as const;
+const credentialPassDuplexModes = ["long-edge", "short-edge", "same-position"] as const;
 const credentialInvitationTtlDays = 14;
 const nucleusBaseAdminPermissions = ["OVERVIEW", "TASKS", "NUCLEUS", "CREDENTIALS"] as const;
 const nucleusFullAdminPermissions = [...ALL_ADMIN_PERMISSIONS];
@@ -393,8 +395,11 @@ export function isStudentEligibleForNucleusPossession<T extends NucleusPossessio
 const credentialPassOptionsQuerySchema = z.object({
   printMode: z.enum(credentialPassPrintModes).optional().default("color"),
   side: z.enum(credentialPassSides).optional().default("both"),
+  layout: z.enum(credentialPassLayouts).optional().default("single"),
+  duplexMode: z.enum(credentialPassDuplexModes).optional().default("long-edge"),
   marginMm: z.coerce.number().min(6).max(30).optional().default(18),
   bleedMm: z.coerce.number().min(0).max(10).optional().default(4),
+  laminationMarginMm: z.coerce.number().min(0).max(8).optional().default(3),
 });
 
 const queryBooleanSchema = z.preprocess((value) => {
@@ -411,6 +416,7 @@ const adminPassBatchQuerySchema = credentialPassOptionsQuerySchema.extend({
   category: z.enum(memberCategories).optional(),
   team: z.string().trim().min(1).max(120).optional(),
   includePending: queryBooleanSchema.optional().default(false),
+  calibration: queryBooleanSchema.optional().default(false),
   limit: z.coerce.number().int().min(1).max(1000).optional().default(200),
 });
 
@@ -2544,7 +2550,15 @@ function buildCredentialPassHtml(params: {
   template?: CredentialPassTemplate;
 }) {
   const member = params.member;
-  const options: CredentialPassOptions = params.options ?? { printMode: "color", side: "both", marginMm: 18, bleedMm: 4 };
+  const options: CredentialPassOptions = params.options ?? {
+    printMode: "color",
+    side: "both",
+    layout: "single",
+    duplexMode: "long-edge",
+    marginMm: 18,
+    bleedMm: 4,
+    laminationMarginMm: 3,
+  };
   const name = member.name ?? "Membro UOR Connect";
   const catLabel = categoryLabel(member.category);
   const theme = params.template ?? categoryTheme(member.category, options.printMode);
@@ -2731,7 +2745,15 @@ async function sendCredentialPassPdf(
   reply: FastifyReply,
   env: Env,
   member: EventTeamCredentialRecord,
-  options: CredentialPassOptions = { printMode: "color", side: "both", marginMm: 18, bleedMm: 4 },
+  options: CredentialPassOptions = {
+    printMode: "color",
+    side: "both",
+    layout: "single",
+    duplexMode: "long-edge",
+    marginMm: 18,
+    bleedMm: 4,
+    laminationMarginMm: 3,
+  },
 ) {
   const [qrTargets, logoDataUri] = await Promise.all([
     resolveCredentialPassQrTargets(env, member, 720),
@@ -2967,6 +2989,122 @@ export function buildCredentialPassPrintContent(params: {
     </article>`;
   };
 
+  const buildFourUpContent = () => {
+    const laminationMarginMm = params.options.laminationMarginMm;
+    const laminationW = cardW + laminationMarginMm * 2;
+    const laminationH = cardH + laminationMarginMm * 2;
+    const gapX = 12;
+    const gapY = 12;
+    const gridW = laminationW * 2 + gapX;
+    const gridH = laminationH * 2 + gapY;
+    const startX = (210 - gridW) / 2;
+    const startY = (297 - gridH) / 2;
+    const slotPositions = [
+      { left: startX, top: startY },
+      { left: startX + laminationW + gapX, top: startY },
+      { left: startX, top: startY + laminationH + gapY },
+      { left: startX + laminationW + gapX, top: startY + laminationH + gapY },
+    ];
+    const laminationLabel = `${laminationW.toFixed(2).replace(".", ",")}×${laminationH.toFixed(2).replace(".", ",")} mm`;
+
+    const fourUpCss = `
+      .credential-pass-print.layout-4up{background:#f8fafc}
+      .credential-pass-print.layout-4up .sheet{display:block;padding:0;background:#f8fafc}
+      .four-up-note{position:absolute;left:14mm;right:14mm;top:10mm;display:flex;align-items:flex-start;justify-content:space-between;gap:8mm;color:#475569;font-size:7px;letter-spacing:.06em;text-transform:uppercase}
+      .four-up-note strong{display:block;color:#0f172a;font-size:8px;letter-spacing:.08em}
+      .four-up-note span{display:block;margin-top:1mm}
+      .registration-mark{position:absolute;width:7mm;height:7mm;border-color:#0f172a;opacity:.55}
+      .registration-mark.tl{left:12mm;top:12mm;border-left:.18mm solid;border-top:.18mm solid}
+      .registration-mark.tr{right:12mm;top:12mm;border-right:.18mm solid;border-top:.18mm solid}
+      .registration-mark.bl{left:12mm;bottom:12mm;border-left:.18mm solid;border-bottom:.18mm solid}
+      .registration-mark.br{right:12mm;bottom:12mm;border-right:.18mm solid;border-bottom:.18mm solid}
+      .four-up-grid{position:absolute;left:0;top:0;width:210mm;height:297mm}
+      .four-up-slot{position:absolute;width:${laminationW}mm;height:${laminationH}mm}
+      ${slotPositions.map((pos, index) => `.slot-${index + 1}{left:${pos.left}mm;top:${pos.top}mm}`).join("\n")}
+      .lamination-cut-line{position:absolute;inset:0;border:.24mm dashed rgba(15,23,42,.48);border-radius:${Math.max(5, 3.18 + laminationMarginMm)}mm;pointer-events:none}
+      .pass-cut-line{position:absolute;left:${laminationMarginMm}mm;top:${laminationMarginMm}mm;width:${cardW}mm;height:${cardH}mm;border:.22mm solid rgba(15,23,42,.82);border-radius:3.18mm;pointer-events:none}
+      .slot-corner{position:absolute;width:5mm;height:5mm;border-color:#0f172a;opacity:.75}
+      .slot-corner.tl{left:-1.8mm;top:-1.8mm;border-left:.2mm solid;border-top:.2mm solid}
+      .slot-corner.tr{right:-1.8mm;top:-1.8mm;border-right:.2mm solid;border-top:.2mm solid}
+      .slot-corner.bl{left:-1.8mm;bottom:-1.8mm;border-left:.2mm solid;border-bottom:.2mm solid}
+      .slot-corner.br{right:-1.8mm;bottom:-1.8mm;border-right:.2mm solid;border-bottom:.2mm solid}
+      .guide-label{position:absolute;left:${laminationMarginMm}mm;font-size:5.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#334155;background:#f8fafc;padding:.5mm 1mm;border-radius:999px}
+      .pass-cut-label{top:${Math.max(0.4, laminationMarginMm - 2.6)}mm}
+      .lamination-cut-label{left:1.2mm;bottom:1mm;color:#64748b}
+      .four-up-slot .pass{position:absolute;left:${laminationMarginMm}mm;top:${laminationMarginMm}mm;box-shadow:none}
+      .four-up-slot.blank::after{content:"";position:absolute;left:${laminationMarginMm}mm;top:${laminationMarginMm}mm;width:${cardW}mm;height:${cardH}mm;border-radius:3.18mm;background:rgba(226,232,240,.18)}
+      .four-up-footer{position:absolute;left:14mm;right:14mm;bottom:10mm;display:flex;justify-content:space-between;color:#64748b;font-size:7px;letter-spacing:.04em}
+    `;
+
+    const backSlotOrder = (() => {
+      if (params.options.duplexMode === "short-edge") return [2, 3, 0, 1];
+      if (params.options.duplexMode === "same-position") return [0, 1, 2, 3];
+      return [1, 0, 3, 2];
+    })();
+
+    const chunkItems = (items: CredentialPassPrintItem[]) => {
+      const chunks: CredentialPassPrintItem[][] = [];
+      for (let index = 0; index < items.length; index += 4) {
+        chunks.push(items.slice(index, index + 4));
+      }
+      return chunks.length > 0 ? chunks : [[]];
+    };
+
+    const arrangeBackChunk = (chunk: CredentialPassPrintItem[]) =>
+      backSlotOrder.map((sourceIndex) => chunk[sourceIndex] ?? null);
+
+    const renderFourUpSlot = (item: CredentialPassPrintItem | null, side: "front" | "back", index: number) => (
+      `<div class="four-up-slot slot-${index + 1}${item ? "" : " blank"}" data-slot="${index + 1}"${item ? ` data-credential-id="${item.member.id}"` : ""}>
+        <span class="slot-corner tl"></span><span class="slot-corner tr"></span><span class="slot-corner bl"></span><span class="slot-corner br"></span>
+        <div class="lamination-cut-line"></div>
+        <div class="pass-cut-line"></div>
+        ${index === 0 ? `<span class="guide-label pass-cut-label">Corte do passe</span><span class="guide-label lamination-cut-label">Corte plastificacao</span>` : ""}
+        ${item ? (side === "front" ? renderFrontPass(item) : renderBackPass(item)) : ""}
+      </div>`
+    );
+
+    const renderFourUpSheet = (chunk: CredentialPassPrintItem[], side: "front" | "back", pageIndex: number) => {
+      const slotItems = side === "back" ? arrangeBackChunk(chunk) : [chunk[0] ?? null, chunk[1] ?? null, chunk[2] ?? null, chunk[3] ?? null];
+      return `<section class="sheet ${side}-sheet">
+        <div class="four-up-note">
+          <div>
+            <strong>${escapeHtml(notePrefix)} · ${side === "front" ? "Frente" : "Verso"} · 4 por pagina</strong>
+            <span>CR-80 ${cardW.toFixed(2).replace(".", ",")}×${cardH.toFixed(2).replace(".", ",")} mm · plastificacao ${laminationLabel}</span>
+          </div>
+          <div>
+            <strong>Imprimir em 100%</strong>
+            <span>Duplex: ${escapeHtml(params.options.duplexMode)} · pág. ${pageNumberOffset + pageIndex}</span>
+          </div>
+        </div>
+        <span class="registration-mark tl"></span><span class="registration-mark tr"></span><span class="registration-mark bl"></span><span class="registration-mark br"></span>
+        <div class="four-up-grid">
+          ${slotItems.map((item, index) => renderFourUpSlot(item, side, index)).join("")}
+        </div>
+        <div class="four-up-footer">
+          <span>Linha continua: corte do passe</span>
+          <span>Linha tracejada: corte da plastificacao</span>
+        </div>
+      </section>`;
+    };
+
+    const pages: string[] = [];
+    for (const chunk of chunkItems(params.items)) {
+      if (params.options.side !== "back") pages.push(renderFourUpSheet(chunk, "front", pages.length + 1));
+      if (params.options.side !== "front") pages.push(renderFourUpSheet(chunk, "back", pages.length + 1));
+    }
+
+    const bodyClass = params.options.printMode === "black-white" ? "print-mode-bw" : "print-mode-color";
+    return {
+      css: `${sheetCss}\n${fourUpCss}`,
+      sheets: `<div class="credential-pass-print ${bodyClass} layout-4up">${pages.join("")}</div>`,
+      bodyClass,
+    };
+  };
+
+  if (params.options.layout === "a4-4up") {
+    return buildFourUpContent();
+  }
+
   const renderSheet = (item: CredentialPassPrintItem, side: "front" | "back", pageIndex: number) => {
     const cat = categoryLabel(item.member.category);
     const pageNumber = pageNumberOffset + pageIndex;
@@ -3023,6 +3161,37 @@ export function buildCredentialPassBatchHtml(params: {
 </html>`;
 }
 
+export function buildCredentialPassCalibrationHtml(params: {
+  options: CredentialPassOptions;
+}) {
+  const printContent = buildCredentialPassPrintContent({
+    items: [],
+    logoDataUri: null,
+    options: {
+      ...params.options,
+      side: params.options.side === "back" ? "back" : "both",
+      layout: "a4-4up",
+    },
+    notePrefix: "UOR Connect · Teste de alinhamento",
+    formatLabel: "CR-80 PVC + plastificacao",
+  });
+
+  return `<!doctype html>
+<html lang="pt">
+<head>
+  <meta charset="utf-8" />
+  <title>Teste de alinhamento dos passes UOR Connect</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>${printContent.css}</style>
+</head>
+<body class="${printContent.bodyClass}">
+  ${printContent.sheets}
+</body>
+</html>`;
+}
+
 
 async function sendCredentialPassBatchPdf(
   reply: FastifyReply,
@@ -3055,6 +3224,23 @@ async function sendCredentialPassBatchPdf(
   return reply
     .header("Content-Type", "application/pdf")
     .header("Content-Disposition", `inline; filename="passes-uor-connect-lote.pdf"`)
+    .send(buffer);
+}
+
+async function sendCredentialPassCalibrationPdf(
+  reply: FastifyReply,
+  options: CredentialPassOptions,
+) {
+  const html = buildCredentialPassCalibrationHtml({ options });
+  const buffer = await renderPdfFromHtml(html, {
+    preferCssPageSize: true,
+    displayHeaderFooter: false,
+    margin: { top: "0", right: "0", bottom: "0", left: "0" },
+  });
+
+  return reply
+    .header("Content-Type", "application/pdf")
+    .header("Content-Disposition", `inline; filename="teste-alinhamento-passes-uor-connect.pdf"`)
     .send(buffer);
 }
 
@@ -4975,6 +5161,33 @@ export async function teamCredentialsRoutes(app: FastifyInstance, opts: { env: E
       },
     }, async (request, reply) => {
       const query = adminPassBatchQuerySchema.parse(request.query);
+      if (query.calibration) {
+        await recordAdminAudit({
+          ...auditActor(request),
+          action: "team_credential.pass_batch_calibration_pdf",
+          entityType: "EventTeamCredential",
+          summary: "Teste de alinhamento A4 4 por página gerado para passes.",
+          metadata: {
+            printMode: query.printMode,
+            side: query.side,
+            layout: query.layout,
+            duplexMode: query.duplexMode,
+            marginMm: query.marginMm,
+            bleedMm: query.bleedMm,
+            laminationMarginMm: query.laminationMarginMm,
+          },
+        });
+        return sendCredentialPassCalibrationPdf(reply, {
+          printMode: query.printMode,
+          side: query.side,
+          layout: "a4-4up",
+          duplexMode: query.duplexMode,
+          marginMm: query.marginMm,
+          bleedMm: query.bleedMm,
+          laminationMarginMm: query.laminationMarginMm,
+        });
+      }
+
       const ids = query.ids
         ? query.ids.split(",").map((value) => Number(value.trim())).filter((value) => Number.isInteger(value) && value > 0)
         : [];
@@ -5015,16 +5228,22 @@ export async function teamCredentialsRoutes(app: FastifyInstance, opts: { env: E
           includePending: query.includePending,
           printMode: query.printMode,
           side: query.side,
+          layout: query.layout,
+          duplexMode: query.duplexMode,
           marginMm: query.marginMm,
           bleedMm: query.bleedMm,
+          laminationMarginMm: query.laminationMarginMm,
         },
       });
 
       return sendCredentialPassBatchPdf(reply, opts.env, printableMembers, {
         printMode: query.printMode,
         side: query.side,
+        layout: query.layout,
+        duplexMode: query.duplexMode,
         marginMm: query.marginMm,
         bleedMm: query.bleedMm,
+        laminationMarginMm: query.laminationMarginMm,
       });
     });
 
@@ -5305,16 +5524,22 @@ export async function teamCredentialsRoutes(app: FastifyInstance, opts: { env: E
           ids: printableMembers.map((member) => member.id),
           printMode: query.printMode,
           side: query.side,
+          layout: query.layout,
+          duplexMode: query.duplexMode,
           marginMm: query.marginMm,
           bleedMm: query.bleedMm,
+          laminationMarginMm: query.laminationMarginMm,
         },
       });
 
       return sendCredentialPassBatchPdf(reply, opts.env, printableMembers, {
         printMode: query.printMode,
         side: query.side,
+        layout: query.layout,
+        duplexMode: query.duplexMode,
         marginMm: query.marginMm,
         bleedMm: query.bleedMm,
+        laminationMarginMm: query.laminationMarginMm,
       });
     });
 
