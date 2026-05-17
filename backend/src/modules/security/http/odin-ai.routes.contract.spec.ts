@@ -40,7 +40,7 @@ describe("ODIN 2.0 Gemini AI contract", () => {
     expect(envSource).toContain("GEMINI_API_KEY");
     expect(envSource).toContain("GEMINI_MODEL");
     expect(example).toContain("# GEMINI_API_KEY=");
-    expect(example).toContain("GEMINI_MODEL=gemini-1.5-flash");
+    expect(example).toContain("GEMINI_MODEL=gemini-2.5-flash");
     expect(routes).not.toContain("AIza");
   });
 });

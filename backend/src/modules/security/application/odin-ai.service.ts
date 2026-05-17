@@ -867,7 +867,7 @@ async function requestGeminiVerdict(env: Env, payload: ReturnType<typeof buildOd
     throw new Error("Gemini não configurado. Define GEMINI_API_KEY no ambiente da VPS.");
   }
 
-  const model = env.GEMINI_MODEL || "gemini-1.5-flash";
+  const model = env.GEMINI_MODEL || "gemini-2.5-flash";
   const url = `${env.GEMINI_API_BASE_URL.replace(/\/$/, "")}/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(env.GEMINI_API_KEY)}`;
   const response = await fetch(url, {
     method: "POST",

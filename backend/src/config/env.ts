@@ -49,7 +49,7 @@ const envSchema = z.object({
   EVOLUTION_API_BASE_URL: z.string().url().default("http://localhost:8081"),
   EVOLUTION_API_KEY: z.string().min(1).optional(),
   GEMINI_API_KEY: z.string().min(1).optional(),
-  GEMINI_MODEL: z.string().min(2).default("gemini-1.5-flash"),
+  GEMINI_MODEL: z.string().min(2).default("gemini-2.5-flash"),
   GEMINI_API_BASE_URL: z.string().url().default("https://generativelanguage.googleapis.com/v1beta"),
   ODIN_AI_ENABLED: z.preprocess(normalizeBoolean, z.boolean()).default(true),
   GAME_NOTIFICATIONS_START_AT: z.string().min(1).default("2026-05-18T00:00:00+01:00"),
