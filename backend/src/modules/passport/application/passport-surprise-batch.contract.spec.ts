@@ -48,4 +48,15 @@ describe("passport surprise QR batch and dynamic rules contract", () => {
     expect(routes).toContain("renderQrDataUri(buildValidationUrl(env, surprise.qrAction.token), 1000)");
     expect(routes).toContain("Passaporte Digital UOR Connect");
   });
+
+  it("lets surprise QR scans reach the dynamic passport resolver even when the student scanned before", () => {
+    const attendanceRoutes = readFileSync(
+      path.join(repoRoot, "backend/src/modules/attendance/http/attendance.routes.ts"),
+      "utf8",
+    );
+
+    expect(attendanceRoutes).toContain("repeatablePassportSurpriseScan");
+    expect(attendanceRoutes).toContain("isPassportSurpriseQrActionType(qrAction.type)");
+    expect(attendanceRoutes).toContain("qrActionScanUpdate");
+  });
 });

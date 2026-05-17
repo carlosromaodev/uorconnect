@@ -95,8 +95,8 @@ export function composePassportGameNotification(input: {
       title: "Passaporte Digital: recuperar pontos",
       message: sanitizeGameMessage([
         `${name}, o teu saldo esta negativo no Passaporte Digital.`,
-        `Podes recuperar ate ${points} pontos por ${price} Kz se a organizacao validar a recarga.`,
-        input.hint ? `Palpite: ${input.hint}` : "Palpite: procura um QR de recuperacao antes do proximo checkpoint.",
+        `Vai a stand da UOR Connect para recarregar ate ${points} pontos por ${price} Kz com validacao da organizacao.`,
+        input.hint ? `Palpite: ${input.hint}` : "Palpite: leva o teu telefone a equipa UOR Connect para recuperar antes do proximo checkpoint.",
       ].join("\n")),
     };
   }

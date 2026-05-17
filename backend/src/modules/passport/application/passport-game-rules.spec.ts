@@ -1091,6 +1091,101 @@ describe("passport game rules", () => {
     expect(firstMetadata.qrStats.lossCount).toBe(4);
   });
 
+  it("allows the same student to consume a universal dynamic QR again with a scan-specific score entry", async () => {
+    const luna = { ...student, name: "Luna Rodrigues", studentNumber: "20249999" };
+    const previousBusinessKey = `surprise-effect:${luna.studentNumber}:904`;
+    prismaMock.passportPointLedger.aggregate.mockResolvedValue({ _sum: { points: 12 } });
+    prismaMock.passportSurpriseEffectLedger.aggregate.mockResolvedValue({ _sum: { deltaPoints: 0 } });
+    prismaMock.passportSurpriseEffectLedger.findUnique.mockImplementation(({ where }) => {
+      if (where.businessKey === previousBusinessKey) {
+        return Promise.resolve({
+          id: 701,
+          businessKey: previousBusinessKey,
+          beforePoints: 2,
+          afterPoints: 7,
+          deltaPoints: 5,
+        });
+      }
+      return Promise.resolve(null);
+    });
+    prismaMock.passportSurpriseEffectLedger.count.mockImplementation(({ where }) => {
+      if (where?.surpriseQrId === 904 && where?.studentNumber === luna.studentNumber) return Promise.resolve(3);
+      return Promise.resolve(0);
+    });
+    prismaMock.passportSurpriseQr.findUnique.mockResolvedValue({
+      id: 904,
+      qrActionId: 9040,
+      displayCode: "QR-004",
+      batchCode: "surprise-repeat",
+      name: "QR Universal #004",
+      description: "QR polivalente",
+      effectType: "UNIVERSAL_DYNAMIC",
+      effectValue: 0,
+      dynamicRulesJson: JSON.stringify({
+        mode: "UNIVERSAL_DYNAMIC",
+        weights: {
+          ADD_POINTS: 100,
+          SUBTRACT_POINTS: 0,
+          MULTIPLY_BONUS: 0,
+          DIVIDE_BONUS: 0,
+          NEUTRAL_HINT: 0,
+          RECOVERY_POINTS: 0,
+        },
+        values: { ADD_POINTS: 9 },
+      }),
+      targetScope: "SURPRISE_BONUS",
+      rarity: "COMMON",
+      visibility: "VISIBLE",
+      maxUsesTotal: null,
+      maxUsesPerStudent: 1,
+      negativeCapPerStudent: 20,
+      active: true,
+      startsAt: null,
+      endsAt: null,
+    });
+
+    const result = await awardPassportForQrActionScan({
+      student: luna,
+      action: {
+        id: 9040,
+        type: "FAIR_BONUS_QR",
+        label: "QR Universal #004",
+        targetId: null,
+        targetMeta: null,
+        eventKey: "passport-surprise",
+        eventLabel: "Caça aos QR",
+        passportMissionId: null,
+      },
+      qrActionScan: {
+        id: 8404,
+        result: "SUCCESS",
+        message: "QR surpresa validado.",
+        scannedAt: new Date("2026-05-18T11:04:00.000Z"),
+      },
+    });
+
+    expect(result.result).toBe("SURPRISE_APPLIED");
+    expect(result.pointsAwarded).toBe(9);
+    expect(result.surprise?.hint).toContain("Código QR 4 deu ponto para Luna Rodrigues");
+    expect(result.surprise?.hint).toContain("antes que esgote");
+    expect(prismaMock.passportSurpriseEffectLedger.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        businessKey: `surprise-effect:${luna.studentNumber}:904:scan:8404:1779102240000`,
+        deltaPoints: 9,
+      }),
+    });
+    expect(prismaMock.passportPointLedger.upsert).toHaveBeenCalledWith({
+      where: {
+        businessKey: `passport-point:${luna.studentNumber}:fair-surprise:SURPRISE_QR:surprise:904:scan:8404:1779102240000`,
+      },
+      update: {},
+      create: expect.objectContaining({
+        points: 9,
+        sourceId: "surprise:904:scan:8404:1779102240000",
+      }),
+    });
+  });
+
   it("resets the passport challenge without deleting mission and challenge configuration", async () => {
     const result = await resetPassportChallengeProgress();
 

@@ -44,6 +44,7 @@ describe("game notification messages", () => {
     expect(notification.message).toContain("300 Kz");
     expect(notification.message).toContain("60 pontos");
     expect(notification.message).toContain("saldo esta negativo");
+    expect(notification.message).toContain("stand da UOR Connect");
     expect(notification.message).not.toMatch(/{{|}}|undefined|null/);
   });
 

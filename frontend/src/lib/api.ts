@@ -2492,6 +2492,7 @@ export interface DigitalPassportSurpriseReveal {
   afterPoints: number;
   deltaPoints: number;
   message: string;
+  hint?: string | null;
 }
 
 export interface DigitalPassportChallengeAnswerResult {

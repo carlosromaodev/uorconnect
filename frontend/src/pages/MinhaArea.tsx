@@ -1903,7 +1903,7 @@ export default function MinhaArea() {
             : result.surprise
               ? "QR surpresa encontrado"
               : "QR validado"),
-          message: feedback.message ?? result.message,
+          message: feedback.message ?? result.surprise?.hint ?? result.message,
           points: celebrationPoints,
           tone: feedback.tone ?? (result.surprise
             ? "surprise"

@@ -132,6 +132,7 @@ const qrScanResultSchema = z.object({
     afterPoints: z.number(),
     deltaPoints: z.number(),
     message: z.string(),
+    hint: z.string().nullable().optional(),
   }).nullable().optional(),
 });
 
@@ -715,6 +716,7 @@ async function processQrActionScan(env: Env, qrAction: {
   passportMissionId?: number | null;
 }, student: { id: number; studentNumber: string; name: string | null; course: string | null; phone: string | null }) {
   const repeatableTestProjectScan = await resolveRepeatableUorConnectProjectScan(qrAction);
+  const repeatablePassportSurpriseScan = isPassportSurpriseQrActionType(qrAction.type);
 
   // Check expiry
   if (qrAction.expiresAt && new Date() > qrAction.expiresAt) {
@@ -742,7 +744,7 @@ async function processQrActionScan(env: Env, qrAction: {
   const existingScan = await prisma.qrActionScan.findUnique({
     where: { qrActionId_studentId: { qrActionId: qrAction.id, studentId: student.id } },
   });
-  if (existingScan && existingScan.result === "SUCCESS" && !repeatableTestProjectScan) {
+  if (existingScan && existingScan.result === "SUCCESS" && !repeatableTestProjectScan && !repeatablePassportSurpriseScan) {
     if (isPassportChallengeQrActionType(qrAction.type)) {
       const challenge = await findActivePassportChallengeForQrAction(qrAction.id);
       const message = challenge
@@ -945,10 +947,12 @@ async function processQrActionScan(env: Env, qrAction: {
 
   if (repeatableTestProjectScan) {
     message = `${message} Modo teste UOR Connect: este QR pode ser usado várias vezes.`;
+  } else if (repeatablePassportSurpriseScan) {
+    message = `${message} Este QR pode mudar de estado em cada leitura.`;
   }
 
   // Record successful scan
-  const qrActionScanUpdate = repeatableTestProjectScan
+  const qrActionScanUpdate = repeatableTestProjectScan || repeatablePassportSurpriseScan
     ? { result: "SUCCESS", message, scannedAt: new Date() }
     : { result: "SUCCESS", message };
   const qrActionScan = await prisma.qrActionScan.upsert({
@@ -1012,9 +1016,9 @@ async function processQrActionScan(env: Env, qrAction: {
         deltaPoints: pointsAwarded,
         currentPoints,
         qrDisplayCode: surprise?.displayCode ?? null,
-        hint: pointsAwarded < 0
+        hint: surprise?.hint ?? (pointsAwarded < 0
           ? "um QR que tirou pontos pode virar recuperacao depois de algumas perdas. Mantem os codigos numerados por perto."
-          : "procura o proximo QR numerado ou uma missao de feedback construtivo.",
+          : "procura o proximo QR numerado ou uma missao de feedback construtivo."),
       });
     }
   } catch {

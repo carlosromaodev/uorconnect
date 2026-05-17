@@ -171,6 +171,7 @@ export type PassportSurpriseReveal = {
   afterPoints: number;
   deltaPoints: number;
   message: string;
+  hint: string | null;
 };
 
 const defaultPassportMissions: PassportCatalogMission[] = [
@@ -1170,6 +1171,52 @@ function normalizeSurpriseDynamicRules(input?: PassportSurpriseDynamicRules | nu
   });
 }
 
+function isUniversalDynamicSurprise(surprise: Pick<PassportSurpriseQrContext, "effectType" | "dynamicRulesJson">) {
+  const rules = parseSurpriseDynamicRules(surprise.dynamicRulesJson);
+  return surprise.effectType === "UNIVERSAL_DYNAMIC" || rules?.mode === "UNIVERSAL_DYNAMIC";
+}
+
+function surpriseDisplayLabel(displayCode?: string | null) {
+  const normalized = displayCode?.trim();
+  if (!normalized) return "este Código QR";
+  const numeric = normalized.match(/\d+/g)?.at(-1);
+  if (numeric) return `Código QR ${Number.parseInt(numeric, 10)}`;
+  return `Código QR ${normalized}`;
+}
+
+function buildSurpriseEffectBusinessKey(input: {
+  studentNumber: string;
+  surpriseId: number;
+  scanOccurrenceKey: string;
+  repeatable: boolean;
+}) {
+  const base = `surprise-effect:${input.studentNumber}:${input.surpriseId}`;
+  return input.repeatable ? `${base}:${input.scanOccurrenceKey}` : base;
+}
+
+function buildSurprisePointBusinessKey(input: {
+  studentNumber: string;
+  surpriseId: number;
+  scanOccurrenceKey: string;
+  repeatable: boolean;
+}) {
+  const base = `passport-point:${input.studentNumber}:fair-surprise:SURPRISE_QR:surprise:${input.surpriseId}`;
+  return input.repeatable ? `${base}:${input.scanOccurrenceKey}` : base;
+}
+
+function buildSurprisePointSourceId(input: {
+  surpriseId: number;
+  scanOccurrenceKey: string;
+  repeatable: boolean;
+}) {
+  const base = `surprise:${input.surpriseId}`;
+  return input.repeatable ? `${base}:${input.scanOccurrenceKey}` : base;
+}
+
+function surpriseScanOccurrenceKey(qrActionScan: QrActionScanContext) {
+  return `scan:${qrActionScan.id}:${qrActionScan.scannedAt.getTime()}`;
+}
+
 export function resolveDynamicSurpriseEffect(
   surprise: PassportSurpriseQrContext,
   stats: {
@@ -1322,6 +1369,35 @@ function surpriseMessage(input: {
   return "Surpresa revelada: os teus pontos mantêm-se por agora.";
 }
 
+function surpriseHint(input: {
+  displayCode?: string | null;
+  studentName?: string | null;
+  effectType: PassportSurpriseConcreteEffectType;
+  deltaPoints: number;
+  afterPoints: number;
+}) {
+  if (input.afterPoints < 0) {
+    return `Ficaste com pontos negativos. Vai à stand da UOR Connect para recarregar ${PASSPORT_RECOVERY_POINTS} pontos por ${PASSPORT_RECOVERY_PRICE_KZ} Kz.`;
+  }
+
+  const label = surpriseDisplayLabel(input.displayCode);
+  const studentName = input.studentName?.trim() || "um estudante";
+
+  if (input.deltaPoints > 0) {
+    return `${label} deu ponto para ${studentName}. Corre para lá antes que esgote.`;
+  }
+
+  if (input.deltaPoints < 0) {
+    return `${label} tirou pontos agora, mas pode mudar de estado automaticamente depois de novas leituras. Mantém este código no radar.`;
+  }
+
+  if (input.effectType === "NEUTRAL_HINT") {
+    return `${label} ficou neutro agora. Volta a tentar mais tarde porque o estado deste QR pode mudar.`;
+  }
+
+  return `${label} mudou de estado nesta leitura. Continua atento aos QR numerados do desafio.`;
+}
+
 async function passportPointBalance(studentNumber: string) {
   const aggregate = await prisma.passportPointLedger.aggregate({
     where: {
@@ -1386,6 +1462,7 @@ function serializeSurpriseReveal(input: {
   afterPoints: number;
   deltaPoints: number;
   message: string;
+  hint?: string | null;
 }): PassportSurpriseReveal {
   return {
     id: input.surprise.id,
@@ -1401,6 +1478,7 @@ function serializeSurpriseReveal(input: {
     afterPoints: input.afterPoints,
     deltaPoints: input.deltaPoints,
     message: input.message,
+    hint: input.hint ?? null,
   };
 }
 
@@ -3101,27 +3179,48 @@ async function applyPassportSurpriseQrEffect(input: {
     return { pointsAwarded: 0, missionKey: input.mission.key, result: "SURPRISE_INACTIVE", message };
   }
 
-  const businessKey = `surprise-effect:${input.student.studentNumber}:${surprise.id}`;
-  const existingEffect = await prisma.passportSurpriseEffectLedger.findUnique({ where: { businessKey } });
-  if (existingEffect) {
-    const reveal = serializeSurpriseReveal({
-      surprise,
-      beforePoints: existingEffect.beforePoints,
-      afterPoints: existingEffect.afterPoints,
-      deltaPoints: 0,
-      message: "Este QR surpresa ja tinha sido descoberto por ti.",
-    });
-    await recordPassportScan({
-      student: input.student,
-      missionId: input.mission.id,
-      action: input.action,
-      qrActionScan: input.qrActionScan,
-      pointsAwarded: 0,
-      result: "ALREADY_AWARDED",
-      message: reveal.message,
-      metadata: { surpriseQrId: surprise.id },
-    });
-    return { pointsAwarded: 0, missionKey: input.mission.key, result: "ALREADY_AWARDED", message: reveal.message, surprise: reveal };
+  const repeatableDynamic = isUniversalDynamicSurprise(surprise);
+  const scanOccurrenceKey = surpriseScanOccurrenceKey(input.qrActionScan);
+  const businessKey = buildSurpriseEffectBusinessKey({
+    studentNumber: input.student.studentNumber,
+    surpriseId: surprise.id,
+    scanOccurrenceKey,
+    repeatable: repeatableDynamic,
+  });
+  const pointBusinessKey = buildSurprisePointBusinessKey({
+    studentNumber: input.student.studentNumber,
+    surpriseId: surprise.id,
+    scanOccurrenceKey,
+    repeatable: repeatableDynamic,
+  });
+  const pointSourceId = buildSurprisePointSourceId({
+    surpriseId: surprise.id,
+    scanOccurrenceKey,
+    repeatable: repeatableDynamic,
+  });
+
+  if (!repeatableDynamic) {
+    const existingEffect = await prisma.passportSurpriseEffectLedger.findUnique({ where: { businessKey } });
+    if (existingEffect) {
+      const reveal = serializeSurpriseReveal({
+        surprise,
+        beforePoints: existingEffect.beforePoints,
+        afterPoints: existingEffect.afterPoints,
+        deltaPoints: 0,
+        message: "Este QR surpresa ja tinha sido descoberto por ti.",
+      });
+      await recordPassportScan({
+        student: input.student,
+        missionId: input.mission.id,
+        action: input.action,
+        qrActionScan: input.qrActionScan,
+        pointsAwarded: 0,
+        result: "ALREADY_AWARDED",
+        message: reveal.message,
+        metadata: { surpriseQrId: surprise.id },
+      });
+      return { pointsAwarded: 0, missionKey: input.mission.key, result: "ALREADY_AWARDED", message: reveal.message, surprise: reveal };
+    }
   }
 
   if (surprise.maxUsesTotal) {
@@ -3144,22 +3243,24 @@ async function applyPassportSurpriseQrEffect(input: {
     }
   }
 
-  const studentUses = await prisma.passportSurpriseEffectLedger.count({
-    where: { surpriseQrId: surprise.id, studentNumber: input.student.studentNumber, status: "VALID" },
-  });
-  if (studentUses >= surprise.maxUsesPerStudent) {
-    const message = "Ja descobriste este QR surpresa.";
-    await recordPassportScan({
-      student: input.student,
-      missionId: input.mission.id,
-      action: input.action,
-      qrActionScan: input.qrActionScan,
-      pointsAwarded: 0,
-      result: "ALREADY_AWARDED",
-      message,
-      metadata: { surpriseQrId: surprise.id },
+  if (!repeatableDynamic) {
+    const studentUses = await prisma.passportSurpriseEffectLedger.count({
+      where: { surpriseQrId: surprise.id, studentNumber: input.student.studentNumber, status: "VALID" },
     });
-    return { pointsAwarded: 0, missionKey: input.mission.key, result: "ALREADY_AWARDED", message };
+    if (studentUses >= surprise.maxUsesPerStudent) {
+      const message = "Ja descobriste este QR surpresa.";
+      await recordPassportScan({
+        student: input.student,
+        missionId: input.mission.id,
+        action: input.action,
+        qrActionScan: input.qrActionScan,
+        pointsAwarded: 0,
+        result: "ALREADY_AWARDED",
+        message,
+        metadata: { surpriseQrId: surprise.id },
+      });
+      return { pointsAwarded: 0, missionKey: input.mission.key, result: "ALREADY_AWARDED", message };
+    }
   }
 
   const [beforePoints, previousNegativeTotal, qrLossCount, qrGainCount, qrNeutralCount, studentLossCount] = await Promise.all([
@@ -3196,6 +3297,13 @@ async function applyPassportSurpriseQrEffect(input: {
     afterPoints: computed.afterPoints,
     deltaPoints: computed.deltaPoints,
   });
+  const hint = surpriseHint({
+    displayCode: surprise.displayCode,
+    studentName: input.student.name,
+    effectType: computed.effectType,
+    deltaPoints: computed.deltaPoints,
+    afterPoints: computed.afterPoints,
+  });
 
   const metadata = {
     surpriseQrId: surprise.id,
@@ -3206,6 +3314,8 @@ async function applyPassportSurpriseQrEffect(input: {
     displayCode: surprise.displayCode,
     batchCode: surprise.batchCode,
     dynamicActivated: dynamic.dynamicActivated,
+    repeatableDynamic,
+    hint,
     dynamicRules: dynamic.rules,
     ...(dynamic.resolver ?? {}),
     rarity: surprise.rarity,
@@ -3239,18 +3349,18 @@ async function applyPassportSurpriseQrEffect(input: {
 
     await tx.passportPointLedger.upsert({
       where: {
-        businessKey: `passport-point:${input.student.studentNumber}:fair-surprise:SURPRISE_QR:surprise:${surprise.id}`,
+        businessKey: pointBusinessKey,
       },
       update: {},
       create: {
-        businessKey: `passport-point:${input.student.studentNumber}:fair-surprise:SURPRISE_QR:surprise:${surprise.id}`,
+        businessKey: pointBusinessKey,
         studentId: input.student.id,
         studentNumber: input.student.studentNumber,
         studentName: input.student.name,
         studentCourse: input.student.course,
         missionId: input.mission.id,
         sourceType: "SURPRISE_QR",
-        sourceId: `surprise:${surprise.id}`,
+        sourceId: pointSourceId,
         points: computed.deltaPoints,
         status: "VALID",
         reason: message,
@@ -3283,6 +3393,7 @@ async function applyPassportSurpriseQrEffect(input: {
       afterPoints: computed.afterPoints,
       deltaPoints: computed.deltaPoints,
       message,
+      hint,
     }),
   };
 }
