@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildGeminiGenerationConfig,
   buildOdinAiStudentProfile,
   buildOdinAiCasePayload,
   normalizeOdinAiVerdict,
@@ -92,6 +93,15 @@ describe("ODIN AI analysis service", () => {
     expect(payload.caseContext.reasons).toHaveLength(2);
     expect(payload.caseContext.relatedEvents[0]).not.toHaveProperty("ipAddress");
     expect(payload.promptVersion).toMatch(/^odin-ai-v/);
+  });
+
+  it("limits Gemini 2.5 output and disables thinking for fast ODIN responses", () => {
+    expect(buildGeminiGenerationConfig("gemini-2.5-flash")).toMatchObject({
+      responseMimeType: "application/json",
+      maxOutputTokens: 1400,
+      thinkingConfig: { thinkingBudget: 0 },
+    });
+    expect(buildGeminiGenerationConfig("gemini-2.0-flash")).not.toHaveProperty("thinkingConfig");
   });
 
   it("summarizes student database integrity without treating temporary accounts as official", () => {

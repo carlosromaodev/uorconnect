@@ -160,6 +160,8 @@ export interface OdinAiAnalysisDto extends OdinAiVerdict {
 }
 
 export const ODIN_AI_PROMPT_VERSION = "odin-ai-v1";
+const GEMINI_REQUEST_TIMEOUT_MS = 18_000;
+const GEMINI_MAX_OUTPUT_TOKENS = 1_400;
 
 const ALLOWED_ACTION_TYPES: OdinAiActionType[] = [
   "MONITOR",
@@ -859,6 +861,62 @@ function extractJsonObject(text: string) {
   }
 }
 
+export function buildGeminiGenerationConfig(model: string) {
+  return {
+    temperature: 0.2,
+    responseMimeType: "application/json",
+    maxOutputTokens: GEMINI_MAX_OUTPUT_TOKENS,
+    ...(model.includes("2.5")
+      ? {
+          // ODIN precisa de um parecer curto e operacional. Sem este limite,
+          // o Gemini 2.5 pode gastar tempo em raciocinio interno e estourar o proxy.
+          thinkingConfig: { thinkingBudget: 0 },
+        }
+      : {}),
+  };
+}
+
+function geminiErrorMessage(status: number, raw: string) {
+  let providerMessage = "";
+  try {
+    const parsed = JSON.parse(raw) as { error?: { message?: string; status?: string } };
+    providerMessage = parsed.error?.message || parsed.error?.status || "";
+  } catch {
+    providerMessage = raw.trim().slice(0, 180);
+  }
+
+  if (status === 400) {
+    return `Gemini recusou a análise por payload inválido. Verifica o formato enviado ao modelo. ${providerMessage}`.trim();
+  }
+  if (status === 401 || status === 403) {
+    return "Gemini recusou a análise por chave sem permissão. Verifica a GEMINI_API_KEY configurada na VPS.";
+  }
+  if (status === 404) {
+    return `Gemini recusou a análise porque o modelo configurado não está disponível. Modelo atual: ${providerMessage || "desconhecido"}.`;
+  }
+  if (status === 429) {
+    return "Gemini recusou a análise por limite de quota ou excesso de pedidos. Aguarda alguns segundos e tenta novamente.";
+  }
+  if (status >= 500) {
+    return "Gemini ficou indisponível temporariamente. Tenta novamente em instantes.";
+  }
+  return `Gemini recusou a análise (${status}). ${providerMessage || "Verifica chave, quota e modelo configurado."}`;
+}
+
+function parseGeminiResponse(raw: string) {
+  try {
+    return JSON.parse(raw) as {
+      candidates?: Array<{
+        finishReason?: string;
+        content?: { parts?: Array<{ text?: string }> };
+      }>;
+      usageMetadata?: { totalTokenCount?: number };
+    };
+  } catch {
+    throw new Error("Gemini devolveu uma resposta inválida. Tenta gerar a análise novamente.");
+  }
+}
+
 async function requestGeminiVerdict(env: Env, payload: ReturnType<typeof buildOdinAiCasePayload>) {
   if (!env.ODIN_AI_ENABLED) {
     throw new Error("ODIN AI está desativado por configuração.");
@@ -869,40 +927,52 @@ async function requestGeminiVerdict(env: Env, payload: ReturnType<typeof buildOd
 
   const model = env.GEMINI_MODEL || "gemini-2.5-flash";
   const url = `${env.GEMINI_API_BASE_URL.replace(/\/$/, "")}/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(env.GEMINI_API_KEY)}`;
-  const response = await fetch(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      systemInstruction: {
-        parts: [{ text: payload.systemPrompt }],
-      },
-      contents: [{
-        role: "user",
-        parts: [{
-          text: JSON.stringify({
-            instruction: "Analisa este caso ODIN e responde apenas no JSON combinado.",
-            promptVersion: payload.promptVersion,
-            caseContext: payload.caseContext,
-          }),
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), GEMINI_REQUEST_TIMEOUT_MS);
+  let response: Response;
+
+  try {
+    response = await fetch(url, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      signal: controller.signal,
+      body: JSON.stringify({
+        systemInstruction: {
+          parts: [{ text: payload.systemPrompt }],
+        },
+        contents: [{
+          role: "user",
+          parts: [{
+            text: JSON.stringify({
+              instruction: "Analisa este caso ODIN e responde apenas no JSON combinado.",
+              promptVersion: payload.promptVersion,
+              caseContext: payload.caseContext,
+            }),
+          }],
         }],
-      }],
-      generationConfig: {
-        temperature: 0.2,
-        responseMimeType: "application/json",
-      },
-    }),
-  });
+        generationConfig: buildGeminiGenerationConfig(model),
+      }),
+    });
+  } catch (error) {
+    if (error instanceof Error && error.name === "AbortError") {
+      throw new Error("Gemini demorou demasiado para responder. Tenta novamente em instantes.");
+    }
+    throw new Error("Gemini não respondeu ao pedido. Verifica a ligação da VPS e tenta novamente.");
+  } finally {
+    clearTimeout(timeout);
+  }
 
   const raw = await response.text();
   if (!response.ok) {
-    throw new Error(`Gemini recusou a análise (${response.status}). Verifica a chave, quota e modelo configurado.`);
+    throw new Error(geminiErrorMessage(response.status, raw));
   }
 
-  const parsed = JSON.parse(raw) as {
-    candidates?: Array<{ content?: { parts?: Array<{ text?: string }> } }>;
-    usageMetadata?: { totalTokenCount?: number };
-  };
-  const text = parsed.candidates?.[0]?.content?.parts
+  const parsed = parseGeminiResponse(raw);
+  const candidate = parsed.candidates?.[0];
+  if (candidate?.finishReason === "MAX_TOKENS") {
+    throw new Error("Gemini devolveu uma resposta incompleta. Tenta gerar a análise novamente.");
+  }
+  const text = candidate?.content?.parts
     ?.map((part) => part.text ?? "")
     .join("\n")
     .trim();
