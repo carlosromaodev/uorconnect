@@ -82,7 +82,7 @@ export function ProjectShowcaseCard({
   const heroGradient = `linear-gradient(145deg, ${withAlpha(project.primaryColor, "e8")} 0%, ${withAlpha(project.secondaryColor, "d0")} 60%, ${withAlpha(project.primaryColor, "b8")} 100%)`;
   const primaryLabel = canVote
     ? project.userHasVoted
-      ? "Votado"
+      ? "Voto registado"
       : "Votar"
     : project.userHasLiked
       ? "Gostei"
@@ -99,7 +99,7 @@ export function ProjectShowcaseCard({
       transition={{ delay: index * 0.05, type: "spring", stiffness: 220, damping: 22 }}
       whileHover={{ y: -4, transition: { type: "spring", stiffness: 300, damping: 24 } }}
       className={cn(
-        "group relative flex h-full flex-col overflow-hidden rounded-2xl border bg-white transition-all duration-300",
+        "project-vote-card group relative flex h-full flex-col overflow-hidden rounded-2xl border bg-white transition-all duration-300",
         className,
       )}
       style={{
@@ -119,8 +119,8 @@ export function ProjectShowcaseCard({
         }}
       />
 
-      {/* ── Hero image / gradient ── */}
-      <div className="relative h-44 overflow-hidden sm:h-48">
+      {/* Hero image / ballot surface */}
+      <div className="project-vote-card__ballot relative h-44 overflow-hidden sm:h-48">
         {bannerSource ? (
           <>
             <img
@@ -198,7 +198,6 @@ export function ProjectShowcaseCard({
           </span>
         </div>
 
-        {/* Bottom info on hero */}
         <div className="absolute inset-x-0 bottom-0 px-4 pb-3 sm:px-5 sm:pb-4">
           <div className="flex items-end justify-between gap-3">
             <p className="line-clamp-1 text-[11px] font-medium text-white/80 sm:text-xs">
@@ -213,9 +212,7 @@ export function ProjectShowcaseCard({
         </div>
       </div>
 
-      {/* ── Body ── */}
       <div className="flex flex-1 flex-col gap-3.5 p-4 sm:p-5">
-        {/* Title + avatar */}
         <div className="space-y-2">
           <h3 className="line-clamp-2 font-heading text-base font-bold leading-snug text-foreground sm:text-lg">
             {project.isWinner && (
@@ -232,7 +229,7 @@ export function ProjectShowcaseCard({
         </div>
 
         <div
-          className="flex items-center gap-2 rounded-xl border px-3 py-2"
+          className="project-vote-card__vote-state flex items-center gap-2 rounded-xl border px-3 py-2"
           style={{ borderColor: withAlpha(project.primaryColor, "16"), backgroundColor: withAlpha(project.primaryColor, "06") }}
         >
           <div
@@ -243,7 +240,7 @@ export function ProjectShowcaseCard({
           </div>
           <div className="min-w-0">
             <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
-              {canVote ? "Em votação pública" : "Expositor em destaque"}
+              {canVote ? "Boletim de votação pública" : "Expositor em destaque"}
             </p>
             <p className="truncate text-xs font-semibold text-foreground">
               {project.course || displayArea}
@@ -251,12 +248,10 @@ export function ProjectShowcaseCard({
           </div>
         </div>
 
-        {/* Description */}
         <p className="line-clamp-2 text-[13px] leading-relaxed text-foreground/70">
           {project.summary || project.description}
         </p>
 
-        {/* Team info */}
         {project.teamSize > 0 && (
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
             <Users className="h-3.5 w-3.5" />
@@ -264,8 +259,7 @@ export function ProjectShowcaseCard({
           </div>
         )}
 
-        {/* Stats row */}
-        <div className="grid grid-cols-3 gap-2">
+        <div className="project-vote-card__stats grid grid-cols-3 gap-2">
           <StatPill
             icon={canVote ? ThumbsUp : Heart}
             value={canVote ? project.votesCount : project.likesCount}
@@ -286,14 +280,11 @@ export function ProjectShowcaseCard({
           />
         </div>
 
-        {/* Audience copy */}
         <p className="rounded-lg border border-border/40 bg-muted/20 px-3 py-2 text-[11px] leading-relaxed text-muted-foreground">
           {getSubmissionAudienceCopy(project.type, project.area)}
         </p>
 
-        {/* Actions */}
         <div className="mt-auto space-y-2 pt-1">
-          {/* Primary action + detail link */}
           <div
             className={cn(
               "grid gap-2",
@@ -306,7 +297,7 @@ export function ProjectShowcaseCard({
               size="sm"
               variant={isPrimaryActive ? "default" : "outline"}
               className={cn(
-                "h-10 w-full rounded-xl text-xs font-bold sm:h-11 sm:text-sm",
+                "project-vote-card__primary-action h-10 w-full rounded-xl text-xs font-bold sm:h-11 sm:text-sm",
                 isPrimaryActive
                   ? "bg-primary text-primary-foreground shadow-sm"
                   : "border-border/60 hover:bg-muted/50",
@@ -360,7 +351,6 @@ export function ProjectShowcaseCard({
             </Button>
           </div>
 
-          {/* Utility row */}
           <div className="flex items-center gap-2">
             <ShareButtons
               url={getProjectDetailPath(project.slug)}

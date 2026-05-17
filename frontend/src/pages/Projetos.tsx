@@ -96,7 +96,7 @@ function ProjectCompactCard({
       whileInView={{ opacity: 1, y: 0 }}
       viewport={{ once: true, margin: "-40px" }}
       transition={{ delay: Math.min(index, 10) * 0.025, type: "spring", stiffness: 260, damping: 24 }}
-      className="group relative flex min-h-[220px] flex-col overflow-hidden rounded-xl border bg-card p-3 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md"
+      className="project-compact-vote-card group relative flex min-h-[220px] flex-col overflow-hidden rounded-xl border bg-card p-3 shadow-sm transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md"
       style={{ borderColor: `${project.primaryColor}33` }}
       onMouseEnter={() => void onPrefetch(project)}
       onFocus={() => void onPrefetch(project)}
@@ -814,9 +814,9 @@ export default function Projetos() {
             <Award className="h-3.5 w-3.5" />
             Galeria
           </div>
-          <h1 className="text-3xl md:text-4xl font-heading font-bold mb-2">Projetos e Exposições</h1>
+          <h1 className="text-3xl md:text-4xl font-heading font-bold mb-2">Boletim de projetos</h1>
           <p className="text-muted-foreground text-sm mb-4">
-            Vota nos projetos académicos e interage com negócios e produtos em exposição.
+            Vota nos projetos académicos e acompanha as exposições com uma leitura mais clara da feira.
           </p>
         </motion.div>
 

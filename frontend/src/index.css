@@ -3010,23 +3010,67 @@
 	    animation-delay: 0.1s;
 	  }
 
+  .project-vote-card {
+    border-radius: 12px;
+    box-shadow: 0 14px 34px rgb(15 23 42 / 0.08);
+  }
+
+  .project-vote-card__ballot::after {
+    content: "";
+    pointer-events: none;
+    position: absolute;
+    inset: 0;
+    border: 1px solid rgb(255 255 255 / 0.22);
+    border-radius: inherit;
+  }
+
+  .project-vote-card__vote-state {
+    border-radius: 8px;
+    background-image: linear-gradient(90deg, rgb(248 250 252 / 0.92), rgb(255 255 255 / 0.84));
+  }
+
+  .project-vote-card__stats > div {
+    border-radius: 8px;
+  }
+
+  .project-vote-card__primary-action {
+    border-radius: 8px;
+  }
+
+  .project-compact-vote-card {
+    border-radius: 10px;
+    background:
+      linear-gradient(180deg, rgb(255 255 255 / 0.98), rgb(248 250 252 / 0.96));
+    box-shadow: 0 10px 24px rgb(15 23 42 / 0.06);
+  }
+
+  .project-compact-vote-card:hover {
+    box-shadow: 0 16px 34px rgb(15 23 42 / 0.1);
+  }
+
   .live-votes-stage {
     min-height: 100vh;
     color: #0f172a;
-    background:
-      linear-gradient(90deg, rgb(15 23 42 / 0.035) 1px, transparent 1px),
-      linear-gradient(180deg, rgb(15 23 42 / 0.035) 1px, transparent 1px),
-      linear-gradient(135deg, #fffaf4 0%, #f8fafc 42%, #ffffff 100%);
-    background-size: 34px 34px, 34px 34px, auto;
+    background: #f5f2ec;
+  }
+
+  .live-votes-broadcast-shell {
+    font-variant-numeric: tabular-nums;
   }
 
   .live-votes-topbar {
-    @apply flex flex-col gap-3 rounded-[28px] border border-slate-200 bg-white/90 px-4 py-3 shadow-sm backdrop-blur sm:flex-row sm:items-center sm:justify-between;
+    @apply flex flex-col gap-3 border border-slate-200 bg-white px-4 py-3 shadow-sm sm:flex-row sm:items-center sm:justify-between;
+    border-radius: 8px;
+  }
+
+  .live-votes-broadcast-topbar {
+    border-top: 4px solid #f97316;
   }
 
   .live-votes-live-pill,
   .live-votes-time-pill {
-    @apply inline-flex h-10 items-center gap-2 rounded-full border px-3 text-xs font-black uppercase tracking-wide;
+    @apply inline-flex h-10 items-center gap-2 border px-3 text-xs font-black uppercase tracking-wide;
+    border-radius: 8px;
   }
 
   .live-votes-live-pill {
@@ -3038,34 +3082,33 @@
   }
 
   .live-votes-hero-panel {
-    @apply relative overflow-hidden rounded-[34px] border border-slate-200 bg-white shadow-sm;
-    box-shadow: 0 28px 90px rgb(15 23 42 / 0.09);
+    @apply relative overflow-hidden border border-slate-200 bg-white shadow-sm;
+    border-radius: 8px;
+    box-shadow: 0 20px 54px rgb(15 23 42 / 0.08);
   }
 
-  .live-votes-hero-panel::before {
-    content: "";
-    @apply pointer-events-none absolute inset-0;
-    border-radius: inherit;
-    box-shadow: inset 0 0 0 1px rgb(255 122 26 / 0.12);
+  .live-votes-scoreboard {
+    border-left: 6px solid #0f172a;
   }
 
   .live-votes-hero-panel__rail {
-    @apply pointer-events-none absolute inset-y-0 right-0 w-1/3 opacity-70;
+    @apply pointer-events-none absolute inset-y-0 right-0 w-1/4 opacity-70;
     background:
-      repeating-linear-gradient(135deg, rgb(255 122 26 / 0.13) 0 2px, transparent 2px 18px),
-      linear-gradient(90deg, transparent, rgb(255 247 237 / 0.95));
-    animation: liveVoteRail 9s linear infinite;
+      repeating-linear-gradient(0deg, rgb(15 23 42 / 0.06) 0 1px, transparent 1px 14px),
+      linear-gradient(90deg, transparent, rgb(248 250 252 / 0.92));
   }
 
   .live-votes-leader-board {
-    @apply relative overflow-hidden rounded-[28px] border border-orange-200 bg-orange-50/80 p-4 shadow-sm;
+    @apply relative overflow-hidden border border-orange-200 bg-orange-50/80 p-4 shadow-sm;
+    border-radius: 8px;
     background:
-      linear-gradient(135deg, rgb(255 247 237 / 0.98), rgb(255 255 255 / 0.92) 48%, rgb(236 253 245 / 0.78)),
+      linear-gradient(180deg, rgb(255 247 237 / 0.98), rgb(255 255 255 / 0.94)),
       repeating-linear-gradient(90deg, rgb(15 23 42 / 0.035) 0 1px, transparent 1px 12px);
   }
 
   .live-votes-leader-board__stat {
-    @apply rounded-2xl border border-white bg-white/90 px-3 py-2 shadow-sm;
+    @apply border border-white bg-white/90 px-3 py-2 shadow-sm;
+    border-radius: 8px;
   }
 
   .live-votes-leader-board__stat span {
@@ -3077,11 +3120,13 @@
   }
 
   .live-votes-metric {
-    @apply min-w-0 rounded-2xl border bg-white/90 px-3 py-3 shadow-sm;
+    @apply min-w-0 border bg-white px-3 py-3 shadow-sm;
+    border-radius: 8px;
   }
 
   .live-votes-metric__icon {
-    @apply mb-2 flex h-9 w-9 items-center justify-center rounded-xl;
+    @apply mb-2 flex h-9 w-9 items-center justify-center;
+    border-radius: 8px;
   }
 
   .live-votes-metric__label {
@@ -3099,8 +3144,8 @@
   .live-votes-metric--violet .live-votes-metric__icon { @apply bg-violet-100 text-violet-700; }
 
   .live-votes-podium-card {
-    @apply relative overflow-hidden rounded-[28px] border p-4 shadow-sm;
-    background: linear-gradient(135deg, rgb(255 255 255 / 0.95), rgb(248 250 252 / 0.9));
+    @apply relative overflow-hidden border bg-white p-4 shadow-sm;
+    border-radius: 8px;
   }
 
   .live-votes-podium-card::before {
@@ -3111,7 +3156,8 @@
   }
 
   .live-votes-podium-card__rank {
-    @apply mb-5 inline-flex rounded-full px-3 py-1 text-xs font-black text-white shadow-sm;
+    @apply mb-5 inline-flex px-3 py-1 text-xs font-black text-white shadow-sm;
+    border-radius: 8px;
     background: var(--podium-accent, #0f172a);
   }
 
@@ -3123,11 +3169,17 @@
   .live-votes-race-panel,
   .live-votes-side-panel,
   .live-votes-privacy-note {
-    @apply overflow-hidden rounded-[28px] border border-slate-200 bg-white/95 shadow-sm backdrop-blur;
+    @apply overflow-hidden border border-slate-200 bg-white shadow-sm;
+    border-radius: 8px;
+  }
+
+  .live-votes-ranking-table {
+    border-top: 4px solid #0f172a;
   }
 
   .live-votes-race-row {
-    @apply flex gap-3 rounded-3xl border border-slate-200 bg-white p-3 shadow-sm transition;
+    @apply flex gap-3 border border-slate-200 bg-white p-3 shadow-sm transition;
+    border-radius: 8px;
   }
 
   .live-votes-race-row:hover {
@@ -3136,7 +3188,8 @@
   }
 
   .live-votes-race-row__rank {
-    @apply flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl text-sm font-black text-white shadow-sm;
+    @apply flex h-11 w-11 shrink-0 items-center justify-center text-sm font-black text-white shadow-sm;
+    border-radius: 8px;
     background: var(--row-accent, #0f172a);
   }
 
@@ -3146,7 +3199,8 @@
   .live-votes-race-row.is-default { --row-accent: #0f172a; }
 
   .live-votes-race-row__bar {
-    @apply mt-3 h-2.5 overflow-hidden rounded-full bg-slate-100;
+    @apply mt-3 h-2.5 overflow-hidden bg-slate-100;
+    border-radius: 999px;
   }
 
   .live-votes-race-row__bar span {
@@ -3155,7 +3209,8 @@
   }
 
   .live-votes-chip {
-    @apply rounded-full border border-slate-200 bg-slate-50 px-2 py-1 text-slate-600;
+    @apply border border-slate-200 bg-slate-50 px-2 py-1 text-slate-600;
+    border-radius: 6px;
   }
 
   .live-votes-chip.is-hot {
@@ -3168,7 +3223,8 @@
 
   .live-votes-course-pulse,
   .live-votes-moment-public {
-    @apply rounded-2xl border border-slate-200 bg-slate-50/80 p-3;
+    @apply border border-slate-200 bg-slate-50/80 p-3;
+    border-radius: 8px;
   }
 
   .live-votes-moment-public {

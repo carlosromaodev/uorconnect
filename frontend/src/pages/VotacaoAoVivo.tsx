@@ -10,7 +10,6 @@ import {
   Radio,
   RefreshCw,
   ShieldCheck,
-  Sparkles,
   Trophy,
   Vote,
   Wifi,
@@ -147,13 +146,13 @@ export default function VotacaoAoVivo() {
 
   return (
     <div className="live-votes-stage">
-      <main className="mx-auto flex min-h-screen w-full max-w-[1500px] flex-col gap-5 px-4 py-4 sm:px-6 lg:px-8">
-        <header className="live-votes-topbar">
+      <main className="live-votes-broadcast-shell mx-auto flex min-h-screen w-full max-w-[1500px] flex-col gap-5 px-4 py-4 sm:px-6 lg:px-8">
+        <header className="live-votes-topbar live-votes-broadcast-topbar">
           <div className="flex min-w-0 items-center gap-3">
             <img src="/logo-uor.png" alt="UOR Connect" className="h-11 w-auto shrink-0 object-contain" />
             <div className="min-w-0">
               <p className="text-[11px] font-black uppercase tracking-[0.18em] text-orange-700">UOR Connect</p>
-              <h1 className="truncate text-xl font-black text-slate-950 sm:text-2xl">Votação ao vivo</h1>
+              <h1 className="truncate text-xl font-black text-slate-950 sm:text-2xl">Placar oficial</h1>
             </div>
           </div>
           <div className="flex flex-wrap items-center justify-end gap-2">
@@ -178,19 +177,19 @@ export default function VotacaoAoVivo() {
           </div>
         </header>
 
-        <section className="live-votes-hero-panel" aria-live="polite">
+        <section className="live-votes-scoreboard live-votes-hero-panel" aria-live="polite">
           <div className="live-votes-hero-panel__rail" aria-hidden="true" />
           <div className="relative z-10 grid gap-5 p-4 sm:p-6 xl:grid-cols-[minmax(0,1fr)_420px] xl:items-stretch">
             <div className="min-w-0">
               <div className="inline-flex items-center gap-2 rounded-full border border-orange-200 bg-orange-50 px-3 py-1.5 text-[11px] font-black uppercase tracking-wide text-orange-800">
                 <Radio className="h-3.5 w-3.5" />
-                Transmissão pública
+                Transmissão institucional
               </div>
               <h2 className="mt-4 max-w-5xl text-4xl font-black leading-[0.96] text-slate-950 sm:text-6xl xl:text-7xl">
-                A corrida do público, em tempo real.
+                Placar oficial da votação pública.
               </h2>
               <p className="mt-4 max-w-3xl text-sm font-semibold leading-6 text-slate-600 sm:text-base">
-                Resultados atualizados automaticamente, com energia por curso, liderança do momento e ritmo da feira sem expor dados pessoais.
+                Ranking projetável para auditório, com liderança, diferença de pontos, ritmo dos cursos e movimentos recentes sem expor dados pessoais.
               </p>
 
               <div className="mt-6 grid gap-3 sm:grid-cols-5">
@@ -282,12 +281,12 @@ export default function VotacaoAoVivo() {
               ) : null}
             </div>
 
-            <section className="live-votes-race-panel">
+            <section className="live-votes-ranking-table live-votes-race-panel">
               <div className="flex flex-col gap-2 border-b border-slate-200 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
                 <div>
                   <p className="flex items-center gap-2 text-xs font-black uppercase tracking-wide text-orange-700">
                     <BarChart3 className="h-4 w-4" />
-                    Corrida dos projetos
+                    Mesa de apuração
                   </p>
                   <h2 className="text-xl font-black text-slate-950">Classificação pública</h2>
                 </div>
@@ -394,8 +393,8 @@ export default function VotacaoAoVivo() {
 
         <footer className="flex flex-col gap-2 pb-2 text-xs font-semibold text-slate-500 sm:flex-row sm:items-center sm:justify-between">
           <span className="inline-flex items-center gap-2">
-            <Sparkles className="h-4 w-4 text-orange-600" />
-            UOR Connect · resultados em tempo real
+            <ShieldCheck className="h-4 w-4 text-orange-700" />
+            UOR Connect · apuração pública em tempo real
           </span>
           <Link to="/projetos" className="font-black text-slate-800 underline decoration-orange-400 underline-offset-4">
             Ver projetos participantes
