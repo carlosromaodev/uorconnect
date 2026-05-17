@@ -7,6 +7,10 @@ describe("student scan input", () => {
       kind: "PROJECT",
       slug: "smart-campus-42",
     });
+    expect(extractStudentScanRouteTarget("https://uorconnect.space/projetos/smart-campus-42?source=front-pass")).toEqual({
+      kind: "PROJECT",
+      slug: "smart-campus-42",
+    });
     expect(extractStudentScanRouteTarget("/projeto/smart-campus-42?utm=qr")).toEqual({
       kind: "PROJECT",
       slug: "smart-campus-42",

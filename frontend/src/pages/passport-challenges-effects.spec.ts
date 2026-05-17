@@ -209,6 +209,17 @@ describe("Passaporte Digital desafios e QR surpresa", () => {
     expect(adminPassport).toContain("Nota da admin");
   });
 
+  it("conta scans ja atribuidos e QR surpresa como progresso visual do mapa", () => {
+    const minhaArea = readSource("./MinhaArea.tsx");
+
+    expect(minhaArea).toContain("PASSPORT_PROGRESS_SCAN_RESULTS");
+    expect(minhaArea).toContain('"SUCCESS"');
+    expect(minhaArea).toContain('"ALREADY_AWARDED"');
+    expect(minhaArea).toContain('"SURPRISE_APPLIED"');
+    expect(minhaArea).toContain('"CHALLENGE_READY"');
+    expect(minhaArea).toContain("PASSPORT_PROGRESS_SCAN_RESULTS.has(scan.result)");
+  });
+
   it("celebra virada no ranking e oferece aprovacao/recusa admin para desafios", () => {
     const minhaArea = readSource("./MinhaArea.tsx");
     const adminPassport = readSource(

@@ -1,7 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, type ChangeEvent } from "react";
 import { BrowserCodeReader, BrowserMultiFormatReader, type IScannerControls } from "@zxing/browser";
 import { BarcodeFormat, DecodeHintType } from "@zxing/library";
-import { Camera, Loader2, RefreshCcw, SwitchCamera } from "lucide-react";
+import { Camera, ImagePlus, Loader2, RefreshCcw, SwitchCamera } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 
@@ -11,8 +11,68 @@ type QrCameraScannerProps = {
   onRead: (value: string) => void;
 };
 
+type BarcodeDetectorResult = { rawValue?: string };
+type BarcodeDetectorInstance = {
+  detect(source: CanvasImageSource): Promise<BarcodeDetectorResult[]>;
+};
+type BarcodeDetectorConstructor = new (options?: { formats?: string[] }) => BarcodeDetectorInstance;
+
 function isCameraSupported() {
   return Boolean(navigator.mediaDevices?.getUserMedia);
+}
+
+function getBarcodeDetectorConstructor() {
+  return (window as Window & { BarcodeDetector?: BarcodeDetectorConstructor }).BarcodeDetector;
+}
+
+function buildPreferredVideoConstraints(selectedDeviceId: string | null): MediaTrackConstraints {
+  const shared: MediaTrackConstraints = {
+    width: { ideal: 1920 },
+    height: { ideal: 1080 },
+    frameRate: { ideal: 30, max: 60 },
+    advanced: [
+      { focusMode: "continuous" } as MediaTrackConstraintSet,
+      { exposureMode: "continuous" } as MediaTrackConstraintSet,
+    ],
+  };
+
+  if (selectedDeviceId) {
+    return {
+      ...shared,
+      deviceId: { exact: selectedDeviceId },
+    };
+  }
+
+  return {
+    ...shared,
+    facingMode: { ideal: "environment" },
+  };
+}
+
+function startBarcodeDetectorFallback(input: {
+  video: HTMLVideoElement | null;
+  onRead: (value: string) => void;
+  shouldStop: () => boolean;
+}) {
+  const BarcodeDetector = getBarcodeDetectorConstructor();
+  if (!BarcodeDetector || !input.video) return () => undefined;
+
+  const detector = new BarcodeDetector({ formats: ["qr_code"] });
+  const intervalId = window.setInterval(() => {
+    if (input.shouldStop() || !input.video || input.video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
+      return;
+    }
+
+    void detector
+      .detect(input.video)
+      .then((results) => {
+        const value = results.find((result) => result.rawValue)?.rawValue?.trim();
+        if (value) input.onRead(value);
+      })
+      .catch(() => undefined);
+  }, 260);
+
+  return () => window.clearInterval(intervalId);
 }
 
 function buildScannerReader() {
@@ -50,11 +110,12 @@ function cameraErrorMessage(error: unknown) {
     return "A câmara selecionada não aceitou as definições pedidas. Tenta trocar de câmara.";
   }
 
-  return message || "Não foi possível iniciar a câmara. Cola o token manualmente.";
+  return message || "Não foi possível iniciar a câmara. Usa a opção de foto ou tenta trocar de câmara.";
 }
 
 export function QrCameraScanner({ open, onClose, onRead }: QrCameraScannerProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const imageInputRef = useRef<HTMLInputElement | null>(null);
   const controlsRef = useRef<IScannerControls | null>(null);
   const scannedRef = useRef(false);
   const [status, setStatus] = useState<"starting" | "ready" | "error">("starting");
@@ -62,15 +123,26 @@ export function QrCameraScanner({ open, onClose, onRead }: QrCameraScannerProps)
   const [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState<string | null>(null);
   const [restartKey, setRestartKey] = useState(0);
+  const [imageDecoding, setImageDecoding] = useState(false);
 
-  const stopScanner = () => {
+  const stopScanner = useCallback(() => {
     controlsRef.current?.stop();
     controlsRef.current = null;
     if (videoRef.current) {
       videoRef.current.pause();
       videoRef.current.srcObject = null;
     }
-  };
+  }, []);
+
+  const handleDecodedText = useCallback((value: string) => {
+    const text = value.trim();
+    if (!text || scannedRef.current) return;
+
+    scannedRef.current = true;
+    stopScanner();
+    onRead(text);
+    onClose();
+  }, [onClose, onRead, stopScanner]);
 
   const loadDevices = async () => {
     try {
@@ -89,6 +161,33 @@ export function QrCameraScanner({ open, onClose, onRead }: QrCameraScannerProps)
     setRestartKey((current) => current + 1);
   };
 
+  const handleImageFile = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+
+    const objectUrl = URL.createObjectURL(file);
+    const image = new Image();
+
+    setImageDecoding(true);
+    setError("");
+    try {
+      await new Promise<void>((resolve, reject) => {
+        image.onload = () => resolve();
+        image.onerror = () => reject(new Error("Imagem inválida."));
+        image.src = objectUrl;
+      });
+      const result = await buildScannerReader().decodeFromImageElement(image);
+      handleDecodedText(result.getText());
+    } catch {
+      setStatus("error");
+      setError("Não consegui ler o QR desta imagem. Tenta aproximar o QR, melhorar a luz ou usar a câmara normal para focar primeiro.");
+    } finally {
+      URL.revokeObjectURL(objectUrl);
+      setImageDecoding(false);
+    }
+  };
+
   useEffect(() => {
     if (!open) {
       stopScanner();
@@ -103,6 +202,7 @@ export function QrCameraScanner({ open, onClose, onRead }: QrCameraScannerProps)
     }
 
     let cancelled = false;
+    let stopNativeDetector = () => undefined;
     const reader = buildScannerReader();
 
     setStatus("starting");
@@ -111,30 +211,16 @@ export function QrCameraScanner({ open, onClose, onRead }: QrCameraScannerProps)
 
     const handleResult = (result: { getText: () => string } | null | undefined) => {
       if (!result || cancelled || scannedRef.current) return;
-        const text = result.getText();
-        if (!text) return;
-
-      scannedRef.current = true;
-      stopScanner();
-        onRead(text);
-        onClose();
+      handleDecodedText(result.getText());
     };
 
     const start = async () => {
       await loadDevices();
 
-      if (selectedDeviceId) {
-        return reader.decodeFromVideoDevice(selectedDeviceId, videoRef.current ?? undefined, (result) => handleResult(result));
-      }
-
       try {
         return await reader.decodeFromConstraints({
           audio: false,
-          video: {
-            facingMode: { ideal: "environment" },
-            width: { ideal: 1280 },
-            height: { ideal: 720 },
-          },
+          video: buildPreferredVideoConstraints(selectedDeviceId),
         }, videoRef.current ?? undefined, (result) => handleResult(result));
       } catch {
         return reader.decodeFromConstraints({
@@ -153,6 +239,11 @@ export function QrCameraScanner({ open, onClose, onRead }: QrCameraScannerProps)
 
         controlsRef.current = controls;
         setStatus("ready");
+        stopNativeDetector = startBarcodeDetectorFallback({
+          video: videoRef.current,
+          onRead: handleDecodedText,
+          shouldStop: () => cancelled || scannedRef.current,
+        });
         void loadDevices();
       })
       .catch((scanError) => {
@@ -163,9 +254,10 @@ export function QrCameraScanner({ open, onClose, onRead }: QrCameraScannerProps)
 
     return () => {
       cancelled = true;
+      stopNativeDetector();
       stopScanner();
     };
-  }, [onClose, onRead, open, restartKey, selectedDeviceId]);
+  }, [handleDecodedText, open, restartKey, selectedDeviceId, stopScanner]);
 
   const handleSwitchCamera = () => {
     if (devices.length <= 1) {
@@ -190,16 +282,24 @@ export function QrCameraScanner({ open, onClose, onRead }: QrCameraScannerProps)
               Ler QR pela câmara
             </DialogTitle>
             <DialogDescription>
-              Aponta a câmara para o QR do estudante. A leitura é feita no navegador.
+              Aproxima o QR até preencher a moldura, segura por um segundo e evita reflexos no passe.
             </DialogDescription>
           </DialogHeader>
 
           <div className="relative overflow-hidden rounded-[16px] border border-border bg-black">
-            <video ref={videoRef} className="aspect-video w-full object-cover" muted playsInline autoPlay />
+            <video ref={videoRef} className="aspect-[3/4] w-full object-cover sm:aspect-video" muted playsInline autoPlay />
             <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
-              <div className="h-40 w-40 rounded-[28px] border-2 border-white/80 shadow-[0_0_0_999px_rgba(0,0,0,0.20)]" />
+              <div className="h-52 w-52 rounded-[30px] border-2 border-white/85 shadow-[0_0_0_999px_rgba(0,0,0,0.18)] sm:h-56 sm:w-56" />
             </div>
           </div>
+          <input
+            ref={imageInputRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            className="hidden"
+            onChange={handleImageFile}
+          />
 
           {status === "starting" ? (
             <p className="flex items-center gap-2 text-sm text-muted-foreground">
@@ -210,7 +310,7 @@ export function QrCameraScanner({ open, onClose, onRead }: QrCameraScannerProps)
 
           {status === "error" ? (
             <p className="rounded-xl border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-              {error || "Não foi possível usar a câmara. Cola o token manualmente."}
+              {error || "Não foi possível usar a câmara. Usa a opção de foto ou tenta trocar de câmara."}
             </p>
           ) : null}
 
@@ -237,6 +337,20 @@ export function QrCameraScanner({ open, onClose, onRead }: QrCameraScannerProps)
               Fechar
             </Button>
             <div className="flex gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                className="flex-1 rounded-xl sm:flex-none"
+                onClick={() => imageInputRef.current?.click()}
+                disabled={imageDecoding}
+              >
+                {imageDecoding ? (
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                ) : (
+                  <ImagePlus className="mr-2 h-4 w-4" />
+                )}
+                Usar foto
+              </Button>
               <Button type="button" variant="outline" className="flex-1 rounded-xl sm:flex-none" onClick={restartScanner}>
                 <RefreshCcw className="mr-2 h-4 w-4" />
                 Tentar de novo

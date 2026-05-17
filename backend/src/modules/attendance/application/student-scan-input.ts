@@ -34,7 +34,9 @@ export function extractStudentScanRouteTarget(value?: string | null): StudentSca
   if (!raw) return null;
 
   const segments = routeSegmentsFromRawInput(raw);
-  const projectIndex = segments.indexOf("projeto");
+  const projectIndex = segments.findIndex((segment) =>
+    ["projeto", "projetos"].includes(segment.toLowerCase()),
+  );
   if (projectIndex >= 0 && segments[projectIndex + 1]) {
     return { kind: "PROJECT", slug: segments[projectIndex + 1] };
   }

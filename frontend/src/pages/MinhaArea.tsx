@@ -191,6 +191,14 @@ type ConstructiveFeedbackProject = Pick<
 const EXHIBITOR_VOTE_QR_SOURCE = "exhibitor_qr";
 const CONSTRUCTIVE_FEEDBACK_REQUIRED_PROJECTS = 3;
 const CONSTRUCTIVE_FEEDBACK_MIN_LENGTH = 60;
+const PASSPORT_PROGRESS_SCAN_RESULTS = new Set([
+  "SUCCESS",
+  "ALREADY_DONE",
+  "ALREADY_AWARDED",
+  "SURPRISE_APPLIED",
+  "CHALLENGE_READY",
+  "CHALLENGE_NOT_CONFIGURED",
+]);
 const constructiveFeedbackFocusOptions: Array<{
   value: DigitalPassportConstructiveFeedbackFocus;
   label: string;
@@ -2800,8 +2808,8 @@ export default function MinhaArea() {
     (completedSteps / journeySteps.length) * 100,
   );
   const currentJourneyLevelIndex = journeySteps.findIndex((step) => !step.done);
-  const successfulScans = scanHistory.filter(
-    (scan) => scan.result === "SUCCESS",
+  const successfulScans = scanHistory.filter((scan) =>
+    PASSPORT_PROGRESS_SCAN_RESULTS.has(scan.result),
   );
   const workshopScans = successfulScans.filter((scan) =>
     /workshop|palestra|auditorio|auditório|sala/i.test(

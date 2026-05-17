@@ -73,6 +73,16 @@ type QrActionScanContext = {
   scannedAt: Date;
 };
 
+type StoredSurpriseEffect = {
+  beforePoints: number;
+  afterPoints: number;
+  deltaPoints: number;
+  effectType?: string | null;
+  effectValue?: number | null;
+  message?: string | null;
+  metadataJson?: string | null;
+};
+
 type PassportChallengeRecord = {
   id: number;
   missionId: number | null;
@@ -101,6 +111,15 @@ export type PassportChallengePublic = {
 
 const challengeQrActionTypes = new Set(["EXHIBITOR_CHALLENGE", "SPECIAL_QUIZ", "CLUE_CHAIN_QR"]);
 const surpriseQrActionTypes = new Set(["FAIR_BONUS_QR", "FAIR_PENALTY_QR", "FAIR_MULTIPLIER_QR", "FAIR_DIVIDER_QR"]);
+
+function isUniqueConstraintError(error: unknown) {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error as { code?: unknown }).code === "P2002"
+  );
+}
 
 export const PASSPORT_SURPRISE_POINTS_CAP = 120;
 export const PASSPORT_RECOVERY_PRICE_KZ = 300;
@@ -3199,9 +3218,61 @@ async function applyPassportSurpriseQrEffect(input: {
     repeatable: repeatableDynamic,
   });
 
-  if (!repeatableDynamic) {
-    const existingEffect = await prisma.passportSurpriseEffectLedger.findUnique({ where: { businessKey } });
-    if (existingEffect) {
+  const replayExistingEffect = async (
+    existingEffect: StoredSurpriseEffect,
+    result: "ALREADY_AWARDED" | "SURPRISE_APPLIED",
+  ) => {
+    const existingMetadata = parsePassportMetadata(existingEffect.metadataJson);
+    const hint = textFromMetadata(existingMetadata, "hint");
+    const message = existingEffect.message ?? (
+      repeatableDynamic
+        ? "Este QR surpresa ja tinha sido sincronizado."
+        : "Este QR surpresa ja tinha sido descoberto por ti."
+    );
+    const replayMetadata = {
+      ...(existingMetadata ?? {}),
+      surpriseQrId: surprise.id,
+      qrActionId: input.action.id,
+      qrActionScanId: input.qrActionScan.id,
+      replayed: true,
+    };
+    const replaySurprise = {
+      ...surprise,
+      effectType: (existingEffect.effectType ?? surprise.effectType) as PassportSurpriseEffectType,
+      effectValue: existingEffect.effectValue ?? surprise.effectValue,
+    };
+    const reveal = serializeSurpriseReveal({
+      surprise: replaySurprise,
+      beforePoints: existingEffect.beforePoints,
+      afterPoints: existingEffect.afterPoints,
+      deltaPoints: 0,
+      message,
+      hint: hint ?? undefined,
+    });
+
+    await recordPassportScan({
+      student: input.student,
+      missionId: input.mission.id,
+      action: input.action,
+      qrActionScan: input.qrActionScan,
+      pointsAwarded: 0,
+      result,
+      message: reveal.message,
+      metadata: replayMetadata,
+    });
+
+    return {
+      pointsAwarded: 0,
+      missionKey: input.mission.key,
+      result,
+      message: reveal.message,
+      surprise: reveal,
+    };
+  };
+
+  const existingEffect = await prisma.passportSurpriseEffectLedger.findUnique({ where: { businessKey } });
+  if (existingEffect) {
+    if (!repeatableDynamic) {
       const reveal = serializeSurpriseReveal({
         surprise,
         beforePoints: existingEffect.beforePoints,
@@ -3221,6 +3292,8 @@ async function applyPassportSurpriseQrEffect(input: {
       });
       return { pointsAwarded: 0, missionKey: input.mission.key, result: "ALREADY_AWARDED", message: reveal.message, surprise: reveal };
     }
+
+    return replayExistingEffect(existingEffect, "SURPRISE_APPLIED");
   }
 
   if (surprise.maxUsesTotal) {
@@ -3324,50 +3397,60 @@ async function applyPassportSurpriseQrEffect(input: {
     afterPoints: computed.afterPoints,
   };
 
-  await prisma.$transaction(async (tx) => {
-    await tx.passportSurpriseEffectLedger.create({
-      data: {
-        businessKey,
-        surpriseQrId: surprise.id,
-        qrActionId: input.action.id,
-        qrActionScanId: input.qrActionScan.id,
-        studentId: input.student.id,
-        studentNumber: input.student.studentNumber,
-        studentName: input.student.name,
-        studentCourse: input.student.course,
-        effectType: computed.effectType,
-        effectValue: computed.effectValue,
-        targetScope: surprise.targetScope,
-        beforePoints: computed.beforePoints,
-        afterPoints: computed.afterPoints,
-        deltaPoints: computed.deltaPoints,
-        status: "VALID",
-        message,
-        metadataJson: JSON.stringify(metadata),
-      },
-    });
+  try {
+    await prisma.$transaction(async (tx) => {
+      await tx.passportSurpriseEffectLedger.create({
+        data: {
+          businessKey,
+          surpriseQrId: surprise.id,
+          qrActionId: input.action.id,
+          qrActionScanId: input.qrActionScan.id,
+          studentId: input.student.id,
+          studentNumber: input.student.studentNumber,
+          studentName: input.student.name,
+          studentCourse: input.student.course,
+          effectType: computed.effectType,
+          effectValue: computed.effectValue,
+          targetScope: surprise.targetScope,
+          beforePoints: computed.beforePoints,
+          afterPoints: computed.afterPoints,
+          deltaPoints: computed.deltaPoints,
+          status: "VALID",
+          message,
+          metadataJson: JSON.stringify(metadata),
+        },
+      });
 
-    await tx.passportPointLedger.upsert({
-      where: {
-        businessKey: pointBusinessKey,
-      },
-      update: {},
-      create: {
-        businessKey: pointBusinessKey,
-        studentId: input.student.id,
-        studentNumber: input.student.studentNumber,
-        studentName: input.student.name,
-        studentCourse: input.student.course,
-        missionId: input.mission.id,
-        sourceType: "SURPRISE_QR",
-        sourceId: pointSourceId,
-        points: computed.deltaPoints,
-        status: "VALID",
-        reason: message,
-        metadataJson: JSON.stringify(metadata),
-      },
+      await tx.passportPointLedger.upsert({
+        where: {
+          businessKey: pointBusinessKey,
+        },
+        update: {},
+        create: {
+          businessKey: pointBusinessKey,
+          studentId: input.student.id,
+          studentNumber: input.student.studentNumber,
+          studentName: input.student.name,
+          studentCourse: input.student.course,
+          missionId: input.mission.id,
+          sourceType: "SURPRISE_QR",
+          sourceId: pointSourceId,
+          points: computed.deltaPoints,
+          status: "VALID",
+          reason: message,
+          metadataJson: JSON.stringify(metadata),
+        },
+      });
     });
-  });
+  } catch (error) {
+    if (isUniqueConstraintError(error)) {
+      const racedExistingEffect = await prisma.passportSurpriseEffectLedger.findUnique({ where: { businessKey } });
+      if (racedExistingEffect) {
+        return replayExistingEffect(racedExistingEffect, repeatableDynamic ? "SURPRISE_APPLIED" : "ALREADY_AWARDED");
+      }
+    }
+    throw error;
+  }
 
   await recordPassportScan({
     student: input.student,
