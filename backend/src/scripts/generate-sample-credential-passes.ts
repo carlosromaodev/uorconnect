@@ -25,9 +25,11 @@ type SamplePassInput = {
 function parseArgs(argv: string[]) {
   const outputArg = argv.find((arg) => arg.startsWith("--output="));
   const printModeArg = argv.find((arg) => arg.startsWith("--print-mode="));
+  const layoutArg = argv.find((arg) => arg.startsWith("--layout="));
   const output = outputArg?.split("=")[1] ?? "storage/samples/passes-modelo-categorias-areas.pdf";
   const printMode = printModeArg?.split("=")[1] === "black-white" ? "black-white" : "color";
-  return { output, printMode } as const;
+  const layout = layoutArg?.split("=")[1] === "a4-3up" ? "a4-3up" : "single";
+  return { output, printMode, layout } as const;
 }
 
 function sampleMember(input: SamplePassInput, index: number): EventTeamCredentialRecord {
@@ -132,7 +134,7 @@ async function main() {
   const options: CredentialPassOptions = {
     printMode: args.printMode,
     side: "both",
-    layout: "single",
+    layout: args.layout,
     duplexMode: "long-edge",
     marginMm: 18,
     bleedMm: 4,

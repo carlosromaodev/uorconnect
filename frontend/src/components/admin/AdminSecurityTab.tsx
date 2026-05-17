@@ -1255,10 +1255,10 @@ export default function AdminSecurityTab({
     }
   };
 
-  const fourUpPassBatchOptions = (): TeamCredentialPassOptions => ({
+  const threeUpPassBatchOptions = (): TeamCredentialPassOptions => ({
     printMode: passPrintMode,
     side: "both",
-    layout: "a4-4up",
+    layout: "a4-3up",
     duplexMode: "long-edge",
     laminationMarginMm: passLaminationMarginMm,
   });
@@ -1266,8 +1266,8 @@ export default function AdminSecurityTab({
   const handleDownloadPassCalibration = async () => {
     setCredentialBusyKey("credentials-pass-calibration");
     try {
-      const blob = await api.teamCredentials.downloadPassCalibration(fourUpPassBatchOptions());
-      downloadBlobFile(blob, `teste-alinhamento-passes-4porpagina-${passLaminationMarginMm}mm.pdf`);
+      const blob = await api.teamCredentials.downloadPassCalibration(threeUpPassBatchOptions());
+      downloadBlobFile(blob, `teste-alinhamento-passes-3porpagina-${passLaminationMarginMm}mm.pdf`);
       toast.success("Teste de alinhamento pronto. Imprime em 100%, sem ajustar à página.");
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Falha ao baixar teste de alinhamento.");
@@ -1286,10 +1286,10 @@ export default function AdminSecurityTab({
     try {
       const blob = await api.teamCredentials.downloadPassBatch({
         ids,
-        ...fourUpPassBatchOptions(),
+        ...threeUpPassBatchOptions(),
         limit: ids.length,
       });
-      downloadBlobFile(blob, `passes-uor-connect-4porpagina-${passPrintMode === "black-white" ? "pb" : "cor"}.pdf`);
+      downloadBlobFile(blob, `passes-uor-connect-3porpagina-${passPrintMode === "black-white" ? "pb" : "cor"}.pdf`);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Falha ao baixar lote de passes.");
     } finally {
@@ -1329,14 +1329,14 @@ export default function AdminSecurityTab({
       const blob = await api.teamCredentials.downloadPassBatch({
         ids: shouldSyncExpositors ? undefined : members.map((member) => member.id),
         category: shouldSyncExpositors ? category : undefined,
-        ...fourUpPassBatchOptions(),
+        ...threeUpPassBatchOptions(),
         includePending,
         limit: shouldSyncExpositors ? 1000 : members.length,
       });
       const fileBase = safePdfFileBase(`passes ${label}`) || "passes-uor-connect";
       downloadBlobFile(
         blob,
-        `${fileBase}-4porpagina-${passPrintMode === "black-white" ? "pb" : "cor"}.pdf`,
+        `${fileBase}-3porpagina-${passPrintMode === "black-white" ? "pb" : "cor"}.pdf`,
       );
       if (shouldSyncExpositors) {
         await loadTeamCredentials();
@@ -1378,10 +1378,10 @@ export default function AdminSecurityTab({
         created,
         ...current.filter((batch) => batch.id !== created.id),
       ]);
-      const blob = await api.teamCredentials.downloadPrintBatch(created.id, fourUpPassBatchOptions());
+      const blob = await api.teamCredentials.downloadPrintBatch(created.id, threeUpPassBatchOptions());
       downloadBlobFile(
         blob,
-        `${safePdfFileBase(fileLabel) || "lote-passes"}-${created.code}-4porpagina.pdf`,
+        `${safePdfFileBase(fileLabel) || "lote-passes"}-${created.code}-3porpagina.pdf`,
       );
       toast.success(`Lote criado e baixado com ${created.totalItems} passe(s).`);
       await loadTeamCredentials();
@@ -1507,8 +1507,8 @@ export default function AdminSecurityTab({
     }
     setCredentialBusyKey(`print-batch-download-${batch.id}`);
     try {
-      const blob = await api.teamCredentials.downloadPrintBatch(batch.id, fourUpPassBatchOptions());
-      downloadBlobFile(blob, `lote-passes-${batch.code}-4porpagina-${passPrintMode === "black-white" ? "pb" : "cor"}.pdf`);
+      const blob = await api.teamCredentials.downloadPrintBatch(batch.id, threeUpPassBatchOptions());
+      downloadBlobFile(blob, `lote-passes-${batch.code}-3porpagina-${passPrintMode === "black-white" ? "pb" : "cor"}.pdf`);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Falha ao baixar lote de impressão.");
     } finally {
@@ -3123,7 +3123,7 @@ export default function AdminSecurityTab({
                       </Button>
                     </div>
                     <div className="flex min-w-[220px] flex-wrap items-center gap-2 rounded-lg border border-cyan-100 bg-white px-2 py-1.5">
-                      <span className="text-[11px] font-bold uppercase tracking-wider text-cyan-800">4 por pagina</span>
+                      <span className="text-[11px] font-bold uppercase tracking-wider text-cyan-800">3 por pagina</span>
                       <label className="flex items-center gap-1 text-[11px] font-medium text-slate-500">
                         plastificacao
                         <Input
@@ -3157,7 +3157,7 @@ export default function AdminSecurityTab({
                       onClick={() => void handleDownloadCredentialBatch()}
                     >
                       {credentialBusyKey === "credentials-pass-batch" ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Download className="mr-1.5 h-3.5 w-3.5" />}
-                      Lote A4 4x
+                      Lote A4 3x
                     </Button>
                   </div>
                 </div>

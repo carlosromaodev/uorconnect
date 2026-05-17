@@ -172,13 +172,15 @@ const teamMembershipClaimStatuses = ["PENDING_REVIEW", "APPROVED", "REJECTED", "
 const credentialStatuses = ["DRAFT", "INVITED", "ISSUED", "PROFILE_READY", "ACTIVE", "REVOKED", "DISABLED"] as const;
 const credentialPassPrintModes = ["color", "black-white"] as const;
 const credentialPassSides = ["front", "back", "both"] as const;
-const credentialPassLayouts = ["single", "a4-4up"] as const;
+const credentialPassLayouts = ["single", "a4-3up", "a4-4up"] as const;
 const credentialPassDuplexModes = ["long-edge", "short-edge", "same-position"] as const;
 const credentialInvitationTtlDays = 14;
 const nucleusBaseAdminPermissions = ["OVERVIEW", "TASKS", "NUCLEUS", "CREDENTIALS"] as const;
 const nucleusFullAdminPermissions = [...ALL_ADMIN_PERMISSIONS];
 const cr80CardWidthMm = 53.98;
 const cr80CardHeightMm = 85.6;
+const paperPassWidthMm = 68;
+const paperPassHeightMm = 108;
 const passDesignWidthMm = 90;
 const passDesignHeightMm = 140;
 
@@ -2845,11 +2847,13 @@ export function buildCredentialPassPrintContent(params: {
   pageNumberOffset?: number;
 }) {
   const notePrefix = params.notePrefix ?? "UOR Connect · Lote";
-  const formatLabel = params.formatLabel ?? "CR-80 PVC";
+  const formatLabel = params.formatLabel ?? (params.options.layout === "a4-3up" ? "A4 papel ampliado" : "CR-80 PVC");
   const pageNumberOffset = params.pageNumberOffset ?? 0;
   const marginMm = params.options.marginMm;
   const bleedMm = params.options.bleedMm;
-  const cardW = cr80CardWidthMm, cardH = cr80CardHeightMm, moldW = cr80CardWidthMm, moldH = cr80CardHeightMm;
+  const cardW = params.options.layout === "a4-3up" ? paperPassWidthMm : cr80CardWidthMm;
+  const cardH = params.options.layout === "a4-3up" ? paperPassHeightMm : cr80CardHeightMm;
+  const moldW = cardW, moldH = cardH;
   const designW = passDesignWidthMm, designH = passDesignHeightMm;
   const scaleX = cardW / designW, scaleY = cardH / designH;
   const cutL = (210 - cardW) / 2, cutT = (297 - cardH) / 2;
@@ -2993,6 +2997,117 @@ export function buildCredentialPassPrintContent(params: {
     </article>`;
   };
 
+  const buildThreeUpContent = () => {
+    const laminationMarginMm = params.options.laminationMarginMm;
+    const laminationW = cardW + laminationMarginMm * 2;
+    const laminationH = cardH + laminationMarginMm * 2;
+    const gapX = 12;
+    const gapY = 10;
+    const gridW = laminationW * 2 + gapX;
+    const gridH = laminationH * 2 + gapY;
+    const startX = (210 - gridW) / 2;
+    const startY = (297 - gridH) / 2;
+    const slotPositions = [
+      { left: startX, top: startY },
+      { left: startX + laminationW + gapX, top: startY },
+      { left: (210 - laminationW) / 2, top: startY + laminationH + gapY },
+    ];
+    const laminationLabel = `${laminationW.toFixed(2).replace(".", ",")}×${laminationH.toFixed(2).replace(".", ",")} mm`;
+
+    const threeUpCss = `
+      .credential-pass-print.layout-3up{background:#f8fafc}
+      .credential-pass-print.layout-3up .sheet{display:block;padding:0;background:#f8fafc}
+      .three-up-note{position:absolute;left:14mm;right:14mm;top:9mm;display:flex;align-items:flex-start;justify-content:space-between;gap:8mm;color:#475569;font-size:7px;letter-spacing:.06em;text-transform:uppercase}
+      .three-up-note strong{display:block;color:#0f172a;font-size:8px;letter-spacing:.08em}
+      .three-up-note span{display:block;margin-top:1mm}
+      .registration-mark{position:absolute;width:7mm;height:7mm;border-color:#0f172a;opacity:.55}
+      .registration-mark.tl{left:10mm;top:10mm;border-left:.18mm solid;border-top:.18mm solid}
+      .registration-mark.tr{right:10mm;top:10mm;border-right:.18mm solid;border-top:.18mm solid}
+      .registration-mark.bl{left:10mm;bottom:10mm;border-left:.18mm solid;border-bottom:.18mm solid}
+      .registration-mark.br{right:10mm;bottom:10mm;border-right:.18mm solid;border-bottom:.18mm solid}
+      .three-up-grid{position:absolute;left:0;top:0;width:210mm;height:297mm}
+      .three-up-slot{position:absolute;width:${laminationW}mm;height:${laminationH}mm}
+      ${slotPositions.map((pos, index) => `.slot-${index + 1}{left:${pos.left}mm;top:${pos.top}mm}`).join("\n")}
+      .lamination-cut-line{position:absolute;inset:0;border:.24mm dashed rgba(15,23,42,.48);border-radius:${Math.max(5, 3.18 + laminationMarginMm)}mm;pointer-events:none}
+      .pass-cut-line{position:absolute;left:${laminationMarginMm}mm;top:${laminationMarginMm}mm;width:${cardW}mm;height:${cardH}mm;border:.22mm solid rgba(15,23,42,.82);border-radius:3.18mm;pointer-events:none}
+      .slot-corner{position:absolute;width:5mm;height:5mm;border-color:#0f172a;opacity:.75}
+      .slot-corner.tl{left:-1.8mm;top:-1.8mm;border-left:.2mm solid;border-top:.2mm solid}
+      .slot-corner.tr{right:-1.8mm;top:-1.8mm;border-right:.2mm solid;border-top:.2mm solid}
+      .slot-corner.bl{left:-1.8mm;bottom:-1.8mm;border-left:.2mm solid;border-bottom:.2mm solid}
+      .slot-corner.br{right:-1.8mm;bottom:-1.8mm;border-right:.2mm solid;border-bottom:.2mm solid}
+      .guide-label{position:absolute;left:${laminationMarginMm}mm;font-size:5.5px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#334155;background:#f8fafc;padding:.5mm 1mm;border-radius:999px}
+      .pass-cut-label{top:${Math.max(0.4, laminationMarginMm - 2.6)}mm}
+      .lamination-cut-label{left:1.2mm;bottom:1mm;color:#64748b}
+      .three-up-slot .pass{position:absolute;left:${laminationMarginMm}mm;top:${laminationMarginMm}mm;box-shadow:none}
+      .three-up-slot.blank::after{content:"";position:absolute;left:${laminationMarginMm}mm;top:${laminationMarginMm}mm;width:${cardW}mm;height:${cardH}mm;border-radius:3.18mm;background:rgba(226,232,240,.18)}
+      .three-up-footer{position:absolute;left:14mm;right:14mm;bottom:9mm;display:flex;justify-content:space-between;color:#64748b;font-size:7px;letter-spacing:.04em}
+    `;
+
+    const backSlotOrder = (() => {
+      if (params.options.duplexMode === "short-edge") return [2, 1, 0];
+      if (params.options.duplexMode === "same-position") return [0, 1, 2];
+      return [1, 0, 2];
+    })();
+
+    const chunkItems = (items: CredentialPassPrintItem[]) => {
+      const chunks: CredentialPassPrintItem[][] = [];
+      for (let index = 0; index < items.length; index += 3) {
+        chunks.push(items.slice(index, index + 3));
+      }
+      return chunks.length > 0 ? chunks : [[]];
+    };
+
+    const arrangeBackChunk = (chunk: CredentialPassPrintItem[]) =>
+      backSlotOrder.map((sourceIndex) => chunk[sourceIndex] ?? null);
+
+    const renderThreeUpSlot = (item: CredentialPassPrintItem | null, side: "front" | "back", index: number) => (
+      `<div class="three-up-slot slot-${index + 1}${item ? "" : " blank"}" data-slot="${index + 1}"${item ? ` data-credential-id="${item.member.id}"` : ""}>
+        <span class="slot-corner tl"></span><span class="slot-corner tr"></span><span class="slot-corner bl"></span><span class="slot-corner br"></span>
+        <div class="lamination-cut-line"></div>
+        <div class="pass-cut-line"></div>
+        ${index === 0 ? `<span class="guide-label pass-cut-label">Corte do passe</span><span class="guide-label lamination-cut-label">Corte plastificacao</span>` : ""}
+        ${item ? (side === "front" ? renderFrontPass(item) : renderBackPass(item)) : ""}
+      </div>`
+    );
+
+    const renderThreeUpSheet = (chunk: CredentialPassPrintItem[], side: "front" | "back", pageIndex: number) => {
+      const slotItems = side === "back" ? arrangeBackChunk(chunk) : [chunk[0] ?? null, chunk[1] ?? null, chunk[2] ?? null];
+      return `<section class="sheet ${side}-sheet">
+        <div class="three-up-note">
+          <div>
+            <strong>${escapeHtml(notePrefix)} · ${side === "front" ? "Frente" : "Verso"} · 3 por pagina</strong>
+            <span>A4 ampliado ${cardW.toFixed(2).replace(".", ",")}×${cardH.toFixed(2).replace(".", ",")} mm · plastificacao ${laminationLabel}</span>
+          </div>
+          <div>
+            <strong>Imprimir em 100%</strong>
+            <span>Duplex recomendado: long-edge · pág. ${pageNumberOffset + pageIndex}</span>
+          </div>
+        </div>
+        <span class="registration-mark tl"></span><span class="registration-mark tr"></span><span class="registration-mark bl"></span><span class="registration-mark br"></span>
+        <div class="three-up-grid">
+          ${slotItems.map((item, index) => renderThreeUpSlot(item, side, index)).join("")}
+        </div>
+        <div class="three-up-footer">
+          <span>Linha continua: corte do passe</span>
+          <span>Linha tracejada: corte da plastificacao</span>
+        </div>
+      </section>`;
+    };
+
+    const pages: string[] = [];
+    for (const chunk of chunkItems(params.items)) {
+      if (params.options.side !== "back") pages.push(renderThreeUpSheet(chunk, "front", pages.length + 1));
+      if (params.options.side !== "front") pages.push(renderThreeUpSheet(chunk, "back", pages.length + 1));
+    }
+
+    const bodyClass = params.options.printMode === "black-white" ? "print-mode-bw" : "print-mode-color";
+    return {
+      css: `${sheetCss}\n${threeUpCss}`,
+      sheets: `<div class="credential-pass-print ${bodyClass} layout-3up">${pages.join("")}</div>`,
+      bodyClass,
+    };
+  };
+
   const buildFourUpContent = () => {
     const laminationMarginMm = params.options.laminationMarginMm;
     const laminationW = cardW + laminationMarginMm * 2;
@@ -3105,6 +3220,10 @@ export function buildCredentialPassPrintContent(params: {
     };
   };
 
+  if (params.options.layout === "a4-3up") {
+    return buildThreeUpContent();
+  }
+
   if (params.options.layout === "a4-4up") {
     return buildFourUpContent();
   }
@@ -3168,16 +3287,17 @@ export function buildCredentialPassBatchHtml(params: {
 export function buildCredentialPassCalibrationHtml(params: {
   options: CredentialPassOptions;
 }) {
+  const layout = params.options.layout === "a4-4up" ? "a4-4up" : "a4-3up";
   const printContent = buildCredentialPassPrintContent({
     items: [],
     logoDataUri: null,
     options: {
       ...params.options,
       side: params.options.side === "back" ? "back" : "both",
-      layout: "a4-4up",
+      layout,
     },
     notePrefix: "UOR Connect · Teste de alinhamento",
-    formatLabel: "CR-80 PVC + plastificacao",
+    formatLabel: layout === "a4-3up" ? "A4 papel ampliado + plastificacao" : "CR-80 PVC + plastificacao",
   });
 
   return `<!doctype html>
@@ -5166,15 +5286,16 @@ export async function teamCredentialsRoutes(app: FastifyInstance, opts: { env: E
     }, async (request, reply) => {
       const query = adminPassBatchQuerySchema.parse(request.query);
       if (query.calibration) {
+        const layout = query.layout === "a4-4up" ? "a4-4up" : "a4-3up";
         await recordAdminAudit({
           ...auditActor(request),
           action: "team_credential.pass_batch_calibration_pdf",
           entityType: "EventTeamCredential",
-          summary: "Teste de alinhamento A4 4 por página gerado para passes.",
+          summary: `Teste de alinhamento A4 ${layout === "a4-3up" ? "3" : "4"} por página gerado para passes.`,
           metadata: {
             printMode: query.printMode,
             side: query.side,
-            layout: query.layout,
+            layout,
             duplexMode: query.duplexMode,
             marginMm: query.marginMm,
             bleedMm: query.bleedMm,
@@ -5184,7 +5305,7 @@ export async function teamCredentialsRoutes(app: FastifyInstance, opts: { env: E
         return sendCredentialPassCalibrationPdf(reply, {
           printMode: query.printMode,
           side: query.side,
-          layout: "a4-4up",
+          layout,
           duplexMode: query.duplexMode,
           marginMm: query.marginMm,
           bleedMm: query.bleedMm,
