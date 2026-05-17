@@ -3021,6 +3021,13 @@ export interface AdminModerationLiveChatMessage extends LiveChatMessage {
 }
 
 export type OdinRiskLevel = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+export type OdinAiCaseType = "DEVICE" | "STUDENT" | "PROJECT";
+export type OdinAiActionType =
+  | "MONITOR"
+  | "REVIEW"
+  | "INVALIDATE_VOTES"
+  | "NOTIFY_FOR_APPEAL"
+  | "ESCALATE_TO_ORGANIZATION";
 
 export interface OdinDeviceRisk {
   deviceId: string;
@@ -3122,6 +3129,35 @@ export interface OdinExcludeStudentResult {
     passportPointLedgerRevoked: number;
     exhibitorScoreEventsRevoked: number;
   };
+}
+
+export interface OdinAiAnalysis {
+  id: number;
+  caseType: OdinAiCaseType;
+  caseId: string;
+  riskScore: number;
+  riskLevel: OdinRiskLevel;
+  narrative: string;
+  fraudProbability: number;
+  legitimateProbability: number;
+  mostLikelyScenario: string;
+  alternativeScenario: string;
+  recommendation: string;
+  confidenceLevel: string;
+  actionType: OdinAiActionType;
+  modelVersion: string;
+  promptVersion: string;
+  tokensUsed: number | null;
+  createdByStudentNumber: string | null;
+  createdAt: string;
+  feedbackCount: number;
+}
+
+export interface OdinAiFeedbackInput {
+  useful: boolean;
+  recommendationCorrect?: boolean | null;
+  realityMatched?: boolean | null;
+  note?: string | null;
 }
 
 export interface AnalyticsConsentState {
@@ -3814,6 +3850,23 @@ export const api = {
     overview: (params?: { windowHours?: number }) =>
       request<OdinOverview>(
         `/security/odin/overview${toQueryString(params)}`,
+      ),
+    analyzeCase: (data: { caseType: OdinAiCaseType; caseId: string; windowHours?: number }) =>
+      request<OdinAiAnalysis>("/security/odin/ai/analyze", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+    aiAnalyses: (params?: { caseType?: OdinAiCaseType; caseId?: string; limit?: number }) =>
+      request<OdinAiAnalysis[]>(
+        `/security/odin/ai/analyses${toQueryString(params)}`,
+      ),
+    sendAiFeedback: (analysisId: number, data: OdinAiFeedbackInput) =>
+      request<{ success: true; message: string }>(
+        `/security/odin/ai/analyses/${analysisId}/feedback`,
+        {
+          method: "POST",
+          body: JSON.stringify(data),
+        },
       ),
     excludeStudent: (studentId: number, data: OdinExcludeStudentInput) =>
       request<OdinExcludeStudentResult>(

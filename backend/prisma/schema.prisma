@@ -520,6 +520,50 @@ model OdinEvent {
   @@index([ipAddress, createdAt])
 }
 
+model OdinAiAnalysis {
+  id                     Int      @id @default(autoincrement())
+  caseType               String
+  caseId                 String
+  riskScore              Int
+  riskLevel              String
+  narrative              String
+  fraudProbability       Int
+  legitimateProbability  Int
+  mostLikelyScenario     String
+  alternativeScenario    String
+  recommendation         String
+  confidenceLevel        String
+  actionType             String
+  modelVersion           String
+  promptVersion          String
+  tokensUsed             Int?
+  payloadHash            String
+  rawResponseJson        String?
+  createdByStudentNumber String?
+  createdAt              DateTime @default(now())
+  feedback               OdinAiFeedback[]
+
+  @@index([caseType, caseId, createdAt])
+  @@index([riskLevel, createdAt])
+  @@index([actionType, createdAt])
+  @@index([payloadHash])
+}
+
+model OdinAiFeedback {
+  id                     Int            @id @default(autoincrement())
+  analysis               OdinAiAnalysis @relation(fields: [analysisId], references: [id], onDelete: Cascade)
+  analysisId             Int
+  actorStudentNumber     String?
+  useful                 Boolean
+  recommendationCorrect  Boolean?
+  realityMatched         Boolean?
+  note                   String?
+  createdAt              DateTime       @default(now())
+
+  @@index([analysisId, createdAt])
+  @@index([actorStudentNumber, createdAt])
+}
+
 model CredentialValidationLog {
   id           Int      @id @default(autoincrement())
   tokenHash    String

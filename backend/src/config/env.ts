@@ -4,6 +4,16 @@ function normalizeDatabaseProvider(value: unknown) {
   return value === "postgres" ? "postgresql" : value;
 }
 
+function normalizeBoolean(value: unknown) {
+  if (value === undefined || value === null || value === "") return undefined;
+  if (typeof value === "boolean") return value;
+  if (typeof value !== "string") return value;
+  const normalized = value.trim().toLowerCase();
+  if (["1", "true", "yes", "sim", "on"].includes(normalized)) return true;
+  if (["0", "false", "no", "nao", "não", "off"].includes(normalized)) return false;
+  return value;
+}
+
 const envSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   PORT: z.coerce.number().int().min(0).max(65535).default(3333),
@@ -38,6 +48,10 @@ const envSchema = z.object({
   OMBALA_SMS_DEFAULT_SENDER: z.string().min(3).max(16).default("UOR CONNECT"),
   EVOLUTION_API_BASE_URL: z.string().url().default("http://localhost:8081"),
   EVOLUTION_API_KEY: z.string().min(1).optional(),
+  GEMINI_API_KEY: z.string().min(1).optional(),
+  GEMINI_MODEL: z.string().min(2).default("gemini-1.5-flash"),
+  GEMINI_API_BASE_URL: z.string().url().default("https://generativelanguage.googleapis.com/v1beta"),
+  ODIN_AI_ENABLED: z.preprocess(normalizeBoolean, z.boolean()).default(true),
   GAME_NOTIFICATIONS_START_AT: z.string().min(1).default("2026-05-18T00:00:00+01:00"),
   RATE_LIMIT_MAX: z.coerce.number().int().min(20).max(5000).default(400),
   RATE_LIMIT_WINDOW_MS: z.coerce.number().int().min(10_000).max(3_600_000).default(60_000),

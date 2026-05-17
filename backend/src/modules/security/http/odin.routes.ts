@@ -8,6 +8,11 @@ import {
   getOdinOverview,
   recordOdinStudentExclusion,
 } from "../application/odin.service";
+import {
+  listOdinAiAnalyses,
+  recordOdinAiFeedback,
+  runOdinAiCaseAnalysis,
+} from "../application/odin-ai.service";
 
 const odinOverviewQuerySchema = z.object({
   windowHours: z.coerce.number().int().min(1).max(24 * 14).optional().default(48),
@@ -27,6 +32,14 @@ const odinExcludeBodySchema = z.object({
 });
 
 const odinRiskLevelSchema = z.enum(["LOW", "MEDIUM", "HIGH", "CRITICAL"]);
+const odinAiCaseTypeSchema = z.enum(["DEVICE", "STUDENT", "PROJECT"]);
+const odinAiActionTypeSchema = z.enum([
+  "MONITOR",
+  "REVIEW",
+  "INVALIDATE_VOTES",
+  "NOTIFY_FOR_APPEAL",
+  "ESCALATE_TO_ORGANIZATION",
+]);
 
 const odinProjectLiteSchema = z.object({
   submissionId: z.number(),
@@ -113,6 +126,51 @@ const odinExcludeResponseSchema = z.object({
   }),
 });
 
+const odinAiAnalysisSchema = z.object({
+  id: z.number(),
+  caseType: odinAiCaseTypeSchema,
+  caseId: z.string(),
+  riskScore: z.number(),
+  riskLevel: odinRiskLevelSchema,
+  narrative: z.string(),
+  fraudProbability: z.number(),
+  legitimateProbability: z.number(),
+  mostLikelyScenario: z.string(),
+  alternativeScenario: z.string(),
+  recommendation: z.string(),
+  confidenceLevel: z.string(),
+  actionType: odinAiActionTypeSchema,
+  modelVersion: z.string(),
+  promptVersion: z.string(),
+  tokensUsed: z.number().nullable(),
+  createdByStudentNumber: z.string().nullable(),
+  createdAt: z.string(),
+  feedbackCount: z.number(),
+});
+
+const odinAiAnalyzeBodySchema = z.object({
+  caseType: odinAiCaseTypeSchema,
+  caseId: z.string().trim().min(1).max(160),
+  windowHours: z.coerce.number().int().min(1).max(24 * 14).optional().default(48),
+});
+
+const odinAiAnalysesQuerySchema = z.object({
+  caseType: odinAiCaseTypeSchema.optional(),
+  caseId: z.string().trim().min(1).max(160).optional(),
+  limit: z.coerce.number().int().min(1).max(50).optional().default(20),
+});
+
+const odinAiFeedbackParamsSchema = z.object({
+  id: z.coerce.number().int().positive(),
+});
+
+const odinAiFeedbackBodySchema = z.object({
+  useful: z.boolean(),
+  recommendationCorrect: z.boolean().nullable().optional(),
+  realityMatched: z.boolean().nullable().optional(),
+  note: z.string().trim().max(500).nullable().optional(),
+});
+
 export async function odinRoutes(app: FastifyInstance, opts: { env: Env }) {
   app.register(async (adminApp) => {
     adminApp.register(authGuard, { env: opts.env });
@@ -135,6 +193,138 @@ export async function odinRoutes(app: FastifyInstance, opts: { env: Env }) {
       async (request: FastifyRequest<{ Querystring: z.infer<typeof odinOverviewQuerySchema> }>, reply) => {
         const query = odinOverviewQuerySchema.parse(request.query);
         return reply.send(await getOdinOverview(query.windowHours));
+      },
+    );
+
+    adminApp.post("/odin/ai/analyze",
+      {
+        schema: {
+          description: "Gera uma análise ODIN 2.0 assistida por Gemini para um caso suspeito.",
+          tags: ["Security"],
+          body: odinAiAnalyzeBodySchema,
+          response: {
+            200: odinAiAnalysisSchema,
+            400: z.object({ message: z.string() }),
+            401: z.object({ message: z.string() }),
+            403: z.object({ message: z.string() }),
+            503: z.object({ message: z.string() }),
+          },
+        },
+      },
+      async (
+        request: FastifyRequest<{ Body: z.infer<typeof odinAiAnalyzeBodySchema> }>,
+        reply,
+      ) => {
+        const body = odinAiAnalyzeBodySchema.parse(request.body);
+        const actorStudentNumber = request.student?.studentNumber ?? request.jury?.phone ?? "unknown";
+
+        try {
+          const analysis = await runOdinAiCaseAnalysis(opts.env, {
+            caseType: body.caseType,
+            caseId: body.caseId,
+            windowHours: body.windowHours,
+            actorStudentNumber,
+          });
+
+          await recordAdminAudit({
+            actorStudentNumber,
+            actorRole: request.jury ? "jury_admin" : "admin",
+            action: "odin.ai_analysis",
+            entityType: "OdinAiAnalysis",
+            entityId: String(analysis.id),
+            summary: `ODIN 2.0 analisou ${body.caseType}:${body.caseId}.`,
+            metadata: {
+              caseType: body.caseType,
+              caseId: body.caseId,
+              riskScore: analysis.riskScore,
+              fraudProbability: analysis.fraudProbability,
+              actionType: analysis.actionType,
+            },
+          });
+
+          return reply.send(analysis);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Não foi possível gerar a análise ODIN 2.0.";
+          if (/Gemini|ODIN AI|configurad|quota|modelo/i.test(message)) {
+            return reply.status(503).send({ message });
+          }
+          return reply.status(400).send({ message });
+        }
+      },
+    );
+
+    adminApp.get("/odin/ai/analyses",
+      {
+        schema: {
+          description: "Lista análises ODIN 2.0 já guardadas para auditoria.",
+          tags: ["Security"],
+          querystring: odinAiAnalysesQuerySchema,
+          response: {
+            200: z.array(odinAiAnalysisSchema),
+            401: z.object({ message: z.string() }),
+            403: z.object({ message: z.string() }),
+          },
+        },
+      },
+      async (request: FastifyRequest<{ Querystring: z.infer<typeof odinAiAnalysesQuerySchema> }>, reply) => {
+        const query = odinAiAnalysesQuerySchema.parse(request.query);
+        return reply.send(await listOdinAiAnalyses(query));
+      },
+    );
+
+    adminApp.post("/odin/ai/analyses/:id/feedback",
+      {
+        schema: {
+          description: "Regista feedback humano sobre uma análise ODIN 2.0.",
+          tags: ["Security"],
+          params: odinAiFeedbackParamsSchema,
+          body: odinAiFeedbackBodySchema,
+          response: {
+            200: z.object({ success: z.literal(true), message: z.string() }),
+            400: z.object({ message: z.string() }),
+            401: z.object({ message: z.string() }),
+            403: z.object({ message: z.string() }),
+            404: z.object({ message: z.string() }),
+          },
+        },
+      },
+      async (
+        request: FastifyRequest<{
+          Params: z.infer<typeof odinAiFeedbackParamsSchema>;
+          Body: z.infer<typeof odinAiFeedbackBodySchema>;
+        }>,
+        reply,
+      ) => {
+        const params = odinAiFeedbackParamsSchema.parse(request.params);
+        const body = odinAiFeedbackBodySchema.parse(request.body);
+        const actorStudentNumber = request.student?.studentNumber ?? request.jury?.phone ?? "unknown";
+
+        try {
+          await recordOdinAiFeedback({
+            analysisId: params.id,
+            actorStudentNumber,
+            useful: body.useful,
+            recommendationCorrect: body.recommendationCorrect,
+            realityMatched: body.realityMatched,
+            note: body.note,
+          });
+
+          await recordAdminAudit({
+            actorStudentNumber,
+            actorRole: request.jury ? "jury_admin" : "admin",
+            action: "odin.ai_feedback",
+            entityType: "OdinAiAnalysis",
+            entityId: String(params.id),
+            summary: `Feedback ODIN 2.0 marcado como ${body.useful ? "útil" : "a rever"}.`,
+            metadata: body,
+          });
+
+          return reply.send({ success: true as const, message: "Feedback registado com sucesso." });
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Não foi possível guardar o feedback ODIN 2.0.";
+          if (/não encontrada/i.test(message)) return reply.status(404).send({ message });
+          return reply.status(400).send({ message });
+        }
       },
     );
 

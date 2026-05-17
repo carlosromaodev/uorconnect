@@ -8,7 +8,10 @@ import {
   RefreshCw,
   ShieldAlert,
   ShieldCheck,
+  Sparkles,
   Smartphone,
+  ThumbsDown,
+  ThumbsUp,
   Trash2,
   Users,
 } from "lucide-react";
@@ -28,6 +31,8 @@ import {
 import { Textarea } from "@/components/ui/textarea";
 import {
   api,
+  type OdinAiAnalysis,
+  type OdinAiCaseType,
   type OdinDeviceRisk,
   type OdinExcludeStudentInput,
   type OdinOverview,
@@ -57,6 +62,10 @@ const defaultExcludeOptions: OdinExcludeStudentInput = {
   removeComments: true,
   removePassport: false,
 };
+
+function odinAiCaseKey(caseType: OdinAiCaseType, caseId: string) {
+  return `${caseType}:${caseId}`;
+}
 
 function formatDateTime(value: string) {
   return new Intl.DateTimeFormat("pt-AO", {
@@ -104,7 +113,123 @@ function StatCard({
   );
 }
 
-function DeviceCard({ device }: { device: OdinDeviceRisk }) {
+function OdinAiAnalysisPanel({
+  analysis,
+  feedbackSending,
+  onFeedback,
+}: {
+  analysis: OdinAiAnalysis;
+  feedbackSending: boolean;
+  onFeedback: (analysis: OdinAiAnalysis, useful: boolean) => void;
+}) {
+  return (
+    <div className="mt-4 rounded-2xl border border-indigo-100 bg-indigo-50/70 p-4">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <div className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1 text-[11px] font-black uppercase tracking-[0.14em] text-indigo-700">
+            <Sparkles className="h-3.5 w-3.5" />
+            ODIN 2.0
+          </div>
+          <p className="mt-3 text-sm font-semibold leading-6 text-slate-800">{analysis.narrative}</p>
+        </div>
+        <div className="grid min-w-[150px] grid-cols-2 gap-2 text-center text-xs">
+          <div className="rounded-xl bg-white px-3 py-2">
+            <p className="text-[10px] font-black uppercase tracking-[0.12em] text-rose-500">Fraude</p>
+            <p className="text-lg font-black text-rose-700">{analysis.fraudProbability}%</p>
+          </div>
+          <div className="rounded-xl bg-white px-3 py-2">
+            <p className="text-[10px] font-black uppercase tracking-[0.12em] text-emerald-600">Legítimo</p>
+            <p className="text-lg font-black text-emerald-700">{analysis.legitimateProbability}%</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="mt-3 grid gap-3 md:grid-cols-2">
+        <div className="rounded-xl bg-white p-3">
+          <p className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-500">Cenário provável</p>
+          <p className="mt-1 text-xs font-semibold leading-5 text-slate-700">{analysis.mostLikelyScenario}</p>
+        </div>
+        <div className="rounded-xl bg-white p-3">
+          <p className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-500">Cenário alternativo</p>
+          <p className="mt-1 text-xs font-semibold leading-5 text-slate-700">{analysis.alternativeScenario}</p>
+        </div>
+      </div>
+
+      <div className="mt-3 rounded-xl bg-white p-3">
+        <p className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-500">Recomendação proporcional</p>
+        <p className="mt-1 text-xs font-semibold leading-5 text-slate-700">{analysis.recommendation}</p>
+      </div>
+
+      <div className="mt-3 flex flex-col gap-2 text-xs sm:flex-row sm:items-center sm:justify-between">
+        <span className="font-semibold text-indigo-700">
+          {analysis.modelVersion} · confiança {analysis.confidenceLevel} · feedback {analysis.feedbackCount}
+        </span>
+        <div className="flex gap-2">
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="h-8 rounded-xl bg-white text-xs"
+            disabled={feedbackSending}
+            onClick={() => onFeedback(analysis, true)}
+          >
+            {feedbackSending ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <ThumbsUp className="mr-1.5 h-3.5 w-3.5" />}
+            Útil
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            className="h-8 rounded-xl bg-white text-xs"
+            disabled={feedbackSending}
+            onClick={() => onFeedback(analysis, false)}
+          >
+            <ThumbsDown className="mr-1.5 h-3.5 w-3.5" />
+            Rever
+          </Button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function OdinAiAnalyzeButton({
+  analyzing,
+  onClick,
+}: {
+  analyzing: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <Button
+      type="button"
+      size="sm"
+      variant="outline"
+      className="h-8 rounded-xl border-indigo-200 bg-indigo-50 text-xs font-black text-indigo-700 hover:bg-indigo-100"
+      disabled={analyzing}
+      onClick={onClick}
+    >
+      {analyzing ? <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> : <Sparkles className="mr-1.5 h-3.5 w-3.5" />}
+      Analisar com AI
+    </Button>
+  );
+}
+
+function DeviceCard({
+  device,
+  analysis,
+  analyzing,
+  feedbackSending,
+  onAnalyze,
+  onFeedback,
+}: {
+  device: OdinDeviceRisk;
+  analysis?: OdinAiAnalysis;
+  analyzing: boolean;
+  feedbackSending: boolean;
+  onAnalyze: (caseType: OdinAiCaseType, caseId: string) => void;
+  onFeedback: (analysis: OdinAiAnalysis, useful: boolean) => void;
+}) {
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -117,7 +242,13 @@ function DeviceCard({ device }: { device: OdinDeviceRisk }) {
             Último sinal {formatDateTime(device.lastSeenAt)} · {device.eventCount} evento(s)
           </p>
         </div>
-        {riskBadge(device.riskLevel, device.riskScore)}
+        <div className="flex flex-wrap items-center gap-2">
+          {riskBadge(device.riskLevel, device.riskScore)}
+          <OdinAiAnalyzeButton
+            analyzing={analyzing}
+            onClick={() => onAnalyze("DEVICE", device.deviceId)}
+          />
+        </div>
       </div>
 
       <div className="mt-4 grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
@@ -161,6 +292,14 @@ function DeviceCard({ device }: { device: OdinDeviceRisk }) {
           </div>
         </div>
       </div>
+
+      {analysis ? (
+        <OdinAiAnalysisPanel
+          analysis={analysis}
+          feedbackSending={feedbackSending}
+          onFeedback={onFeedback}
+        />
+      ) : null}
     </div>
   );
 }
@@ -168,10 +307,22 @@ function DeviceCard({ device }: { device: OdinDeviceRisk }) {
 function StudentRiskCard({
   student,
   onExclude,
+  analysis,
+  analyzing,
+  feedbackSending,
+  onAnalyze,
+  onFeedback,
 }: {
   student: OdinStudentRisk;
   onExclude: (student: OdinStudentRisk) => void;
+  analysis?: OdinAiAnalysis;
+  analyzing: boolean;
+  feedbackSending: boolean;
+  onAnalyze: (caseType: OdinAiCaseType, caseId: string) => void;
+  onFeedback: (analysis: OdinAiAnalysis, useful: boolean) => void;
 }) {
+  const caseId = String(student.studentId ?? student.studentNumber);
+
   return (
     <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
@@ -185,6 +336,10 @@ function StudentRiskCard({
         </div>
         <div className="flex flex-wrap items-center gap-2">
           {riskBadge(student.riskLevel, student.riskScore)}
+          <OdinAiAnalyzeButton
+            analyzing={analyzing}
+            onClick={() => onAnalyze("STUDENT", caseId)}
+          />
           <Button
             size="sm"
             variant="destructive"
@@ -211,6 +366,14 @@ function StudentRiskCard({
           </p>
         ))}
       </div>
+
+      {analysis ? (
+        <OdinAiAnalysisPanel
+          analysis={analysis}
+          feedbackSending={feedbackSending}
+          onFeedback={onFeedback}
+        />
+      ) : null}
     </div>
   );
 }
@@ -219,6 +382,9 @@ export default function AdminOdinTab() {
   const [overview, setOverview] = useState<OdinOverview | null>(null);
   const [loading, setLoading] = useState(true);
   const [windowHours, setWindowHours] = useState(48);
+  const [aiAnalyses, setAiAnalyses] = useState<Record<string, OdinAiAnalysis>>({});
+  const [aiLoadingKey, setAiLoadingKey] = useState<string | null>(null);
+  const [aiFeedbackSendingId, setAiFeedbackSendingId] = useState<number | null>(null);
   const [selectedStudent, setSelectedStudent] = useState<OdinStudentRisk | null>(null);
   const [excludeOptions, setExcludeOptions] = useState<OdinExcludeStudentInput>(defaultExcludeOptions);
   const [excluding, setExcluding] = useState(false);
@@ -235,7 +401,19 @@ export default function AdminOdinTab() {
   const loadOverview = async (hours = windowHours) => {
     setLoading(true);
     try {
-      setOverview(await api.odin.overview({ windowHours: hours }));
+      const [nextOverview, recentAnalyses] = await Promise.all([
+        api.odin.overview({ windowHours: hours }),
+        api.odin.aiAnalyses({ limit: 50 }),
+      ]);
+      const indexedAnalyses = recentAnalyses.reduce<Record<string, OdinAiAnalysis>>((acc, analysis) => {
+        const key = odinAiCaseKey(analysis.caseType, analysis.caseId);
+        if (!acc[key] || new Date(analysis.createdAt) > new Date(acc[key].createdAt)) {
+          acc[key] = analysis;
+        }
+        return acc;
+      }, {});
+      setOverview(nextOverview);
+      setAiAnalyses(indexedAnalyses);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Não foi possível carregar o ODIN.");
     } finally {
@@ -257,6 +435,46 @@ export default function AdminOdinTab() {
 
   const updateExcludeOption = (key: keyof OdinExcludeStudentInput, value: boolean | string) => {
     setExcludeOptions((current) => ({ ...current, [key]: value }));
+  };
+
+  const handleAnalyzeCase = async (caseType: OdinAiCaseType, caseId: string) => {
+    const key = odinAiCaseKey(caseType, caseId);
+    setAiLoadingKey(key);
+    try {
+      const analysis = await api.odin.analyzeCase({ caseType, caseId, windowHours });
+      setAiAnalyses((current) => ({ ...current, [key]: analysis }));
+      toast.success("ODIN 2.0 gerou uma análise assistida por AI.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível analisar este caso com AI.");
+    } finally {
+      setAiLoadingKey(null);
+    }
+  };
+
+  const handleAiFeedback = async (analysis: OdinAiAnalysis, useful: boolean) => {
+    setAiFeedbackSendingId(analysis.id);
+    try {
+      await api.odin.sendAiFeedback(analysis.id, {
+        useful,
+        recommendationCorrect: useful,
+        realityMatched: useful,
+        note: useful
+          ? "Análise útil para decisão da organização."
+          : "Admin marcou a análise para revisão humana adicional.",
+      });
+      setAiAnalyses((current) => ({
+        ...current,
+        [odinAiCaseKey(analysis.caseType, analysis.caseId)]: {
+          ...analysis,
+          feedbackCount: analysis.feedbackCount + 1,
+        },
+      }));
+      toast.success(useful ? "Feedback registado como útil." : "Feedback registado para revisão.");
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível guardar o feedback.");
+    } finally {
+      setAiFeedbackSendingId(null);
+    }
   };
 
   const handleExclude = async () => {
@@ -351,7 +569,15 @@ export default function AdminOdinTab() {
               </CardHeader>
               <CardContent className="space-y-4">
                 {topDevices.map((device) => (
-                  <DeviceCard key={device.deviceId} device={device} />
+                  <DeviceCard
+                    key={device.deviceId}
+                    device={device}
+                    analysis={aiAnalyses[odinAiCaseKey("DEVICE", device.deviceId)]}
+                    analyzing={aiLoadingKey === odinAiCaseKey("DEVICE", device.deviceId)}
+                    feedbackSending={aiFeedbackSendingId === aiAnalyses[odinAiCaseKey("DEVICE", device.deviceId)]?.id}
+                    onAnalyze={handleAnalyzeCase}
+                    onFeedback={handleAiFeedback}
+                  />
                 ))}
                 {topDevices.length === 0 && (
                   <div className="rounded-2xl border border-dashed border-emerald-200 bg-emerald-50 p-6 text-center text-sm font-semibold text-emerald-800">
@@ -376,6 +602,11 @@ export default function AdminOdinTab() {
                     key={`${student.studentId ?? student.studentNumber}-${student.lastSeenAt}`}
                     student={student}
                     onExclude={openExcludeDialog}
+                    analysis={aiAnalyses[odinAiCaseKey("STUDENT", String(student.studentId ?? student.studentNumber))]}
+                    analyzing={aiLoadingKey === odinAiCaseKey("STUDENT", String(student.studentId ?? student.studentNumber))}
+                    feedbackSending={aiFeedbackSendingId === aiAnalyses[odinAiCaseKey("STUDENT", String(student.studentId ?? student.studentNumber))]?.id}
+                    onAnalyze={handleAnalyzeCase}
+                    onFeedback={handleAiFeedback}
                   />
                 ))}
                 {topStudents.length === 0 && (
@@ -407,6 +638,22 @@ export default function AdminOdinTab() {
                         {project.suspiciousVotes} voto(s)
                       </Badge>
                     </div>
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                      <OdinAiAnalyzeButton
+                        analyzing={aiLoadingKey === odinAiCaseKey("PROJECT", String(project.submissionId))}
+                        onClick={() => void handleAnalyzeCase("PROJECT", String(project.submissionId))}
+                      />
+                      <span className="text-xs font-semibold text-slate-500">
+                        Avalia pressão macro do projeto sem punir automaticamente.
+                      </span>
+                    </div>
+                    {aiAnalyses[odinAiCaseKey("PROJECT", String(project.submissionId))] ? (
+                      <OdinAiAnalysisPanel
+                        analysis={aiAnalyses[odinAiCaseKey("PROJECT", String(project.submissionId))]}
+                        feedbackSending={aiFeedbackSendingId === aiAnalyses[odinAiCaseKey("PROJECT", String(project.submissionId))]?.id}
+                        onFeedback={handleAiFeedback}
+                      />
+                    ) : null}
                   </div>
                 ))}
                 {(overview?.projects ?? []).length === 0 && (
