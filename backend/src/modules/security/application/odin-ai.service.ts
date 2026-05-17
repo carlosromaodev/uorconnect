@@ -27,6 +27,84 @@ export interface OdinAiSafeEvent {
   createdAt: string;
 }
 
+export type OdinAiStudentAccessType = "OFFICIAL" | "TEMPORARY";
+
+export interface OdinAiStudentProfile {
+  id: number;
+  studentNumber: string;
+  name: string | null;
+  course: string | null;
+  university: string | null;
+  registrationSource: string | null;
+  accessType: OdinAiStudentAccessType;
+  createdAt: string;
+  lastLoginAt: string | null;
+  deletedAt: string | null;
+  deletedReasonPresent: boolean;
+  profileSignals: {
+    hasEmail: boolean;
+    emailDomain: string | null;
+    hasPhone: boolean;
+    hasAvatar: boolean;
+    profileCompleted: boolean;
+    academicSynced: boolean;
+  };
+  integrityFlags: string[];
+  behaviorSummary: {
+    loginAuditCount: number;
+    voteCount: number;
+    likeCount: number;
+    commentCount: number;
+    passportScanCount: number;
+    passportPointLedgerCount: number;
+    projectMembershipCount: number;
+    ownedProjectCount: number;
+  };
+}
+
+export interface OdinAiStudentDatabaseContext {
+  coverage: {
+    relatedStudents: number;
+    officialAccounts: number;
+    temporaryAccounts: number;
+    deletedAccounts: number;
+    invalidDataAccounts: number;
+    missingCourseAccounts: number;
+    projectMembers: number;
+    unconfirmedProjectMembers: number;
+  };
+  students: OdinAiStudentProfile[];
+  projectMembers: Array<{
+    memberId: number;
+    name: string;
+    studentNumber: string | null;
+    expectedStudentNumber: string | null;
+    isExternal: boolean;
+    externalOrganization: string | null;
+    confirmed: boolean;
+    linkedStudentId: number | null;
+  }>;
+  patterns: {
+    courseDistribution: Array<{ course: string; students: number }>;
+    sharedPhoneGroups: Array<{ studentCount: number; studentNumbers: string[] }>;
+    temporaryOrDeletedVoters: number;
+    profilesWithInvalidData: number;
+    highActivityProfiles: Array<{
+      studentNumber: string;
+      voteCount: number;
+      passportScanCount: number;
+      projectMembershipCount: number;
+    }>;
+  };
+  privacy: {
+    rawPasswordsIncluded: false;
+    rawTokensIncluded: false;
+    rawPhonesIncluded: false;
+    rawEmailsIncluded: false;
+    note: string;
+  };
+}
+
 export interface OdinAiCaseContext {
   caseType: OdinAiCaseType;
   caseId: string;
@@ -48,6 +126,7 @@ export interface OdinAiCaseContext {
     projectName: string | null;
   };
   relatedEvents: OdinAiSafeEvent[];
+  studentDatabaseContext?: OdinAiStudentDatabaseContext;
   platformContext: {
     eventName: string;
     eventDate: string;
@@ -99,6 +178,8 @@ Contexto do sistema:
 - O evento acontece presencialmente.
 - Dispositivos podem ser partilhados em laboratórios.
 - Grupos do mesmo curso podem votar juntos de forma legítima.
+- Tens acesso seguro a um resumo da base de estudantes: tipo de conta, dados incompletos, contas eliminadas, projetos, votos e passaporte.
+- Não recebes senhas, tokens, códigos de acesso, emails completos nem telefones completos.
 
 Ao analisar um caso, considera sempre:
 1. Pode haver explicação legítima para este padrão?
@@ -135,6 +216,117 @@ function safeText(value: unknown, fallback: string, maxLength = 1400) {
 
 function readField(source: Record<string, unknown>, snake: string, camel: string) {
   return source[snake] ?? source[camel];
+}
+
+type OdinAiStudentProfileRow = {
+  id: number;
+  studentNumber: string;
+  name: string | null;
+  email: string | null;
+  course: string | null;
+  phone: string | null;
+  avatarUrl: string | null;
+  university: string | null;
+  registrationSource: string | null;
+  academicSyncedAt: Date | null;
+  profileCompletedAt: Date | null;
+  deletedAt: Date | null;
+  deletionReason?: string | null;
+  lastLoginAt: Date | null;
+  createdAt: Date;
+  _count: {
+    loginAudits: number;
+    votes: number;
+    likes: number;
+    comments: number;
+    passportScans: number;
+    passportPointLedger: number;
+    submissionMemberships: number;
+    submissions: number;
+  };
+};
+
+function isOfficialRegistrationSource(value?: string | null) {
+  const source = value?.trim().toUpperCase() ?? "";
+  return source === "SECRETARIA" || source === "ISPTEC_OFFICIAL";
+}
+
+function resolveStudentAccessType(student: Pick<OdinAiStudentProfileRow, "academicSyncedAt" | "registrationSource">): OdinAiStudentAccessType {
+  return student.academicSyncedAt || isOfficialRegistrationSource(student.registrationSource)
+    ? "OFFICIAL"
+    : "TEMPORARY";
+}
+
+function emailDomain(value?: string | null) {
+  const match = value?.trim().toLowerCase().match(/@([^@\s]+)$/);
+  return match?.[1] ?? null;
+}
+
+function validStudentNumber(value?: string | null) {
+  const normalized = value?.trim() ?? "";
+  if (!normalized || normalized === "sem-numero") return false;
+  return normalized.length <= 40 && /^[\p{L}\p{N}._-]+$/u.test(normalized);
+}
+
+export function buildOdinAiStudentProfile(student: OdinAiStudentProfileRow): OdinAiStudentProfile {
+  const accessType = resolveStudentAccessType(student);
+  const integrityFlags: string[] = [];
+
+  if (student.deletedAt) integrityFlags.push("CONTA_ELIMINADA");
+  if (accessType === "TEMPORARY") integrityFlags.push("CONTA_TEMPORARIA");
+  if (!validStudentNumber(student.studentNumber)) integrityFlags.push("NUMERO_ESTUDANTE_INVALIDO");
+  if (!student.name?.trim()) integrityFlags.push("NOME_EM_FALTA");
+  if (!student.course?.trim()) integrityFlags.push("CURSO_EM_FALTA");
+  if (!student.phone?.trim() && !student.email?.trim()) integrityFlags.push("CONTACTO_EM_FALTA");
+  if (!student.profileCompletedAt) integrityFlags.push("PERFIL_INCOMPLETO");
+  if (!student.lastLoginAt && student._count.loginAudits === 0) integrityFlags.push("SEM_LOGIN_CONFIRMADO_RECENTE");
+
+  return {
+    id: student.id,
+    studentNumber: student.studentNumber,
+    name: student.name,
+    course: student.course,
+    university: student.university,
+    registrationSource: student.registrationSource,
+    accessType,
+    createdAt: student.createdAt.toISOString(),
+    lastLoginAt: student.lastLoginAt?.toISOString() ?? null,
+    deletedAt: student.deletedAt?.toISOString() ?? null,
+    deletedReasonPresent: Boolean(student.deletionReason?.trim()),
+    profileSignals: {
+      hasEmail: Boolean(student.email?.trim()),
+      emailDomain: emailDomain(student.email),
+      hasPhone: Boolean(student.phone?.trim()),
+      hasAvatar: Boolean(student.avatarUrl?.trim()),
+      profileCompleted: Boolean(student.profileCompletedAt),
+      academicSynced: Boolean(student.academicSyncedAt),
+    },
+    integrityFlags,
+    behaviorSummary: {
+      loginAuditCount: student._count.loginAudits,
+      voteCount: student._count.votes,
+      likeCount: student._count.likes,
+      commentCount: student._count.comments,
+      passportScanCount: student._count.passportScans,
+      passportPointLedgerCount: student._count.passportPointLedger,
+      projectMembershipCount: student._count.submissionMemberships,
+      ownedProjectCount: student._count.submissions,
+    },
+  };
+}
+
+const SECRET_FIELD_PATTERN = /(password|senha|token|secret|codeHash|providerResponseJson|authorization|cookie|jwt|apiKey)/i;
+
+function sanitizeForGemini(value: unknown, depth = 0): unknown {
+  if (depth > 12) return "[removido: profundidade excessiva]";
+  if (Array.isArray(value)) return value.map((item) => sanitizeForGemini(item, depth + 1));
+  if (!value || typeof value !== "object" || value instanceof Date) return value;
+
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>)
+      .filter(([key]) => !SECRET_FIELD_PATTERN.test(key))
+      .map(([key, entry]) => [key, sanitizeForGemini(entry, depth + 1)]),
+  );
 }
 
 export function normalizeOdinAiVerdict(input: unknown): OdinAiVerdict {
@@ -176,7 +368,7 @@ export function buildOdinAiCasePayload(caseContext: OdinAiCaseContext) {
   return {
     promptVersion: ODIN_AI_PROMPT_VERSION,
     systemPrompt: ODIN_AI_SYSTEM_PROMPT,
-    caseContext,
+    caseContext: sanitizeForGemini(caseContext) as OdinAiCaseContext,
   };
 }
 
@@ -328,6 +520,231 @@ function currentPhase() {
   return "Fecho ou pós-evento";
 }
 
+function emptyStudentDatabaseContext(projectMembers: OdinAiStudentDatabaseContext["projectMembers"] = []): OdinAiStudentDatabaseContext {
+  return {
+    coverage: {
+      relatedStudents: 0,
+      officialAccounts: 0,
+      temporaryAccounts: 0,
+      deletedAccounts: 0,
+      invalidDataAccounts: 0,
+      missingCourseAccounts: 0,
+      projectMembers: projectMembers.length,
+      unconfirmedProjectMembers: projectMembers.filter((member) => !member.confirmed).length,
+    },
+    students: [],
+    projectMembers,
+    patterns: {
+      courseDistribution: [],
+      sharedPhoneGroups: [],
+      temporaryOrDeletedVoters: 0,
+      profilesWithInvalidData: 0,
+      highActivityProfiles: [],
+    },
+    privacy: {
+      rawPasswordsIncluded: false,
+      rawTokensIncluded: false,
+      rawPhonesIncluded: false,
+      rawEmailsIncluded: false,
+      note: "O ODIN AI recebe apenas resumo seguro; senhas, tokens, códigos, telefones completos e emails completos ficam fora do payload.",
+    },
+  };
+}
+
+function normalizedPhoneKey(value?: string | null) {
+  const digits = value?.replace(/\D/g, "") ?? "";
+  return digits.length >= 6 ? digits : null;
+}
+
+function buildCourseDistribution(students: OdinAiStudentProfile[]) {
+  const byCourse = new Map<string, number>();
+  for (const student of students) {
+    const course = student.course?.trim() || "Curso em falta";
+    byCourse.set(course, (byCourse.get(course) ?? 0) + 1);
+  }
+  return Array.from(byCourse.entries())
+    .map(([course, count]) => ({ course, students: count }))
+    .sort((left, right) => right.students - left.students || left.course.localeCompare(right.course))
+    .slice(0, 12);
+}
+
+function buildSharedPhoneGroups(students: OdinAiStudentProfileRow[]) {
+  const byPhone = new Map<string, string[]>();
+  for (const student of students) {
+    const key = normalizedPhoneKey(student.phone);
+    if (!key) continue;
+    byPhone.set(key, [...(byPhone.get(key) ?? []), student.studentNumber]);
+  }
+  return Array.from(byPhone.values())
+    .filter((numbers) => numbers.length >= 2)
+    .map((studentNumbers) => ({
+      studentCount: studentNumbers.length,
+      studentNumbers: studentNumbers.slice(0, 8),
+    }))
+    .slice(0, 10);
+}
+
+function buildStudentDatabaseReasons(context: OdinAiStudentDatabaseContext) {
+  const reasons: string[] = [];
+  if (context.coverage.invalidDataAccounts > 0) {
+    reasons.push(`Base de estudantes: ${context.coverage.invalidDataAccounts} conta(s) com dados inválidos ou incompletos no contexto.`);
+  }
+  if (context.coverage.temporaryAccounts > 0) {
+    reasons.push(`Base de estudantes: ${context.coverage.temporaryAccounts} conta(s) temporária(s), não confirmada(s) por Secretaria/ISPTEC.`);
+  }
+  if (context.coverage.deletedAccounts > 0) {
+    reasons.push(`Base de estudantes: ${context.coverage.deletedAccounts} conta(s) eliminada(s) aparece(m) no padrão analisado.`);
+  }
+  if (context.patterns.sharedPhoneGroups.length > 0) {
+    reasons.push(`Base de estudantes: ${context.patterns.sharedPhoneGroups.length} grupo(s) partilham o mesmo telefone normalizado.`);
+  }
+  if (context.coverage.unconfirmedProjectMembers > 0) {
+    reasons.push(`Projeto: ${context.coverage.unconfirmedProjectMembers} membro(s) ainda sem confirmação de presença.`);
+  }
+  return reasons;
+}
+
+async function loadProjectMembers(projectId?: number | null): Promise<OdinAiStudentDatabaseContext["projectMembers"]> {
+  if (!projectId || !Number.isFinite(projectId)) return [];
+  const members = await prisma.submissionMember.findMany({
+    where: { submissionId: projectId },
+    select: {
+      id: true,
+      name: true,
+      studentId: true,
+      expectedStudentNumber: true,
+      studentNumber: true,
+      isExternal: true,
+      externalOrganization: true,
+      confirmedAt: true,
+    },
+    orderBy: { id: "asc" },
+  });
+
+  return members.map((member) => ({
+    memberId: member.id,
+    name: member.name,
+    studentNumber: member.studentNumber,
+    expectedStudentNumber: member.expectedStudentNumber,
+    isExternal: member.isExternal,
+    externalOrganization: member.externalOrganization,
+    confirmed: Boolean(member.confirmedAt),
+    linkedStudentId: member.studentId,
+  }));
+}
+
+async function buildStudentDatabaseContext(
+  relatedEvents: OdinRawEvent[],
+  options: { projectId?: number | null } = {},
+): Promise<OdinAiStudentDatabaseContext> {
+  const projectMembers = await loadProjectMembers(options.projectId);
+  const studentIds = new Set<number>();
+  const studentNumbers = new Set<string>();
+
+  for (const event of relatedEvents) {
+    if (event.studentId) studentIds.add(event.studentId);
+    if (event.studentNumber) studentNumbers.add(event.studentNumber);
+  }
+  for (const member of projectMembers) {
+    if (member.linkedStudentId) studentIds.add(member.linkedStudentId);
+    if (member.studentNumber) studentNumbers.add(member.studentNumber);
+    if (member.expectedStudentNumber) studentNumbers.add(member.expectedStudentNumber);
+  }
+
+  const whereOr = [
+    ...(studentIds.size ? [{ id: { in: Array.from(studentIds) } }] : []),
+    ...(studentNumbers.size ? [{ studentNumber: { in: Array.from(studentNumbers) } }] : []),
+  ];
+  if (whereOr.length === 0) return emptyStudentDatabaseContext(projectMembers);
+
+  const studentRows = await prisma.student.findMany({
+    where: { OR: whereOr },
+    select: {
+      id: true,
+      studentNumber: true,
+      name: true,
+      email: true,
+      course: true,
+      phone: true,
+      avatarUrl: true,
+      university: true,
+      registrationSource: true,
+      academicSyncedAt: true,
+      profileCompletedAt: true,
+      deletedAt: true,
+      deletionReason: true,
+      lastLoginAt: true,
+      createdAt: true,
+      _count: {
+        select: {
+          loginAudits: true,
+          votes: true,
+          likes: true,
+          comments: true,
+          passportScans: true,
+          passportPointLedger: true,
+          submissionMemberships: true,
+          submissions: true,
+        },
+      },
+    },
+    orderBy: { updatedAt: "desc" },
+    take: 200,
+  });
+
+  const students = studentRows.map(buildOdinAiStudentProfile);
+  const temporaryOrDeletedNumbers = new Set(
+    students
+      .filter((student) => student.accessType === "TEMPORARY" || student.deletedAt)
+      .map((student) => student.studentNumber),
+  );
+  const eventVoterNumbers = new Set(
+    relatedEvents
+      .filter((event) => event.eventType === "PROJECT_VOTE" && event.studentNumber)
+      .map((event) => event.studentNumber as string),
+  );
+
+  return {
+    coverage: {
+      relatedStudents: students.length,
+      officialAccounts: students.filter((student) => student.accessType === "OFFICIAL").length,
+      temporaryAccounts: students.filter((student) => student.accessType === "TEMPORARY").length,
+      deletedAccounts: students.filter((student) => Boolean(student.deletedAt)).length,
+      invalidDataAccounts: students.filter((student) => student.integrityFlags.length > 0).length,
+      missingCourseAccounts: students.filter((student) => student.integrityFlags.includes("CURSO_EM_FALTA")).length,
+      projectMembers: projectMembers.length,
+      unconfirmedProjectMembers: projectMembers.filter((member) => !member.confirmed).length,
+    },
+    students,
+    projectMembers,
+    patterns: {
+      courseDistribution: buildCourseDistribution(students),
+      sharedPhoneGroups: buildSharedPhoneGroups(studentRows),
+      temporaryOrDeletedVoters: Array.from(eventVoterNumbers).filter((number) => temporaryOrDeletedNumbers.has(number)).length,
+      profilesWithInvalidData: students.filter((student) => student.integrityFlags.length > 0).length,
+      highActivityProfiles: [...students]
+        .sort((left, right) =>
+          (right.behaviorSummary.voteCount + right.behaviorSummary.passportScanCount + right.behaviorSummary.projectMembershipCount)
+          - (left.behaviorSummary.voteCount + left.behaviorSummary.passportScanCount + left.behaviorSummary.projectMembershipCount)
+        )
+        .slice(0, 10)
+        .map((student) => ({
+          studentNumber: student.studentNumber,
+          voteCount: student.behaviorSummary.voteCount,
+          passportScanCount: student.behaviorSummary.passportScanCount,
+          projectMembershipCount: student.behaviorSummary.projectMembershipCount,
+        })),
+    },
+    privacy: {
+      rawPasswordsIncluded: false,
+      rawTokensIncluded: false,
+      rawPhonesIncluded: false,
+      rawEmailsIncluded: false,
+      note: "O ODIN AI recebe apenas resumo seguro; senhas, tokens, códigos, telefones completos e emails completos ficam fora do payload.",
+    },
+  };
+}
+
 export async function resolveOdinAiCaseContext(
   env: Env,
   input: { caseType: OdinAiCaseType; caseId: string; windowHours?: number },
@@ -343,6 +760,7 @@ export async function resolveOdinAiCaseContext(
     const device = snapshot.devices.find((item) => item.deviceId === input.caseId);
     if (!device) throw new Error("Caso ODIN de dispositivo não encontrado nesta janela.");
     const relatedEvents = events.filter((event) => event.deviceId === input.caseId);
+    const studentDatabaseContext = await buildStudentDatabaseContext(relatedEvents);
     return {
       caseType: input.caseType,
       caseId: input.caseId,
@@ -350,7 +768,7 @@ export async function resolveOdinAiCaseContext(
       windowHours: hours,
       riskScore: device.riskScore,
       riskLevel: device.riskLevel,
-      reasons: device.reasons,
+      reasons: [...device.reasons, ...buildStudentDatabaseReasons(studentDatabaseContext)],
       summary: buildSummary(relatedEvents),
       subject: {
         label: `Dispositivo ${input.caseId}`,
@@ -358,6 +776,7 @@ export async function resolveOdinAiCaseContext(
         projectName: device.projects[0]?.submissionName ?? null,
       },
       relatedEvents: sortedSafeEvents(relatedEvents),
+      studentDatabaseContext,
       platformContext: {
         eventName: env.UORCONNECT_EVENT_NAME,
         eventDate: env.UORCONNECT_EVENT_DATE,
@@ -372,6 +791,7 @@ export async function resolveOdinAiCaseContext(
     const relatedEvents = events.filter((event) =>
       String(event.studentId ?? "") === input.caseId || event.studentNumber === student.studentNumber
     );
+    const studentDatabaseContext = await buildStudentDatabaseContext(relatedEvents);
     return {
       caseType: input.caseType,
       caseId: input.caseId,
@@ -379,7 +799,7 @@ export async function resolveOdinAiCaseContext(
       windowHours: hours,
       riskScore: student.riskScore,
       riskLevel: student.riskLevel,
-      reasons: student.reasons,
+      reasons: [...student.reasons, ...buildStudentDatabaseReasons(studentDatabaseContext)],
       summary: buildSummary(relatedEvents),
       subject: {
         label: student.studentName ?? `Estudante ${student.studentNumber}`,
@@ -387,6 +807,7 @@ export async function resolveOdinAiCaseContext(
         projectName: student.projectsVoted[0]?.submissionName ?? null,
       },
       relatedEvents: sortedSafeEvents(relatedEvents),
+      studentDatabaseContext,
       platformContext: {
         eventName: env.UORCONNECT_EVENT_NAME,
         eventDate: env.UORCONNECT_EVENT_DATE,
@@ -398,6 +819,7 @@ export async function resolveOdinAiCaseContext(
   const project = findProject(snapshot, input.caseId);
   if (!project) throw new Error("Caso ODIN de projeto não encontrado nesta janela.");
   const relatedEvents = events.filter((event) => event.targetType === "Submission" && String(event.targetId) === input.caseId);
+  const studentDatabaseContext = await buildStudentDatabaseContext(relatedEvents, { projectId: project.submissionId });
   const riskScore = Math.min(100, 30 + project.suspiciousVotes * 8 + project.suspiciousDevices * 12 + project.suspiciousStudents * 4);
   return {
     caseType: input.caseType,
@@ -409,6 +831,7 @@ export async function resolveOdinAiCaseContext(
     reasons: [
       `${project.suspiciousVotes} voto(s) sob análise para este projeto.`,
       `${project.suspiciousDevices} dispositivo(s) e ${project.suspiciousStudents} conta(s) associados ao padrão.`,
+      ...buildStudentDatabaseReasons(studentDatabaseContext),
     ],
     summary: buildSummary(relatedEvents),
     subject: {
@@ -417,6 +840,7 @@ export async function resolveOdinAiCaseContext(
       projectName: project.submissionName,
     },
     relatedEvents: sortedSafeEvents(relatedEvents),
+    studentDatabaseContext,
     platformContext: {
       eventName: env.UORCONNECT_EVENT_NAME,
       eventDate: env.UORCONNECT_EVENT_DATE,

@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  buildOdinAiStudentProfile,
   buildOdinAiCasePayload,
   normalizeOdinAiVerdict,
   type OdinAiCaseContext,
@@ -91,5 +92,75 @@ describe("ODIN AI analysis service", () => {
     expect(payload.caseContext.reasons).toHaveLength(2);
     expect(payload.caseContext.relatedEvents[0]).not.toHaveProperty("ipAddress");
     expect(payload.promptVersion).toMatch(/^odin-ai-v/);
+  });
+
+  it("summarizes student database integrity without treating temporary accounts as official", () => {
+    const profile = buildOdinAiStudentProfile({
+      id: 77,
+      studentNumber: "tmp-uor-0001",
+      name: null,
+      email: null,
+      course: null,
+      phone: null,
+      avatarUrl: null,
+      university: null,
+      registrationSource: "CONVENTIONAL_SMS",
+      academicSyncedAt: null,
+      profileCompletedAt: null,
+      deletedAt: new Date("2026-05-18T09:00:00.000Z"),
+      deletionReason: "Conta duplicada",
+      lastLoginAt: null,
+      createdAt: new Date("2026-05-18T08:00:00.000Z"),
+      _count: {
+        loginAudits: 0,
+        votes: 2,
+        likes: 0,
+        comments: 0,
+        passportScans: 1,
+        passportPointLedger: 1,
+        submissionMemberships: 0,
+        submissions: 0,
+      },
+    });
+
+    expect(profile.accessType).toBe("TEMPORARY");
+    expect(profile.integrityFlags).toEqual(expect.arrayContaining([
+      "CONTA_ELIMINADA",
+      "CONTA_TEMPORARIA",
+      "NOME_EM_FALTA",
+      "CURSO_EM_FALTA",
+      "CONTACTO_EM_FALTA",
+      "PERFIL_INCOMPLETO",
+    ]));
+    expect(profile.behaviorSummary).toMatchObject({
+      loginAuditCount: 0,
+      voteCount: 2,
+      passportScanCount: 1,
+    });
+  });
+
+  it("removes secrets from the Gemini payload even when attached accidentally", () => {
+    const payload = buildOdinAiCasePayload({
+      ...baseCase,
+      studentDatabaseContext: {
+        students: [{
+          studentNumber: "20260001",
+          name: "Ana",
+          password: "senha-que-nao-pode-sair",
+          token: "token-privado",
+          codeHash: "hash-secreto",
+          providerResponseJson: "{\"raw\":true}",
+        }],
+      },
+    } as OdinAiCaseContext);
+
+    const serialized = JSON.stringify(payload);
+
+    expect(serialized).toContain("studentDatabaseContext");
+    expect(serialized).toContain("20260001");
+    expect(serialized).not.toContain("senha-que-nao-pode-sair");
+    expect(serialized).not.toContain("token-privado");
+    expect(serialized).not.toContain("hash-secreto");
+    expect(serialized).not.toContain("providerResponseJson");
   });
 });
