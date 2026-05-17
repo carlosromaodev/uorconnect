@@ -9,6 +9,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { api, type AttendanceCheckIn, type AttendanceOverview, type DigitalPassportAdminMission, type PagedResult, type QrActionItem, type QrActionScanItem, type QrActionsOverview } from "@/lib/api";
 import { AdminTablePagination } from "@/components/admin/AdminTablePagination";
 import { QrCameraScanner } from "@/components/admin/QrCameraScanner";
+import { downloadBlobFile } from "@/lib/student-documents";
 
 function formatDate(value: string) {
   return new Intl.DateTimeFormat("pt-PT", {
@@ -55,6 +56,7 @@ export default function AdminAttendanceTab() {
   const [selectedAction, setSelectedAction] = useState<QrActionItem | null>(null);
   const [actionScans, setActionScans] = useState<QrActionScanItem[]>([]);
   const [creatingAction, setCreatingAction] = useState(false);
+  const [downloadingQrPdfId, setDownloadingQrPdfId] = useState<number | null>(null);
   const [newAction, setNewAction] = useState({
     type: "CHECKIN" as string,
     label: "",
@@ -202,6 +204,19 @@ export default function AdminAttendanceTab() {
       setActionScans(detail.scans);
     } catch {
       setActionScans([]);
+    }
+  };
+
+  const handleDownloadQrActionPdf = async (action: QrActionItem) => {
+    setDownloadingQrPdfId(action.id);
+    try {
+      const blob = await api.attendance.qrActionPdf(action.id);
+      const safeName = action.label.toLowerCase().replace(/[^a-z0-9]+/gi, "-").replace(/^-+|-+$/g, "") || String(action.id);
+      downloadBlobFile(blob, `qr-${safeName}-${action.id}.pdf`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Falha ao baixar PDF do QR.");
+    } finally {
+      setDownloadingQrPdfId(null);
     }
   };
 
@@ -473,6 +488,10 @@ export default function AdminAttendanceTab() {
                           <Eye className="mr-1 h-3 w-3" />
                           Detalhes
                         </Button>
+                        <Button variant="outline" size="sm" className="h-8 rounded-lg px-2.5 text-[10px] sm:h-7" onClick={() => void handleDownloadQrActionPdf(action)} disabled={downloadingQrPdfId === action.id}>
+                          {downloadingQrPdfId === action.id ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <Download className="mr-1 h-3 w-3" />}
+                          Baixar PDF
+                        </Button>
                         <Button variant="outline" size="sm" className="h-8 rounded-lg px-2.5 text-[10px] sm:h-7" onClick={() => copyToClipboard(action.token)}>
                           <Copy className="mr-1 h-3 w-3" />
                           Token
@@ -677,6 +696,10 @@ export default function AdminAttendanceTab() {
                     <Button variant="outline" size="sm" className="w-full rounded-xl text-xs sm:w-auto" onClick={() => copyToClipboard(selectedAction.qrImageUrl)}>
                       <Copy className="mr-1.5 h-3 w-3" />
                       Copiar link QR
+                    </Button>
+                    <Button variant="outline" size="sm" className="w-full rounded-xl text-xs sm:w-auto" onClick={() => void handleDownloadQrActionPdf(selectedAction)} disabled={downloadingQrPdfId === selectedAction.id}>
+                      {downloadingQrPdfId === selectedAction.id ? <Loader2 className="mr-1.5 h-3 w-3 animate-spin" /> : <Download className="mr-1.5 h-3 w-3" />}
+                      Baixar PDF
                     </Button>
                     <Button variant="outline" size="sm" className="w-full rounded-xl text-xs sm:w-auto" asChild>
                       <a href={selectedAction.qrImageUrl} target="_blank" rel="noreferrer">

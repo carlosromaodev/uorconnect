@@ -23,6 +23,7 @@ import {
   loadLogoDataUri,
   renderPdfFromHtml,
 } from "../../reports/http/pdf-report.utils";
+import { renderNormalQrPdf, safeQrPdfFilePart } from "../../qr-actions/http/normal-qr-pdf";
 import { renderChallengeManualPdf } from "./challenge-manual-pdf";
 import {
   answerPassportChallenge,
@@ -972,6 +973,26 @@ function serializeAdminMissionQr(
   };
 }
 
+function missionQrTypeLabel(type: string) {
+  const labels: Record<string, string> = {
+    POINT_BATTLE_QR: "Batalha de pontos",
+    CLUE_CHAIN_QR: "Pista do jogo",
+    COOPERATIVE_MISSION_QR: "Missão cooperativa",
+    RECOVERY_SMART_QR: "Recuperação inteligente",
+  };
+  return labels[type] ?? type;
+}
+
+function missionQrResultLabel(type: string) {
+  const labels: Record<string, string> = {
+    POINT_BATTLE_QR: "Efeito no passaporte",
+    CLUE_CHAIN_QR: "Pista desbloqueada",
+    COOPERATIVE_MISSION_QR: "Progresso cooperativo",
+    RECOVERY_SMART_QR: "Recuperação aberta",
+  };
+  return labels[type] ?? "Etapa validada";
+}
+
 function serializePassportRecovery(recovery: {
   id: number;
   studentNumber: string;
@@ -1918,6 +1939,48 @@ export async function passportRoutes(app: FastifyInstance, opts: { env: Env }) {
             orderBy: [{ active: "desc" }, { createdAt: "desc" }],
           });
           return actions.map((action) => serializeAdminMissionQr(opts.env, action));
+        },
+      );
+
+      adminApp.get(
+        "/admin/mission-qrs/:id/pdf",
+        {
+          schema: {
+            params: z.object({ id: z.coerce.number().int().min(1) }),
+            response: {
+              404: z.object({ message: z.string() }),
+            },
+          },
+        },
+        async (request, reply) => {
+          const params = request.params as { id: number };
+          const action = await prisma.qrAction.findUnique({
+            where: { id: params.id },
+            include: {
+              passportMission: { select: { title: true, key: true } },
+            },
+          });
+          if (!action || !passportMissionQrTypes.includes(action.type as typeof passportMissionQrTypes[number])) {
+            return reply.code(404).send({ message: "QR de etapa não encontrado." });
+          }
+
+          const pdf = await renderNormalQrPdf(opts.env, {
+            token: action.token,
+            title: action.passportMission?.title ?? action.eventLabel ?? action.label,
+            subtitle: action.label,
+            description: action.description,
+            targetLabel: action.passportMission?.title ?? action.eventLabel ?? null,
+            typeLabel: missionQrTypeLabel(action.type),
+            contextLabel: action.passportMission?.title ?? "Passaporte Digital",
+            resultLabel: missionQrResultLabel(action.type),
+            statusLabel: action.active ? "Ativo" : "Pausado",
+            scanHint: "Escaneia na Minha Área para abrir esta etapa do Passaporte Digital.",
+          });
+          const fileName = `qr-etapa-${safeQrPdfFilePart(action.label, String(action.id))}-${action.id}.pdf`;
+          reply
+            .header("Content-Type", "application/pdf")
+            .header("Content-Disposition", `attachment; filename="${fileName}"`);
+          return reply.send(pdf);
         },
       );
 

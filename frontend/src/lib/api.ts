@@ -4867,6 +4867,10 @@ export const api = {
       request<{ action: QrActionItem; scans: QrActionScanItem[] }>(
         `/attendance/admin/qr-actions/${id}`,
       ),
+    qrActionPdf: (id: number) =>
+      requestBlob(`/attendance/admin/qr-actions/${id}/pdf`, {
+        timeoutMs: 60_000,
+      } as RequestInit & { timeoutMs: number }),
     createQrAction: (data: {
       type: string;
       label: string;
@@ -4967,6 +4971,10 @@ export const api = {
       request<DigitalPassportAdminSurpriseQr[]>("/passport/admin/surprise-qrs"),
     missionQrs: () =>
       request<DigitalPassportAdminMissionQr[]>("/passport/admin/mission-qrs"),
+    missionQrPdf: (id: number) =>
+      requestBlob(`/passport/admin/mission-qrs/${id}/pdf`, {
+        timeoutMs: 60_000,
+      } as RequestInit & { timeoutMs: number }),
     surpriseQrPdf: (id: number) =>
       requestBlob(`/passport/admin/surprise-qrs/${id}/pdf`, {
         timeoutMs: 60_000,

@@ -281,6 +281,7 @@ export default function AdminPassportTab() {
   const [surpriseBatchSaving, setSurpriseBatchSaving] = useState(false);
   const [missionQrSaving, setMissionQrSaving] = useState(false);
   const [downloadingSurpriseQrId, setDownloadingSurpriseQrId] = useState<number | null>(null);
+  const [downloadingMissionQrId, setDownloadingMissionQrId] = useState<number | null>(null);
   const [downloadingSurpriseBatchCode, setDownloadingSurpriseBatchCode] = useState<string | null>(null);
   const [operationalSaving, setOperationalSaving] = useState<"freeze" | "recalculate" | "export" | null>(null);
   const [reviewSavingId, setReviewSavingId] = useState<number | null>(null);
@@ -677,6 +678,19 @@ export default function AdminPassportTab() {
       toast.success("Link do QR de etapa copiado.");
     } catch {
       toast.info(qr.validationUrl);
+    }
+  };
+
+  const handleDownloadMissionQrPdf = async (qr: DigitalPassportAdminMissionQr) => {
+    try {
+      setDownloadingMissionQrId(qr.id);
+      const blob = await api.passport.missionQrPdf(qr.id);
+      const safeName = qr.label.toLowerCase().replace(/[^a-z0-9]+/gi, "-").replace(/^-+|-+$/g, "") || String(qr.id);
+      downloadBlobFile(blob, `qr-etapa-${safeName}.pdf`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Falha ao baixar PDF do QR de etapa.");
+    } finally {
+      setDownloadingMissionQrId(null);
     }
   };
 
@@ -1201,17 +1215,31 @@ export default function AdminPassportTab() {
                             <p className="mt-1 truncate text-xs font-bold text-slate-900">{qr.label}</p>
                             <p className="mt-0.5 text-[10px] text-slate-500">{qr.missionTitle ?? "Sem missão"} · {qr.scansCount} scan(s)</p>
                           </div>
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="sm"
-                            className="h-8 rounded-lg px-2"
-                            onClick={() => void handleCopyMissionQr(qr)}
-                            aria-label="Copiar link do QR de etapa"
-                            title="Copiar link"
-                          >
-                            <Copy className="h-3.5 w-3.5" />
-                          </Button>
+                          <div className="flex shrink-0 items-center gap-1">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="h-8 rounded-lg px-2"
+                              onClick={() => void handleCopyMissionQr(qr)}
+                              aria-label="Copiar link do QR de etapa"
+                              title="Copiar link"
+                            >
+                              <Copy className="h-3.5 w-3.5" />
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="h-8 rounded-lg px-2"
+                              onClick={() => void handleDownloadMissionQrPdf(qr)}
+                              disabled={downloadingMissionQrId === qr.id}
+                              aria-label="Baixar PDF do QR de etapa"
+                              title="Baixar PDF"
+                            >
+                              {downloadingMissionQrId === qr.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+                            </Button>
+                          </div>
                         </div>
                       </div>
                     );

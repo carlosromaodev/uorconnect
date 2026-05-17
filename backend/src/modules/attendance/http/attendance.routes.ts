@@ -11,6 +11,7 @@ import { buildValidationQrUrl, buildValidationUrl, extractValidationToken } from
 import { sendWhatsAppAutomationEvent } from "../../whatsapp/http/whatsapp.routes";
 import { renderQrDataUri } from "../../../shared/qr";
 import { escapeHtml, loadLogoDataUri, renderPdfFromHtml } from "../../reports/http/pdf-report.utils";
+import { renderNormalQrPdf, safeQrPdfFilePart } from "../../qr-actions/http/normal-qr-pdf";
 import { buildSubmissionSlug } from "../../submission/domain/submission-format";
 import { notifyPassportGameEvent } from "../../game-notifications/game-notification.service";
 import { extractStudentScanRouteTarget, type StudentScanRouteTarget } from "../application/student-scan-input";
@@ -545,6 +546,68 @@ async function renderAttendanceCredentialPdf(env: Env, credential: {
     displayHeaderFooter: false,
     margin: { top: "0", right: "0", bottom: "0", left: "0" },
   });
+}
+
+function qrActionTypeLabel(type: string) {
+  const labels: Record<string, string> = {
+    CHECKIN: "Entrada de evento",
+    WORKSHOP_CHECKIN: "Presença em atividade",
+    STAND_VISIT: "Visita ao stand",
+    EXHIBITOR_CHALLENGE: "Desafio do expositor",
+    NETWORKING_CROSS_COURSE: "Networking",
+    SPECIAL_QUIZ: "Quiz especial",
+    COURSE_ENROLL: "Inscrição em curso",
+    EXHIBITOR_VOTE: "Voto em projeto",
+    NUCLEUS_MEMBER_BONUS: "Interação com o núcleo",
+  };
+  return labels[type] ?? type;
+}
+
+function qrActionResultLabel(type: string) {
+  const labels: Record<string, string> = {
+    CHECKIN: "Presença validada",
+    WORKSHOP_CHECKIN: "Presença validada",
+    STAND_VISIT: "Progresso registado",
+    EXHIBITOR_CHALLENGE: "Desafio aberto",
+    NETWORKING_CROSS_COURSE: "Pontos de networking",
+    SPECIAL_QUIZ: "Questão aberta",
+    COURSE_ENROLL: "Inscrição aberta",
+    EXHIBITOR_VOTE: "Voto aberto",
+    NUCLEUS_MEMBER_BONUS: "Bónus validado",
+  };
+  return labels[type] ?? "Ação validada";
+}
+
+function qrActionScanHint(type: string) {
+  if (type === "CHECKIN" || type === "WORKSHOP_CHECKIN") {
+    return "Escaneia na Minha Área para confirmar presença nesta atividade.";
+  }
+  if (type === "EXHIBITOR_VOTE") {
+    return "Escaneia na Minha Área para abrir o voto do projeto.";
+  }
+  if (type === "EXHIBITOR_CHALLENGE" || type === "SPECIAL_QUIZ") {
+    return "Escaneia na Minha Área para abrir o desafio e responder.";
+  }
+  return "Escaneia na Minha Área para validar este QR.";
+}
+
+function targetLabelFromMeta(targetMeta: string | null, fallback: string | null) {
+  if (!targetMeta) return fallback;
+  try {
+    const meta = JSON.parse(targetMeta) as Record<string, unknown>;
+    const candidates = [
+      meta.title,
+      meta.name,
+      meta.submissionName,
+      meta.projectName,
+      meta.company,
+      meta.local,
+    ];
+    const value = candidates.find((item): item is string => typeof item === "string" && item.trim().length > 0);
+    return value ?? fallback;
+  } catch {
+    return fallback;
+  }
 }
 
 function serializeCheckIn(checkIn: {
@@ -1611,6 +1674,40 @@ export async function attendanceRoutes(app: FastifyInstance, opts: { env: Env })
           page: query.page,
           totalPages: Math.max(1, Math.ceil(total / query.limit)),
         };
+      });
+
+      /* ---- Admin: download QR action as printable PDF ---- */
+      adminApp.get("/admin/qr-actions/:id/pdf", {
+        schema: {
+          params: z.object({ id: z.coerce.number().int().min(1) }),
+          response: {
+            404: z.object({ message: z.string() }),
+          },
+        },
+      }, async (request, reply) => {
+        const { id } = request.params as { id: number };
+        const action = await prisma.qrAction.findUnique({ where: { id } });
+        if (!action) return reply.code(404).send({ message: "QR não encontrado." });
+
+        const targetLabel = targetLabelFromMeta(action.targetMeta, action.eventLabel ?? action.label);
+        const contextLabel = targetLabel ?? action.eventKey ?? "UOR Connect";
+        const pdf = await renderNormalQrPdf(opts.env, {
+          token: action.token,
+          title: action.eventLabel ?? action.label,
+          subtitle: action.eventLabel && action.eventLabel !== action.label ? action.label : null,
+          description: action.description,
+          targetLabel,
+          typeLabel: qrActionTypeLabel(action.type),
+          contextLabel,
+          resultLabel: qrActionResultLabel(action.type),
+          statusLabel: action.active ? "Ativo" : "Pausado",
+          scanHint: qrActionScanHint(action.type),
+        });
+        const fileName = `qr-action-${safeQrPdfFilePart(action.label, String(action.id))}-${action.id}.pdf`;
+        reply
+          .header("Content-Type", "application/pdf")
+          .header("Content-Disposition", `attachment; filename="${fileName}"`);
+        return reply.send(pdf);
       });
 
       /* ---- Admin: get QR action detail with scans ---- */
