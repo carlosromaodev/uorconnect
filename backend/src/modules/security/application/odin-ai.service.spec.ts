@@ -98,6 +98,8 @@ describe("ODIN AI analysis service", () => {
     expect(payload.systemPrompt).toContain("origem oficial");
     expect(payload.systemPrompt).toContain("tempo login→voto");
     expect(payload.systemPrompt).toContain("comentários do projeto");
+    expect(payload.systemPrompt).toContain("telefone emprestado");
+    expect(payload.systemPrompt).toContain("expositor");
     expect(payload.caseContext.caseType).toBe("DEVICE");
     expect(payload.caseContext.reasons).toHaveLength(2);
     expect(payload.caseContext.relatedEvents[0]).not.toHaveProperty("ipAddress");
@@ -191,5 +193,8 @@ describe("ODIN AI analysis service", () => {
     expect(source).toContain("confirmedMembers");
     expect(source).toContain("studentComments");
     expect(source).toContain("exhibitorScoreEvents");
+    expect(source).toContain("exhibitorDeviceSignals");
+    expect(source).toContain("accountSwitches");
+    expect(source).toContain("ownProjectVotes");
   });
 });

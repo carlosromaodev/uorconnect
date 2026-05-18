@@ -135,12 +135,33 @@ type OdinReportProjectInvestigation = {
   recommendation: string;
 };
 
+type OdinReportExhibitorDeviceSignal = {
+  submissionId: number;
+  submissionName: string;
+  memberName: string;
+  memberStudentNumber: string;
+  deviceId: string;
+  firstAccountLabel: string;
+  distinctAccounts: number;
+  accountSwitches: number;
+  rapidAccountSwitches: number;
+  ownProjectVotes: number;
+  ownProjectVoterAccounts: number;
+  averageLoginToVoteSeconds: number | null;
+  fastestLoginToVoteSeconds: number | null;
+  invalidOrTemporaryAccounts: number;
+  officialAccounts: number;
+  classification: string;
+  recommendation: string;
+};
+
 type OdinReportInvestigationContext = {
   invalidStudentTotal: number;
   invalidStudents: OdinReportInvalidStudent[];
   deviceIdentities: OdinReportDeviceIdentity[];
   courseRisks: OdinReportCourseRisk[];
   projectInvestigations: OdinReportProjectInvestigation[];
+  exhibitorDeviceSignals: OdinReportExhibitorDeviceSignal[];
 };
 
 const reportKind = "security.odin.report";
@@ -220,6 +241,24 @@ function eventStudentKey(event: Pick<OdinReportEvent, "studentId" | "studentNumb
   if (event.studentId) return `id:${event.studentId}`;
   if (event.studentNumber) return `number:${event.studentNumber}`;
   return null;
+}
+
+function normalizeStudentNumber(value?: string | null) {
+  return value?.trim().toLowerCase() ?? "";
+}
+
+function transitionCount(events: OdinReportDetailedEvent[]) {
+  let switches = 0;
+  let rapidSwitches = 0;
+  for (let index = 1; index < events.length; index += 1) {
+    const previous = events[index - 1];
+    const current = events[index];
+    if (eventStudentKey(previous) === eventStudentKey(current)) continue;
+    switches += 1;
+    const gap = Math.max(0, Math.round((current.createdAt.getTime() - previous.createdAt.getTime()) / 1000));
+    if (gap <= 90) rapidSwitches += 1;
+  }
+  return { switches, rapidSwitches };
 }
 
 function isOfficialStudent(student: Pick<OdinReportStudentSource, "academicSyncedAt" | "registrationSource"> | null | undefined) {
@@ -559,6 +598,26 @@ function renderProjectCommentSignals(projects: OdinReportProjectInvestigation[])
   `;
 }
 
+function renderExhibitorDeviceSignalRows(signals: OdinReportExhibitorDeviceSignal[]) {
+  if (!signals.length) {
+    return `<tr><td colspan="9">Sem dispositivos de expositores com troca de contas ou votos ao próprio projeto nesta janela.</td></tr>`;
+  }
+
+  return signals.slice(0, 18).map((signal) => `
+    <tr>
+      <td><strong>${escapeHtml(signal.submissionName)}</strong><small>#${signal.submissionId}</small></td>
+      <td><strong>${escapeHtml(signal.memberName)}</strong><small>${escapeHtml(signal.memberStudentNumber)}</small></td>
+      <td><strong>${escapeHtml(shortId(signal.deviceId, 7, 5))}</strong><small>${escapeHtml(signal.firstAccountLabel)}</small></td>
+      <td class="number-cell">${signal.accountSwitches}<small>${signal.rapidAccountSwitches} rápida(s)</small></td>
+      <td class="number-cell">${signal.distinctAccounts}<small>${signal.officialAccounts} oficiais · ${signal.invalidOrTemporaryAccounts} frágeis</small></td>
+      <td class="number-cell">${signal.ownProjectVotes}<small>${signal.ownProjectVoterAccounts} conta(s)</small></td>
+      <td>${escapeHtml(formatDuration(signal.averageLoginToVoteSeconds))}<small>Mais rápido: ${escapeHtml(formatDuration(signal.fastestLoginToVoteSeconds))}</small></td>
+      <td><strong>${escapeHtml(signal.classification)}</strong></td>
+      <td>${escapeHtml(signal.recommendation)}</td>
+    </tr>
+  `).join("");
+}
+
 function buildInvalidStudentWhere() {
   return {
     OR: [
@@ -871,6 +930,201 @@ async function buildProjectInvestigations(
   );
 }
 
+function memberMatchesEvent(
+  member: { studentId: number | null; studentNumber: string | null; expectedStudentNumber: string | null },
+  event: OdinReportDetailedEvent,
+) {
+  if (member.studentId && event.studentId === member.studentId) return true;
+  const eventNumber = normalizeStudentNumber(event.studentNumber);
+  if (!eventNumber) return false;
+  return [
+    member.studentNumber,
+    member.expectedStudentNumber,
+  ].some((value) => normalizeStudentNumber(value) === eventNumber);
+}
+
+function deviceLoginToVoteDurations(deviceEvents: OdinReportDetailedEvent[]) {
+  const durations: number[] = [];
+  const sortedEvents = [...deviceEvents].sort((left, right) => left.createdAt.getTime() - right.createdAt.getTime());
+  const loginEvents = sortedEvents.filter((event) => event.eventType === "LOGIN_SUCCESS" && eventStudentKey(event));
+
+  for (const loginEvent of loginEvents) {
+    const key = eventStudentKey(loginEvent);
+    const vote = sortedEvents.find((event) =>
+      event.eventType === "PROJECT_VOTE"
+      && eventStudentKey(event) === key
+      && event.createdAt >= loginEvent.createdAt
+    );
+    if (!vote) continue;
+    durations.push(Math.max(0, Math.round((vote.createdAt.getTime() - loginEvent.createdAt.getTime()) / 1000)));
+  }
+
+  return durations;
+}
+
+function classifyExhibitorDeviceSignal(input: {
+  distinctAccounts: number;
+  accountSwitches: number;
+  rapidAccountSwitches: number;
+  ownProjectVotes: number;
+  ownProjectVoterAccounts: number;
+  averageLoginToVoteSeconds: number | null;
+  invalidOrTemporaryAccounts: number;
+}) {
+  const fastConversion = input.averageLoginToVoteSeconds !== null && input.averageLoginToVoteSeconds <= 90;
+  if (input.ownProjectVotes >= 4 && input.accountSwitches >= 3 && (fastConversion || input.rapidAccountSwitches >= 2)) {
+    return {
+      classification: "Forte suspeita de operação por expositor",
+      recommendation: "Comparar este aparelho com presença física, testemunho do membro e sequência de votos. O padrão sugere posse de credenciais ou troca guiada de contas, não apenas telefone emprestado.",
+    };
+  }
+  if (input.ownProjectVotes >= 2 && input.distinctAccounts >= 3) {
+    return {
+      classification: "Revisão necessária por vantagem ao próprio projeto",
+      recommendation: "Ouvir o expositor e validar se os estudantes votaram presencialmente. Se houver contas sem origem oficial ou conversões em segundos, isolar estes votos para revisão.",
+    };
+  }
+  if (input.distinctAccounts <= 2 && input.ownProjectVotes <= 1 && input.invalidOrTemporaryAccounts === 0) {
+    return {
+      classification: "Telefone emprestado plausível",
+      recommendation: "Partilha pontual pode ser legítima quando há poucas contas, origem oficial e ausência de voto em massa no projeto do membro. Manter apenas monitorização.",
+    };
+  }
+  return {
+    classification: "Telefone emprestado com sinais mistos",
+    recommendation: "Não concluir fraude automaticamente. A recomendação é comparar tempo login→voto, origem das contas e se o aparelho beneficiou repetidamente o próprio projeto.",
+  };
+}
+
+async function buildExhibitorDeviceSignals(
+  overview: OdinOverview,
+  events: OdinReportDetailedEvent[],
+): Promise<OdinReportExhibitorDeviceSignal[]> {
+  const projectIds = Array.from(new Set([
+    ...overview.projects.map((project) => project.submissionId),
+    ...events
+      .filter((event) => event.targetType === "Submission" && event.targetId)
+      .map((event) => event.targetId as number),
+  ])).slice(0, 50);
+  if (!projectIds.length) return [];
+
+  const submissions = await prisma.submission.findMany({
+    where: { id: { in: projectIds } },
+    select: {
+      id: true,
+      name: true,
+      memberConfirmations: {
+        select: {
+          id: true,
+          name: true,
+          studentId: true,
+          studentNumber: true,
+          expectedStudentNumber: true,
+          confirmedAt: true,
+        },
+        take: 60,
+      },
+    },
+  });
+
+  const eventsByDevice = new Map<string, OdinReportDetailedEvent[]>();
+  for (const event of events) {
+    eventsByDevice.set(event.deviceId, [...(eventsByDevice.get(event.deviceId) ?? []), event]);
+  }
+
+  const signals: OdinReportExhibitorDeviceSignal[] = [];
+  const seen = new Set<string>();
+
+  for (const submission of submissions) {
+    for (const member of submission.memberConfirmations) {
+      const memberEvents = events.filter((event) => memberMatchesEvent(member, event));
+      const memberDeviceIds = Array.from(new Set(memberEvents.map((event) => event.deviceId)));
+      for (const deviceId of memberDeviceIds) {
+        const key = `${submission.id}:${member.id}:${deviceId}`;
+        if (seen.has(key)) continue;
+        seen.add(key);
+
+        const deviceEvents = [...(eventsByDevice.get(deviceId) ?? [])]
+          .sort((left, right) => left.createdAt.getTime() - right.createdAt.getTime());
+        const studentEvents = deviceEvents.filter((event) => eventStudentKey(event));
+        const accountEvents = new Map<string, OdinReportDetailedEvent>();
+        for (const event of studentEvents) {
+          const accountKey = eventStudentKey(event);
+          if (accountKey && !accountEvents.has(accountKey)) accountEvents.set(accountKey, event);
+        }
+
+        const ownProjectVotes = deviceEvents.filter((event) =>
+          event.eventType === "PROJECT_VOTE"
+          && event.targetType === "Submission"
+          && event.targetId === submission.id
+        );
+        const ownProjectVoterAccounts = new Set(
+          ownProjectVotes.map((event) => eventStudentKey(event) ?? event.studentNumber ?? `event:${event.id}`),
+        ).size;
+
+        const loginEvents = deviceEvents.filter((event) => event.eventType === "LOGIN_SUCCESS" && eventStudentKey(event));
+        const sequence = loginEvents.length >= 2
+          ? loginEvents
+          : studentEvents;
+        const { switches, rapidSwitches } = transitionCount(sequence);
+        const accountRows = Array.from(accountEvents.values());
+        const invalidOrTemporaryAccounts = accountRows.filter((event) =>
+          !isOfficialStudent(event.student) || studentIntegrityFlags(event.student).length > 0
+        ).length;
+        const officialAccounts = accountRows.filter((event) => isOfficialStudent(event.student)).length;
+        const durations = deviceLoginToVoteDurations(deviceEvents);
+        const averageLoginToVoteSeconds = average(durations);
+        const fastestLoginToVoteSeconds = durations.length ? Math.min(...durations) : null;
+        const classified = classifyExhibitorDeviceSignal({
+          distinctAccounts: accountRows.length,
+          accountSwitches: switches,
+          rapidAccountSwitches: rapidSwitches,
+          ownProjectVotes: ownProjectVotes.length,
+          ownProjectVoterAccounts,
+          averageLoginToVoteSeconds,
+          invalidOrTemporaryAccounts,
+        });
+
+        if (
+          accountRows.length < 2
+          && ownProjectVotes.length === 0
+          && switches === 0
+        ) {
+          continue;
+        }
+
+        const firstAccount = studentEvents[0] ?? null;
+        signals.push({
+          submissionId: submission.id,
+          submissionName: submission.name,
+          memberName: member.name,
+          memberStudentNumber: member.studentNumber ?? member.expectedStudentNumber ?? "Sem número associado",
+          deviceId,
+          firstAccountLabel: firstAccount ? personLabel(firstAccount) : "Sem primeira conta",
+          distinctAccounts: accountRows.length,
+          accountSwitches: switches,
+          rapidAccountSwitches: rapidSwitches,
+          ownProjectVotes: ownProjectVotes.length,
+          ownProjectVoterAccounts,
+          averageLoginToVoteSeconds,
+          fastestLoginToVoteSeconds,
+          invalidOrTemporaryAccounts,
+          officialAccounts,
+          classification: classified.classification,
+          recommendation: classified.recommendation,
+        });
+      }
+    }
+  }
+
+  return signals.sort((left, right) =>
+    right.ownProjectVotes - left.ownProjectVotes
+    || right.accountSwitches - left.accountSwitches
+    || right.distinctAccounts - left.distinctAccounts
+    || left.submissionName.localeCompare(right.submissionName)
+  );
+}
+
 export async function buildOdinReportInvestigationContext(
   from: Date,
   overview: OdinOverview,
@@ -961,7 +1215,10 @@ export async function buildOdinReportInvestigationContext(
   const events = detailedEvents as OdinReportDetailedEvent[];
   const deviceIdentities = buildDeviceIdentities(events, overview);
   const courseRisks = buildCourseRisks(deviceIdentities);
-  const projectInvestigations = await buildProjectInvestigations(overview, events, deviceIdentities);
+  const [projectInvestigations, exhibitorDeviceSignals] = await Promise.all([
+    buildProjectInvestigations(overview, events, deviceIdentities),
+    buildExhibitorDeviceSignals(overview, events),
+  ]);
 
   return {
     invalidStudentTotal,
@@ -969,6 +1226,7 @@ export async function buildOdinReportInvestigationContext(
     deviceIdentities,
     courseRisks,
     projectInvestigations,
+    exhibitorDeviceSignals,
   };
 }
 
@@ -1032,7 +1290,7 @@ export async function generateOdinSecurityReportPdf(
 
   const reportNumber = `ODIN-${generatedAt.toISOString().slice(0, 10)}`;
   const logoMarkup = renderLogo(logoDataUri);
-  const totalPages = 10;
+  const totalPages = 11;
   const globalRiskLevel = maxRiskLevel(overview);
   const suspiciousDeviceCount = overview.devices.filter((device) => device.riskScore >= 40).length;
   const criticalDeviceCount = overview.devices.filter((device) => device.riskLevel === "CRITICAL").length;
@@ -1264,12 +1522,12 @@ export async function generateOdinSecurityReportPdf(
         <p class="eyebrow">Mapa de Dispositivos e Identidades</p>
         <h2>Dispositivos, cursos, primeira conta e tempo de conversão</h2>
         <p class="muted">Esta página compara o tempo normal de convencimento com o padrão de operador único: várias contas entram no mesmo aparelho, votam rapidamente no mesmo projeto e aparecem com perfis incompletos, temporários ou sem origem oficial UOR/ISPTEC.</p>
-        <div class="metric-grid">
-          ${renderMetric("Dados inválidos", formatNumber(investigation.invalidStudentTotal), "Contas na base com dados incompletos, temporários ou não oficiais.")}
-          ${renderMetric("Dossiês", investigation.deviceIdentities.length, "Dispositivos com identidade correlacionada.")}
-          ${renderMetric("Conversões rápidas", investigation.deviceIdentities.reduce((total, device) => total + device.rapidConversions, 0), "Login→voto em até 90 segundos.")}
-          ${renderMetric("Projetos cruzados", investigation.projectInvestigations.length, "Projetos avaliados com votos, comentários e membros.")}
-        </div>
+      <div class="metric-grid">
+        ${renderMetric("Dados inválidos", formatNumber(investigation.invalidStudentTotal), "Contas na base com dados incompletos, temporários ou não oficiais.")}
+        ${renderMetric("Dossiês", investigation.deviceIdentities.length, "Dispositivos com identidade correlacionada.")}
+        ${renderMetric("Conversões rápidas", investigation.deviceIdentities.reduce((total, device) => total + device.rapidConversions, 0), "Login→voto em até 90 segundos.")}
+        ${renderMetric("Expositores", investigation.exhibitorDeviceSignals.length, "Dispositivos de membros cruzados com troca de contas.")}
+      </div>
         ${renderCourseRiskChart(investigation.courseRisks)}
       </div>
       ${renderDeviceIdentityCards(investigation.deviceIdentities)}
@@ -1327,6 +1585,24 @@ export async function generateOdinSecurityReportPdf(
         ${renderProjectCommentSignals(investigation.projectInvestigations)}
       </div>
       ${renderFooter(reportNumber, 10, totalPages)}
+    </div>
+  </section>
+
+  <!-- PAGE 11 — Dispositivos de Expositores -->
+  <section class="page">
+    ${renderBorderLabels()}
+    <div class="page-content">
+      ${renderHeader(logoMarkup, "Dispositivos de Expositores")}
+      <div class="section-card">
+        <p class="eyebrow">Dispositivos associados a expositores</p>
+        <h2>Telefone emprestado vs. operação de contas no próprio projeto</h2>
+        <p class="muted">Esta leitura foi criada para tratar a justificativa de telefone emprestado com justiça. O ODIN compara quantas Trocas de conta ocorreram no aparelho do membro, quantos Votos para o próprio projeto saíram desse dispositivo, se as contas tinham origem oficial e o tempo login→voto. Partilha pontual não é fraude automática; padrão repetido, rápido e favorável ao próprio projeto exige revisão.</p>
+        <table class="score-table">
+          <thead><tr><th>Projeto</th><th>Expositor/membro</th><th>Dispositivo</th><th>Trocas de conta</th><th>Contas</th><th>Votos para o próprio projeto</th><th>Tempo login→voto</th><th>Leitura</th><th>Recomendação</th></tr></thead>
+          <tbody>${renderExhibitorDeviceSignalRows(investigation.exhibitorDeviceSignals)}</tbody>
+        </table>
+      </div>
+      ${renderFooter(reportNumber, 11, totalPages)}
     </div>
   </section>
 </body>

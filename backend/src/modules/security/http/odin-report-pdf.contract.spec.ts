@@ -26,6 +26,11 @@ describe("ODIN security PDF report", () => {
     expect(report).toContain("Primeira conta observada");
     expect(report).toContain("Tempo login→voto");
     expect(report).toContain("Índice de fraude contextual");
+    expect(report).toContain("Dispositivos associados a expositores");
+    expect(report).toContain("Telefone emprestado");
+    expect(report).toContain("Trocas de conta");
+    expect(report).toContain("Votos para o próprio projeto");
+    expect(report).toContain("buildExhibitorDeviceSignals");
     expect(report).toContain("buildOdinReportInvestigationContext");
     expect(report).toContain("border-label border-label--left");
     expect(report).toContain("border-label border-label--right");

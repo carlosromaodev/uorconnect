@@ -106,6 +106,18 @@ export interface OdinAiStudentDatabaseContext {
       createdAt: string;
     }>;
   } | null;
+  exhibitorDeviceSignals?: Array<{
+    memberName: string;
+    memberStudentNumber: string | null;
+    deviceId: string;
+    firstAccountLabel: string;
+    distinctAccounts: number;
+    accountSwitches: number;
+    ownProjectVotes: number;
+    ownProjectVoterAccounts: number;
+    averageLoginToVoteSeconds: number | null;
+    interpretation: string;
+  }>;
   patterns: {
     courseDistribution: Array<{ course: string; students: number }>;
     sharedPhoneGroups: Array<{ studentCount: number; studentNumbers: string[] }>;
@@ -207,6 +219,9 @@ Contexto do sistema:
 - A origem oficial de confiança é Secretaria UOR ou ISPTEC. Login sem origem oficial não prova fraude sozinho, mas aumenta a necessidade de revisão.
 - Compara o tempo login→voto: conversão humana tende a levar mais tempo; várias contas a votar em segundos no mesmo dispositivo sugerem posse prévia de credenciais.
 - Considera comentários do projeto, dados do projeto, membros, presença confirmada, atividades na plataforma, votos e passaporte em conjunto antes de recomendar uma ação.
+- Considera a explicação legítima de telefone emprestado: estudantes podem usar o telefone de um colega por falta de aparelho, bateria ou internet.
+- Quando o dispositivo pertence a um expositor ou membro do projeto, compara trocas de conta, votos para o próprio projeto, contas oficiais e tempo login→voto antes de sugerir fraude.
+- Não trates telefone emprestado como fraude automática; trata como suspeito apenas quando o padrão favorece o próprio projeto, envolve muitas contas, perfis frágeis ou conversões rápidas.
 
 Ao analisar um caso, considera sempre:
 1. Pode haver explicação legítima para este padrão?
@@ -562,6 +577,7 @@ function emptyStudentDatabaseContext(projectMembers: OdinAiStudentDatabaseContex
     students: [],
     projectMembers,
     projectActivity: null,
+    exhibitorDeviceSignals: [],
     patterns: {
       courseDistribution: [],
       sharedPhoneGroups: [],
@@ -631,6 +647,11 @@ function buildStudentDatabaseReasons(context: OdinAiStudentDatabaseContext) {
   }
   if (context.projectActivity) {
     reasons.push(`Projeto: ${context.projectActivity.totalComments} comentário(s), ${context.projectActivity.totalMembers} membro(s), ${context.projectActivity.confirmedMembers} presença(s) confirmada(s) e ${context.projectActivity.totalScoreEvents} evento(s) de pontuação do expositor.`);
+  }
+  if (context.exhibitorDeviceSignals?.length) {
+    const ownProjectVotes = context.exhibitorDeviceSignals.reduce((total, signal) => total + signal.ownProjectVotes, 0);
+    const accountSwitches = context.exhibitorDeviceSignals.reduce((total, signal) => total + signal.accountSwitches, 0);
+    reasons.push(`Projeto: ${context.exhibitorDeviceSignals.length} dispositivo(s) associado(s) a expositor/membro tiveram ${accountSwitches} troca(s) de conta e ${ownProjectVotes} voto(s) ao próprio projeto.`);
   }
   return reasons;
 }
@@ -739,14 +760,127 @@ async function loadProjectActivity(projectId?: number | null): Promise<OdinAiStu
   };
 }
 
+function odinAiAverage(values: number[]) {
+  if (!values.length) return null;
+  return Math.round(values.reduce((total, value) => total + value, 0) / values.length);
+}
+
+function odinAiStudentKey(event: Pick<OdinRawEvent, "studentId" | "studentNumber">) {
+  if (event.studentId) return `id:${event.studentId}`;
+  if (event.studentNumber) return `number:${event.studentNumber.trim().toLowerCase()}`;
+  return null;
+}
+
+function memberMatchesOdinAiEvent(
+  member: OdinAiStudentDatabaseContext["projectMembers"][number],
+  event: OdinRawEvent,
+) {
+  if (member.linkedStudentId && event.studentId === member.linkedStudentId) return true;
+  const eventNumber = event.studentNumber?.trim().toLowerCase();
+  if (!eventNumber) return false;
+  return [member.studentNumber, member.expectedStudentNumber]
+    .some((value) => value?.trim().toLowerCase() === eventNumber);
+}
+
+function buildOdinAiDeviceDurations(events: OdinRawEvent[]) {
+  const sortedEvents = [...events].sort((left, right) => left.createdAt.getTime() - right.createdAt.getTime());
+  const loginEvents = sortedEvents.filter((event) => event.eventType === "LOGIN_SUCCESS" && odinAiStudentKey(event));
+  const durations: number[] = [];
+  for (const loginEvent of loginEvents) {
+    const key = odinAiStudentKey(loginEvent);
+    const vote = sortedEvents.find((event) =>
+      event.eventType === "PROJECT_VOTE"
+      && odinAiStudentKey(event) === key
+      && event.createdAt >= loginEvent.createdAt
+    );
+    if (!vote) continue;
+    durations.push(Math.max(0, Math.round((vote.createdAt.getTime() - loginEvent.createdAt.getTime()) / 1000)));
+  }
+  return durations;
+}
+
+function buildExhibitorDeviceSignals(
+  projectMembers: OdinAiStudentDatabaseContext["projectMembers"],
+  events: OdinRawEvent[],
+  projectId?: number | null,
+): OdinAiStudentDatabaseContext["exhibitorDeviceSignals"] {
+  if (!projectId || !projectMembers.length) return [];
+
+  const eventsByDevice = new Map<string, OdinRawEvent[]>();
+  for (const event of events) {
+    eventsByDevice.set(event.deviceId, [...(eventsByDevice.get(event.deviceId) ?? []), event]);
+  }
+
+  return projectMembers.flatMap((member) => {
+    const memberDeviceIds = Array.from(new Set(
+      events
+        .filter((event) => memberMatchesOdinAiEvent(member, event))
+        .map((event) => event.deviceId),
+    ));
+
+    return memberDeviceIds.map((deviceId) => {
+      const deviceEvents = [...(eventsByDevice.get(deviceId) ?? [])]
+        .sort((left, right) => left.createdAt.getTime() - right.createdAt.getTime());
+      const studentEvents = deviceEvents.filter((event) => odinAiStudentKey(event));
+      const distinctAccounts = new Set(studentEvents.map(odinAiStudentKey).filter(Boolean)).size;
+      const loginEvents = deviceEvents.filter((event) => event.eventType === "LOGIN_SUCCESS" && odinAiStudentKey(event));
+      const sequence = loginEvents.length >= 2 ? loginEvents : studentEvents;
+      let accountSwitches = 0;
+      for (let index = 1; index < sequence.length; index += 1) {
+        if (odinAiStudentKey(sequence[index - 1]) !== odinAiStudentKey(sequence[index])) accountSwitches += 1;
+      }
+      const ownProjectVoteEvents = deviceEvents.filter((event) =>
+        event.eventType === "PROJECT_VOTE"
+        && event.targetType === "Submission"
+        && event.targetId === projectId
+      );
+      const ownProjectVoterAccounts = new Set(
+        ownProjectVoteEvents.map((event) => odinAiStudentKey(event) ?? event.studentNumber ?? `event:${event.id}`),
+      ).size;
+      const durations = buildOdinAiDeviceDurations(deviceEvents);
+      const averageLoginToVoteSeconds = odinAiAverage(durations);
+      const firstAccount = studentEvents[0];
+      const interpretation = ownProjectVoteEvents.length >= 3 && accountSwitches >= 2
+        ? "Dispositivo de expositor com várias trocas de conta e votos para o próprio projeto; avaliar se houve operação por credenciais."
+        : distinctAccounts <= 2 && ownProjectVoteEvents.length <= 1
+          ? "Telefone emprestado plausível: poucas contas e baixo benefício direto ao próprio projeto."
+          : "Sinal misto: telefone emprestado é possível, mas há benefício ao projeto que precisa de revisão humana.";
+
+      return {
+        memberName: member.name,
+        memberStudentNumber: member.studentNumber ?? member.expectedStudentNumber,
+        deviceId,
+        firstAccountLabel: firstAccount?.studentName ?? firstAccount?.studentNumber ?? "Conta sem nome",
+        distinctAccounts,
+        accountSwitches,
+        ownProjectVotes: ownProjectVoteEvents.length,
+        ownProjectVoterAccounts,
+        averageLoginToVoteSeconds,
+        interpretation,
+      };
+    }).filter((signal) =>
+      signal.distinctAccounts >= 2 || signal.ownProjectVotes > 0 || signal.accountSwitches > 0
+    );
+  }).sort((left, right) =>
+    right.ownProjectVotes - left.ownProjectVotes
+    || right.accountSwitches - left.accountSwitches
+    || right.distinctAccounts - left.distinctAccounts
+  ).slice(0, 20);
+}
+
 async function buildStudentDatabaseContext(
   relatedEvents: OdinRawEvent[],
-  options: { projectId?: number | null } = {},
+  options: { projectId?: number | null; allEvents?: OdinRawEvent[] } = {},
 ): Promise<OdinAiStudentDatabaseContext> {
   const [projectMembers, projectActivity] = await Promise.all([
     loadProjectMembers(options.projectId),
     loadProjectActivity(options.projectId),
   ]);
+  const exhibitorDeviceSignals = buildExhibitorDeviceSignals(
+    projectMembers,
+    options.allEvents ?? relatedEvents,
+    options.projectId,
+  );
   const studentIds = new Set<number>();
   const studentNumbers = new Set<string>();
 
@@ -768,6 +902,7 @@ async function buildStudentDatabaseContext(
     return {
       ...emptyStudentDatabaseContext(projectMembers),
       projectActivity,
+      exhibitorDeviceSignals,
     };
   }
 
@@ -832,6 +967,7 @@ async function buildStudentDatabaseContext(
     students,
     projectMembers,
     projectActivity,
+    exhibitorDeviceSignals,
     patterns: {
       courseDistribution: buildCourseDistribution(students),
       sharedPhoneGroups: buildSharedPhoneGroups(studentRows),
@@ -934,7 +1070,10 @@ export async function resolveOdinAiCaseContext(
   const project = findProject(snapshot, input.caseId);
   if (!project) throw new Error("Caso ODIN de projeto não encontrado nesta janela.");
   const relatedEvents = events.filter((event) => event.targetType === "Submission" && String(event.targetId) === input.caseId);
-  const studentDatabaseContext = await buildStudentDatabaseContext(relatedEvents, { projectId: project.submissionId });
+  const studentDatabaseContext = await buildStudentDatabaseContext(relatedEvents, {
+    projectId: project.submissionId,
+    allEvents: events,
+  });
   const riskScore = Math.min(100, 30 + project.suspiciousVotes * 8 + project.suspiciousDevices * 12 + project.suspiciousStudents * 4);
   return {
     caseType: input.caseType,
