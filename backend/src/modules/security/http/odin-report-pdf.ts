@@ -14,6 +14,11 @@ import {
   type OdinRiskLevel,
   type OdinStudentRisk,
 } from "../application/odin.service";
+import {
+  buildForensicQueue,
+  type ForensicActionUrgency,
+  type ForensicCaseSignals,
+} from "../application/odin-forensic.service";
 
 type OdinReportAnalysis = {
   id: number;
@@ -29,6 +34,21 @@ type OdinReportAnalysis = {
   recommendation: string;
   confidenceLevel: string;
   actionType: string;
+  patternType: string | null;
+  actionUrgency: string | null;
+  operationalState: string;
+  ruleRiskScore: number | null;
+  unifiedRiskScore: number | null;
+  consistencyCheck: string;
+  consistencyReason: string | null;
+  evidenceSummary: string | null;
+  commentAnalysis: string | null;
+  alternativePlausibility: string | null;
+  recommendedAction: string | null;
+  votesToReview: number | null;
+  accountsToReview: number | null;
+  notifyExpositor: boolean;
+  cannotBeFalsePositiveIf: string | null;
   modelVersion: string;
   promptVersion: string;
   createdByStudentNumber: string | null;
@@ -203,6 +223,18 @@ function actionTypeLabel(value: string) {
   return value;
 }
 
+function urgencyLabel(value: ForensicActionUrgency) {
+  if (value === "IMEDIATA") return "ACÇÃO IMEDIATA";
+  if (value === "24H") return "INVESTIGAR 24H";
+  return "PODE ESPERAR";
+}
+
+function urgencyClass(value: ForensicActionUrgency) {
+  if (value === "IMEDIATA") return "risk-critical";
+  if (value === "24H") return "risk-high";
+  return "risk-low";
+}
+
 function eventTypeLabel(value: string) {
   if (value === "LOGIN_SUCCESS") return "Login";
   if (value === "PROJECT_VOTE") return "Voto";
@@ -361,15 +393,6 @@ function renderRiskPill(level: string, score?: number) {
   return `<span class="risk-pill ${riskClass(level)}">${escapeHtml(riskLabel(level))}${typeof score === "number" ? ` · ${score}` : ""}</span>`;
 }
 
-function renderReasonList(reasons: string[]) {
-  if (!reasons.length) return `<p class="muted">Sem motivos registados.</p>`;
-  return `
-    <ul class="reason-list">
-      ${reasons.slice(0, 4).map((reason) => `<li>${escapeHtml(reason)}</li>`).join("")}
-    </ul>
-  `;
-}
-
 function renderAnalysisCards(analyses: OdinReportAnalysis[]) {
   if (!analyses.length) {
     return `
@@ -406,6 +429,68 @@ function renderAnalysisCards(analyses: OdinReportAnalysis[]) {
       </div>
     </article>
   `).join("");
+}
+
+function renderForensicQueueRows(queue: ReturnType<typeof buildForensicQueue>) {
+  if (!queue.length) {
+    return `<tr><td colspan="9">Sem casos ativos para triagem operacional nesta janela.</td></tr>`;
+  }
+
+  return queue.slice(0, 18).map((item, index) => `
+    <tr>
+      <td><strong>ODIN-${String(index + 1).padStart(3, "0")}</strong><small>${escapeHtml(item.caseId)}</small></td>
+      <td><span class="risk-pill ${urgencyClass(item.actionUrgency)}">${escapeHtml(item.patternType)}</span></td>
+      <td><strong>${escapeHtml(urgencyLabel(item.actionUrgency))}</strong><small>${escapeHtml(item.operationalState)}</small></td>
+      <td>${escapeHtml(item.entityLabel)}</td>
+      <td class="number-cell">${item.votesToReview}</td>
+      <td>${item.rankingTop3Affected ? "Top 3 pode mudar" : "Sem impacto top 3 confirmado"}</td>
+      <td>${escapeHtml(item.nextStep)}</td>
+      <td>Organização</td>
+      <td>${item.actionUrgency === "IMEDIATA" ? "30 min" : item.actionUrgency === "24H" ? "24h" : "Monitorizar"}</td>
+    </tr>
+  `).join("");
+}
+
+function renderForensicCaseDossier(queue: ReturnType<typeof buildForensicQueue>) {
+  const item = queue[0];
+  if (!item) {
+    return `<div class="empty-state"><h3>Sem dossiê individual</h3><p>O ODIN não encontrou caso com dados suficientes para abrir um dossiê operacional nesta janela.</p></div>`;
+  }
+
+  return `
+    <div class="section-card">
+      <p class="eyebrow">DOSSIÊ DE CASO</p>
+      <h2>${escapeHtml(item.caseId)} · ${escapeHtml(item.patternType)}</h2>
+      <div class="metric-grid">
+        ${renderMetric("Urgência", urgencyLabel(item.actionUrgency), "Fila operacional do caso.")}
+        ${renderMetric("Estado", item.operationalState, "Estado calculado para Fase 1.")}
+        ${renderMetric("Votos a rever", item.votesToReview, "Votos associados ao padrão.")}
+        ${renderMetric("Contas a rever", item.accountsToReview, "Contas associadas ao caso.")}
+      </div>
+      <p class="lead">${escapeHtml(item.evidenceSummary)}</p>
+    </div>
+    <div class="section-card">
+      <p class="eyebrow">Prova Matemática</p>
+      <h2>Factos verificáveis na base de dados</h2>
+      <table class="score-table">
+        <tbody>
+          <tr><th>Entidade</th><td>${escapeHtml(item.entityLabel)}</td></tr>
+          <tr><th>Score unificado</th><td>${item.unifiedRiskScore}/100</td></tr>
+          <tr><th>Condição de falso positivo improvável</th><td>${escapeHtml(item.cannotBeFalsePositiveIf)}</td></tr>
+          <tr><th>Impacto</th><td>${item.rankingTop3Affected ? "Pode alterar posição no top 3." : "Sem alteração de top 3 confirmada pelos dados atuais."}</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="section-card">
+      <p class="eyebrow">Análise Contextual</p>
+      <h2>Interpretação assistida e protocolo</h2>
+      <p class="muted">${escapeHtml(item.commentAnalysis)}</p>
+      <div class="recommendation-box">
+        <span>Próximo passo</span>
+        <p>${escapeHtml(item.recommendedAction)}</p>
+      </div>
+    </div>
+  `;
 }
 
 function renderStudentRows(students: OdinStudentRisk[]) {
@@ -478,15 +563,6 @@ function renderEventRows(events: OdinReportEvent[]) {
       <td>${escapeHtml(event.targetLabel ?? event.targetType ?? "Sem alvo")}</td>
       <td>${escapeHtml(shortId(event.deviceId, 6, 4))}</td>
     </tr>
-  `).join("");
-}
-
-function renderSuggestions(suggestions: string[]) {
-  return suggestions.map((suggestion) => `
-    <div class="method-card">
-      <span>Boa prática</span>
-      <p>${escapeHtml(suggestion)}</p>
-    </div>
   `).join("");
 }
 
@@ -1125,6 +1201,46 @@ async function buildExhibitorDeviceSignals(
   );
 }
 
+function buildForensicSignalsFromInvestigation(
+  investigation: OdinReportInvestigationContext,
+): ForensicCaseSignals[] {
+  const deviceSignals = investigation.deviceIdentities.map((device) => ({
+    caseId: `DEVICE:${shortId(device.deviceId, 8, 6)}`,
+    entityLabel: `Dispositivo ${shortId(device.deviceId, 8, 6)}`,
+    riskScore: device.contextualFraudScore,
+    distinctAccounts: device.distinctAccounts,
+    votes: device.rapidConversions + device.distinctAccounts,
+    fragileAccounts: device.invalidOrTemporaryAccounts,
+    officialAccounts: device.officialAccounts,
+    medianLoginToVoteSeconds: device.averageLoginToVoteSeconds,
+    fastestLoginToVoteSeconds: device.fastestLoginToVoteSeconds,
+    rapidAccountSwitches: device.rapidAccountSwitches,
+    dominantProjectVotes: device.rapidConversions || device.distinctAccounts,
+    projectMemberDevice: false,
+    rankingTop3Affected: device.contextualFraudScore >= 90 && device.distinctAccounts >= 10,
+    comments: [],
+  }));
+
+  const exhibitorSignals = investigation.exhibitorDeviceSignals.map((signal) => ({
+    caseId: `EXHIBITOR:${signal.submissionId}:${shortId(signal.deviceId, 6, 4)}`,
+    entityLabel: `${signal.memberName} · ${signal.submissionName}`,
+    riskScore: signal.ownProjectVotes >= 4 ? 82 : 64,
+    distinctAccounts: signal.distinctAccounts,
+    votes: signal.ownProjectVotes,
+    fragileAccounts: signal.invalidOrTemporaryAccounts,
+    officialAccounts: signal.officialAccounts,
+    medianLoginToVoteSeconds: signal.averageLoginToVoteSeconds,
+    fastestLoginToVoteSeconds: signal.fastestLoginToVoteSeconds,
+    rapidAccountSwitches: signal.rapidAccountSwitches,
+    dominantProjectVotes: signal.ownProjectVotes,
+    projectMemberDevice: true,
+    rankingTop3Affected: signal.ownProjectVotes >= 10,
+    comments: [],
+  }));
+
+  return [...deviceSignals, ...exhibitorSignals];
+}
+
 export async function buildOdinReportInvestigationContext(
   from: Date,
   overview: OdinOverview,
@@ -1287,15 +1403,15 @@ export async function generateOdinSecurityReportPdf(
     loadLogoDataUri(),
   ]);
   const investigation = await buildOdinReportInvestigationContext(from, overview);
+  const forensicQueue = buildForensicQueue(buildForensicSignalsFromInvestigation(investigation));
+  const immediateCases = forensicQueue.filter((item) => item.actionUrgency === "IMEDIATA").length;
+  const cases24h = forensicQueue.filter((item) => item.actionUrgency === "24H").length;
+  const waitingCases = forensicQueue.filter((item) => item.actionUrgency === "PODE_ESPERAR").length;
 
-  const reportNumber = `ODIN-${generatedAt.toISOString().slice(0, 10)}`;
+  const reportNumber = `ODIN-DOSSIER-${generatedAt.toISOString().slice(0, 10)}`;
   const logoMarkup = renderLogo(logoDataUri);
   const totalPages = 11;
   const globalRiskLevel = maxRiskLevel(overview);
-  const suspiciousDeviceCount = overview.devices.filter((device) => device.riskScore >= 40).length;
-  const criticalDeviceCount = overview.devices.filter((device) => device.riskLevel === "CRITICAL").length;
-  const highDeviceCount = overview.devices.filter((device) => device.riskLevel === "HIGH").length;
-
   const html = `<!doctype html>
 <html lang="pt-AO">
 <head>
@@ -1381,15 +1497,15 @@ export async function generateOdinSecurityReportPdf(
 </style>
 </head>
 <body>
-  <!-- PAGE 1 — Capa -->
+  <!-- PAGE 1 — Capa Operacional -->
   <section class="page">
     ${renderBorderLabels()}
     <div class="page-content">
-      ${renderHeader(logoMarkup, "Relatório de Segurança ODIN")}
+      ${renderHeader(logoMarkup, "Dossiê Forense ODIN")}
       <div class="hero">
-        <p class="eyebrow">Auditoria de segurança</p>
+        <p class="eyebrow">ODIN-DOSSIER · CONFIDENCIAL — uso interno</p>
         <h1>Relatório de Segurança ODIN</h1>
-        <p class="lead">Análise administrativa de utilizadores, dispositivos, projetos sob pressão e decisões assistidas pelo ODIN. Este documento é confidencial e deve ser usado como apoio à investigação humana, não como sentença automática.</p>
+        <p class="lead">Dossiê operacional para decidir com prova, contexto e sequência de ação. O ODIN separa factos verificáveis, análise contextual e protocolo de decisão para que cada ação seja defensável depois do evento.</p>
       </div>
       <div class="metric-grid">
         ${renderMetric("Relatório", reportNumber, "Identificador do documento.")}
@@ -1398,58 +1514,57 @@ export async function generateOdinSecurityReportPdf(
         ${renderMetric("Risco global", riskLabel(globalRiskLevel), "Maior nível observado.")}
       </div>
       <div class="section-card">
-        <p class="eyebrow">Leitura rápida</p>
-        <h2>Estado de segurança da votação</h2>
-        <div class="metric-grid metric-grid--three">
-          ${renderMetric("Eventos", formatNumber(overview.stats.totalEvents), "Logins, votos e ações ODIN.")}
-          ${renderMetric("Dispositivos", formatNumber(overview.stats.deviceCount), "Cookies/dispositivos observados.")}
-          ${renderMetric("Suspeitos", formatNumber(suspiciousDeviceCount), "Dispositivos acima do limiar de revisão.")}
-          ${renderMetric("Contas em risco", formatNumber(overview.stats.suspectStudents), "Utilizadores ligados a padrões suspeitos.")}
-          ${renderMetric("Votos sob análise", formatNumber(overview.stats.suspectVotes), "Votos associados a sinais ODIN.")}
-          ${renderMetric("Projetos", formatNumber(overview.stats.projectPressureCount), "Projetos com pressão suspeita.")}
+        <p class="eyebrow">Estado global</p>
+        <h2>Triagem operacional em quatro números</h2>
+        <div class="metric-grid">
+          ${renderMetric("ACÇÃO IMEDIATA", immediateCases, "Casos que exigem decisão durante o evento.")}
+          ${renderMetric("INVESTIGAR 24H", cases24h, "Casos que precisam de checklist ou confronto.")}
+          ${renderMetric("PODE ESPERAR", waitingCases, "Casos documentados para monitorização.")}
+          ${renderMetric("RESOLVIDOS HOJE", 0, "Fechos registados nesta emissão.")}
         </div>
+      </div>
+      <div class="section-card">
+        <p class="eyebrow">Impacto no ranking</p>
+        <h2>Projetos com votos sob análise</h2>
+        <table class="score-table">
+          <thead><tr><th>Projeto</th><th>Votos sob análise</th><th>Dispositivos</th><th>Contas</th><th>Leitura operacional</th></tr></thead>
+          <tbody>${renderProjectRows(overview.projects.slice(0, 3))}</tbody>
+        </table>
+      </div>
+      <div class="section-card">
+        <p class="eyebrow">BASE DE DADOS FRÁGIL</p>
+        <h2>${formatNumber(investigation.invalidStudentTotal)} contas com dados inválidos detectadas</h2>
+        <p class="muted">Este problema é estrutural: não é fraude por si só, mas contamina a análise porque torna mais difícil separar estudante legítimo com perfil incompleto de conta criada para manipular votação. Ver página 8.</p>
       </div>
       ${renderFooter(reportNumber, 1, totalPages)}
     </div>
   </section>
 
-  <!-- PAGE 2 — Resumo Executivo -->
+  <!-- PAGE 2 — Fila de Triagem -->
   <section class="page">
     ${renderBorderLabels()}
     <div class="page-content">
-      ${renderHeader(logoMarkup, "Resumo Executivo")}
+      ${renderHeader(logoMarkup, "Fila de Triagem")}
       <div class="section-card">
-        <p class="eyebrow">Resumo executivo</p>
-        <h2>Principais sinais encontrados</h2>
-        <div class="metric-grid">
-          ${renderMetric("Críticos", criticalDeviceCount, "Dispositivos com risco máximo.")}
-          ${renderMetric("Alto risco", highDeviceCount, "Dispositivos com forte indício.")}
-          ${renderMetric("Multi-conta", overview.stats.multiAccountDevices, "Mesma cookie/dispositivo com várias contas.")}
-          ${renderMetric("Análises ODIN", analyses.length, "Narrativas assistidas guardadas.")}
-        </div>
-        ${renderReasonList([
-          ...overview.devices.flatMap((device) => device.reasons),
-          ...overview.students.flatMap((student) => student.reasons),
-        ].slice(0, 8))}
-      </div>
-      <div class="method-grid">
-        ${renderSuggestions(overview.suggestions)}
+        <p class="eyebrow">Tabela de comando</p>
+        <h2>Fila de Triagem ODIN</h2>
+        <p class="muted">Cada linha tem um dono operacional e um próximo passo. A fila distingue ação imediata, investigação em 24h e casos que podem esperar sem misturar prova matemática com interpretação.</p>
+        <table class="score-table">
+          <thead><tr><th>ID</th><th>Tipo</th><th>Urgência</th><th>Entidade principal</th><th>Votos</th><th>Impacto ranking</th><th>Próximo passo</th><th>Admin</th><th>Prazo</th></tr></thead>
+          <tbody>${renderForensicQueueRows(forensicQueue)}</tbody>
+        </table>
       </div>
       ${renderFooter(reportNumber, 2, totalPages)}
     </div>
   </section>
 
-  <!-- PAGE 3 — Análise ODIN -->
+  <!-- PAGE 3 — Dossiê Individual -->
   <section class="page">
     ${renderBorderLabels()}
     <div class="page-content">
-      ${renderHeader(logoMarkup, "Análise ODIN")}
-      <div class="section-card">
-        <p class="eyebrow">Motor ODIN</p>
-        <h2>Análises assistidas e recomendações proporcionais</h2>
-        <p class="muted">As análises abaixo são internas. O ODIN apresenta probabilidades, cenários e recomendações, mas a decisão final permanece sempre com a organização.</p>
-      </div>
-      ${renderAnalysisCards(analyses)}
+      ${renderHeader(logoMarkup, "Dossiê Individual")}
+      ${renderForensicCaseDossier(forensicQueue)}
+      ${analyses.length ? `<div class="section-card"><p class="eyebrow">Análises ODIN guardadas</p><h2>Contexto complementar</h2><p class="muted">Quando existem análises já geradas no painel, elas continuam arquivadas como apoio contextual. A prova matemática permanece separada para evitar decisões baseadas apenas em interpretação.</p></div>${renderAnalysisCards(analyses.slice(0, 2))}` : ""}
       ${renderFooter(reportNumber, 3, totalPages)}
     </div>
   </section>
@@ -1541,8 +1656,9 @@ export async function generateOdinSecurityReportPdf(
     <div class="page-content">
       ${renderHeader(logoMarkup, "Dados Inválidos")}
       <div class="section-card">
-        <p class="eyebrow">Dados inválidos ou incompletos</p>
-        <h2>Lista de estudantes a rever na base</h2>
+        <p class="eyebrow">Motor de Integridade de Dados</p>
+        <h2>BASE DE DADOS FRÁGIL · Dados inválidos ou incompletos</h2>
+        <p class="muted">Esta camada é separada da fraude: ela aponta falhas estruturais de cadastro que precisam de validação antes do próximo evento. Contas frágeis não são automaticamente fraude, mas reduzem a precisão de qualquer decisão.</p>
         <table class="score-table">
           <thead><tr><th>Estudante</th><th>Curso</th><th>Universidade</th><th>Origem</th><th>Falhas</th><th>Atividade</th></tr></thead>
           <tbody>${renderInvalidStudentRows(investigation.invalidStudents)}</tbody>

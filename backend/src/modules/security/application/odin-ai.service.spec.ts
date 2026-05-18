@@ -87,6 +87,16 @@ describe("ODIN AI analysis service", () => {
       recommendation: "Invalidar apenas os votos ligados ao padrão.",
       confidenceLevel: "alta",
       actionType: "REVIEW",
+      patternType: null,
+      evidenceSummary: null,
+      commentAnalysis: null,
+      alternativePlausibility: null,
+      recommendedAction: null,
+      actionUrgency: null,
+      votesToReview: null,
+      accountsToReview: null,
+      notifyExpositor: null,
+      cannotBeFalsePositiveIf: null,
     });
   });
 
@@ -100,6 +110,10 @@ describe("ODIN AI analysis service", () => {
     expect(payload.systemPrompt).toContain("comentários do projeto");
     expect(payload.systemPrompt).toContain("telefone emprestado");
     expect(payload.systemPrompt).toContain("expositor");
+    expect(payload.systemPrompt).toContain("TIPO-A");
+    expect(payload.systemPrompt).toContain("pattern_type");
+    expect(payload.systemPrompt).toContain("action_urgency");
+    expect(payload.systemPrompt).toContain("cannot_be_false_positive_if");
     expect(payload.caseContext.caseType).toBe("DEVICE");
     expect(payload.caseContext.reasons).toHaveLength(2);
     expect(payload.caseContext.relatedEvents[0]).not.toHaveProperty("ipAddress");
@@ -196,5 +210,8 @@ describe("ODIN AI analysis service", () => {
     expect(source).toContain("exhibitorDeviceSignals");
     expect(source).toContain("accountSwitches");
     expect(source).toContain("ownProjectVotes");
+    expect(source).toContain("buildForensicVerdict");
+    expect(source).toContain("consistencyCheck");
+    expect(source).toContain("patternType");
   });
 });

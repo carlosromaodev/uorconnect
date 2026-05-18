@@ -23,6 +23,9 @@ describe("Admin ODIN 2.0 AI contract", () => {
     expect(odinTab).toContain("ODIN 2.0");
     expect(odinTab).toContain("Analisar com AI");
     expect(odinTab).toContain("fraudProbability");
+    expect(odinTab).toContain("patternType");
+    expect(odinTab).toContain("consistencyCheck");
+    expect(odinTab).toContain("recommendedAction");
     expect(odinTab).toContain("legitimateProbability");
     expect(odinTab).toContain("Cenário alternativo");
     expect(odinTab).toContain("Útil");

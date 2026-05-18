@@ -21,8 +21,13 @@ describe("Admin ODIN contract", () => {
     const odinTab = source("src/components/admin/AdminOdinTab.tsx");
     const api = source("src/lib/api.ts");
 
-    expect(odinTab).toContain("Sistema ODIN");
+    expect(odinTab).toContain("Sala de Operações ODIN");
     expect(odinTab).toContain("Mesma cookie/dispositivo");
+    expect(odinTab).toContain("Fila de prioridade");
+    expect(odinTab).toContain("Ação imediata");
+    expect(odinTab).toContain("Zona restrita");
+    expect(odinTab).toContain("Exclusão bloqueada até análise ODIN");
+    expect(odinTab).toContain("Digite o número do estudante para confirmar");
     expect(odinTab).toContain("Excluír perfil e limpar ações");
     expect(odinTab).toContain("removeVotes");
     expect(odinTab).toContain("removePassport");

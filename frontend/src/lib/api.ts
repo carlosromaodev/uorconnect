@@ -3137,6 +3137,11 @@ export interface OdinAiAnalysis {
   caseId: string;
   riskScore: number;
   riskLevel: OdinRiskLevel;
+  ruleRiskScore: number;
+  unifiedRiskScore: number;
+  consistencyCheck: string;
+  consistencyReason: string;
+  operationalState: string;
   narrative: string;
   fraudProbability: number;
   legitimateProbability: number;
@@ -3145,6 +3150,16 @@ export interface OdinAiAnalysis {
   recommendation: string;
   confidenceLevel: string;
   actionType: OdinAiActionType;
+  patternType: string | null;
+  evidenceSummary: string | null;
+  commentAnalysis: string | null;
+  alternativePlausibility: string | null;
+  recommendedAction: string | null;
+  actionUrgency: string | null;
+  votesToReview: number | null;
+  accountsToReview: number | null;
+  notifyExpositor: boolean | null;
+  cannotBeFalsePositiveIf: string | null;
   modelVersion: string;
   promptVersion: string;
   tokensUsed: number | null;

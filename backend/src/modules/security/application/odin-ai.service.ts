@@ -7,6 +7,14 @@ import {
   type OdinRawEvent,
   type OdinRiskLevel,
 } from "./odin.service";
+import {
+  buildForensicVerdict,
+  type ForensicActionUrgency,
+  type ForensicConsistencyCheck,
+  type ForensicOperationalState,
+  type ForensicPatternType,
+  type ForensicCaseSignals,
+} from "./odin-forensic.service";
 
 export type OdinAiCaseType = "DEVICE" | "STUDENT" | "PROJECT";
 export type OdinAiActionType =
@@ -177,6 +185,16 @@ export interface OdinAiVerdict {
   recommendation: string;
   confidenceLevel: string;
   actionType: OdinAiActionType;
+  patternType: ForensicPatternType | null;
+  evidenceSummary: string | null;
+  commentAnalysis: string | null;
+  alternativePlausibility: "ALTA" | "MEDIA" | "BAIXA" | null;
+  recommendedAction: string | null;
+  actionUrgency: ForensicActionUrgency | null;
+  votesToReview: number | null;
+  accountsToReview: number | null;
+  notifyExpositor: boolean | null;
+  cannotBeFalsePositiveIf: string | null;
 }
 
 export interface OdinAiAnalysisDto extends OdinAiVerdict {
@@ -185,6 +203,11 @@ export interface OdinAiAnalysisDto extends OdinAiVerdict {
   caseId: string;
   riskScore: number;
   riskLevel: OdinRiskLevel;
+  ruleRiskScore: number;
+  unifiedRiskScore: number;
+  consistencyCheck: ForensicConsistencyCheck;
+  consistencyReason: string;
+  operationalState: ForensicOperationalState;
   modelVersion: string;
   promptVersion: string;
   tokensUsed: number | null;
@@ -204,9 +227,12 @@ const ALLOWED_ACTION_TYPES: OdinAiActionType[] = [
   "NOTIFY_FOR_APPEAL",
   "ESCALATE_TO_ORGANIZATION",
 ];
+const ALLOWED_PATTERN_TYPES: ForensicPatternType[] = ["TIPO-A", "TIPO-B", "TIPO-C"];
+const ALLOWED_ACTION_URGENCIES: ForensicActionUrgency[] = ["IMEDIATA", "24H", "PODE_ESPERAR"];
+const ALLOWED_ALTERNATIVE_PLAUSIBILITIES = ["ALTA", "MEDIA", "BAIXA"] as const;
 
 const ODIN_AI_SYSTEM_PROMPT = `És o motor de análise do sistema ODIN da UOR Connect.
-O teu papel é analisar comportamentos de utilizadores num sistema de votação académica e determinar se são fraudulentos, suspeitos ou legítimos.
+O teu papel é analisar comportamentos de utilizadores num sistema de votação académica presencial e produzir um dossiê forense operacional.
 
 Contexto do sistema:
 - Estudantes votam em projetos de inovação.
@@ -222,6 +248,17 @@ Contexto do sistema:
 - Considera a explicação legítima de telefone emprestado: estudantes podem usar o telefone de um colega por falta de aparelho, bateria ou internet.
 - Quando o dispositivo pertence a um expositor ou membro do projeto, compara trocas de conta, votos para o próprio projeto, contas oficiais e tempo login→voto antes de sugerir fraude.
 - Não trates telefone emprestado como fraude automática; trata como suspeito apenas quando o padrão favorece o próprio projeto, envolve muitas contas, perfis frágeis ou conversões rápidas.
+- IP partilhado/NAT da universidade não é sinal discriminante isolado.
+
+Classifica obrigatoriamente o padrão:
+- TIPO-A: Operação por credenciais em escala. Indicadores: muitas contas, login→voto muito rápido, trocas rápidas, concentração em projeto dominante.
+- TIPO-B: Coordenação de grupo em dispositivo físico partilhado. Indicadores: poucas contas, maioria oficial, tempo humano plausível, sem trocas rápidas sistemáticas.
+- TIPO-C: Expositor com telefone emprestado. Indicadores: dispositivo associado a membro/expositor do projeto beneficiado e necessidade de explicação interna.
+
+Analisa comentários:
+- Comentário superficial poucos segundos após voto reforça sinal de engajamento artificial.
+- Comentário com compreensão real reforça presença legítima.
+- Ausência de comentário é neutra.
 
 Ao analisar um caso, considera sempre:
 1. Pode haver explicação legítima para este padrão?
@@ -233,10 +270,14 @@ Nunca afirmas certeza absoluta.
 Sempre apresentas o cenário alternativo legítimo.
 Inclui sempre que a decisão final é da organização.
 
-Responde APENAS em JSON com os campos:
+Responde APENAS em JSON com estes campos:
 narrative, fraud_probability, legitimate_probability,
 most_likely_scenario, alternative_scenario,
-recommendation, confidence_level, action_type.
+recommendation, confidence_level, action_type,
+pattern_type, evidence_summary, comment_analysis,
+alternative_plausibility, recommended_action, action_urgency,
+votes_to_review, accounts_to_review, notify_expositor,
+cannot_be_false_positive_if.
 
 action_type deve ser um destes valores:
 MONITOR, REVIEW, INVALIDATE_VOTES, NOTIFY_FOR_APPEAL, ESCALATE_TO_ORGANIZATION.`;
@@ -258,6 +299,31 @@ function safeText(value: unknown, fallback: string, maxLength = 1400) {
 
 function readField(source: Record<string, unknown>, snake: string, camel: string) {
   return source[snake] ?? source[camel];
+}
+
+function safeNumber(value: unknown, fallback: number | null = null) {
+  const numeric = typeof value === "number"
+    ? value
+    : typeof value === "string"
+      ? Number(value.trim())
+      : Number.NaN;
+  if (!Number.isFinite(numeric)) return fallback;
+  return Math.max(0, Math.round(numeric));
+}
+
+function safeBoolean(value: unknown, fallback: boolean | null = null) {
+  if (typeof value === "boolean") return value;
+  if (typeof value === "string") {
+    const normalized = value.trim().toLowerCase();
+    if (normalized === "true") return true;
+    if (normalized === "false") return false;
+  }
+  return fallback;
+}
+
+function safeEnum<T extends string>(value: unknown, allowed: readonly T[], fallback: T | null = null) {
+  const normalized = typeof value === "string" ? value.trim().toUpperCase() : "";
+  return allowed.includes(normalized as T) ? normalized as T : fallback;
 }
 
 type OdinAiStudentProfileRow = {
@@ -403,6 +469,23 @@ export function normalizeOdinAiVerdict(input: unknown): OdinAiVerdict {
     ),
     confidenceLevel: safeText(readField(source, "confidence_level", "confidenceLevel"), "média", 80),
     actionType,
+    patternType: safeEnum(readField(source, "pattern_type", "patternType"), ALLOWED_PATTERN_TYPES),
+    evidenceSummary: safeText(readField(source, "evidence_summary", "evidenceSummary"), "", 1000) || null,
+    commentAnalysis: safeText(readField(source, "comment_analysis", "commentAnalysis"), "", 1000) || null,
+    alternativePlausibility: safeEnum(
+      readField(source, "alternative_plausibility", "alternativePlausibility"),
+      ALLOWED_ALTERNATIVE_PLAUSIBILITIES,
+    ),
+    recommendedAction: safeText(readField(source, "recommended_action", "recommendedAction"), "", 1400) || null,
+    actionUrgency: safeEnum(readField(source, "action_urgency", "actionUrgency"), ALLOWED_ACTION_URGENCIES),
+    votesToReview: safeNumber(readField(source, "votes_to_review", "votesToReview")),
+    accountsToReview: safeNumber(readField(source, "accounts_to_review", "accountsToReview")),
+    notifyExpositor: safeBoolean(readField(source, "notify_expositor", "notifyExpositor")),
+    cannotBeFalsePositiveIf: safeText(
+      readField(source, "cannot_be_false_positive_if", "cannotBeFalsePositiveIf"),
+      "",
+      1000,
+    ) || null,
   };
 }
 
@@ -432,6 +515,21 @@ function serializeAnalysis(analysis: {
   recommendation: string;
   confidenceLevel: string;
   actionType: string;
+  patternType?: string | null;
+  actionUrgency?: string | null;
+  operationalState?: string | null;
+  ruleRiskScore?: number | null;
+  unifiedRiskScore?: number | null;
+  consistencyCheck?: string | null;
+  consistencyReason?: string | null;
+  evidenceSummary?: string | null;
+  commentAnalysis?: string | null;
+  alternativePlausibility?: string | null;
+  recommendedAction?: string | null;
+  votesToReview?: number | null;
+  accountsToReview?: number | null;
+  notifyExpositor?: boolean | null;
+  cannotBeFalsePositiveIf?: string | null;
   modelVersion: string;
   promptVersion: string;
   tokensUsed: number | null;
@@ -439,6 +537,36 @@ function serializeAnalysis(analysis: {
   createdAt: Date;
   _count?: { feedback: number };
 }): OdinAiAnalysisDto {
+  const consistency = analysis.consistencyCheck && analysis.consistencyReason
+    ? {
+      consistencyCheck: analysis.consistencyCheck as ForensicConsistencyCheck,
+      consistencyReason: analysis.consistencyReason,
+    }
+    : buildForensicVerdict({
+      signals: {
+        caseId: `${analysis.caseType}:${analysis.caseId}`,
+        entityLabel: analysis.caseId,
+        riskScore: analysis.riskScore,
+        distinctAccounts: 0,
+        votes: 0,
+        fragileAccounts: 0,
+        officialAccounts: 0,
+        medianLoginToVoteSeconds: null,
+        fastestLoginToVoteSeconds: null,
+        rapidAccountSwitches: 0,
+        dominantProjectVotes: 0,
+        projectMemberDevice: false,
+        rankingTop3Affected: false,
+        comments: [],
+      },
+      ai: {
+        fraudProbability: analysis.fraudProbability,
+        legitimateProbability: analysis.legitimateProbability,
+        confidenceLevel: analysis.confidenceLevel,
+      },
+    });
+  const fallbackPattern = analysis.riskScore >= 90 ? "TIPO-A" : "TIPO-B";
+  const fallbackUrgency = analysis.riskScore >= 90 ? "IMEDIATA" : analysis.riskScore >= 40 ? "24H" : "PODE_ESPERAR";
   return {
     id: analysis.id,
     caseType: analysis.caseType as OdinAiCaseType,
@@ -453,6 +581,23 @@ function serializeAnalysis(analysis: {
     recommendation: analysis.recommendation,
     confidenceLevel: analysis.confidenceLevel,
     actionType: analysis.actionType as OdinAiActionType,
+    patternType: (analysis.patternType as ForensicPatternType | null) ?? fallbackPattern,
+    evidenceSummary: analysis.evidenceSummary ?? analysis.narrative,
+    commentAnalysis: analysis.commentAnalysis ?? "Sem análise qualitativa de comentários guardada para esta análise.",
+    alternativePlausibility: (analysis.alternativePlausibility as "ALTA" | "MEDIA" | "BAIXA" | null) ?? null,
+    recommendedAction: analysis.recommendedAction ?? analysis.recommendation,
+    actionUrgency: (analysis.actionUrgency as ForensicActionUrgency | null) ?? fallbackUrgency,
+    votesToReview: analysis.votesToReview ?? 0,
+    accountsToReview: analysis.accountsToReview ?? 0,
+    notifyExpositor: analysis.notifyExpositor ?? false,
+    cannotBeFalsePositiveIf: analysis.cannotBeFalsePositiveIf ?? "Sem condição matemática guardada nesta versão da análise.",
+    ruleRiskScore: analysis.ruleRiskScore ?? analysis.riskScore,
+    unifiedRiskScore: analysis.unifiedRiskScore ?? analysis.riskScore,
+    consistencyCheck: consistency.consistencyCheck,
+    consistencyReason: consistency.consistencyReason,
+    operationalState: (analysis.operationalState as ForensicOperationalState | null) ?? (
+      consistency.consistencyCheck === "FAILED" ? "ANALYSIS_INCONSISTENT" : "OPEN"
+    ),
     modelVersion: analysis.modelVersion,
     promptVersion: analysis.promptVersion,
     tokensUsed: analysis.tokensUsed,
@@ -539,6 +684,99 @@ function buildSummary(events: OdinRawEvent[]) {
     voteCount: events.filter((event) => event.eventType === "PROJECT_VOTE").length,
     distinctStudents: uniqueCount(events.map((event) => event.studentId ?? event.studentNumber)),
     distinctProjects: uniqueCount(events.filter((event) => event.targetType === "Submission").map((event) => event.targetId)),
+  };
+}
+
+function median(values: number[]) {
+  if (!values.length) return null;
+  const sorted = [...values].sort((left, right) => left - right);
+  const middle = Math.floor(sorted.length / 2);
+  return sorted.length % 2 === 0
+    ? Math.round((sorted[middle - 1] + sorted[middle]) / 2)
+    : sorted[middle];
+}
+
+function buildCaseLoginToVoteDurations(events: OdinRawEvent[]) {
+  const sortedEvents = [...events].sort((left, right) => left.createdAt.getTime() - right.createdAt.getTime());
+  const loginEvents = sortedEvents.filter((event) => event.eventType === "LOGIN_SUCCESS" && odinAiStudentKey(event));
+  const durations: number[] = [];
+  for (const loginEvent of loginEvents) {
+    const key = odinAiStudentKey(loginEvent);
+    const vote = sortedEvents.find((event) =>
+      event.eventType === "PROJECT_VOTE"
+      && odinAiStudentKey(event) === key
+      && event.createdAt >= loginEvent.createdAt
+    );
+    if (!vote) continue;
+    durations.push(Math.max(0, Math.round((vote.createdAt.getTime() - loginEvent.createdAt.getTime()) / 1000)));
+  }
+  return durations;
+}
+
+function countRapidAccountSwitches(events: OdinRawEvent[]) {
+  const loginEvents = [...events]
+    .filter((event) => event.eventType === "LOGIN_SUCCESS" && odinAiStudentKey(event))
+    .sort((left, right) => left.createdAt.getTime() - right.createdAt.getTime());
+  let count = 0;
+  for (let index = 1; index < loginEvents.length; index += 1) {
+    const previous = loginEvents[index - 1];
+    const current = loginEvents[index];
+    if (odinAiStudentKey(previous) === odinAiStudentKey(current)) continue;
+    const gap = Math.max(0, Math.round((current.createdAt.getTime() - previous.createdAt.getTime()) / 1000));
+    if (gap <= 90) count += 1;
+  }
+  return count;
+}
+
+function dominantProjectVotes(events: OdinRawEvent[]) {
+  const byProject = new Map<string, number>();
+  for (const event of events) {
+    if (event.eventType !== "PROJECT_VOTE") continue;
+    const key = event.targetLabel ?? String(event.targetId ?? "sem-projeto");
+    byProject.set(key, (byProject.get(key) ?? 0) + 1);
+  }
+  return Array.from(byProject.values()).sort((left, right) => right - left)[0] ?? 0;
+}
+
+function buildForensicSignalsFromContext(caseContext: OdinAiCaseContext): ForensicCaseSignals {
+  const relatedEvents = caseContext.relatedEvents.map((event, index) => ({
+    id: index + 1,
+    deviceId: caseContext.caseId,
+    studentId: null,
+    studentNumber: event.studentNumber,
+    studentName: event.studentName,
+    studentCourse: event.studentCourse,
+    eventType: event.eventType,
+    targetType: event.targetType,
+    targetId: event.targetId,
+    targetLabel: event.targetLabel,
+    ipAddress: null,
+    userAgent: null,
+    createdAt: new Date(event.createdAt),
+  }));
+  const durations = buildCaseLoginToVoteDurations(relatedEvents);
+  const projectMemberSignal = caseContext.studentDatabaseContext?.exhibitorDeviceSignals?.[0] ?? null;
+  return {
+    caseId: `${caseContext.caseType}:${caseContext.caseId}`,
+    entityLabel: caseContext.subject.label,
+    riskScore: caseContext.riskScore,
+    distinctAccounts: Math.max(
+      caseContext.summary.distinctStudents,
+      projectMemberSignal?.distinctAccounts ?? 0,
+    ),
+    votes: Math.max(caseContext.summary.voteCount, projectMemberSignal?.ownProjectVotes ?? 0),
+    fragileAccounts: caseContext.studentDatabaseContext?.coverage.invalidDataAccounts ?? 0,
+    officialAccounts: caseContext.studentDatabaseContext?.coverage.officialAccounts ?? 0,
+    medianLoginToVoteSeconds: median(durations) ?? projectMemberSignal?.averageLoginToVoteSeconds ?? null,
+    fastestLoginToVoteSeconds: durations.length ? Math.min(...durations) : projectMemberSignal?.averageLoginToVoteSeconds ?? null,
+    rapidAccountSwitches: countRapidAccountSwitches(relatedEvents),
+    dominantProjectVotes: dominantProjectVotes(relatedEvents) || projectMemberSignal?.ownProjectVotes || caseContext.summary.voteCount,
+    projectMemberDevice: Boolean(caseContext.studentDatabaseContext?.exhibitorDeviceSignals?.length),
+    rankingTop3Affected: caseContext.riskScore >= 95 && caseContext.summary.voteCount >= 20,
+    comments: (caseContext.studentDatabaseContext?.projectActivity?.recentComments ?? []).slice(0, 8).map((comment) => ({
+      content: comment.contentSnippet,
+      secondsAfterVote: null,
+    })),
   };
 }
 
@@ -1250,6 +1488,18 @@ export async function runOdinAiCaseAnalysis(
   const caseContext = await resolveOdinAiCaseContext(env, input);
   const payload = buildOdinAiCasePayload(caseContext);
   const gemini = await requestGeminiVerdict(env, payload);
+  const forensic = buildForensicVerdict({
+    signals: buildForensicSignalsFromContext(caseContext),
+    ai: {
+      fraudProbability: gemini.verdict.fraudProbability,
+      legitimateProbability: gemini.verdict.legitimateProbability,
+      confidenceLevel: gemini.verdict.confidenceLevel,
+      evidenceSummary: gemini.verdict.evidenceSummary,
+      commentAnalysis: gemini.verdict.commentAnalysis,
+      recommendedAction: gemini.verdict.recommendedAction,
+      alternativePlausibility: gemini.verdict.alternativePlausibility,
+    },
+  });
   const payloadHash = hashPayload(payload);
   const analysis = await prisma.odinAiAnalysis.create({
     data: {
@@ -1265,6 +1515,21 @@ export async function runOdinAiCaseAnalysis(
       recommendation: gemini.verdict.recommendation,
       confidenceLevel: gemini.verdict.confidenceLevel,
       actionType: gemini.verdict.actionType,
+      patternType: gemini.verdict.patternType ?? forensic.patternType,
+      actionUrgency: gemini.verdict.actionUrgency ?? forensic.actionUrgency,
+      operationalState: forensic.operationalState,
+      ruleRiskScore: forensic.ruleRiskScore,
+      unifiedRiskScore: forensic.unifiedRiskScore,
+      consistencyCheck: forensic.consistencyCheck,
+      consistencyReason: forensic.consistencyReason,
+      evidenceSummary: gemini.verdict.evidenceSummary ?? forensic.evidenceSummary,
+      commentAnalysis: gemini.verdict.commentAnalysis ?? forensic.commentAnalysis,
+      alternativePlausibility: gemini.verdict.alternativePlausibility ?? forensic.alternativePlausibility,
+      recommendedAction: gemini.verdict.recommendedAction ?? forensic.recommendedAction,
+      votesToReview: gemini.verdict.votesToReview ?? forensic.votesToReview,
+      accountsToReview: gemini.verdict.accountsToReview ?? forensic.accountsToReview,
+      notifyExpositor: gemini.verdict.notifyExpositor ?? forensic.notifyExpositor,
+      cannotBeFalsePositiveIf: gemini.verdict.cannotBeFalsePositiveIf ?? forensic.cannotBeFalsePositiveIf,
       modelVersion: gemini.model,
       promptVersion: payload.promptVersion,
       tokensUsed: gemini.tokensUsed,

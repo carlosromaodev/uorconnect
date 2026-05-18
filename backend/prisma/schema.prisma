@@ -534,6 +534,21 @@ model OdinAiAnalysis {
   recommendation         String
   confidenceLevel        String
   actionType             String
+  patternType            String?
+  actionUrgency          String?
+  operationalState       String   @default("OPEN")
+  ruleRiskScore          Int?
+  unifiedRiskScore       Int?
+  consistencyCheck       String   @default("NOT_EVALUATED")
+  consistencyReason      String?
+  evidenceSummary        String?
+  commentAnalysis        String?
+  alternativePlausibility String?
+  recommendedAction      String?
+  votesToReview          Int?
+  accountsToReview       Int?
+  notifyExpositor        Boolean  @default(false)
+  cannotBeFalsePositiveIf String?
   modelVersion           String
   promptVersion          String
   tokensUsed             Int?
@@ -546,6 +561,9 @@ model OdinAiAnalysis {
   @@index([caseType, caseId, createdAt])
   @@index([riskLevel, createdAt])
   @@index([actionType, createdAt])
+  @@index([patternType, createdAt])
+  @@index([actionUrgency, createdAt])
+  @@index([consistencyCheck, createdAt])
   @@index([payloadHash])
 }
 

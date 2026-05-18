@@ -57,6 +57,26 @@ const riskLabels: Record<OdinRiskLevel, string> = {
   CRITICAL: "crítico",
 };
 
+function actionUrgencyLabel(value?: string | null) {
+  if (value === "IMEDIATA") return "Ação imediata";
+  if (value === "24H") return "Investigar 24h";
+  return "Pode esperar";
+}
+
+function actionUrgencyClass(value?: string | null) {
+  if (value === "IMEDIATA") return "border-rose-200 bg-rose-50 text-rose-800";
+  if (value === "24H") return "border-amber-200 bg-amber-50 text-amber-800";
+  return "border-slate-200 bg-slate-50 text-slate-700";
+}
+
+function deviceActionUrgency(device: OdinDeviceRisk) {
+  if (device.riskLevel === "CRITICAL" && (device.distinctStudents >= 10 || device.voteCount >= 20)) {
+    return "IMEDIATA";
+  }
+  if (device.riskScore >= 40) return "24H";
+  return "PODE_ESPERAR";
+}
+
 const defaultExcludeOptions: OdinExcludeStudentInput = {
   reason: "",
   deleteProfile: true,
@@ -147,15 +167,32 @@ function OdinAiAnalysisPanel({
   feedbackSending: boolean;
   onFeedback: (analysis: OdinAiAnalysis, useful: boolean) => void;
 }) {
+  const consistencyFailed = analysis.consistencyCheck === "FAILED";
+
   return (
-    <div className="mt-4 rounded-2xl border border-indigo-100 bg-indigo-50/70 p-4">
+    <div className="mt-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div>
-          <div className="inline-flex items-center gap-2 rounded-full bg-white px-3 py-1 text-[11px] font-black uppercase tracking-[0.14em] text-indigo-700">
+          <div className="inline-flex items-center gap-2 rounded-full bg-slate-950 px-3 py-1 text-[11px] font-black uppercase tracking-[0.14em] text-white">
             <Sparkles className="h-3.5 w-3.5" />
             ODIN 2.0
           </div>
-          <p className="mt-3 text-sm font-semibold leading-6 text-slate-800">{analysis.narrative}</p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <Badge className={`border px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] ${actionUrgencyClass(analysis.actionUrgency)}`}>
+              {analysis.patternType ?? "Sem tipo"} · {actionUrgencyLabel(analysis.actionUrgency)}
+            </Badge>
+            <Badge className={`border px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] ${consistencyFailed ? "border-rose-200 bg-rose-50 text-rose-800" : "border-emerald-200 bg-emerald-50 text-emerald-800"}`}>
+              consistencyCheck · {analysis.consistencyCheck}
+            </Badge>
+          </div>
+          <p className="mt-3 text-sm font-semibold leading-6 text-slate-800">
+            {analysis.evidenceSummary || analysis.narrative}
+          </p>
+          {consistencyFailed ? (
+            <p className="mt-2 rounded-xl border border-rose-200 bg-rose-50 px-3 py-2 text-xs font-semibold text-rose-800">
+              Análise inconsistente detectada: {analysis.consistencyReason || "o ODIN deve reanalisar antes de decisão final."}
+            </p>
+          ) : null}
         </div>
         <div className="grid min-w-[150px] grid-cols-2 gap-2 text-center text-xs">
           <div className="rounded-xl bg-white px-3 py-2">
@@ -165,6 +202,14 @@ function OdinAiAnalysisPanel({
           <div className="rounded-xl bg-white px-3 py-2">
             <p className="text-[10px] font-black uppercase tracking-[0.12em] text-emerald-600">Legítimo</p>
             <p className="text-lg font-black text-emerald-700">{analysis.legitimateProbability}%</p>
+          </div>
+          <div className="rounded-xl bg-slate-50 px-3 py-2">
+            <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">Score</p>
+            <p className="text-lg font-black text-slate-900">{analysis.unifiedRiskScore ?? analysis.riskScore}</p>
+          </div>
+          <div className="rounded-xl bg-slate-50 px-3 py-2">
+            <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-500">Votos</p>
+            <p className="text-lg font-black text-slate-900">{analysis.votesToReview ?? 0}</p>
           </div>
         </div>
       </div>
@@ -181,13 +226,15 @@ function OdinAiAnalysisPanel({
       </div>
 
       <div className="mt-3 rounded-xl bg-white p-3">
-        <p className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-500">Recomendação proporcional</p>
-        <p className="mt-1 text-xs font-semibold leading-5 text-slate-700">{analysis.recommendation}</p>
+        <p className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-500">recommendedAction · Recomendação proporcional</p>
+        <p className="mt-1 text-xs font-semibold leading-5 text-slate-700">
+          {analysis.recommendedAction || analysis.recommendation}
+        </p>
       </div>
 
       <div className="mt-3 flex flex-col gap-2 text-xs sm:flex-row sm:items-center sm:justify-between">
-        <span className="font-semibold text-indigo-700">
-          {analysis.modelVersion} · confiança {analysis.confidenceLevel} · feedback {analysis.feedbackCount}
+        <span className="font-semibold text-slate-600">
+          {analysis.modelVersion} · {analysis.operationalState} · confiança {analysis.confidenceLevel} · feedback {analysis.feedbackCount}
         </span>
         <div className="flex gap-2">
           <Button
@@ -255,8 +302,10 @@ function DeviceCard({
   onAnalyze: (caseType: OdinAiCaseType, caseId: string) => void;
   onFeedback: (analysis: OdinAiAnalysis, useful: boolean) => void;
 }) {
+  const urgency = analysis?.actionUrgency ?? deviceActionUrgency(device);
+
   return (
-    <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+    <div className={`rounded-2xl border bg-white p-4 shadow-sm ${urgency === "IMEDIATA" ? "border-rose-300 ring-1 ring-rose-100" : "border-slate-200"}`}>
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
@@ -268,6 +317,9 @@ function DeviceCard({
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          <Badge className={`border px-2.5 py-1 text-[11px] font-black uppercase tracking-[0.12em] ${actionUrgencyClass(urgency)}`}>
+            {actionUrgencyLabel(urgency)}
+          </Badge>
           {riskBadge(device.riskLevel, device.riskScore)}
           <OdinAiAnalyzeButton
             analyzing={analyzing}
@@ -275,6 +327,14 @@ function DeviceCard({
           />
         </div>
       </div>
+
+      {analysis ? (
+        <OdinAiAnalysisPanel
+          analysis={analysis}
+          feedbackSending={feedbackSending}
+          onFeedback={onFeedback}
+        />
+      ) : null}
 
       <div className="mt-4 grid grid-cols-2 gap-2 text-xs sm:grid-cols-4">
         <span className="rounded-xl bg-slate-50 px-3 py-2 font-semibold text-slate-600">{device.distinctStudents} contas</span>
@@ -317,14 +377,6 @@ function DeviceCard({
           </div>
         </div>
       </div>
-
-      {analysis ? (
-        <OdinAiAnalysisPanel
-          analysis={analysis}
-          feedbackSending={feedbackSending}
-          onFeedback={onFeedback}
-        />
-      ) : null}
     </div>
   );
 }
@@ -365,16 +417,28 @@ function StudentRiskCard({
             analyzing={analyzing}
             onClick={() => onAnalyze("STUDENT", caseId)}
           />
-          <Button
-            size="sm"
-            variant="destructive"
-            className="h-8 rounded-xl text-xs"
-            disabled={!student.studentId}
-            onClick={() => onExclude(student)}
-          >
-            <Ban className="mr-1.5 h-3.5 w-3.5" />
-            Excluir
-          </Button>
+          {analysis ? (
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8 rounded-xl border-rose-200 bg-rose-50 text-xs font-black text-rose-800 hover:bg-rose-100"
+              disabled={!student.studentId}
+              onClick={() => onExclude(student)}
+            >
+              <Ban className="mr-1.5 h-3.5 w-3.5" />
+              Zona restrita
+            </Button>
+          ) : (
+            <Button
+              size="sm"
+              variant="outline"
+              className="h-8 rounded-xl text-xs"
+              disabled
+            >
+              <ShieldAlert className="mr-1.5 h-3.5 w-3.5" />
+              Exclusão bloqueada até análise ODIN
+            </Button>
+          )}
         </div>
       </div>
 
@@ -412,6 +476,7 @@ export default function AdminOdinTab() {
   const [aiFeedbackSendingId, setAiFeedbackSendingId] = useState<number | null>(null);
   const [selectedStudent, setSelectedStudent] = useState<OdinStudentRisk | null>(null);
   const [excludeOptions, setExcludeOptions] = useState<OdinExcludeStudentInput>(defaultExcludeOptions);
+  const [excludeConfirmation, setExcludeConfirmation] = useState("");
   const [excluding, setExcluding] = useState(false);
   const [reportExporting, setReportExporting] = useState(false);
 
@@ -422,6 +487,23 @@ export default function AdminOdinTab() {
   const topStudents = useMemo(
     () => (overview?.students ?? []).slice(0, 8),
     [overview],
+  );
+  const triageRows = useMemo(
+    () => topDevices.slice(0, 5).map((device) => ({
+      id: device.deviceId,
+      label: shortDeviceId(device.deviceId),
+      urgency: deviceActionUrgency(device),
+      votes: device.voteCount,
+      accounts: device.distinctStudents,
+      nextStep: device.riskLevel === "CRITICAL"
+        ? "Gerar dossiê e cruzar logs antes de agir."
+        : "Validar contexto presencial e continuar monitorização.",
+    })),
+    [topDevices],
+  );
+  const immediateDeviceCount = useMemo(
+    () => topDevices.filter((device) => deviceActionUrgency(device) === "IMEDIATA").length,
+    [topDevices],
   );
 
   const loadOverview = async (hours = windowHours) => {
@@ -453,6 +535,7 @@ export default function AdminOdinTab() {
 
   const openExcludeDialog = (student: OdinStudentRisk) => {
     setSelectedStudent(student);
+    setExcludeConfirmation("");
     setExcludeOptions({
       ...defaultExcludeOptions,
       reason: `Suspeita ODIN: ${student.reasons[0] ?? "atividade incomum no mesmo dispositivo."}`,
@@ -531,12 +614,17 @@ export default function AdminOdinTab() {
       toast.error("Escreve um motivo claro para a auditoria.");
       return;
     }
+    if (excludeConfirmation.trim() !== selectedStudent.studentNumber) {
+      toast.error("Confirma escrevendo exatamente o número do estudante.");
+      return;
+    }
 
     setExcluding(true);
     try {
       const result = await api.odin.excludeStudent(selectedStudent.studentId, excludeOptions);
       toast.success(`ODIN limpou ${result.removed.studentVotes} voto(s) e registou a ação.`);
       setSelectedStudent(null);
+      setExcludeConfirmation("");
       await loadOverview(windowHours);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Não foi possível executar a ação ODIN.");
@@ -547,23 +635,23 @@ export default function AdminOdinTab() {
 
   return (
     <div className="space-y-6">
-      <section className="overflow-hidden rounded-3xl border border-slate-200 bg-slate-950 text-white shadow-xl">
-        <div className="grid gap-6 p-5 md:grid-cols-[1.3fr_0.7fr] md:p-7">
+      <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div className="grid gap-5 border-b border-slate-200 p-5 md:grid-cols-[1.2fr_0.8fr] md:p-6">
           <div>
-            <div className="inline-flex items-center gap-2 rounded-full border border-orange-300/30 bg-white/10 px-3 py-1 text-[11px] font-black uppercase tracking-[0.16em] text-orange-100">
+            <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-black uppercase tracking-[0.16em] text-slate-600">
               <Radar className="h-3.5 w-3.5" />
-              Sistema ODIN
+              Sala de Operações ODIN
             </div>
-            <h2 className="mt-4 text-3xl font-black tracking-tight md:text-4xl">
-              Anti-bot, multi-conta e pressão suspeita nos votos
+            <h2 className="mt-4 text-2xl font-black tracking-tight text-slate-950 md:text-3xl">
+              Fila de prioridade, dossiês e ações protegidas
             </h2>
-            <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-300">
-              O ODIN analisa logins, votos e interações por cookie/dispositivo persistente. Ele não decide sozinho:
-              mostra indícios, provas e deixa a exclusão sempre auditável pela organização.
+            <p className="mt-3 max-w-3xl text-sm leading-6 text-slate-600">
+              O ODIN separa investigação de gestão. Casos críticos aparecem primeiro, a análise contextual vem antes da ação,
+              e exclusões só entram pela zona restrita com confirmação auditável.
             </p>
           </div>
-          <div className="rounded-2xl border border-white/10 bg-white/10 p-4">
-            <p className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-300">Janela de análise</p>
+          <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+            <p className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Janela de análise</p>
             <div className="mt-3 grid grid-cols-3 gap-2">
               {[24, 48, 168].map((hours) => (
                 <Button
@@ -580,7 +668,7 @@ export default function AdminOdinTab() {
             </div>
             <Button
               type="button"
-              className="mt-4 w-full rounded-xl bg-orange-500 text-white hover:bg-orange-600"
+              className="mt-4 w-full rounded-xl bg-slate-950 text-white hover:bg-slate-800"
               onClick={() => void loadOverview(windowHours)}
               disabled={loading}
             >
@@ -590,13 +678,44 @@ export default function AdminOdinTab() {
             <Button
               type="button"
               variant="outline"
-              className="mt-3 w-full rounded-xl border-white/20 bg-white/10 text-white hover:bg-white/20 hover:text-white"
+              className="mt-3 w-full rounded-xl bg-white"
               onClick={() => void handleDownloadSecurityReport()}
               disabled={reportExporting}
             >
               {reportExporting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
               Baixar relatório de segurança
             </Button>
+          </div>
+        </div>
+        <div className="grid gap-3 p-5 md:grid-cols-[220px_1fr] md:p-6">
+          <div className="rounded-2xl border border-rose-200 bg-rose-50 p-4 text-rose-900">
+            <p className="text-[11px] font-black uppercase tracking-[0.16em]">Ação imediata</p>
+            <p className="mt-2 text-4xl font-black tracking-tight">{immediateDeviceCount}</p>
+            <p className="mt-1 text-xs font-semibold leading-5">Casos com prioridade máxima nesta janela.</p>
+          </div>
+          <div className="rounded-2xl border border-slate-200">
+            <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
+              <p className="text-sm font-black text-slate-950">Fila de prioridade</p>
+              <Badge className="border border-slate-200 bg-slate-50 text-slate-700">
+                {triageRows.length} caso(s)
+              </Badge>
+            </div>
+            <div className="divide-y divide-slate-100">
+              {triageRows.length ? triageRows.map((row) => (
+                <div key={row.id} className="grid gap-2 px-4 py-3 text-xs sm:grid-cols-[120px_140px_1fr_120px] sm:items-center">
+                  <span className="font-mono font-bold text-slate-800">{row.label}</span>
+                  <Badge className={`w-fit border px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] ${actionUrgencyClass(row.urgency)}`}>
+                    {actionUrgencyLabel(row.urgency)}
+                  </Badge>
+                  <span className="font-semibold text-slate-600">{row.nextStep}</span>
+                  <span className="text-right font-black text-slate-900">{row.votes} voto(s) · {row.accounts} conta(s)</span>
+                </div>
+              )) : (
+                <p className="px-4 py-5 text-center text-sm font-semibold text-slate-500">
+                  Sem casos na fila operacional nesta janela.
+                </p>
+              )}
+            </div>
           </div>
         </div>
       </section>
@@ -741,7 +860,15 @@ export default function AdminOdinTab() {
         </div>
       )}
 
-      <Dialog open={Boolean(selectedStudent)} onOpenChange={(open) => !open && setSelectedStudent(null)}>
+      <Dialog
+        open={Boolean(selectedStudent)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setSelectedStudent(null);
+            setExcludeConfirmation("");
+          }
+        }}
+      >
         <DialogContent className="max-h-[88vh] overflow-y-auto sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
@@ -773,6 +900,16 @@ export default function AdminOdinTab() {
               />
             </label>
 
+            <label className="space-y-2 text-sm font-semibold text-slate-700">
+              Digite o número do estudante para confirmar
+              <input
+                value={excludeConfirmation}
+                onChange={(event) => setExcludeConfirmation(event.target.value)}
+                className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-900 outline-none focus:border-slate-400"
+                placeholder={selectedStudent?.studentNumber}
+              />
+            </label>
+
             <div className="grid gap-3 sm:grid-cols-2">
               {[
                 ["deleteProfile", "Bloquear perfil/login"],
@@ -798,10 +935,21 @@ export default function AdminOdinTab() {
           </div>
 
           <DialogFooter>
-            <Button variant="outline" onClick={() => setSelectedStudent(null)} disabled={excluding}>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setSelectedStudent(null);
+                setExcludeConfirmation("");
+              }}
+              disabled={excluding}
+            >
               Cancelar
             </Button>
-            <Button variant="destructive" onClick={() => void handleExclude()} disabled={excluding}>
+            <Button
+              variant="destructive"
+              onClick={() => void handleExclude()}
+              disabled={excluding || excludeConfirmation.trim() !== selectedStudent?.studentNumber}
+            >
               {excluding ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Ban className="mr-2 h-4 w-4" />}
               Confirmar ODIN
             </Button>

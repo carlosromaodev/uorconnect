@@ -15,6 +15,9 @@ describe("ODIN 2.0 Gemini AI contract", () => {
       expect(prismaSchema).toContain("model OdinAiAnalysis");
       expect(prismaSchema).toContain("model OdinAiFeedback");
       expect(prismaSchema).toContain("fraudProbability");
+      expect(prismaSchema).toContain("patternType");
+      expect(prismaSchema).toContain("actionUrgency");
+      expect(prismaSchema).toContain("consistencyCheck");
       expect(prismaSchema).toContain("modelVersion");
       expect(prismaSchema).toContain("promptVersion");
       expect(prismaSchema).toContain("payloadHash");

@@ -11,11 +11,20 @@ describe("ODIN security PDF report", () => {
     const report = source("src/modules/security/http/odin-report-pdf.ts");
 
     expect(report).toContain("Relatório de Segurança ODIN");
+    expect(report).toContain("ODIN-DOSSIER");
+    expect(report).toContain("PAGE 1 — Capa Operacional");
+    expect(report).toContain("PAGE 2 — Fila de Triagem");
+    expect(report).toContain("ACÇÃO IMEDIATA");
+    expect(report).toContain("INVESTIGAR 24H");
+    expect(report).toContain("PODE ESPERAR");
+    expect(report).toContain("BASE DE DADOS FRÁGIL");
+    expect(report).toContain("Motor de Integridade de Dados");
+    expect(report).toContain("Prova Matemática");
+    expect(report).toContain("Análise Contextual");
+    expect(report).toContain("buildForensicQueue");
     expect(report).toContain("UOR CONNECT");
     expect(report).toContain("ODIN");
-    expect(report).toContain("PAGE 1 — Capa");
-    expect(report).toContain("PAGE 2 — Resumo Executivo");
-    expect(report).toContain("PAGE 3 — Análise ODIN");
+    expect(report).toContain("PAGE 3 — Dossiê Individual");
     expect(report).toContain("PAGE 4 — Utilizadores");
     expect(report).toContain("PAGE 5 — Dispositivos");
     expect(report).toContain("PAGE 6 — Projetos e Eventos");
