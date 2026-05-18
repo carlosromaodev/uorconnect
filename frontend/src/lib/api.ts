@@ -3851,6 +3851,15 @@ export const api = {
       request<OdinOverview>(
         `/security/odin/overview${toQueryString(params)}`,
       ),
+    createSecurityReportPdfJob: (params?: { windowHours?: number }) =>
+      request<PdfJobQueued>("/security/odin/report/pdf-jobs", {
+        method: "POST",
+        body: JSON.stringify(params ?? {}),
+      }),
+    getSecurityReportPdfJob: (jobId: string) =>
+      request<PdfJobStatus>(`/security/odin/report/pdf-jobs/${jobId}`),
+    downloadSecurityReportPdfJobFile: (jobId: string) =>
+      requestBlob(`/security/odin/report/pdf-jobs/${jobId}/file`),
     analyzeCase: (data: { caseType: OdinAiCaseType; caseId: string; windowHours?: number }) =>
       request<OdinAiAnalysis>("/security/odin/ai/analyze", {
         method: "POST",

@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
   Ban,
+  Download,
   Eye,
   Loader2,
   Radar,
@@ -36,9 +37,11 @@ import {
   type OdinDeviceRisk,
   type OdinExcludeStudentInput,
   type OdinOverview,
+  type PdfJobStatus,
   type OdinRiskLevel,
   type OdinStudentRisk,
 } from "@/lib/api";
+import { downloadBlobFile } from "@/lib/student-documents";
 
 const riskStyles: Record<OdinRiskLevel, string> = {
   LOW: "border-slate-200 bg-slate-50 text-slate-700",
@@ -79,6 +82,28 @@ function formatDateTime(value: string) {
 function shortDeviceId(value: string) {
   if (value.length <= 18) return value;
   return `${value.slice(0, 8)}...${value.slice(-6)}`;
+}
+
+async function waitForOdinPdfJobReady(
+  fetchStatus: () => Promise<PdfJobStatus>,
+  options: { timeoutMs?: number; intervalMs?: number } = {},
+) {
+  const timeoutMs = options.timeoutMs ?? 180_000;
+  const intervalMs = options.intervalMs ?? 1_500;
+  const startedAt = Date.now();
+
+  while (Date.now() - startedAt < timeoutMs) {
+    const status = await fetchStatus();
+
+    if (status.status === "completed") return status;
+    if (status.status === "failed") {
+      throw new Error(status.error || "A geração do relatório ODIN falhou.");
+    }
+
+    await new Promise((resolve) => window.setTimeout(resolve, intervalMs));
+  }
+
+  throw new Error("O servidor demorou demasiado a gerar o relatório ODIN.");
 }
 
 function riskBadge(level: OdinRiskLevel, score: number) {
@@ -388,6 +413,7 @@ export default function AdminOdinTab() {
   const [selectedStudent, setSelectedStudent] = useState<OdinStudentRisk | null>(null);
   const [excludeOptions, setExcludeOptions] = useState<OdinExcludeStudentInput>(defaultExcludeOptions);
   const [excluding, setExcluding] = useState(false);
+  const [reportExporting, setReportExporting] = useState(false);
 
   const topDevices = useMemo(
     () => (overview?.devices ?? []).filter((device) => device.riskScore >= 40).slice(0, 8),
@@ -448,6 +474,28 @@ export default function AdminOdinTab() {
       toast.error(error instanceof Error ? error.message : "Não foi possível analisar este caso com AI.");
     } finally {
       setAiLoadingKey(null);
+    }
+  };
+
+  const handleDownloadSecurityReport = async () => {
+    setReportExporting(true);
+    try {
+      const job = await api.odin.createSecurityReportPdfJob({ windowHours });
+      await waitForOdinPdfJobReady(() => api.odin.getSecurityReportPdfJob(job.id));
+      const pdf = await api.odin.downloadSecurityReportPdfJobFile(job.id);
+      downloadBlobFile(
+        pdf,
+        `uor-connect-relatorio-seguranca-odin-${new Date().toISOString().slice(0, 10)}.pdf`,
+      );
+      toast.success("Relatório de segurança ODIN exportado.");
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Não foi possível exportar o relatório ODIN.",
+      );
+    } finally {
+      setReportExporting(false);
     }
   };
 
@@ -538,6 +586,16 @@ export default function AdminOdinTab() {
             >
               {loading ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <RefreshCw className="mr-2 h-4 w-4" />}
               Atualizar ODIN
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              className="mt-3 w-full rounded-xl border-white/20 bg-white/10 text-white hover:bg-white/20 hover:text-white"
+              onClick={() => void handleDownloadSecurityReport()}
+              disabled={reportExporting}
+            >
+              {reportExporting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
+              Baixar relatório de segurança
             </Button>
           </div>
         </div>

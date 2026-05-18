@@ -5,6 +5,13 @@ import { authGuard } from "../../auth/http/auth.middleware";
 import { adminGuard, setDefaultAdminPermission } from "../../auth/http/admin.middleware";
 import { recordAdminAudit } from "../../audit/application/audit.service";
 import {
+  enqueuePdfJob,
+  getPdfJob,
+  getPdfJobResult,
+  pdfJobInputHash,
+  registerPdfJobHandler,
+} from "../../../shared/pdf-job-queue";
+import {
   getOdinOverview,
   recordOdinStudentExclusion,
 } from "../application/odin.service";
@@ -13,9 +20,22 @@ import {
   recordOdinAiFeedback,
   runOdinAiCaseAnalysis,
 } from "../application/odin-ai.service";
+import {
+  buildOdinSecurityReportSnapshot,
+  generateOdinSecurityReportPdf,
+  ODIN_SECURITY_REPORT_KIND,
+} from "./odin-report-pdf";
 
 const odinOverviewQuerySchema = z.object({
   windowHours: z.coerce.number().int().min(1).max(24 * 14).optional().default(48),
+});
+
+const odinReportPdfJobBodySchema = z.object({
+  windowHours: z.coerce.number().int().min(1).max(24 * 14).optional().default(48),
+});
+
+const odinReportPdfJobParamsSchema = z.object({
+  id: z.string().trim().min(8).max(120),
 });
 
 const odinExcludeParamsSchema = z.object({
@@ -177,6 +197,18 @@ export async function odinRoutes(app: FastifyInstance, opts: { env: Env }) {
     adminApp.register(adminGuard);
     setDefaultAdminPermission(adminApp, ["SECURITY"]);
 
+    registerPdfJobHandler(ODIN_SECURITY_REPORT_KIND, async (job) => {
+      const windowHours = typeof job.snapshot?.windowHours === "number"
+        ? job.snapshot.windowHours
+        : 48;
+      const result = await generateOdinSecurityReportPdf(opts.env, { windowHours });
+      return {
+        buffer: result.pdfBuffer,
+        fileName: result.fileName,
+        contentType: "application/pdf",
+      };
+    });
+
     adminApp.get("/odin/overview",
       {
         schema: {
@@ -193,6 +225,160 @@ export async function odinRoutes(app: FastifyInstance, opts: { env: Env }) {
       async (request: FastifyRequest<{ Querystring: z.infer<typeof odinOverviewQuerySchema> }>, reply) => {
         const query = odinOverviewQuerySchema.parse(request.query);
         return reply.send(await getOdinOverview(query.windowHours));
+      },
+    );
+
+    adminApp.post("/odin/report/pdf-jobs",
+      {
+        schema: {
+          description: "Cria um job para gerar o relatório PDF de segurança ODIN.",
+          tags: ["Security"],
+          body: odinReportPdfJobBodySchema,
+          response: {
+            202: z.object({
+              id: z.string(),
+              kind: z.string(),
+              status: z.string(),
+              error: z.string().nullable().optional(),
+              createdAt: z.string(),
+              updatedAt: z.string(),
+              expiresAt: z.string().nullable().optional(),
+              hasFile: z.boolean().optional(),
+              fileName: z.string().optional(),
+              sizeBytes: z.number().nullable().optional(),
+              statusPath: z.string(),
+              filePath: z.string(),
+            }),
+            401: z.object({ message: z.string() }),
+            403: z.object({ message: z.string() }),
+          },
+        },
+      },
+      async (
+        request: FastifyRequest<{ Body: z.infer<typeof odinReportPdfJobBodySchema> }>,
+        reply,
+      ) => {
+        const body = odinReportPdfJobBodySchema.parse(request.body ?? {});
+        const actorStudentNumber = request.student?.studentNumber ?? request.jury?.phone ?? null;
+        const snapshot = await buildOdinSecurityReportSnapshot(body.windowHours);
+        const version = pdfJobInputHash(snapshot);
+        const generatedDay = new Date().toISOString().slice(0, 10);
+        const job = await enqueuePdfJob(opts.env, {
+          kind: ODIN_SECURITY_REPORT_KIND,
+          businessKey: `${ODIN_SECURITY_REPORT_KIND}:${version}`,
+          fileName: `uor-connect-relatorio-seguranca-odin-${generatedDay}.pdf`,
+          snapshot,
+          createdByStudentNumber: actorStudentNumber,
+          execute: async () => {
+            const result = await generateOdinSecurityReportPdf(opts.env, {
+              windowHours: body.windowHours,
+            });
+            return {
+              buffer: result.pdfBuffer,
+              fileName: result.fileName,
+              contentType: "application/pdf",
+            };
+          },
+        });
+
+        await recordAdminAudit({
+          actorStudentNumber: actorStudentNumber ?? "unknown",
+          actorRole: request.jury ? "jury_admin" : "admin",
+          action: "odin.security_report_pdf_job",
+          entityType: "PdfDocumentJob",
+          entityId: job.id,
+          summary: `Relatório de segurança ODIN solicitado para ${body.windowHours}h.`,
+          metadata: {
+            windowHours: body.windowHours,
+            jobId: job.id,
+            kind: ODIN_SECURITY_REPORT_KIND,
+          },
+        });
+
+        return reply.code(202).send({
+          ...job,
+          statusPath: `/security/odin/report/pdf-jobs/${job.id}`,
+          filePath: `/security/odin/report/pdf-jobs/${job.id}/file`,
+        });
+      },
+    );
+
+    adminApp.get("/odin/report/pdf-jobs/:id",
+      {
+        schema: {
+          description: "Consulta o estado do relatório PDF de segurança ODIN.",
+          tags: ["Security"],
+          params: odinReportPdfJobParamsSchema,
+          response: {
+            200: z.object({
+              id: z.string(),
+              kind: z.string(),
+              status: z.string(),
+              error: z.string().nullable().optional(),
+              createdAt: z.string(),
+              updatedAt: z.string(),
+              expiresAt: z.string().nullable().optional(),
+              hasFile: z.boolean().optional(),
+              fileName: z.string().optional(),
+              sizeBytes: z.number().nullable().optional(),
+              statusPath: z.string(),
+              filePath: z.string(),
+            }),
+            404: z.object({ message: z.string() }),
+            401: z.object({ message: z.string() }),
+            403: z.object({ message: z.string() }),
+          },
+        },
+      },
+      async (
+        request: FastifyRequest<{ Params: z.infer<typeof odinReportPdfJobParamsSchema> }>,
+        reply,
+      ) => {
+        const params = odinReportPdfJobParamsSchema.parse(request.params);
+        const job = await getPdfJob(opts.env, params.id);
+        if (!job) return reply.code(404).send({ message: "Job de PDF ODIN não encontrado." });
+
+        return reply.send({
+          ...job,
+          statusPath: `/security/odin/report/pdf-jobs/${job.id}`,
+          filePath: `/security/odin/report/pdf-jobs/${job.id}/file`,
+        });
+      },
+    );
+
+    adminApp.get("/odin/report/pdf-jobs/:id/file",
+      {
+        schema: {
+          description: "Baixa o ficheiro do relatório PDF de segurança ODIN.",
+          tags: ["Security"],
+          params: odinReportPdfJobParamsSchema,
+          response: {
+            404: z.object({ message: z.string() }),
+            409: z.object({ message: z.string() }),
+            401: z.object({ message: z.string() }),
+            403: z.object({ message: z.string() }),
+          },
+        },
+      },
+      async (
+        request: FastifyRequest<{ Params: z.infer<typeof odinReportPdfJobParamsSchema> }>,
+        reply,
+      ) => {
+        const params = odinReportPdfJobParamsSchema.parse(request.params);
+        const job = await getPdfJob(opts.env, params.id);
+        if (!job) return reply.code(404).send({ message: "Job de PDF ODIN não encontrado." });
+        if (job.status !== "completed") {
+          return reply.code(409).send({ message: "O relatório ODIN ainda não está pronto." });
+        }
+
+        const result = await getPdfJobResult(opts.env, params.id);
+        if (!result) {
+          return reply.code(404).send({ message: "Ficheiro do relatório ODIN não encontrado." });
+        }
+
+        reply.header("Content-Type", result.contentType ?? "application/pdf");
+        reply.header("Content-Disposition", `attachment; filename=\"${result.fileName}\"`);
+        return reply.send(result.buffer);
       },
     );
 
