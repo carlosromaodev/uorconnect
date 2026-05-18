@@ -38,8 +38,11 @@ describe("Passaporte Digital desafios e QR surpresa", () => {
     expect(minhaArea).toContain("scan-point-drain");
     expect(minhaArea).toContain("scan-sad-ripple");
     expect(minhaArea).toContain("Responder questão");
-    expect(minhaArea).toContain("onPointerDownOutside={(event) => event.preventDefault()}");
-    expect(minhaArea).toContain("onEscapeKeyDown={(event) => event.preventDefault()}");
+    expect(minhaArea).toContain("handleScanCelebrationAction");
+    expect(minhaArea).toContain("handleDismissChallengeAnswer");
+    expect(minhaArea).toContain("scanResult?.requiresAnswer && scanResult.challenge && !scanCelebration");
+    expect(minhaArea).not.toContain("onPointerDownOutside={(event) => event.preventDefault()}");
+    expect(minhaArea).not.toContain("onEscapeKeyDown={(event) => event.preventDefault()}");
     expect(minhaArea).not.toContain("scan-celebration-card__close");
     expect(minhaArea).toContain("Leitura recusada");
     expect(minhaArea).toContain("QR não validado");

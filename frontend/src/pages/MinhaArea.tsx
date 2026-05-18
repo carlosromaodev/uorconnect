@@ -2202,6 +2202,18 @@ export default function MinhaArea() {
     }
   };
 
+  const handleDismissChallengeAnswer = () => {
+    if (answeringChallenge) return;
+    setChallengeAnswer("");
+    setScanResult((current) =>
+      current?.requiresAnswer && current.challenge ? null : current,
+    );
+  };
+
+  const handleScanCelebrationAction = () => {
+    setScanCelebration(null);
+  };
+
   const handleDownloadCertificate = async (certificate: CertificateItem) => {
     try {
       setDownloadingCertificateId(certificate.id);
@@ -7149,13 +7161,13 @@ export default function MinhaArea() {
         </Dialog>
 
         <Dialog
-          open={Boolean(scanResult?.requiresAnswer && scanResult.challenge)}
-          onOpenChange={() => undefined}
+          open={Boolean(scanResult?.requiresAnswer && scanResult.challenge && !scanCelebration)}
+          onOpenChange={(open) => {
+            if (!open) handleDismissChallengeAnswer();
+          }}
         >
           <DialogContent
             className="challenge-answer-modal overflow-hidden rounded-3xl border-0 bg-white p-0 shadow-2xl sm:max-w-xl"
-            onPointerDownOutside={(event) => event.preventDefault()}
-            onEscapeKeyDown={(event) => event.preventDefault()}
           >
             <div className="challenge-answer-modal__grid" aria-hidden="true" />
             <div className="challenge-answer-modal__header px-5 py-5 text-white">
@@ -7355,7 +7367,7 @@ export default function MinhaArea() {
                   <Button
                     type="button"
                     className="mt-4 h-11 w-full rounded-xl bg-slate-950 px-5 font-bold text-white hover:bg-slate-800"
-                    onClick={() => setScanCelebration(null)}
+                    onClick={handleScanCelebrationAction}
                   >
                     {scanResult?.requiresAnswer && scanResult.challenge
                       ? "Responder questão"
