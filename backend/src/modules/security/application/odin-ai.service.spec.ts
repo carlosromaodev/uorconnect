@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   buildGeminiGenerationConfig,
@@ -6,6 +8,10 @@ import {
   normalizeOdinAiVerdict,
   type OdinAiCaseContext,
 } from "./odin-ai.service";
+
+function serviceSource() {
+  return readFileSync(join(process.cwd(), "src/modules/security/application/odin-ai.service.ts"), "utf8");
+}
 
 const baseCase: OdinAiCaseContext = {
   caseType: "DEVICE",
@@ -89,6 +95,9 @@ describe("ODIN AI analysis service", () => {
 
     expect(payload.systemPrompt).toContain("Nunca afirmas certeza absoluta");
     expect(payload.systemPrompt).toContain("a decisão final é da organização");
+    expect(payload.systemPrompt).toContain("origem oficial");
+    expect(payload.systemPrompt).toContain("tempo login→voto");
+    expect(payload.systemPrompt).toContain("comentários do projeto");
     expect(payload.caseContext.caseType).toBe("DEVICE");
     expect(payload.caseContext.reasons).toHaveLength(2);
     expect(payload.caseContext.relatedEvents[0]).not.toHaveProperty("ipAddress");
@@ -172,5 +181,15 @@ describe("ODIN AI analysis service", () => {
     expect(serialized).not.toContain("token-privado");
     expect(serialized).not.toContain("hash-secreto");
     expect(serialized).not.toContain("providerResponseJson");
+  });
+
+  it("loads project comments, members and activity into the ODIN analysis context", () => {
+    const source = serviceSource();
+
+    expect(source).toContain("loadProjectActivity");
+    expect(source).toContain("recentComments");
+    expect(source).toContain("confirmedMembers");
+    expect(source).toContain("studentComments");
+    expect(source).toContain("exhibitorScoreEvents");
   });
 });

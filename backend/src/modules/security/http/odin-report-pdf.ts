@@ -39,6 +39,7 @@ type OdinReportAnalysis = {
 type OdinReportEvent = {
   id: number;
   deviceId: string;
+  studentId?: number | null;
   studentNumber: string | null;
   studentName: string | null;
   studentCourse: string | null;
@@ -48,10 +49,102 @@ type OdinReportEvent = {
   targetLabel: string | null;
   ipAddress: string | null;
   userAgent: string | null;
+  riskContextJson?: string | null;
   createdAt: Date;
 };
 
+type OdinReportStudentSource = {
+  id: number;
+  studentNumber: string;
+  name: string | null;
+  email: string | null;
+  phone: string | null;
+  course: string | null;
+  university: string | null;
+  registrationSource: string | null;
+  academicSyncedAt: Date | null;
+  profileCompletedAt: Date | null;
+  avatarUrl: string | null;
+  deletedAt: Date | null;
+  lastLoginAt: Date | null;
+  createdAt: Date;
+  _count?: {
+    loginAudits: number;
+    votes: number;
+    comments: number;
+    passportScans: number;
+    submissionMemberships: number;
+  };
+};
+
+type OdinReportDetailedEvent = OdinReportEvent & {
+  student: OdinReportStudentSource | null;
+};
+
+type OdinReportInvalidStudent = {
+  studentNumber: string;
+  name: string;
+  course: string;
+  university: string;
+  sourceLabel: string;
+  flags: string[];
+  activity: string;
+};
+
+type OdinReportDeviceIdentity = {
+  deviceId: string;
+  riskScore: number;
+  riskLevel: string;
+  contextualFraudScore: number;
+  classification: string;
+  firstAccountLabel: string;
+  firstAccountCourse: string;
+  distinctAccounts: number;
+  courses: Array<{ course: string; count: number }>;
+  accounts: string[];
+  dominantProject: string;
+  averageLoginToVoteSeconds: number | null;
+  fastestLoginToVoteSeconds: number | null;
+  rapidConversions: number;
+  rapidAccountSwitches: number;
+  invalidOrTemporaryAccounts: number;
+  officialAccounts: number;
+  recommendation: string;
+};
+
+type OdinReportCourseRisk = {
+  course: string;
+  students: number;
+  devices: number;
+  rapidConversions: number;
+};
+
+type OdinReportProjectInvestigation = {
+  submissionId: number;
+  name: string;
+  type: string;
+  course: string;
+  members: number;
+  confirmedMembers: number;
+  comments: number;
+  recentCommentSignals: string[];
+  suspiciousVotes: number;
+  suspiciousStudents: number;
+  temporaryOrIncompleteVoters: number;
+  averageLoginToVoteSeconds: number | null;
+  recommendation: string;
+};
+
+type OdinReportInvestigationContext = {
+  invalidStudentTotal: number;
+  invalidStudents: OdinReportInvalidStudent[];
+  deviceIdentities: OdinReportDeviceIdentity[];
+  courseRisks: OdinReportCourseRisk[];
+  projectInvestigations: OdinReportProjectInvestigation[];
+};
+
 const reportKind = "security.odin.report";
+const officialRegistrationSources = new Set(["SECRETARIA", "ISPTEC_OFFICIAL"]);
 
 function clampWindowHours(windowHours?: number) {
   return Number.isFinite(windowHours)
@@ -108,6 +201,70 @@ function shortId(value: string | null | undefined, start = 8, end = 6) {
 
 function formatNumber(value: number) {
   return new Intl.NumberFormat("pt-AO").format(value);
+}
+
+function formatDuration(seconds: number | null) {
+  if (seconds === null || !Number.isFinite(seconds)) return "Sem amostra";
+  if (seconds < 60) return `${Math.max(1, Math.round(seconds))}s`;
+  const minutes = Math.floor(seconds / 60);
+  const rest = Math.round(seconds % 60);
+  return rest ? `${minutes}m ${rest}s` : `${minutes}m`;
+}
+
+function average(values: number[]) {
+  if (!values.length) return null;
+  return Math.round(values.reduce((total, value) => total + value, 0) / values.length);
+}
+
+function eventStudentKey(event: Pick<OdinReportEvent, "studentId" | "studentNumber">) {
+  if (event.studentId) return `id:${event.studentId}`;
+  if (event.studentNumber) return `number:${event.studentNumber}`;
+  return null;
+}
+
+function isOfficialStudent(student: Pick<OdinReportStudentSource, "academicSyncedAt" | "registrationSource"> | null | undefined) {
+  if (!student) return false;
+  return Boolean(student.academicSyncedAt || officialRegistrationSources.has(student.registrationSource?.trim().toUpperCase() ?? ""));
+}
+
+function validStudentNumber(value?: string | null) {
+  const normalized = value?.trim() ?? "";
+  return Boolean(normalized && normalized.length <= 40 && /^[\p{L}\p{N}._-]+$/u.test(normalized));
+}
+
+function studentIntegrityFlags(student: OdinReportStudentSource | null | undefined) {
+  const flags: string[] = [];
+  if (!student) {
+    flags.push("SEM_REGISTO_NA_BASE");
+    return flags;
+  }
+
+  if (student.deletedAt) flags.push("CONTA_ELIMINADA");
+  if (!isOfficialStudent(student)) flags.push("LOGIN_NAO_OFICIAL");
+  if (!validStudentNumber(student.studentNumber)) flags.push("NUMERO_INVALIDO");
+  if (!student.name?.trim()) flags.push("NOME_EM_FALTA");
+  if (!student.course?.trim()) flags.push("CURSO_EM_FALTA");
+  if (!student.email?.trim() && !student.phone?.trim()) flags.push("CONTACTO_EM_FALTA");
+  if (!student.avatarUrl?.trim()) flags.push("SEM_FOTO");
+  if (!student.profileCompletedAt) flags.push("PERFIL_INCOMPLETO");
+  return flags;
+}
+
+function sourceLabel(student: Pick<OdinReportStudentSource, "academicSyncedAt" | "registrationSource"> | null | undefined) {
+  if (student?.registrationSource === "SECRETARIA") return "Oficial UOR";
+  if (student?.registrationSource === "ISPTEC_OFFICIAL") return "Oficial ISPTEC";
+  if (student?.academicSyncedAt) return "Académico sincronizado";
+  return "Não oficial / temporário";
+}
+
+function personLabel(event: Pick<OdinReportEvent, "studentName" | "studentNumber" | "studentCourse">) {
+  const name = event.studentName?.trim() || event.studentNumber?.trim() || "Conta sem nome";
+  const course = event.studentCourse?.trim();
+  return course ? `${name} · ${course}` : name;
+}
+
+function clampScore(value: number) {
+  return Math.max(0, Math.min(100, Math.round(value)));
 }
 
 function maxRiskLevel(overview: OdinOverview): OdinRiskLevel {
@@ -294,6 +451,527 @@ function renderSuggestions(suggestions: string[]) {
   `).join("");
 }
 
+function renderCourseRiskChart(courseRisks: OdinReportCourseRisk[]) {
+  if (!courseRisks.length) {
+    return `<div class="empty-state"><h3>Sem gráfico de cursos</h3><p>Não há contas suficientes para relacionar curso, dispositivo e conversão nesta janela.</p></div>`;
+  }
+
+  const maxStudents = Math.max(...courseRisks.map((item) => item.students), 1);
+  return `
+    <div class="course-chart">
+      ${courseRisks.slice(0, 8).map((item) => {
+        const width = Math.max(8, Math.round((item.students / maxStudents) * 100));
+        return `
+          <div class="course-chart-row">
+            <div>
+              <strong>${escapeHtml(item.course)}</strong>
+              <span>${item.students} conta(s) · ${item.devices} dispositivo(s) · ${item.rapidConversions} conversão(ões) rápidas</span>
+            </div>
+            <div class="course-chart-track"><i style="width:${width}%"></i></div>
+          </div>
+        `;
+      }).join("")}
+    </div>
+  `;
+}
+
+function renderDeviceIdentityCards(devices: OdinReportDeviceIdentity[]) {
+  if (!devices.length) {
+    return `<div class="empty-state"><h3>Sem dossiês de dispositivo</h3><p>Nenhum dispositivo reuniu dados suficientes para uma análise identitária nesta janela.</p></div>`;
+  }
+
+  return devices.slice(0, 8).map((device) => `
+    <article class="intel-card">
+      <div class="intel-card-head">
+        <div>
+          <span class="eyebrow">Dispositivo ${escapeHtml(shortId(device.deviceId, 7, 5))}</span>
+          <h3>${escapeHtml(device.classification)}</h3>
+        </div>
+        <span class="risk-pill ${riskClass(device.riskLevel)}">Índice de fraude contextual · ${device.contextualFraudScore}</span>
+      </div>
+      <div class="intel-grid">
+        <div><span>Primeira conta observada</span><strong>${escapeHtml(device.firstAccountLabel)}</strong><p>${escapeHtml(device.firstAccountCourse)}</p></div>
+        <div><span>Tempo login→voto</span><strong>${escapeHtml(formatDuration(device.averageLoginToVoteSeconds))}</strong><p>Mais rápido: ${escapeHtml(formatDuration(device.fastestLoginToVoteSeconds))}</p></div>
+        <div><span>Contas no aparelho</span><strong>${device.distinctAccounts}</strong><p>${device.officialAccounts} oficiais · ${device.invalidOrTemporaryAccounts} incompletas/temporárias</p></div>
+        <div><span>Conversões rápidas</span><strong>${device.rapidConversions}</strong><p>${device.rapidAccountSwitches} troca(s) de conta em menos de 90s</p></div>
+      </div>
+      <p class="intel-line"><strong>Projeto dominante:</strong> ${escapeHtml(device.dominantProject)}</p>
+      <p class="intel-line"><strong>Contas vistas:</strong> ${escapeHtml(device.accounts.join(", ") || "Sem contas associadas")}</p>
+      <p class="intel-line"><strong>Cursos:</strong> ${escapeHtml(device.courses.map((course) => `${course.course} (${course.count})`).join(", ") || "Sem curso")}</p>
+      <div class="recommendation-box"><span>Leitura ODIN</span><p>${escapeHtml(device.recommendation)}</p></div>
+    </article>
+  `).join("");
+}
+
+function renderInvalidStudentRows(students: OdinReportInvalidStudent[]) {
+  if (!students.length) {
+    return `<tr><td colspan="6">Nenhum estudante com dados inválidos ou incompletos encontrado na amostra.</td></tr>`;
+  }
+
+  return students.slice(0, 22).map((student) => `
+    <tr>
+      <td><strong>${escapeHtml(student.name)}</strong><small>${escapeHtml(student.studentNumber)}</small></td>
+      <td>${escapeHtml(student.course)}</td>
+      <td>${escapeHtml(student.university)}</td>
+      <td>${escapeHtml(student.sourceLabel)}</td>
+      <td>${escapeHtml(student.flags.slice(0, 4).join(", "))}</td>
+      <td>${escapeHtml(student.activity)}</td>
+    </tr>
+  `).join("");
+}
+
+function renderProjectInvestigationRows(projects: OdinReportProjectInvestigation[]) {
+  if (!projects.length) {
+    return `<tr><td colspan="8">Sem projetos com dados suficientes para investigação contextual nesta janela.</td></tr>`;
+  }
+
+  return projects.slice(0, 12).map((project) => `
+    <tr>
+      <td><strong>${escapeHtml(project.name)}</strong><small>#${project.submissionId} · ${escapeHtml(project.type)}</small></td>
+      <td>${escapeHtml(project.course)}</td>
+      <td class="number-cell">${project.suspiciousVotes}</td>
+      <td class="number-cell">${project.suspiciousStudents}</td>
+      <td class="number-cell">${project.temporaryOrIncompleteVoters}</td>
+      <td>${escapeHtml(formatDuration(project.averageLoginToVoteSeconds))}</td>
+      <td><strong>${project.confirmedMembers}/${project.members}</strong><small>${project.comments} comentário(s)</small></td>
+      <td>${escapeHtml(project.recommendation)}</td>
+    </tr>
+  `).join("");
+}
+
+function renderProjectCommentSignals(projects: OdinReportProjectInvestigation[]) {
+  const signals = projects
+    .flatMap((project) => project.recentCommentSignals.map((signal) => ({ project: project.name, signal })))
+    .slice(0, 8);
+  if (!signals.length) {
+    return `<p class="muted">Sem comentários recentes associados aos projetos analisados.</p>`;
+  }
+
+  return `
+    <div class="method-grid">
+      ${signals.map((item) => `
+        <div class="method-card">
+          <span>${escapeHtml(item.project)}</span>
+          <p>${escapeHtml(item.signal)}</p>
+        </div>
+      `).join("")}
+    </div>
+  `;
+}
+
+function buildInvalidStudentWhere() {
+  return {
+    OR: [
+      { name: null },
+      { name: "" },
+      { course: null },
+      { course: "" },
+      { profileCompletedAt: null },
+      { avatarUrl: null },
+      { avatarUrl: "" },
+      {
+        AND: [
+          { email: null },
+          { phone: null },
+        ],
+      },
+      {
+        AND: [
+          { academicSyncedAt: null },
+          {
+            OR: [
+              { registrationSource: null },
+              { registrationSource: { notIn: Array.from(officialRegistrationSources) } },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+}
+
+function toInvalidStudentRow(student: OdinReportStudentSource): OdinReportInvalidStudent {
+  const flags = studentIntegrityFlags(student);
+  return {
+    studentNumber: student.studentNumber,
+    name: student.name?.trim() || "Nome em falta",
+    course: student.course?.trim() || "Curso em falta",
+    university: student.university?.trim() || "Universidade em falta",
+    sourceLabel: sourceLabel(student),
+    flags,
+    activity: `${student._count?.loginAudits ?? 0} login(s), ${student._count?.votes ?? 0} voto(s), ${student._count?.passportScans ?? 0} scan(s)`,
+  };
+}
+
+function buildDeviceIdentities(events: OdinReportDetailedEvent[], overview: OdinOverview): OdinReportDeviceIdentity[] {
+  const byDevice = new Map<string, OdinReportDetailedEvent[]>();
+  for (const event of events) {
+    byDevice.set(event.deviceId, [...(byDevice.get(event.deviceId) ?? []), event]);
+  }
+
+  const overviewByDevice = new Map(overview.devices.map((device) => [device.deviceId, device]));
+
+  return Array.from(byDevice.entries()).map(([deviceId, deviceEvents]) => {
+    const sortedEvents = [...deviceEvents].sort((left, right) => left.createdAt.getTime() - right.createdAt.getTime());
+    const overviewDevice = overviewByDevice.get(deviceId);
+    const studentEvents = sortedEvents.filter((event) => eventStudentKey(event));
+    const firstStudentEvent = studentEvents[0] ?? null;
+    const accounts = new Map<string, OdinReportDetailedEvent>();
+    const voteProjects = new Map<string, number>();
+    const loginToVoteDurations: number[] = [];
+    let rapidConversions = 0;
+    let rapidAccountSwitches = 0;
+
+    for (const event of studentEvents) {
+      const key = eventStudentKey(event);
+      if (key && !accounts.has(key)) accounts.set(key, event);
+      if (event.eventType === "PROJECT_VOTE" && event.targetLabel) {
+        voteProjects.set(event.targetLabel, (voteProjects.get(event.targetLabel) ?? 0) + 1);
+      }
+    }
+
+    const loginEvents = sortedEvents.filter((event) => event.eventType === "LOGIN_SUCCESS" && eventStudentKey(event));
+    for (const loginEvent of loginEvents) {
+      const key = eventStudentKey(loginEvent);
+      const vote = sortedEvents.find((event) =>
+        event.eventType === "PROJECT_VOTE"
+        && eventStudentKey(event) === key
+        && event.createdAt >= loginEvent.createdAt
+      );
+      if (!vote) continue;
+      const duration = Math.max(0, Math.round((vote.createdAt.getTime() - loginEvent.createdAt.getTime()) / 1000));
+      loginToVoteDurations.push(duration);
+      if (duration <= 90) rapidConversions += 1;
+    }
+
+    for (let index = 1; index < loginEvents.length; index += 1) {
+      const previous = loginEvents[index - 1];
+      const current = loginEvents[index];
+      if (eventStudentKey(previous) === eventStudentKey(current)) continue;
+      const gap = Math.max(0, Math.round((current.createdAt.getTime() - previous.createdAt.getTime()) / 1000));
+      if (gap <= 90) rapidAccountSwitches += 1;
+    }
+
+    const accountEvents = Array.from(accounts.values());
+    const invalidOrTemporaryAccounts = accountEvents.filter((event) =>
+      !isOfficialStudent(event.student) || studentIntegrityFlags(event.student).length > 0
+    ).length;
+    const officialAccounts = accountEvents.filter((event) => isOfficialStudent(event.student)).length;
+    const courseCounts = new Map<string, number>();
+    for (const event of accountEvents) {
+      const course = event.student?.course?.trim() || event.studentCourse?.trim() || "Curso em falta";
+      courseCounts.set(course, (courseCounts.get(course) ?? 0) + 1);
+    }
+
+    const dominantProject = Array.from(voteProjects.entries())
+      .sort((left, right) => right[1] - left[1])[0]?.[0] ?? "Sem projeto dominante";
+    const baseScore = overviewDevice?.riskScore ?? 0;
+    const contextualFraudScore = clampScore(
+      baseScore
+      + (rapidConversions >= 3 ? 18 : rapidConversions > 0 ? 10 : 0)
+      + (rapidAccountSwitches >= 2 ? 15 : rapidAccountSwitches > 0 ? 8 : 0)
+      + (invalidOrTemporaryAccounts >= 3 ? 18 : invalidOrTemporaryAccounts > 0 ? 9 : 0)
+      + (voteProjects.size === 1 && accountEvents.length >= 3 ? 10 : 0),
+    );
+
+    const classification = contextualFraudScore >= 90
+      ? "Fraude provável por roteiro de credenciais"
+      : contextualFraudScore >= 75
+        ? "Suspeita forte de operador único"
+        : contextualFraudScore >= 55
+          ? "Partilha anormal com revisão obrigatória"
+          : "Uso partilhado a monitorizar";
+
+    const recommendation = contextualFraudScore >= 75
+      ? "Comparar estes votos com a lista de presença e validar se cada estudante esteve fisicamente envolvido. Se confirmar operação por credenciais, invalidar apenas os votos ligados ao padrão."
+      : "Não concluir fraude sem revisão humana. Confirmar se o dispositivo pertence a laboratório, protocolo ou expositor antes de qualquer ação.";
+
+    return {
+      deviceId,
+      riskScore: baseScore,
+      riskLevel: overviewDevice?.riskLevel ?? "LOW",
+      contextualFraudScore,
+      classification,
+      firstAccountLabel: firstStudentEvent ? personLabel(firstStudentEvent) : "Sem primeira conta",
+      firstAccountCourse: firstStudentEvent?.student?.course ?? firstStudentEvent?.studentCourse ?? "Curso em falta",
+      distinctAccounts: accountEvents.length,
+      courses: Array.from(courseCounts.entries()).map(([course, count]) => ({ course, count }))
+        .sort((left, right) => right.count - left.count || left.course.localeCompare(right.course)),
+      accounts: accountEvents.map((event) => event.student?.name ?? event.studentName ?? event.studentNumber ?? "Conta sem nome").slice(0, 10),
+      dominantProject,
+      averageLoginToVoteSeconds: average(loginToVoteDurations),
+      fastestLoginToVoteSeconds: loginToVoteDurations.length ? Math.min(...loginToVoteDurations) : null,
+      rapidConversions,
+      rapidAccountSwitches,
+      invalidOrTemporaryAccounts,
+      officialAccounts,
+      recommendation,
+    };
+  }).filter((device) =>
+    device.distinctAccounts >= 2 || device.contextualFraudScore >= 40 || device.rapidConversions > 0
+  ).sort((left, right) =>
+    right.contextualFraudScore - left.contextualFraudScore || right.distinctAccounts - left.distinctAccounts
+  );
+}
+
+function buildCourseRisks(devices: OdinReportDeviceIdentity[]) {
+  const byCourse = new Map<string, { students: Set<string>; devices: Set<string>; rapidConversions: number }>();
+  for (const device of devices) {
+    for (const course of device.courses) {
+      const current = byCourse.get(course.course) ?? {
+        students: new Set<string>(),
+        devices: new Set<string>(),
+        rapidConversions: 0,
+      };
+      current.devices.add(device.deviceId);
+      for (let index = 0; index < course.count; index += 1) {
+        current.students.add(`${device.deviceId}:${course.course}:${index}`);
+      }
+      current.rapidConversions += device.rapidConversions;
+      byCourse.set(course.course, current);
+    }
+  }
+  return Array.from(byCourse.entries()).map(([course, item]) => ({
+    course,
+    students: item.students.size,
+    devices: item.devices.size,
+    rapidConversions: item.rapidConversions,
+  })).sort((left, right) => right.students - left.students || right.rapidConversions - left.rapidConversions);
+}
+
+function projectConversionAverage(projectId: number, devices: OdinReportDeviceIdentity[], events: OdinReportDetailedEvent[]) {
+  const deviceIds = new Set(
+    events
+      .filter((event) => event.eventType === "PROJECT_VOTE" && event.targetType === "Submission" && event.targetId === projectId)
+      .map((event) => event.deviceId),
+  );
+  return average(devices
+    .filter((device) => deviceIds.has(device.deviceId))
+    .map((device) => device.averageLoginToVoteSeconds)
+    .filter((value): value is number => typeof value === "number"));
+}
+
+async function buildProjectInvestigations(
+  overview: OdinOverview,
+  events: OdinReportDetailedEvent[],
+  devices: OdinReportDeviceIdentity[],
+): Promise<OdinReportProjectInvestigation[]> {
+  const projectIds = Array.from(new Set([
+    ...overview.projects.map((project) => project.submissionId),
+    ...events
+      .filter((event) => event.targetType === "Submission" && event.targetId)
+      .map((event) => event.targetId as number),
+  ])).slice(0, 30);
+  if (!projectIds.length) return [];
+
+  const submissions = await prisma.submission.findMany({
+    where: { id: { in: projectIds } },
+    select: {
+      id: true,
+      name: true,
+      type: true,
+      course: true,
+      area: true,
+      category: true,
+      description: true,
+      memberConfirmations: {
+        select: {
+          confirmedAt: true,
+          studentId: true,
+          studentNumber: true,
+          isExternal: true,
+        },
+        take: 30,
+      },
+      studentComments: {
+        select: {
+          content: true,
+          moderationStatus: true,
+          createdAt: true,
+          student: {
+            select: {
+              studentNumber: true,
+              name: true,
+              course: true,
+              registrationSource: true,
+              academicSyncedAt: true,
+              profileCompletedAt: true,
+              avatarUrl: true,
+              email: true,
+              phone: true,
+              university: true,
+              deletedAt: true,
+              lastLoginAt: true,
+              createdAt: true,
+              _count: {
+                select: {
+                  loginAudits: true,
+                  votes: true,
+                  comments: true,
+                  passportScans: true,
+                  submissionMemberships: true,
+                },
+              },
+            },
+          },
+        },
+        orderBy: { createdAt: "desc" },
+        take: 10,
+      },
+      _count: {
+        select: {
+          studentVotes: true,
+          studentComments: true,
+          memberConfirmations: true,
+          exhibitorScoreEvents: true,
+        },
+      },
+    },
+  });
+
+  return submissions.map((submission) => {
+    const pressure = overview.projects.find((project) => project.submissionId === submission.id);
+    const projectEvents = events.filter((event) => event.targetType === "Submission" && event.targetId === submission.id);
+    const voterEvents = projectEvents.filter((event) => event.eventType === "PROJECT_VOTE");
+    const temporaryOrIncompleteVoters = new Set(
+      voterEvents
+        .filter((event) => !isOfficialStudent(event.student) || studentIntegrityFlags(event.student).length > 0)
+        .map((event) => eventStudentKey(event) ?? event.studentNumber ?? `event:${event.id}`),
+    ).size;
+    const recentCommentSignals = submission.studentComments.map((comment) => {
+      const author = comment.student?.name ?? comment.student?.studentNumber ?? "Conta sem nome";
+      const source = sourceLabel(comment.student);
+      return `${author} (${source}): ${comment.content.slice(0, 70)}`;
+    }).slice(0, 3);
+    const confirmedMembers = submission.memberConfirmations.filter((member) => member.confirmedAt).length;
+    const averageLoginToVoteSeconds = projectConversionAverage(submission.id, devices, events);
+    const recommendation = temporaryOrIncompleteVoters > 0 || (averageLoginToVoteSeconds !== null && averageLoginToVoteSeconds <= 90)
+      ? "Rever padrões de login e votação dos estudantes envolvidos, com foco em perfis incompletos, temporários e alta atividade."
+      : "Manter monitorização; sem evidência suficiente para ação automática.";
+
+    return {
+      submissionId: submission.id,
+      name: submission.name,
+      type: String(submission.type),
+      course: submission.course ?? submission.area ?? submission.category ?? "Curso/área em falta",
+      members: submission._count.memberConfirmations,
+      confirmedMembers,
+      comments: submission._count.studentComments,
+      recentCommentSignals,
+      suspiciousVotes: pressure?.suspiciousVotes ?? 0,
+      suspiciousStudents: pressure?.suspiciousStudents ?? 0,
+      temporaryOrIncompleteVoters,
+      averageLoginToVoteSeconds,
+      recommendation,
+    };
+  }).sort((left, right) =>
+    right.suspiciousVotes - left.suspiciousVotes
+    || right.temporaryOrIncompleteVoters - left.temporaryOrIncompleteVoters
+    || (left.averageLoginToVoteSeconds ?? 9999) - (right.averageLoginToVoteSeconds ?? 9999)
+  );
+}
+
+export async function buildOdinReportInvestigationContext(
+  from: Date,
+  overview: OdinOverview,
+): Promise<OdinReportInvestigationContext> {
+  const invalidStudentWhere = buildInvalidStudentWhere();
+  const [invalidStudentTotal, invalidStudentRows, detailedEvents] = await Promise.all([
+    prisma.student.count({ where: invalidStudentWhere }),
+    prisma.student.findMany({
+      where: invalidStudentWhere,
+      select: {
+        id: true,
+        studentNumber: true,
+        name: true,
+        email: true,
+        phone: true,
+        course: true,
+        university: true,
+        registrationSource: true,
+        academicSyncedAt: true,
+        profileCompletedAt: true,
+        avatarUrl: true,
+        deletedAt: true,
+        lastLoginAt: true,
+        createdAt: true,
+        _count: {
+          select: {
+            loginAudits: true,
+            votes: true,
+            comments: true,
+            passportScans: true,
+            submissionMemberships: true,
+          },
+        },
+      },
+      orderBy: [{ lastLoginAt: "desc" }, { createdAt: "desc" }],
+      take: 60,
+    }),
+    prisma.odinEvent.findMany({
+      where: { createdAt: { gte: from } },
+      orderBy: { createdAt: "asc" },
+      take: 5000,
+      select: {
+        id: true,
+        deviceId: true,
+        studentId: true,
+        studentNumber: true,
+        studentName: true,
+        studentCourse: true,
+        eventType: true,
+        targetType: true,
+        targetId: true,
+        targetLabel: true,
+        ipAddress: true,
+        userAgent: true,
+        riskContextJson: true,
+        createdAt: true,
+        student: {
+          select: {
+            id: true,
+            studentNumber: true,
+            name: true,
+            email: true,
+            phone: true,
+            course: true,
+            university: true,
+            registrationSource: true,
+            academicSyncedAt: true,
+            profileCompletedAt: true,
+            avatarUrl: true,
+            deletedAt: true,
+            lastLoginAt: true,
+            createdAt: true,
+            _count: {
+              select: {
+                loginAudits: true,
+                votes: true,
+                comments: true,
+                passportScans: true,
+                submissionMemberships: true,
+              },
+            },
+          },
+        },
+      },
+    }),
+  ]);
+
+  const events = detailedEvents as OdinReportDetailedEvent[];
+  const deviceIdentities = buildDeviceIdentities(events, overview);
+  const courseRisks = buildCourseRisks(deviceIdentities);
+  const projectInvestigations = await buildProjectInvestigations(overview, events, deviceIdentities);
+
+  return {
+    invalidStudentTotal,
+    invalidStudents: (invalidStudentRows as OdinReportStudentSource[]).map(toInvalidStudentRow),
+    deviceIdentities,
+    courseRisks,
+    projectInvestigations,
+  };
+}
+
 export async function buildOdinSecurityReportSnapshot(windowHours?: number) {
   const hours = clampWindowHours(windowHours);
   const from = new Date(Date.now() - hours * 60 * 60 * 1000);
@@ -350,10 +1028,11 @@ export async function generateOdinSecurityReportPdf(
     }),
     loadLogoDataUri(),
   ]);
+  const investigation = await buildOdinReportInvestigationContext(from, overview);
 
   const reportNumber = `ODIN-${generatedAt.toISOString().slice(0, 10)}`;
   const logoMarkup = renderLogo(logoDataUri);
-  const totalPages = 6;
+  const totalPages = 10;
   const globalRiskLevel = maxRiskLevel(overview);
   const suspiciousDeviceCount = overview.devices.filter((device) => device.riskScore >= 40).length;
   const criticalDeviceCount = overview.devices.filter((device) => device.riskLevel === "CRITICAL").length;
@@ -421,6 +1100,20 @@ export async function generateOdinSecurityReportPdf(
   .method-card { border-radius: 4mm; border: 1px solid #dbe5e3; background: #fff; padding: 3.5mm; }
   .method-card span { display: block; color: #fd8305; font-size: 8px; font-weight: 900; text-transform: uppercase; letter-spacing: .08em; }
   .method-card p { margin-top: 1.5mm; color: #344958; font-size: 9.5px; line-height: 1.45; }
+  .intel-card { margin-top: 4mm; border: 1px solid #dbe5e3; border-radius: 4mm; padding: 4mm; background: #fff; break-inside: avoid; }
+  .intel-card-head { display: flex; justify-content: space-between; gap: 4mm; align-items: flex-start; }
+  .intel-card h3 { color: #152434; font-size: 13px; font-weight: 880; }
+  .intel-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 2.5mm; margin-top: 3mm; }
+  .intel-grid div { border: 1px solid rgba(34,61,66,.08); border-radius: 3mm; background: #f8fbfa; padding: 2.7mm; min-height: 18mm; }
+  .intel-grid span { display: block; color: #61707f; font-size: 7.2px; font-weight: 900; letter-spacing: .08em; text-transform: uppercase; }
+  .intel-grid strong { display: block; margin-top: 1mm; color: #152434; font-size: 12px; font-weight: 880; line-height: 1.15; }
+  .intel-grid p, .intel-line { margin-top: 1.5mm; color: #344958; font-size: 8.6px; line-height: 1.35; }
+  .course-chart { display: grid; gap: 2.4mm; margin-top: 4mm; }
+  .course-chart-row { display: grid; grid-template-columns: 54mm 1fr; gap: 4mm; align-items: center; }
+  .course-chart-row strong { display: block; color: #152434; font-size: 9px; font-weight: 850; }
+  .course-chart-row span { display: block; margin-top: .6mm; color: #61707f; font-size: 7.4px; line-height: 1.25; }
+  .course-chart-track { height: 5mm; border-radius: 999px; background: #e7efed; overflow: hidden; }
+  .course-chart-track i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #fd8305, #223d42); }
   .empty-state { border: 1px dashed #dbe5e3; border-radius: 4mm; background: #fff; padding: 7mm; text-align: center; color: #344958; }
   .empty-state h3 { color: #152434; font-size: 14px; font-weight: 850; }
   .empty-state p { margin-top: 2mm; font-size: 10px; line-height: 1.55; }
@@ -559,6 +1252,81 @@ export async function generateOdinSecurityReportPdf(
         </table>
       </div>
       ${renderFooter(reportNumber, 6, totalPages)}
+    </div>
+  </section>
+
+  <!-- PAGE 7 — Dossiê CIA -->
+  <section class="page">
+    ${renderBorderLabels()}
+    <div class="page-content">
+      ${renderHeader(logoMarkup, "Dossiê CIA")}
+      <div class="section-card">
+        <p class="eyebrow">Mapa de Dispositivos e Identidades</p>
+        <h2>Dispositivos, cursos, primeira conta e tempo de conversão</h2>
+        <p class="muted">Esta página compara o tempo normal de convencimento com o padrão de operador único: várias contas entram no mesmo aparelho, votam rapidamente no mesmo projeto e aparecem com perfis incompletos, temporários ou sem origem oficial UOR/ISPTEC.</p>
+        <div class="metric-grid">
+          ${renderMetric("Dados inválidos", formatNumber(investigation.invalidStudentTotal), "Contas na base com dados incompletos, temporários ou não oficiais.")}
+          ${renderMetric("Dossiês", investigation.deviceIdentities.length, "Dispositivos com identidade correlacionada.")}
+          ${renderMetric("Conversões rápidas", investigation.deviceIdentities.reduce((total, device) => total + device.rapidConversions, 0), "Login→voto em até 90 segundos.")}
+          ${renderMetric("Projetos cruzados", investigation.projectInvestigations.length, "Projetos avaliados com votos, comentários e membros.")}
+        </div>
+        ${renderCourseRiskChart(investigation.courseRisks)}
+      </div>
+      ${renderDeviceIdentityCards(investigation.deviceIdentities)}
+      ${renderFooter(reportNumber, 7, totalPages)}
+    </div>
+  </section>
+
+  <!-- PAGE 8 — Dados inválidos -->
+  <section class="page">
+    ${renderBorderLabels()}
+    <div class="page-content">
+      ${renderHeader(logoMarkup, "Dados Inválidos")}
+      <div class="section-card">
+        <p class="eyebrow">Dados inválidos ou incompletos</p>
+        <h2>Lista de estudantes a rever na base</h2>
+        <table class="score-table">
+          <thead><tr><th>Estudante</th><th>Curso</th><th>Universidade</th><th>Origem</th><th>Falhas</th><th>Atividade</th></tr></thead>
+          <tbody>${renderInvalidStudentRows(investigation.invalidStudents)}</tbody>
+        </table>
+      </div>
+      ${renderFooter(reportNumber, 8, totalPages)}
+    </div>
+  </section>
+
+  <!-- PAGE 9 — Projetos investigados -->
+  <section class="page">
+    ${renderBorderLabels()}
+    <div class="page-content">
+      ${renderHeader(logoMarkup, "Projetos Investigados")}
+      <div class="section-card">
+        <p class="eyebrow">Projetos, comentários e membros</p>
+        <h2>Contexto para análise ODIN assistida</h2>
+        <table class="score-table">
+          <thead><tr><th>Projeto</th><th>Curso/área</th><th>Votos sob análise</th><th>Contas</th><th>Perfis frágeis</th><th>Tempo login→voto</th><th>Membros</th><th>Recomendação</th></tr></thead>
+          <tbody>${renderProjectInvestigationRows(investigation.projectInvestigations)}</tbody>
+        </table>
+      </div>
+      ${renderFooter(reportNumber, 9, totalPages)}
+    </div>
+  </section>
+
+  <!-- PAGE 10 — Comentários e leitura final -->
+  <section class="page">
+    ${renderBorderLabels()}
+    <div class="page-content">
+      ${renderHeader(logoMarkup, "Comentários e Leitura Final")}
+      <div class="section-card">
+        <p class="eyebrow">Nota investigativa</p>
+        <h2>Como interpretar o índice de fraude contextual</h2>
+        <p class="muted">Um tempo login→voto muito curto em várias contas no mesmo dispositivo é mais compatível com alguém que já possui credenciais do que com um expositor a convencer estudantes organicamente. Ainda assim, laboratório, equipa de apoio, telemóvel emprestado ou dificuldade de acesso podem explicar parte do padrão; por isso a recomendação continua a ser revisão humana antes de invalidar votos.</p>
+      </div>
+      <div class="section-card">
+        <p class="eyebrow">Comentários recentes</p>
+        <h2>Sinais qualitativos dos projetos</h2>
+        ${renderProjectCommentSignals(investigation.projectInvestigations)}
+      </div>
+      ${renderFooter(reportNumber, 10, totalPages)}
     </div>
   </section>
 </body>

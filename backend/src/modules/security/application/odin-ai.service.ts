@@ -84,6 +84,28 @@ export interface OdinAiStudentDatabaseContext {
     confirmed: boolean;
     linkedStudentId: number | null;
   }>;
+  projectActivity?: {
+    submissionId: number;
+    name: string;
+    type: string;
+    status: string;
+    area: string;
+    course: string | null;
+    descriptionSnippet: string;
+    totalVotes: number;
+    totalComments: number;
+    totalMembers: number;
+    confirmedMembers: number;
+    totalScoreEvents: number;
+    recentComments: Array<{
+      author: string;
+      course: string | null;
+      accessType: OdinAiStudentAccessType;
+      moderationStatus: string;
+      contentSnippet: string;
+      createdAt: string;
+    }>;
+  } | null;
   patterns: {
     courseDistribution: Array<{ course: string; students: number }>;
     sharedPhoneGroups: Array<{ studentCount: number; studentNumbers: string[] }>;
@@ -182,6 +204,9 @@ Contexto do sistema:
 - Grupos do mesmo curso podem votar juntos de forma legítima.
 - Tens acesso seguro a um resumo da base de estudantes: tipo de conta, dados incompletos, contas eliminadas, projetos, votos e passaporte.
 - Não recebes senhas, tokens, códigos de acesso, emails completos nem telefones completos.
+- A origem oficial de confiança é Secretaria UOR ou ISPTEC. Login sem origem oficial não prova fraude sozinho, mas aumenta a necessidade de revisão.
+- Compara o tempo login→voto: conversão humana tende a levar mais tempo; várias contas a votar em segundos no mesmo dispositivo sugerem posse prévia de credenciais.
+- Considera comentários do projeto, dados do projeto, membros, presença confirmada, atividades na plataforma, votos e passaporte em conjunto antes de recomendar uma ação.
 
 Ao analisar um caso, considera sempre:
 1. Pode haver explicação legítima para este padrão?
@@ -536,6 +561,7 @@ function emptyStudentDatabaseContext(projectMembers: OdinAiStudentDatabaseContex
     },
     students: [],
     projectMembers,
+    projectActivity: null,
     patterns: {
       courseDistribution: [],
       sharedPhoneGroups: [],
@@ -603,6 +629,9 @@ function buildStudentDatabaseReasons(context: OdinAiStudentDatabaseContext) {
   if (context.coverage.unconfirmedProjectMembers > 0) {
     reasons.push(`Projeto: ${context.coverage.unconfirmedProjectMembers} membro(s) ainda sem confirmação de presença.`);
   }
+  if (context.projectActivity) {
+    reasons.push(`Projeto: ${context.projectActivity.totalComments} comentário(s), ${context.projectActivity.totalMembers} membro(s), ${context.projectActivity.confirmedMembers} presença(s) confirmada(s) e ${context.projectActivity.totalScoreEvents} evento(s) de pontuação do expositor.`);
+  }
   return reasons;
 }
 
@@ -635,11 +664,89 @@ async function loadProjectMembers(projectId?: number | null): Promise<OdinAiStud
   }));
 }
 
+async function loadProjectActivity(projectId?: number | null): Promise<OdinAiStudentDatabaseContext["projectActivity"]> {
+  if (!projectId || !Number.isFinite(projectId)) return null;
+  const submission = await prisma.submission.findUnique({
+    where: { id: projectId },
+    select: {
+      id: true,
+      name: true,
+      type: true,
+      status: true,
+      area: true,
+      course: true,
+      description: true,
+      memberConfirmations: {
+        select: { confirmedAt: true },
+        take: 100,
+      },
+      studentComments: {
+        select: {
+          content: true,
+          moderationStatus: true,
+          createdAt: true,
+          student: {
+            select: {
+              studentNumber: true,
+              name: true,
+              course: true,
+              registrationSource: true,
+              academicSyncedAt: true,
+            },
+          },
+        },
+        orderBy: { createdAt: "desc" },
+        take: 12,
+      },
+      _count: {
+        select: {
+          studentVotes: true,
+          studentComments: true,
+          memberConfirmations: true,
+          exhibitorScoreEvents: true,
+        },
+      },
+    },
+  });
+  if (!submission) return null;
+
+  return {
+    submissionId: submission.id,
+    name: submission.name,
+    type: String(submission.type),
+    status: String(submission.status),
+    area: submission.area,
+    course: submission.course,
+    descriptionSnippet: submission.description.trim().slice(0, 600),
+    totalVotes: submission._count.studentVotes,
+    totalComments: submission._count.studentComments,
+    totalMembers: submission._count.memberConfirmations,
+    confirmedMembers: submission.memberConfirmations.filter((member) => member.confirmedAt).length,
+    totalScoreEvents: submission._count.exhibitorScoreEvents,
+    recentComments: submission.studentComments.map((comment) => {
+      const accessType = comment.student?.academicSyncedAt || isOfficialRegistrationSource(comment.student?.registrationSource)
+        ? "OFFICIAL" as const
+        : "TEMPORARY" as const;
+      return {
+        author: comment.student?.name ?? comment.student?.studentNumber ?? "Conta sem nome",
+        course: comment.student?.course ?? null,
+        accessType,
+        moderationStatus: comment.moderationStatus,
+        contentSnippet: comment.content.trim().slice(0, 260),
+        createdAt: comment.createdAt.toISOString(),
+      };
+    }),
+  };
+}
+
 async function buildStudentDatabaseContext(
   relatedEvents: OdinRawEvent[],
   options: { projectId?: number | null } = {},
 ): Promise<OdinAiStudentDatabaseContext> {
-  const projectMembers = await loadProjectMembers(options.projectId);
+  const [projectMembers, projectActivity] = await Promise.all([
+    loadProjectMembers(options.projectId),
+    loadProjectActivity(options.projectId),
+  ]);
   const studentIds = new Set<number>();
   const studentNumbers = new Set<string>();
 
@@ -657,7 +764,12 @@ async function buildStudentDatabaseContext(
     ...(studentIds.size ? [{ id: { in: Array.from(studentIds) } }] : []),
     ...(studentNumbers.size ? [{ studentNumber: { in: Array.from(studentNumbers) } }] : []),
   ];
-  if (whereOr.length === 0) return emptyStudentDatabaseContext(projectMembers);
+  if (whereOr.length === 0) {
+    return {
+      ...emptyStudentDatabaseContext(projectMembers),
+      projectActivity,
+    };
+  }
 
   const studentRows = await prisma.student.findMany({
     where: { OR: whereOr },
@@ -719,6 +831,7 @@ async function buildStudentDatabaseContext(
     },
     students,
     projectMembers,
+    projectActivity,
     patterns: {
       courseDistribution: buildCourseDistribution(students),
       sharedPhoneGroups: buildSharedPhoneGroups(studentRows),
