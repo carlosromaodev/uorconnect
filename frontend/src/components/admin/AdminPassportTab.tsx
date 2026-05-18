@@ -215,6 +215,13 @@ function adminChallengeStatusClass(challenge: DigitalPassportAdminChallenge) {
   return "border-emerald-200 bg-emerald-50 text-emerald-800";
 }
 
+function adminChallengeReviewPriority(challenge: DigitalPassportAdminChallenge) {
+  if (challenge.status === "PENDING_APPROVAL" || challenge.pendingApproval) return 0;
+  if (challenge.status === "REJECTED") return 1;
+  if (challenge.status === "PAUSED" || !challenge.active) return 2;
+  return 3;
+}
+
 function formatNumber(value: number) {
   return new Intl.NumberFormat("pt-AO").format(value);
 }
@@ -305,6 +312,18 @@ export default function AdminPassportTab() {
       `${mission.title} ${mission.key} ${mission.type}`.toLowerCase().includes(query)
     ));
   }, [missions, search]);
+
+  const visibleChallenges = useMemo(
+    () =>
+      [...challenges].sort((left, right) => {
+        const priorityDiff =
+          adminChallengeReviewPriority(left) -
+          adminChallengeReviewPriority(right);
+        if (priorityDiff !== 0) return priorityDiff;
+        return Date.parse(right.createdAt) - Date.parse(left.createdAt);
+      }),
+    [challenges],
+  );
 
   const surpriseQrBatches = useMemo<SurpriseQrBatchSummary[]>(() => {
     const batches = new Map<string, SurpriseQrBatchSummary>();
@@ -1729,10 +1748,18 @@ export default function AdminPassportTab() {
               </Button>
             </form>
 
-            {challenges.length > 0 ? (
+            {visibleChallenges.length > 0 ? (
               <div className="border-t border-slate-100 p-4 sm:p-5">
-                <div className="space-y-2">
-                  {challenges.slice(0, 5).map((challenge) => (
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+                  <p className="text-xs font-black uppercase tracking-[0.14em] text-slate-500">
+                    Perguntas submetidas
+                  </p>
+                  <span className="rounded-full border border-violet-100 bg-violet-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-[0.12em] text-violet-800">
+                    {visibleChallenges.length} no total
+                  </span>
+                </div>
+                <div className="max-h-[620px] space-y-2 overflow-y-auto pr-1">
+                  {visibleChallenges.map((challenge) => (
                     <div key={challenge.id} className="rounded-xl border border-slate-100 bg-slate-50 px-3 py-2">
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0">
