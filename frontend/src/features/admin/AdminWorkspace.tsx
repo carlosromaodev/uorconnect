@@ -366,7 +366,6 @@ const defaultAdminAccessForm: AdminAccessForm = {
   permissions: ["OVERVIEW"],
 };
 
-const adminDangerPhone = "+244937624785";
 const resetVotesPhrase = "REMOVER VOTOS";
 
 type AdminSubmission = {
@@ -1600,11 +1599,9 @@ const Admin = ({
   const [votesEntriesTotalPages, setVotesEntriesTotalPages] = useState(1);
   const [votesUpdatedAt, setVotesUpdatedAt] = useState<string | null>(null);
   const [votesResetDialogOpen, setVotesResetDialogOpen] = useState(false);
-  const [votesResetSmsExpiresAt, setVotesResetSmsExpiresAt] = useState<string | null>(null);
-  const [votesResetCode, setVotesResetCode] = useState("");
   const [votesResetPhrase, setVotesResetPhrase] = useState("");
-  const [votesResetSendingCode, setVotesResetSendingCode] = useState(false);
   const [votesResetConfirming, setVotesResetConfirming] = useState(false);
+  const [projectVotingPaused, setProjectVotingPaused] = useState(false);
   const [exhibitorVoteQrDialog, setExhibitorVoteQrDialog] = useState<{
     project: VoteProjectSummary;
     url: string;
@@ -1953,6 +1950,9 @@ const Admin = ({
           interactionResult.status === "fulfilled"
             ? interactionResult.value
             : null;
+        if (interactionData?.control) {
+          setProjectVotingPaused(interactionData.control.votingPaused);
+        }
 
         if (
           submissionResult.status === "fulfilled" &&
@@ -2429,6 +2429,7 @@ const Admin = ({
               votesLimit,
             })
             .then((snapshot) => {
+              setProjectVotingPaused(snapshot.control.votingPaused);
               applyVoteSnapshot(
                 {
                   projects: snapshot.projects.items,
@@ -5252,6 +5253,7 @@ const Admin = ({
         votesPage: votesEntriesPage,
         votesLimit: votesEntriesPageSize,
       });
+      setProjectVotingPaused(snapshot.control.votingPaused);
       applyVoteSnapshot(
         {
           projects: snapshot.projects.items,
@@ -5579,19 +5581,30 @@ const Admin = ({
     }
   };
 
-  const handleRequestVotesResetConfirmation = async () => {
-    setVotesResetSendingCode(true);
+  const handleProjectVotingPauseToggle = async () => {
+    const nextPausedState = !projectVotingPaused;
+
     try {
-      const confirmation = await api.interactions.requestVotesResetConfirmation();
-      setVotesResetSmsExpiresAt(confirmation.expiresAt);
-      setVotesResetCode("");
-      toast.success(`Código SMS enviado para ${adminDangerPhone}.`);
+      setBusyKey("votes-control");
+      const control = await api.interactions.updateVotesControl({
+        votingPaused: nextPausedState,
+      });
+      setProjectVotingPaused(control.votingPaused);
+      toast.success(
+        control.votingPaused
+          ? "Votação pública pausada."
+          : "Votação pública retomada.",
+      );
     } catch (error) {
       if (!handleAdminAuthFailure(error)) {
-        toast.error(error instanceof Error ? error.message : "Falha ao enviar código SMS.");
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : "Falha ao atualizar o estado da votação.",
+        );
       }
     } finally {
-      setVotesResetSendingCode(false);
+      setBusyKey(null);
     }
   };
 
@@ -5600,21 +5613,14 @@ const Admin = ({
       toast.info(`Escreve ${resetVotesPhrase} para confirmar.`);
       return;
     }
-    if (!/^\d{6}$/.test(votesResetCode.trim())) {
-      toast.info("Insere o código SMS de 6 dígitos.");
-      return;
-    }
 
     setVotesResetConfirming(true);
     try {
       const result = await api.interactions.confirmVotesReset({
-        code: votesResetCode.trim(),
         confirmationText: votesResetPhrase.trim(),
       });
       toast.success(`${result.studentVotesDeleted + result.legacyVotesDeleted} voto(s) e ${result.scoreEventsDeleted} evento(s) de pontuação removido(s).`);
       setVotesResetDialogOpen(false);
-      setVotesResetSmsExpiresAt(null);
-      setVotesResetCode("");
       setVotesResetPhrase("");
       setVotesProjectsPage(1);
       setVotesEntriesPage(1);
@@ -5976,7 +5982,7 @@ const Admin = ({
               Remover todos os votos
             </DialogTitle>
             <DialogDescription className="text-rose-800/80">
-              Deixa o botão pronto para o dia de abertura da actividade. A remoção só acontece depois do código enviado para {adminDangerPhone}.
+              Esta ação é imediata e não envia SMS. Confirma apenas quando tiveres a certeza absoluta.
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 px-5 py-4">
@@ -5986,50 +5992,24 @@ const Admin = ({
                 Serão removidos os votos dos estudantes e os eventos de pontuação dos projectos. Comentários, likes, visitas e páginas dos projectos ficam intactos.
               </p>
             </div>
-            <Button
-              type="button"
-              variant="outline"
-              className="h-11 w-full rounded-xl border-rose-200 text-rose-700 hover:bg-rose-50"
-              onClick={() => void handleRequestVotesResetConfirmation()}
-              disabled={votesResetSendingCode || votesResetConfirming}
-            >
-              {votesResetSendingCode ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Shield className="mr-2 h-4 w-4" />}
-              Enviar código SMS
-            </Button>
-            {votesResetSmsExpiresAt ? (
-              <p className="rounded-xl border border-emerald-100 bg-emerald-50 px-3 py-2 text-xs font-semibold text-emerald-800">
-                Código enviado. Válido até {new Date(votesResetSmsExpiresAt).toLocaleTimeString("pt-AO", { hour: "2-digit", minute: "2-digit" })}.
-              </p>
-            ) : null}
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div>
-                <label className="mb-1.5 block text-xs font-semibold text-slate-600">Código SMS</label>
-                <Input
-                  value={votesResetCode}
-                  onChange={(event) => setVotesResetCode(event.target.value.replace(/\D/g, "").slice(0, 6))}
-                  inputMode="numeric"
-                  className="rounded-xl"
-                  placeholder="000000"
-                  disabled={votesResetConfirming}
-                />
-              </div>
-              <div>
-                <label className="mb-1.5 block text-xs font-semibold text-slate-600">Frase</label>
-                <Input
-                  value={votesResetPhrase}
-                  onChange={(event) => setVotesResetPhrase(event.target.value.toUpperCase())}
-                  className="rounded-xl"
-                  placeholder={resetVotesPhrase}
-                  disabled={votesResetConfirming}
-                />
-              </div>
+            <div>
+              <label className="mb-1.5 block text-xs font-semibold text-slate-600">
+                Escreve {resetVotesPhrase}
+              </label>
+              <Input
+                value={votesResetPhrase}
+                onChange={(event) => setVotesResetPhrase(event.target.value.toUpperCase())}
+                className="rounded-xl"
+                placeholder={resetVotesPhrase}
+                disabled={votesResetConfirming}
+              />
             </div>
           </div>
           <DialogFooter className="border-t border-slate-100 bg-slate-50 px-5 py-4">
             <Button type="button" variant="outline" className="rounded-xl" onClick={() => setVotesResetDialogOpen(false)} disabled={votesResetConfirming}>
               Cancelar
             </Button>
-            <Button type="button" className="rounded-xl bg-rose-700 text-white hover:bg-rose-800" onClick={() => void handleConfirmVotesReset()} disabled={votesResetConfirming || !votesResetSmsExpiresAt}>
+            <Button type="button" className="rounded-xl bg-rose-700 text-white hover:bg-rose-800" onClick={() => void handleConfirmVotesReset()} disabled={votesResetConfirming}>
               {votesResetConfirming ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Trash2 className="mr-2 h-4 w-4" />}
               Confirmar remoção
             </Button>
@@ -11624,6 +11604,28 @@ const Admin = ({
                               >
                                 <FileText className="mr-2 h-4 w-4" />
                                 PDF
+                              </Button>
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className={`h-10 flex-1 rounded-2xl ${
+                                  projectVotingPaused
+                                    ? "border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100"
+                                    : "border-amber-200 bg-amber-50 text-amber-800 hover:bg-amber-100"
+                                }`}
+                                onClick={() => void handleProjectVotingPauseToggle()}
+                                disabled={busyKey === "votes-control"}
+                              >
+                                {busyKey === "votes-control" ? (
+                                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                                ) : projectVotingPaused ? (
+                                  <Power className="mr-2 h-4 w-4" />
+                                ) : (
+                                  <PowerOff className="mr-2 h-4 w-4" />
+                                )}
+                                {projectVotingPaused
+                                  ? "Retomar votação"
+                                  : "Pausar votação"}
                               </Button>
                               <Button
                                 variant="outline"

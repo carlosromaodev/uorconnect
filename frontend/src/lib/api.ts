@@ -5524,6 +5524,10 @@ export const api = {
           recentVotes: number;
           lastVoteAt: string | null;
         }>;
+        control: {
+          votingPaused: boolean;
+          updatedAt: string;
+        };
       }>(`/interactions/admin/votes`),
     adminVotesPaged: (params?: {
       projectsPage?: number;
@@ -5563,18 +5567,25 @@ export const api = {
           recentVotes: number;
           lastVoteAt: string | null;
         }>;
+        control: {
+          votingPaused: boolean;
+          updatedAt: string;
+        };
       }>(`/interactions/admin/votes/paged${toQueryString(params)}`),
     adminModeration: () =>
       request<{
         projectComments: AdminModerationProjectComment[];
         liveChatMessages: AdminModerationLiveChatMessage[];
       }>(`/interactions/admin/moderation`),
-    requestVotesResetConfirmation: () =>
-      request<AdminSmsConfirmationResponse>(
-        "/interactions/admin/votes/reset/request-confirmation",
-        { method: "POST" },
+    updateVotesControl: (data: { votingPaused: boolean }) =>
+      request<{ votingPaused: boolean; updatedAt: string }>(
+        `/interactions/admin/votes/control`,
+        {
+          method: "PATCH",
+          body: JSON.stringify(data),
+        },
       ),
-    confirmVotesReset: (data: { code: string; confirmationText: string }) =>
+    confirmVotesReset: (data: { confirmationText: string }) =>
       request<ProjectVotesResetResult>(
         "/interactions/admin/votes/reset/confirm",
         {

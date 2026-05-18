@@ -112,16 +112,17 @@ describe("AdminWorkspace mobile navigation", () => {
     expect(source).toContain("Esta ação remove a inscrição");
   });
 
-  it("expõe reset de votos com confirmação SMS no número protegido", () => {
+  it("expõe reset de votos por frase e controlo para pausar votação", () => {
     const source = readSource("./AdminWorkspace.tsx");
     const apiSource = readSource("../../lib/api.ts");
 
     expect(source).toContain("Remover todos os votos");
-    expect(source).toContain("+244937624785");
-    expect(source).toContain("api.interactions.requestVotesResetConfirmation");
+    expect(source).toContain("handleProjectVotingPauseToggle");
+    expect(source).toContain("Pausar votação");
+    expect(source).toContain("Retomar votação");
     expect(source).toContain("api.interactions.confirmVotesReset");
-    expect(apiSource).toContain("requestVotesResetConfirmation");
-    expect(apiSource).toContain("/interactions/admin/votes/reset/request-confirmation");
+    expect(apiSource).toContain("updateVotesControl");
+    expect(apiSource).toContain("/interactions/admin/votes/control");
     expect(apiSource).toContain("confirmVotesReset");
     expect(apiSource).toContain("/interactions/admin/votes/reset/confirm");
   });

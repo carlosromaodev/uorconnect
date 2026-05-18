@@ -9,10 +9,6 @@ import { authGuard } from "../../auth/http/auth.middleware";
 import { adminGuard, requireAdminPermission, setDefaultAdminPermission } from "../../auth/http/admin.middleware";
 import { type Env } from "../../../config/env";
 import { recordAdminAudit } from "../../audit/application/audit.service";
-import {
-  requestAdminSmsConfirmation,
-  verifyAdminSmsConfirmation,
-} from "../../admin-safety/admin-sms-confirmation";
 import { normalizeStudentProfile } from "../../auth/domain/student-format";
 import { PrismaAdminVotesRepository } from "../infra/admin-votes.repository";
 import { GetAdminVotesOverview, GetPublicLiveVotesOverview } from "../use-cases/admin-votes";
@@ -213,15 +209,11 @@ const liveChatAttachmentSchema = z.object({
   dataUrl: z.string().max(7_000_000),
   fileName: z.string().max(120).optional(),
 }).nullable().optional();
-const adminDangerConfirmationSchema = z.object({
-  success: z.literal(true),
-  operation: z.string(),
-  phone: z.string(),
-  codeLast4: z.string(),
-  expiresAt: z.string(),
+const projectVotesControlSchema = z.object({
+  votingPaused: z.boolean(),
+  updatedAt: z.string(),
 });
 const projectVotesResetConfirmBodySchema = z.object({
-  code: z.string().trim().regex(/^\d{6}$/),
   confirmationText: z.string().trim(),
 });
 const projectVotesResetResultSchema = z.object({
@@ -229,6 +221,40 @@ const projectVotesResetResultSchema = z.object({
   legacyVotesDeleted: z.number(),
   scoreEventsDeleted: z.number(),
 });
+
+async function readProjectVotesControl() {
+  const config = await prisma.submissionConfig.upsert({
+    where: { key: "default" },
+    update: {},
+    create: { key: "default" },
+    select: {
+      votingPaused: true,
+      updatedAt: true,
+    },
+  });
+
+  return {
+    votingPaused: config.votingPaused,
+    updatedAt: config.updatedAt.toISOString(),
+  };
+}
+
+async function updateProjectVotesControl(votingPaused: boolean) {
+  const config = await prisma.submissionConfig.upsert({
+    where: { key: "default" },
+    update: { votingPaused },
+    create: { key: "default", votingPaused },
+    select: {
+      votingPaused: true,
+      updatedAt: true,
+    },
+  });
+
+  return {
+    votingPaused: config.votingPaused,
+    updatedAt: config.updatedAt.toISOString(),
+  };
+}
 const exhibitorScoreAdjustmentSchema = z.object({
   submissionId: z.coerce.number().int().positive(),
   action: z.enum([
@@ -1420,7 +1446,8 @@ export async function interactionsRoutes(app: FastifyInstance, opts: { env: Env 
 	                  students: z.number(),
 	                  recentVotes: z.number(),
 	                  lastVoteAt: z.string().nullable()
-	                }))
+	                })),
+                control: projectVotesControlSchema
 	              }),
               401: z.object({ message: z.string() }),
               403: z.object({ message: z.string() })
@@ -1428,7 +1455,11 @@ export async function interactionsRoutes(app: FastifyInstance, opts: { env: Env 
           }
         },
         async (_, reply) => {
-          return reply.send(await adminVotesOverview.execute());
+          const [overview, control] = await Promise.all([
+            adminVotesOverview.execute(),
+            readProjectVotesControl(),
+          ]);
+          return reply.send({ ...overview, control });
         }
       );
 
@@ -1486,6 +1517,7 @@ export async function interactionsRoutes(app: FastifyInstance, opts: { env: Env 
 	                  recentVotes: z.number(),
 	                  lastVoteAt: z.string().nullable()
 	                })),
+                control: projectVotesControlSchema,
 	              }),
               401: z.object({ message: z.string() }),
               403: z.object({ message: z.string() }),
@@ -1500,15 +1532,66 @@ export async function interactionsRoutes(app: FastifyInstance, opts: { env: Env 
             votesLimit: number;
           };
 
-	          const [projects, votes, courses] = await Promise.all([
+	          const [projects, votes, courses, control] = await Promise.all([
 	            adminVotesRepository.listProjectSummariesPaged({ page: projectsPage, limit: projectsLimit }),
 	            adminVotesRepository.listVotesPaged({ page: votesPage, limit: votesLimit }),
 	            adminVotesRepository.listCourseSummaries(),
+              readProjectVotesControl(),
 	          ]);
 
-          return reply.send({ projects, votes, courses });
+          return reply.send({ projects, votes, courses, control });
 	        }
 	      );
+
+      adminApp.get(
+        "/admin/votes/control",
+        {
+          config: requireAdminPermission(["VOTES", "WINNERS"]),
+          schema: {
+            response: {
+              200: projectVotesControlSchema,
+              401: z.object({ message: z.string() }),
+              403: z.object({ message: z.string() }),
+            }
+          }
+        },
+        async (_, reply) => {
+          return reply.send(await readProjectVotesControl());
+        }
+      );
+
+      adminApp.patch(
+        "/admin/votes/control",
+        {
+          config: requireAdminPermission(["VOTES", "WINNERS"]),
+          schema: {
+            body: z.object({
+              votingPaused: z.boolean()
+            }),
+            response: {
+              200: projectVotesControlSchema,
+              401: z.object({ message: z.string() }),
+              403: z.object({ message: z.string() }),
+            }
+          }
+        },
+        async (request, reply) => {
+          const body = request.body as { votingPaused: boolean };
+          const control = await updateProjectVotesControl(body.votingPaused);
+          await recordAdminAudit({
+            actorStudentNumber: request.student?.studentNumber ?? "unknown",
+            action: "projects.votes_control_updated",
+            entityType: "SubmissionConfig",
+            entityId: "default",
+            summary: body.votingPaused
+              ? "Votação pública dos projectos pausada."
+              : "Votação pública dos projectos retomada.",
+            metadata: control,
+          });
+
+          return reply.send(control);
+        }
+      );
 
       adminApp.get(
         "/admin/votes/scoring/config",
@@ -2201,44 +2284,6 @@ export async function interactionsRoutes(app: FastifyInstance, opts: { env: Env 
       );
 
       adminApp.post(
-        "/admin/votes/reset/request-confirmation",
-        {
-          config: requireAdminPermission(["VOTES", "WINNERS"]),
-          schema: {
-            response: {
-              200: adminDangerConfirmationSchema,
-              400: z.object({ message: z.string() }),
-              502: z.object({ message: z.string() }),
-            },
-          },
-        },
-        async (request, reply) => {
-          try {
-            const confirmation = await requestAdminSmsConfirmation({
-              env: opts.env,
-              operation: "PROJECT_VOTES_RESET",
-              actorStudentNumber: request.student?.studentNumber ?? null,
-            });
-            await recordAdminAudit({
-              actorStudentNumber: request.student?.studentNumber ?? "unknown",
-              action: "projects.votes_reset_confirmation_requested",
-              entityType: "StudentVote",
-              summary: "Código SMS solicitado para remover todos os votos dos projectos.",
-              metadata: {
-                phone: confirmation.phone,
-                expiresAt: confirmation.expiresAt,
-              },
-            });
-            return confirmation;
-          } catch (error) {
-            return reply.code(502).send({
-              message: error instanceof Error ? error.message : "Falha ao enviar código SMS.",
-            });
-          }
-        },
-      );
-
-      adminApp.post(
         "/admin/votes/reset/confirm",
         {
           config: requireAdminPermission(["VOTES", "WINNERS"]),
@@ -2258,15 +2303,6 @@ export async function interactionsRoutes(app: FastifyInstance, opts: { env: Env 
             });
           }
 
-          const verification = await verifyAdminSmsConfirmation({
-            env: opts.env,
-            operation: "PROJECT_VOTES_RESET",
-            code: body.code,
-          });
-          if (!verification.ok) {
-            return reply.code(400).send({ message: verification.message });
-          }
-
           const [studentVotes, legacyVotes, scoreEvents] = await prisma.$transaction([
             prisma.studentVote.deleteMany({}),
             prisma.vote.deleteMany({}),
@@ -2283,7 +2319,7 @@ export async function interactionsRoutes(app: FastifyInstance, opts: { env: Env 
             actorStudentNumber: request.student?.studentNumber ?? "unknown",
             action: "projects.votes_reset",
             entityType: "StudentVote",
-            summary: "Todos os votos dos projectos foram removidos com confirmação SMS.",
+            summary: "Todos os votos dos projectos foram removidos por confirmação administrativa.",
             metadata: result,
           });
           return result;
@@ -2629,6 +2665,10 @@ export async function interactionsRoutes(app: FastifyInstance, opts: { env: Env 
           return reply.status(401).send({ message: "Unauthorized" });
         }
         const { submissionId } = request.body;
+        const control = await readProjectVotesControl();
+        if (control.votingPaused) {
+          return reply.status(403).send({ message: "A votação pública está pausada pela organização." });
+        }
 
         const submission = await prisma.submission.findFirst({
           where: { id: submissionId, ...ACTIVE_PUBLIC_PROJECT_WHERE },

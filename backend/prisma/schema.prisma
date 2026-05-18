@@ -748,6 +748,7 @@ model SubmissionMember {
 model SubmissionConfig {
   key                 String   @id @default("default")
   isOpen              Boolean  @default(true)
+  votingPaused        Boolean  @default(false)
   iban                String   @default("AO006 0055 0000 3295 0561 10379")
   accountName         String   @default("Universidade Óscar Ribas")
   paymentAmount       String   @default("3.500 Kz")
