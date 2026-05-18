@@ -4277,6 +4277,18 @@ export const api = {
         method: "PATCH",
         body: JSON.stringify({ status }),
       }),
+    updateType: (id: number, type: SubmissionType) =>
+      request<{
+        success: true;
+        id: number;
+        type: SubmissionType;
+        canVote: boolean;
+        eligibleForAward: boolean;
+        isWinner: boolean;
+      }>(`/submissions/${id}/type`, {
+        method: "PATCH",
+        body: JSON.stringify({ type }),
+      }),
     updatePresentation: (
       id: number,
       data: {

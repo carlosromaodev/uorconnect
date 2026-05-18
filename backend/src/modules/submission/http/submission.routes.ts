@@ -2303,6 +2303,68 @@ export async function submissionRoutes(app: FastifyInstance, { env }: { env: Ret
         }
       });
 
+      adminApp.patch("/:id/type", {
+        config: requireAdminPermission(["SUBMISSIONS"]),
+        schema: {
+          params: z.object({ id: z.coerce.number().int().positive() }),
+          body: z.object({
+            type: z.enum(["PROJECT", "BUSINESS", "PRODUCT"])
+          }),
+          response: {
+            200: z.object({
+              success: z.literal(true),
+              id: z.number(),
+              type: z.string(),
+              canVote: z.boolean(),
+              eligibleForAward: z.boolean(),
+              isWinner: z.boolean(),
+            }),
+            401: z.object({ message: z.string() }),
+            403: z.object({ message: z.string() }),
+            404: z.object({ message: z.string() })
+          }
+        }
+      }, async (request, reply) => {
+        const { id } = request.params as { id: number };
+        const { type } = request.body as { type: "PROJECT" | "BUSINESS" | "PRODUCT" };
+
+        const existing = await prisma.submission.findFirst({
+          where: { id, deletedAt: null },
+          select: { id: true, type: true, name: true },
+        });
+
+        if (!existing) {
+          return reply.code(404).send({ message: "Candidatura não encontrada." });
+        }
+
+        const updated = await prisma.submission.update({
+          where: { id },
+          data: { type },
+        });
+        const eligibleForAward = isCompetitionEligible(updated.type, updated.area);
+
+        await recordAdminAudit({
+          actorStudentNumber: request.student?.studentNumber,
+          action: "submission.update_type",
+          entityType: "Submission",
+          entityId: id,
+          summary: `Categoria da candidatura ${id} atualizada para ${getSubmissionTypeLabel(type)}.`,
+          metadata: {
+            previousType: existing.type,
+            type,
+          },
+        });
+
+        return reply.send({
+          success: true as const,
+          id: updated.id,
+          type: normalizeSubmissionType(updated.type, updated.area),
+          canVote: eligibleForAward,
+          eligibleForAward,
+          isWinner: eligibleForAward ? updated.isWinner ?? false : false,
+        });
+      });
+
       adminApp.patch("/:id/winner", {
       config: requireAdminPermission(["WINNERS"]),
       schema: {

@@ -1241,6 +1241,15 @@ function mapSubmissionType(type: string): AdminSubmission["tipo"] {
   return "projeto";
 }
 
+const submissionTypeOptions: Array<{
+  value: AdminSubmission["tipo"];
+  label: string;
+}> = [
+  { value: "projeto", label: "Projeto" },
+  { value: "negocio", label: "Negócio" },
+  { value: "produto", label: "Produto" },
+];
+
 function mapSubmissionStatus(status: string): AdminSubmission["status"] {
   if (status === "APPROVED") return "aprovado";
   if (status === "REJECTED") return "recusado";
@@ -3545,6 +3554,62 @@ const Admin = ({
             : "Falha ao atualizar o estado da candidatura",
         );
       }
+    }
+  };
+
+  const handleSubmissionTypeChange = async (
+    submission: AdminSubmission,
+    tipo: AdminSubmission["tipo"],
+  ) => {
+    if (submission.tipo === tipo) return;
+
+    const apiType = submissionTypeToApi(tipo);
+    if (!apiType) {
+      toast.error("Categoria inválida.");
+      return;
+    }
+
+    const busyId = `submission-type-${submission.id}`;
+
+    try {
+      setBusyKey(busyId);
+      const updated = await api.submissions.updateType(submission.id, apiType);
+      const normalizedTipo = mapSubmissionType(updated.type);
+      const patchSubmission = (item: AdminSubmission): AdminSubmission =>
+        item.id === submission.id
+          ? {
+              ...item,
+              tipo: normalizedTipo,
+              canVote: updated.canVote,
+              isWinner: updated.isWinner,
+            }
+          : item;
+
+      setSubmissions((current) => current.map(patchSubmission));
+      setSubmissionListRows((current) => current.map(patchSubmission));
+      setProjectObligationRows((current) => current.map(patchSubmission));
+      setVoteProjects((current) =>
+        current.map((item) =>
+          item.id === submission.id
+            ? {
+                ...item,
+                tipo: normalizedTipo,
+                isWinner: updated.isWinner,
+              }
+            : item,
+        ),
+      );
+      toast.success("Categoria da candidatura atualizada.");
+    } catch (error) {
+      if (!handleAdminAuthFailure(error)) {
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : "Falha ao atualizar a categoria da candidatura.",
+        );
+      }
+    } finally {
+      setBusyKey((current) => (current === busyId ? null : current));
     }
   };
 
@@ -6781,14 +6846,39 @@ const Admin = ({
                                       </div>
                                     </div>
                                     <div className="flex flex-wrap items-center gap-2">
-                                      <Badge
-                                        variant="outline"
-                                        className={
-                                          tipoBadgeColors[submission.tipo]
-                                        }
+                                      <label
+                                        className={`inline-flex items-center gap-2 rounded-xl border px-2.5 py-1 text-xs font-semibold ${tipoBadgeColors[submission.tipo]}`}
+                                        htmlFor={`submission-type-${submission.id}`}
                                       >
-                                        {submission.tipo}
-                                      </Badge>
+                                        <span className="text-[10px] uppercase tracking-[0.14em] opacity-70">
+                                          Categoria
+                                        </span>
+                                        <select
+                                          id={`submission-type-${submission.id}`}
+                                          className="max-w-[110px] bg-transparent font-bold capitalize outline-none disabled:cursor-not-allowed disabled:opacity-60"
+                                          value={submission.tipo}
+                                          disabled={
+                                            busyKey ===
+                                            `submission-type-${submission.id}`
+                                          }
+                                          onChange={(event) =>
+                                            void handleSubmissionTypeChange(
+                                              submission,
+                                              event.target
+                                                .value as AdminSubmission["tipo"],
+                                            )
+                                          }
+                                        >
+                                          {submissionTypeOptions.map((option) => (
+                                            <option
+                                              key={option.value}
+                                              value={option.value}
+                                            >
+                                              {option.label}
+                                            </option>
+                                          ))}
+                                        </select>
+                                      </label>
                                       <Badge
                                         variant="outline"
                                         className={
@@ -7798,6 +7888,32 @@ const Admin = ({
 	                                          </div>
 
 	                                          <div className="mt-4 flex flex-wrap gap-2">
+	                                            <label
+	                                              className={`inline-flex min-h-9 items-center gap-2 rounded-xl border px-2.5 text-xs font-semibold ${tipoBadgeColors[submission.tipo]}`}
+	                                              htmlFor={`project-obligation-submission-type-${submission.id}`}
+	                                            >
+	                                              <span className="text-[10px] uppercase tracking-[0.14em] opacity-70">
+	                                                Categoria
+	                                              </span>
+	                                              <select
+	                                                id={`project-obligation-submission-type-${submission.id}`}
+	                                                className="max-w-[110px] bg-transparent font-bold outline-none disabled:cursor-not-allowed disabled:opacity-60"
+	                                                value={submission.tipo}
+	                                                disabled={busyKey === `submission-type-${submission.id}`}
+	                                                onChange={(event) =>
+	                                                  void handleSubmissionTypeChange(
+	                                                    submission,
+	                                                    event.target.value as AdminSubmission["tipo"],
+	                                                  )
+	                                                }
+	                                              >
+	                                                {submissionTypeOptions.map((option) => (
+	                                                  <option key={option.value} value={option.value}>
+	                                                    {option.label}
+	                                                  </option>
+	                                                ))}
+	                                              </select>
+	                                            </label>
 	                                            <Button size="sm" variant="outline" className="rounded-xl" onClick={() => openSubmissionTeamMembersDialog(submission)}>
 	                                              <Edit className="mr-1 h-3.5 w-3.5" />
 	                                              Editar membros
