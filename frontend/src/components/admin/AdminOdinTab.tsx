@@ -93,6 +93,10 @@ const defaultProjectPenaltyOptions: OdinProjectPenaltyInput = {
   reason: "",
   exactVoteCount: null,
   pointsToRemove: 0,
+  automationProofSummary: "",
+  automationProofUrl: "",
+  automationEvidence: null,
+  automationConfidence: 85,
   notifyProjectMembers: true,
 };
 
@@ -723,6 +727,13 @@ export default function AdminOdinTab() {
       toast.error("Informa os pontos a remover.");
       return;
     }
+    if (
+      projectPenaltyOptions.penaltyMode === "AUTOMATION_PROOF"
+      && (projectPenaltyOptions.automationProofSummary?.trim().length ?? 0) < 24
+    ) {
+      toast.error("Regista a comprovação de automação com pelo menos 24 caracteres.");
+      return;
+    }
     if (projectPenaltyConfirmation.trim().toUpperCase() !== "PENALIZAR") {
       toast.error("Confirma escrevendo PENALIZAR.");
       return;
@@ -730,8 +741,21 @@ export default function AdminOdinTab() {
 
     setPenalizingProject(true);
     try {
+      const automationEvidence = projectPenaltyOptions.penaltyMode === "AUTOMATION_PROOF"
+        ? {
+            source: "ADMIN_ODIN_PROJECT_PRESSURE",
+            capturedAt: new Date().toISOString(),
+            windowHours,
+            submissionId: penaltyDialogProject.submissionId,
+            submissionName: penaltyDialogProject.submissionName,
+            suspiciousVotes: penaltyDialogProject.suspiciousVotes,
+            suspiciousDevices: penaltyDialogProject.suspiciousDevices,
+            suspiciousStudents: penaltyDialogProject.suspiciousStudents,
+          }
+        : projectPenaltyOptions.automationEvidence;
       const result = await api.odin.penalizeProject(penaltyDialogProject.submissionId, {
         ...projectPenaltyOptions,
+        automationEvidence,
         windowHours,
       });
       toast.success(`${result.removedVoteCount} voto(s) e ${result.removedPointCount} ponto(s) removido(s).`);
@@ -1125,11 +1149,12 @@ export default function AdminOdinTab() {
               </p>
             </div>
 
-            <div className="grid gap-3 sm:grid-cols-3">
+            <div className="grid gap-3 sm:grid-cols-4">
               {[
                 ["SUSPECT_VOTES", "Remover votos suspeitos"],
                 ["EXACT_VOTES", "Quantidade exata"],
                 ["POINTS_ONLY", "Apenas pontos"],
+                ["AUTOMATION_PROOF", "Automação comprovada"],
               ].map(([mode, label]) => (
                 <button
                   key={mode}
@@ -1148,6 +1173,61 @@ export default function AdminOdinTab() {
                 </button>
               ))}
             </div>
+
+            {projectPenaltyOptions.penaltyMode === "AUTOMATION_PROOF" ? (
+              <div className="space-y-3 rounded-2xl border border-slate-200 bg-slate-950 p-4 text-white">
+                <div className="flex items-start gap-3">
+                  <ShieldCheck className="mt-0.5 h-5 w-5 text-emerald-300" />
+                  <div>
+                    <p className="text-sm font-black">Comprovação de automação</p>
+                    <p className="mt-1 text-xs leading-5 text-white/60">
+                      Usa este modo quando há prova operacional: ciclos login-voto-logout, tempos impossíveis, padrão repetitivo por dispositivo ou relatório ODIN/Gemini já confirmado.
+                    </p>
+                  </div>
+                </div>
+                <label className="block space-y-2 text-xs font-bold text-white/80">
+                  Resumo da prova
+                  <Textarea
+                    value={projectPenaltyOptions.automationProofSummary ?? ""}
+                    onChange={(event) => setProjectPenaltyOptions((current) => ({
+                      ...current,
+                      automationProofSummary: event.target.value,
+                    }))}
+                    className="min-h-24 border-white/10 bg-white/10 text-white placeholder:text-white/30"
+                    maxLength={1200}
+                    placeholder="Ex.: 18 contas no mesmo dispositivo, mediana login-voto de 11s e 14 ciclos repetidos para o mesmo projeto."
+                  />
+                </label>
+                <div className="grid gap-3 sm:grid-cols-[1fr_150px]">
+                  <label className="block space-y-2 text-xs font-bold text-white/80">
+                    Link ou referência da prova
+                    <input
+                      value={projectPenaltyOptions.automationProofUrl ?? ""}
+                      onChange={(event) => setProjectPenaltyOptions((current) => ({
+                        ...current,
+                        automationProofUrl: event.target.value,
+                      }))}
+                      className="h-11 w-full rounded-xl border border-white/10 bg-white/10 px-3 text-sm font-bold text-white outline-none placeholder:text-white/30"
+                      placeholder="ODIN-047, PDF, log ou URL interna"
+                    />
+                  </label>
+                  <label className="block space-y-2 text-xs font-bold text-white/80">
+                    Confiança ODIN (%)
+                    <input
+                      type="number"
+                      min={1}
+                      max={100}
+                      value={projectPenaltyOptions.automationConfidence ?? ""}
+                      onChange={(event) => setProjectPenaltyOptions((current) => ({
+                        ...current,
+                        automationConfidence: event.target.value ? Number(event.target.value) : null,
+                      }))}
+                      className="h-11 w-full rounded-xl border border-white/10 bg-white/10 px-3 text-sm font-bold text-white outline-none"
+                    />
+                  </label>
+                </div>
+              </div>
+            ) : null}
 
             <div className="grid gap-3 sm:grid-cols-2">
               <label className="space-y-2 text-sm font-semibold text-slate-700">

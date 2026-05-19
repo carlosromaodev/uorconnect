@@ -47,6 +47,7 @@ type StudentSubmissionPresenterInput = {
     removedVoteCount: number;
     removedPointCount: number;
     reason: string;
+    automationProofSummary?: string | null;
     createdAt: Date;
   } | null;
   latestOdinExhibitorDeviceWarning?: {
@@ -199,6 +200,7 @@ export function buildStudentSubmissionListItem(submission: Pick<
       removedVoteCount: submission.latestOdinProjectPenalty.removedVoteCount,
       removedPointCount: submission.latestOdinProjectPenalty.removedPointCount,
       reason: submission.latestOdinProjectPenalty.reason,
+      automationProofSummary: submission.latestOdinProjectPenalty.automationProofSummary ?? null,
       createdAt: submission.latestOdinProjectPenalty.createdAt.toISOString(),
     } : null,
     odinExhibitorDeviceWarning: submission.latestOdinExhibitorDeviceWarning ?? null,

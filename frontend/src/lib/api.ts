@@ -577,6 +577,7 @@ export interface StudentOwnedSubmissionListItem {
     removedVoteCount: number;
     removedPointCount: number;
     reason: string;
+    automationProofSummary: string | null;
     createdAt: string;
   } | null;
   odinExhibitorDeviceWarning: {
@@ -3250,11 +3251,15 @@ export interface OdinAiFeedbackInput {
 }
 
 export interface OdinProjectPenaltyInput {
-  penaltyMode: "SUSPECT_VOTES" | "EXACT_VOTES" | "POINTS_ONLY";
+  penaltyMode: "SUSPECT_VOTES" | "EXACT_VOTES" | "POINTS_ONLY" | "AUTOMATION_PROOF";
   reason: string;
   windowHours?: number;
   exactVoteCount?: number | null;
   pointsToRemove?: number | null;
+  automationProofSummary?: string | null;
+  automationProofUrl?: string | null;
+  automationEvidence?: Record<string, unknown> | null;
+  automationConfidence?: number | null;
   notifyProjectMembers?: boolean;
 }
 
@@ -3263,10 +3268,13 @@ export interface OdinProjectPenaltyResult {
   penaltyId: number;
   submissionId: number;
   submissionName: string;
-  penaltyMode: "SUSPECT_VOTES" | "EXACT_VOTES" | "POINTS_ONLY";
+  penaltyMode: "SUSPECT_VOTES" | "EXACT_VOTES" | "POINTS_ONLY" | "AUTOMATION_PROOF";
   removedVoteCount: number;
   removedPointCount: number;
   revokedScoreEventCount: number;
+  automationProofSummary: string | null;
+  automationProofUrl: string | null;
+  automationConfidence: number | null;
   notifiedProjectMembers: boolean;
   affectedStudents: Array<{
     studentId: number;

@@ -233,6 +233,7 @@ const odinPenaltyWarningSchema = z.object({
   removedVoteCount: z.number(),
   removedPointCount: z.number(),
   reason: z.string(),
+  automationProofSummary: z.string().nullable(),
   createdAt: z.string(),
 }).nullable();
 
@@ -1290,6 +1291,7 @@ export async function submissionRoutes(app: FastifyInstance, { env }: { env: Ret
             removedVoteCount: true,
             removedPointCount: true,
             reason: true,
+            automationProofSummary: true,
             createdAt: true,
           },
           orderBy: { createdAt: "desc" },

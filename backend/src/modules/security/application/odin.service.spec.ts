@@ -3,6 +3,7 @@ import {
   buildOdinRiskSnapshot,
   detectExhibitorDeviceMisuse,
   normalizeOdinDeviceId,
+  normalizeOdinAutomationProof,
   type OdinRawEvent,
 } from "./odin.service";
 
@@ -210,5 +211,31 @@ describe("ODIN device risk analysis", () => {
     ]);
     expect(signals[0].message).toContain("ODIN");
     expect(signals[0].message).toContain("possível suspensão");
+  });
+
+  it("requires a clear automation proof before applying automation-based penalties", () => {
+    expect(() => normalizeOdinAutomationProof({
+      penaltyMode: "AUTOMATION_PROOF",
+      automationProofSummary: "curto",
+    })).toThrow("A penalização por automação exige um resumo da prova");
+
+    const proof = normalizeOdinAutomationProof({
+      penaltyMode: "AUTOMATION_PROOF",
+      automationProofSummary: "Dispositivo executou 18 ciclos login-voto-logout com mediana inferior a 12 segundos.",
+      automationProofUrl: " https://uorconnect.space/admin/odin/cases/ODIN-047 ",
+      automationConfidence: 96,
+      automationEvidence: {
+        patternType: "TIPO-A",
+        fastestLoginToVoteSeconds: 3,
+        repeatedCycles: 18,
+      },
+    });
+
+    expect(proof).toEqual(expect.objectContaining({
+      automationProofSummary: expect.stringContaining("18 ciclos"),
+      automationProofUrl: "https://uorconnect.space/admin/odin/cases/ODIN-047",
+      automationConfidence: 96,
+      automationEvidenceJson: expect.stringContaining("fastestLoginToVoteSeconds"),
+    }));
   });
 });

@@ -101,6 +101,12 @@ describe("student submission presenter", () => {
       linkedinUrl: "https://linkedin.com/company/uorconnect",
       githubUrl: "https://github.com/uor/demo",
       bannerUrl: null,
+      projectFrozen: false,
+      projectFrozenAt: null,
+      projectFrozenByStudentNumber: null,
+      projectFreezeReason: null,
+      odinPenaltyWarning: null,
+      odinExhibitorDeviceWarning: null,
       receiptPath: "/submissoes/14",
       exhibitorPdfPath: null,
     });

@@ -16,6 +16,10 @@ describe("Admin ODIN project penalty contract", () => {
     expect(api).toContain("/security/odin/projects/${submissionId}/penalties");
     expect(api).toContain("removedVoteCount");
     expect(api).toContain("removedPointCount");
+    expect(api).toContain("AUTOMATION_PROOF");
+    expect(api).toContain("automationProofSummary");
+    expect(api).toContain("automationEvidence");
+    expect(api).toContain("automationConfidence");
   });
 
   it("renders protected penalty controls inside ODIN project pressure cards", () => {
@@ -27,6 +31,8 @@ describe("Admin ODIN project penalty contract", () => {
     expect(odinTab).toContain("api.odin.penalizeProject");
     expect(odinTab).toContain("Remover votos suspeitos");
     expect(odinTab).toContain("Quantidade exata");
+    expect(odinTab).toContain("Automação comprovada");
+    expect(odinTab).toContain("Comprovação de automação");
     expect(odinTab).toContain("Pontos a remover");
   });
 
@@ -37,6 +43,7 @@ describe("Admin ODIN project penalty contract", () => {
     expect(api).toContain("odinPenaltyWarning");
     expect(minhaArea).toContain("odinPenaltyBlocker");
     expect(minhaArea).toContain("Penalização ODIN aplicada");
+    expect(minhaArea).toContain("automação comprovada");
     expect(minhaArea).toContain("Votos removidos");
     expect(minhaArea).toContain("Pontos removidos");
   });

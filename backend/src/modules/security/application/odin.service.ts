@@ -204,7 +204,7 @@ export type OdinStudentExclusionResult = {
   };
 };
 
-export type OdinProjectPenaltyMode = "SUSPECT_VOTES" | "EXACT_VOTES" | "POINTS_ONLY";
+export type OdinProjectPenaltyMode = "SUSPECT_VOTES" | "EXACT_VOTES" | "POINTS_ONLY" | "AUTOMATION_PROOF";
 
 export type OdinProjectPenaltyInput = {
   submissionId: number;
@@ -214,6 +214,10 @@ export type OdinProjectPenaltyInput = {
   windowHours?: number;
   exactVoteCount?: number | null;
   pointsToRemove?: number | null;
+  automationProofSummary?: string | null;
+  automationProofUrl?: string | null;
+  automationEvidence?: Record<string, unknown> | null;
+  automationConfidence?: number | null;
   notifyProjectMembers?: boolean;
   eventKey?: string;
 };
@@ -227,6 +231,9 @@ export type OdinProjectPenaltyResult = {
   removedVoteCount: number;
   removedPointCount: number;
   revokedScoreEventCount: number;
+  automationProofSummary: string | null;
+  automationProofUrl: string | null;
+  automationConfidence: number | null;
   notifiedProjectMembers: boolean;
   affectedStudents: Array<{
     studentId: number;
@@ -1084,6 +1091,46 @@ function normalizePositivePoints(value?: number | null) {
   return Math.max(0, Number(value));
 }
 
+export function normalizeOdinAutomationProof(input: Pick<
+  OdinProjectPenaltyInput,
+  "penaltyMode" | "automationProofSummary" | "automationProofUrl" | "automationEvidence" | "automationConfidence"
+>) {
+  if (input.penaltyMode !== "AUTOMATION_PROOF") {
+    return {
+      automationProofSummary: null,
+      automationProofUrl: null,
+      automationEvidenceJson: null,
+      automationConfidence: null,
+    };
+  }
+
+  const automationProofSummary = input.automationProofSummary?.trim() ?? "";
+  if (automationProofSummary.length < 24) {
+    throw new Error("A penalização por automação exige um resumo da prova com pelo menos 24 caracteres.");
+  }
+
+  const automationProofUrl = input.automationProofUrl?.trim() || null;
+  if (automationProofUrl && automationProofUrl.length > 700) {
+    throw new Error("O link da prova de automação é demasiado longo.");
+  }
+
+  let automationConfidence: number | null = null;
+  if (input.automationConfidence !== undefined && input.automationConfidence !== null) {
+    const numericConfidence = Number(input.automationConfidence);
+    if (!Number.isFinite(numericConfidence)) {
+      throw new Error("Informa uma confiança ODIN válida entre 1 e 100.");
+    }
+    automationConfidence = Math.max(1, Math.min(100, Math.round(numericConfidence)));
+  }
+
+  return {
+    automationProofSummary,
+    automationProofUrl,
+    automationEvidenceJson: input.automationEvidence ? safeJson(input.automationEvidence) : null,
+    automationConfidence,
+  };
+}
+
 export async function recordOdinProjectPenalty(input: OdinProjectPenaltyInput): Promise<OdinProjectPenaltyResult> {
   const eventKey = input.eventKey ?? "main-event";
   const reason = input.reason.trim();
@@ -1091,6 +1138,7 @@ export async function recordOdinProjectPenalty(input: OdinProjectPenaltyInput): 
 
   const pointsToRemove = normalizePositivePoints(input.pointsToRemove);
   const exactVoteCount = normalizePositiveInt(input.exactVoteCount);
+  const automationProof = normalizeOdinAutomationProof(input);
   if (input.penaltyMode === "EXACT_VOTES" && exactVoteCount < 1) {
     throw new Error("Informa a quantidade exata de votos a remover.");
   }
@@ -1098,7 +1146,11 @@ export async function recordOdinProjectPenalty(input: OdinProjectPenaltyInput): 
     throw new Error("Informa os pontos a remover.");
   }
 
-  const overview = input.penaltyMode === "SUSPECT_VOTES" || input.penaltyMode === "EXACT_VOTES"
+  const shouldInspectVotes = input.penaltyMode === "SUSPECT_VOTES"
+    || input.penaltyMode === "EXACT_VOTES"
+    || input.penaltyMode === "AUTOMATION_PROOF";
+
+  const overview = shouldInspectVotes
     ? await getOdinOverview(input.windowHours ?? 48)
     : null;
   const suspiciousDevices = new Set(
@@ -1168,11 +1220,15 @@ export async function recordOdinProjectPenalty(input: OdinProjectPenaltyInput): 
       return right.createdAt.getTime() - left.createdAt.getTime();
     });
 
-    const selectedVotes = input.penaltyMode === "SUSPECT_VOTES"
+    const selectedVotes = input.penaltyMode === "SUSPECT_VOTES" || input.penaltyMode === "AUTOMATION_PROOF"
       ? voteCandidates.filter((vote) => suspiciousStudentIds.has(vote.studentId) || suspiciousStudentNumbers.has(vote.student.studentNumber))
       : input.penaltyMode === "EXACT_VOTES"
         ? orderedCandidates.slice(0, exactVoteCount)
         : [];
+
+    if (input.penaltyMode === "AUTOMATION_PROOF" && selectedVotes.length < 1 && pointsToRemove <= 0) {
+      throw new Error("A prova de automação foi registada, mas o ODIN não encontrou votos ou pontos para remover neste projeto.");
+    }
 
     const selectedVoteIds = selectedVotes.map((vote) => vote.id);
     const selectedVoteSourceIds = selectedVoteIds.map(String);
@@ -1215,6 +1271,10 @@ export async function recordOdinProjectPenalty(input: OdinProjectPenaltyInput): 
         removedVoteCount: removedVotes.count,
         removedPointCount: pointsToRemove,
         reason,
+        automationProofSummary: automationProof.automationProofSummary,
+        automationProofUrl: automationProof.automationProofUrl,
+        automationEvidenceJson: automationProof.automationEvidenceJson,
+        automationConfidence: automationProof.automationConfidence,
         affectedVoteIdsJson: safeJson(selectedVoteIds),
         affectedStudentIdsJson: safeJson(selectedVotes.map((vote) => vote.studentId)),
         affectedScoreEventIdsJson: safeJson(revokedScoreEventIds),
@@ -1243,6 +1303,9 @@ export async function recordOdinProjectPenalty(input: OdinProjectPenaltyInput): 
             penaltyId: penalty.id,
             penaltyMode: input.penaltyMode,
             removedVoteCount: removedVotes.count,
+            automationProofSummary: automationProof.automationProofSummary,
+            automationProofUrl: automationProof.automationProofUrl,
+            automationConfidence: automationProof.automationConfidence,
           }),
           scoreConfigVersion: 1,
           createdByStudentNumber: input.actorStudentNumber,
@@ -1275,9 +1338,14 @@ export async function recordOdinProjectPenalty(input: OdinProjectPenaltyInput): 
       removedVoteCount: removedVotes.count,
       removedPointCount: pointsToRemove,
       revokedScoreEventCount: revokedScoreEventIds.length,
+      automationProofSummary: automationProof.automationProofSummary,
+      automationProofUrl: automationProof.automationProofUrl,
+      automationConfidence: automationProof.automationConfidence,
       notifiedProjectMembers: penalty.notifiedProjectMembers,
       affectedStudents,
-      message: `Penalização ODIN aplicada a ${submission.name}: ${removedVotes.count} voto(s) removido(s), ${pointsToRemove} ponto(s) descontado(s).`,
+      message: input.penaltyMode === "AUTOMATION_PROOF"
+        ? `Penalização ODIN com prova de automação aplicada a ${submission.name}: ${removedVotes.count} voto(s) removido(s), ${pointsToRemove} ponto(s) descontado(s).`
+        : `Penalização ODIN aplicada a ${submission.name}: ${removedVotes.count} voto(s) removido(s), ${pointsToRemove} ponto(s) descontado(s).`,
     };
   });
 }

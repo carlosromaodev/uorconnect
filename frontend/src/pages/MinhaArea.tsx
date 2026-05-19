@@ -7017,7 +7017,7 @@ export default function MinhaArea() {
                 Penalização ODIN aplicada
               </DialogTitle>
               <DialogDescription className="text-sm leading-relaxed">
-                A organização aplicou uma penalização administrativa ao teu projeto. Fala com a equipa UOR Connect para esclarecimentos.
+                A organização aplicou uma penalização administrativa ao teu projeto. Quando o aviso indicar automação comprovada, os votos e pontos foram revistos pelo ODIN com base em evidências técnicas. Fala com a equipa UOR Connect para esclarecimentos.
               </DialogDescription>
             </DialogHeader>
 
@@ -7046,6 +7046,12 @@ export default function MinhaArea() {
                 <p className="safe-break mt-3 text-xs leading-5 text-muted-foreground">
                   {odinPenaltyBlocker.odinPenaltyWarning.reason}
                 </p>
+              ) : null}
+              {odinPenaltyBlocker?.odinPenaltyWarning?.automationProofSummary ? (
+                <div className="safe-break mt-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs leading-5 text-amber-950">
+                  <strong className="block text-amber-800">ODIN: automação comprovada</strong>
+                  {odinPenaltyBlocker.odinPenaltyWarning.automationProofSummary}
+                </div>
               ) : null}
             </div>
 

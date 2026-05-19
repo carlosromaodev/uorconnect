@@ -591,6 +591,10 @@ model OdinProjectPenalty {
   removedVoteCount           Int        @default(0)
   removedPointCount          Float      @default(0)
   reason                     String
+  automationProofSummary     String?
+  automationProofUrl         String?
+  automationEvidenceJson     String?
+  automationConfidence       Int?
   affectedVoteIdsJson        String?
   affectedStudentIdsJson     String?
   affectedScoreEventIdsJson  String?

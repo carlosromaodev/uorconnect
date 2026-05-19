@@ -48,7 +48,7 @@ const odinProjectReportQuerySchema = z.object({
   windowHours: z.coerce.number().int().min(1).max(24 * 14).optional().default(48),
 });
 
-const odinProjectPenaltyModeSchema = z.enum(["SUSPECT_VOTES", "EXACT_VOTES", "POINTS_ONLY"]);
+const odinProjectPenaltyModeSchema = z.enum(["SUSPECT_VOTES", "EXACT_VOTES", "POINTS_ONLY", "AUTOMATION_PROOF"]);
 
 const odinProjectPenaltyBodySchema = z.object({
   penaltyMode: odinProjectPenaltyModeSchema,
@@ -56,6 +56,10 @@ const odinProjectPenaltyBodySchema = z.object({
   windowHours: z.coerce.number().int().min(1).max(24 * 14).optional().default(48),
   exactVoteCount: z.coerce.number().int().min(0).max(1000).nullable().optional(),
   pointsToRemove: z.coerce.number().min(0).max(100000).nullable().optional(),
+  automationProofSummary: z.string().trim().min(0).max(1200).nullable().optional(),
+  automationProofUrl: z.string().trim().min(0).max(700).nullable().optional(),
+  automationEvidence: z.record(z.string(), z.unknown()).nullable().optional(),
+  automationConfidence: z.coerce.number().int().min(1).max(100).nullable().optional(),
   notifyProjectMembers: z.boolean().optional().default(true),
 });
 
@@ -212,6 +216,9 @@ const odinProjectPenaltyResponseSchema = z.object({
   removedVoteCount: z.number(),
   removedPointCount: z.number(),
   revokedScoreEventCount: z.number(),
+  automationProofSummary: z.string().nullable(),
+  automationProofUrl: z.string().nullable(),
+  automationConfidence: z.number().nullable(),
   notifiedProjectMembers: z.boolean(),
   affectedStudents: z.array(z.object({
     studentId: z.number(),
@@ -565,6 +572,10 @@ export async function odinRoutes(app: FastifyInstance, opts: { env: Env }) {
             windowHours: body.windowHours,
             exactVoteCount: body.exactVoteCount,
             pointsToRemove: body.pointsToRemove,
+            automationProofSummary: body.automationProofSummary,
+            automationProofUrl: body.automationProofUrl,
+            automationEvidence: body.automationEvidence,
+            automationConfidence: body.automationConfidence,
             notifyProjectMembers: body.notifyProjectMembers,
           });
 
@@ -581,6 +592,9 @@ export async function odinRoutes(app: FastifyInstance, opts: { env: Env }) {
               removedVoteCount: result.removedVoteCount,
               removedPointCount: result.removedPointCount,
               revokedScoreEventCount: result.revokedScoreEventCount,
+              automationProofSummary: result.automationProofSummary,
+              automationProofUrl: result.automationProofUrl,
+              automationConfidence: result.automationConfidence,
               notifiedProjectMembers: result.notifiedProjectMembers,
             },
           });
