@@ -119,9 +119,17 @@ type OdinReportDeviceIdentity = {
   classification: string;
   firstAccountLabel: string;
   firstAccountCourse: string;
+  firstLoginAt: Date | null;
+  lastLoginAt: Date | null;
   distinctAccounts: number;
   courses: Array<{ course: string; count: number }>;
   accounts: string[];
+  loginTimeline: Array<{
+    studentNumber: string;
+    studentName: string;
+    studentCourse: string;
+    loginAt: Date;
+  }>;
   dominantProject: string;
   averageLoginToVoteSeconds: number | null;
   fastestLoginToVoteSeconds: number | null;
@@ -606,6 +614,7 @@ function renderDeviceIdentityCards(devices: OdinReportDeviceIdentity[]) {
       </div>
       <div class="intel-grid">
         <div><span>Primeira conta observada</span><strong>${escapeHtml(device.firstAccountLabel)}</strong><p>${escapeHtml(device.firstAccountCourse)}</p></div>
+        <div><span>Horários de login</span><strong>${escapeHtml(device.firstLoginAt ? formatDateLabel(device.firstLoginAt) : "Sem login")}</strong><p>Último: ${escapeHtml(device.lastLoginAt ? formatDateLabel(device.lastLoginAt) : "Sem login")}</p></div>
         <div><span>Tempo login→voto</span><strong>${escapeHtml(formatDuration(device.averageLoginToVoteSeconds))}</strong><p>Mais rápido: ${escapeHtml(formatDuration(device.fastestLoginToVoteSeconds))}</p></div>
         <div><span>Contas no aparelho</span><strong>${device.distinctAccounts}</strong><p>${device.officialAccounts} oficiais · ${device.invalidOrTemporaryAccounts} incompletas/temporárias</p></div>
         <div><span>Conversões rápidas</span><strong>${device.rapidConversions}</strong><p>${device.rapidAccountSwitches} troca(s) de conta em menos de 90s</p></div>
@@ -613,6 +622,7 @@ function renderDeviceIdentityCards(devices: OdinReportDeviceIdentity[]) {
       <p class="intel-line"><strong>Projeto dominante:</strong> ${escapeHtml(device.dominantProject)}</p>
       <p class="intel-line"><strong>Contas vistas:</strong> ${escapeHtml(device.accounts.join(", ") || "Sem contas associadas")}</p>
       <p class="intel-line"><strong>Cursos:</strong> ${escapeHtml(device.courses.map((course) => `${course.course} (${course.count})`).join(", ") || "Sem curso")}</p>
+      <p class="intel-line"><strong>Horários exatos de login:</strong> ${escapeHtml(device.loginTimeline.slice(-8).map((login) => `${formatDateLabel(login.loginAt)} — ${login.studentName} (${login.studentNumber})`).join(" · ") || "Sem eventos LOGIN_SUCCESS na janela")}</p>
       <div class="recommendation-box"><span>Leitura ODIN</span><p>${escapeHtml(device.recommendation)}</p></div>
     </article>
   `).join("");
@@ -829,10 +839,18 @@ function buildDeviceIdentities(events: OdinReportDetailedEvent[], overview: Odin
       classification,
       firstAccountLabel: firstStudentEvent ? personLabel(firstStudentEvent) : "Sem primeira conta",
       firstAccountCourse: firstStudentEvent?.student?.course ?? firstStudentEvent?.studentCourse ?? "Curso em falta",
+      firstLoginAt: loginEvents[0]?.createdAt ?? null,
+      lastLoginAt: loginEvents[loginEvents.length - 1]?.createdAt ?? null,
       distinctAccounts: accountEvents.length,
       courses: Array.from(courseCounts.entries()).map(([course, count]) => ({ course, count }))
         .sort((left, right) => right.count - left.count || left.course.localeCompare(right.course)),
       accounts: accountEvents.map((event) => event.student?.name ?? event.studentName ?? event.studentNumber ?? "Conta sem nome").slice(0, 10),
+      loginTimeline: loginEvents.map((event) => ({
+        studentNumber: event.studentNumber ?? "sem-numero",
+        studentName: event.student?.name ?? event.studentName ?? "Conta sem nome",
+        studentCourse: event.student?.course ?? event.studentCourse ?? "Curso em falta",
+        loginAt: event.createdAt,
+      })).slice(-30),
       dominantProject,
       averageLoginToVoteSeconds: average(loginToVoteDurations),
       fastestLoginToVoteSeconds: loginToVoteDurations.length ? Math.min(...loginToVoteDurations) : null,

@@ -3049,7 +3049,16 @@ export interface OdinDeviceRisk {
     studentCourse: string | null;
     eventCount: number;
     voteCount: number;
+    firstLoginAt: string | null;
+    lastLoginAt: string | null;
     lastSeenAt: string;
+  }>;
+  loginTimeline: Array<{
+    studentId: number | null;
+    studentNumber: string;
+    studentName: string | null;
+    studentCourse: string | null;
+    loginAt: string;
   }>;
   projects: Array<{
     submissionId: number;

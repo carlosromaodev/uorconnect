@@ -33,6 +33,9 @@ describe("ODIN security PDF report", () => {
     expect(report).toContain("Mapa de Dispositivos e Identidades");
     expect(report).toContain("Dados inválidos ou incompletos");
     expect(report).toContain("Primeira conta observada");
+    expect(report).toContain("Horários de login");
+    expect(report).toContain("firstLoginAt");
+    expect(report).toContain("lastLoginAt");
     expect(report).toContain("Tempo login→voto");
     expect(report).toContain("Índice de fraude contextual");
     expect(report).toContain("Dispositivos associados a expositores");

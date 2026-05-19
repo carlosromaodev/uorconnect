@@ -97,6 +97,20 @@ describe("ODIN device risk analysis", () => {
       submissionName: "UOR Connect",
       suspiciousVotes: 2,
     }));
+    expect(snapshot.devices[0].loginTimeline).toEqual([
+      expect.objectContaining({
+        studentNumber: "20260010",
+        loginAt: "2026-05-18T08:50:00.000Z",
+      }),
+      expect.objectContaining({
+        studentNumber: "20260011",
+        loginAt: "2026-05-18T08:52:00.000Z",
+      }),
+    ]);
+    expect(snapshot.devices[0].students[0]).toEqual(expect.objectContaining({
+      firstLoginAt: "2026-05-18T08:52:00.000Z",
+      lastLoginAt: "2026-05-18T08:52:00.000Z",
+    }));
   });
 
   it("raises velocity risk when a device casts many votes in ten minutes", () => {

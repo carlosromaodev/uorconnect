@@ -44,7 +44,16 @@ export type OdinDeviceRisk = {
     studentCourse: string | null;
     eventCount: number;
     voteCount: number;
+    firstLoginAt: string | null;
+    lastLoginAt: string | null;
     lastSeenAt: string;
+  }>;
+  loginTimeline: Array<{
+    studentId: number | null;
+    studentNumber: string;
+    studentName: string | null;
+    studentCourse: string | null;
+    loginAt: string;
   }>;
   projects: Array<{
     submissionId: number;
@@ -257,6 +266,11 @@ function deviceRisk(events: OdinRawEvent[]): OdinDeviceRisk {
 
   const students = Array.from(studentEvents.values()).map((studentEventGroup) => {
     const newest = studentEventGroup.reduce(latestEvent);
+    const loginEvents = studentEventGroup
+      .filter((event) => event.eventType === "LOGIN_SUCCESS")
+      .sort((left, right) => left.createdAt.getTime() - right.createdAt.getTime());
+    const firstLogin = loginEvents[0] ?? null;
+    const lastLogin = loginEvents[loginEvents.length - 1] ?? null;
     return {
       studentId: newest.studentId,
       studentNumber: newest.studentNumber ?? "sem-numero",
@@ -264,9 +278,23 @@ function deviceRisk(events: OdinRawEvent[]): OdinDeviceRisk {
       studentCourse: newest.studentCourse ?? null,
       eventCount: studentEventGroup.length,
       voteCount: studentEventGroup.filter((event) => event.eventType === "PROJECT_VOTE").length,
+      firstLoginAt: firstLogin?.createdAt.toISOString() ?? null,
+      lastLoginAt: lastLogin?.createdAt.toISOString() ?? null,
       lastSeenAt: newest.createdAt.toISOString(),
     };
   }).sort((left, right) => right.lastSeenAt.localeCompare(left.lastSeenAt));
+
+  const loginTimeline = events
+    .filter((event) => event.eventType === "LOGIN_SUCCESS" && studentKey(event))
+    .sort((left, right) => left.createdAt.getTime() - right.createdAt.getTime())
+    .map((event) => ({
+      studentId: event.studentId,
+      studentNumber: event.studentNumber ?? "sem-numero",
+      studentName: event.studentName ?? null,
+      studentCourse: event.studentCourse ?? null,
+      loginAt: event.createdAt.toISOString(),
+    }))
+    .slice(-60);
 
   const projects = Array.from(projectVotes.entries()).map(([submissionId, votes]) => {
     const newest = votes.reduce(latestEvent);
@@ -292,6 +320,7 @@ function deviceRisk(events: OdinRawEvent[]): OdinDeviceRisk {
     lastIp: latest.ipAddress,
     lastUserAgent: latest.userAgent,
     students,
+    loginTimeline,
     projects,
   };
 }

@@ -343,6 +343,31 @@ function DeviceCard({
         <span className="rounded-xl bg-slate-50 px-3 py-2 font-semibold text-slate-600">{device.distinctProjectsVoted} projetos</span>
       </div>
 
+      <div className="mt-4 rounded-2xl border border-slate-200 bg-slate-50 p-3">
+        <div className="flex items-center justify-between gap-3">
+          <p className="text-[11px] font-black uppercase tracking-[0.14em] text-slate-500">Logins no dispositivo</p>
+          <span className="text-[11px] font-bold text-slate-500">{device.loginTimeline.length} registo(s)</span>
+        </div>
+        <div className="mt-3 grid gap-2">
+          {device.loginTimeline.slice(-6).reverse().map((login, index) => (
+            <div
+              key={`${device.deviceId}-${login.studentNumber}-${login.loginAt}-${index}`}
+              className="grid gap-1 rounded-xl bg-white px-3 py-2 text-xs sm:grid-cols-[96px_1fr]"
+            >
+              <span className="font-mono font-black text-slate-950">{formatDateTime(login.loginAt)}</span>
+              <span className="min-w-0 truncate font-semibold text-slate-700">
+                {login.studentName ?? login.studentNumber} · {login.studentCourse ?? "curso por confirmar"}
+              </span>
+            </div>
+          ))}
+          {device.loginTimeline.length === 0 ? (
+            <p className="rounded-xl bg-white px-3 py-2 text-xs font-semibold text-slate-500">
+              Sem evento de login registado neste dispositivo durante a janela.
+            </p>
+          ) : null}
+        </div>
+      </div>
+
       <div className="mt-4 space-y-2">
         {device.reasons.map((reason) => (
           <p key={reason} className="rounded-xl border border-orange-100 bg-orange-50 px-3 py-2 text-xs font-semibold text-orange-900">
@@ -360,7 +385,12 @@ function DeviceCard({
                 <span className="min-w-0 truncate font-bold text-slate-800">
                   {student.studentName ?? student.studentNumber}
                 </span>
-                <span className="shrink-0 text-slate-500">{student.voteCount} voto(s)</span>
+                <span className="shrink-0 text-right text-slate-500">
+                  {student.voteCount} voto(s)
+                  {student.firstLoginAt ? (
+                    <small className="block font-mono">login {formatDateTime(student.firstLoginAt)}</small>
+                  ) : null}
+                </span>
               </div>
             ))}
           </div>

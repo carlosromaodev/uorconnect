@@ -25,6 +25,9 @@ describe("Admin ODIN contract", () => {
     expect(odinTab).toContain("Mesma cookie/dispositivo");
     expect(odinTab).toContain("Fila de prioridade");
     expect(odinTab).toContain("Ação imediata");
+    expect(odinTab).toContain("Logins no dispositivo");
+    expect(odinTab).toContain("loginTimeline");
+    expect(odinTab).toContain("firstLoginAt");
     expect(odinTab).toContain("Zona restrita");
     expect(odinTab).toContain("Exclusão bloqueada até análise ODIN");
     expect(odinTab).toContain("Digite o número do estudante para confirmar");
