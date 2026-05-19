@@ -49,6 +49,23 @@ type StudentSubmissionPresenterInput = {
     reason: string;
     createdAt: Date;
   } | null;
+  latestOdinExhibitorDeviceWarning?: {
+    id: string;
+    submissionId: number;
+    submissionName: string;
+    deviceId: string;
+    severity: "MEDIUM" | "HIGH";
+    outsideVotes: number;
+    distinctAccounts: number;
+    firstDetectedAt: string;
+    lastDetectedAt: string;
+    outsideProjects: Array<{
+      submissionId: number;
+      submissionName: string;
+      votes: number;
+    }>;
+    message: string;
+  } | null;
 };
 
 export function getSubmissionStatusLabel(status: string) {
@@ -148,7 +165,7 @@ export function buildStudentSubmissionReceiptResponse(
 
 export function buildStudentSubmissionListItem(submission: Pick<
   StudentSubmissionPresenterInput,
-  "id" | "referenceCode" | "name" | "description" | "status" | "type" | "area" | "createdAt" | "bannerUrl" | "paymentStatus" | "repoUrl" | "websiteUrl" | "instagramUrl" | "facebookUrl" | "linkedinUrl" | "githubUrl" | "projectFrozen" | "projectFrozenAt" | "projectFrozenByStudentNumber" | "projectFreezeReason" | "latestOdinProjectPenalty"
+  "id" | "referenceCode" | "name" | "description" | "status" | "type" | "area" | "createdAt" | "bannerUrl" | "paymentStatus" | "repoUrl" | "websiteUrl" | "instagramUrl" | "facebookUrl" | "linkedinUrl" | "githubUrl" | "projectFrozen" | "projectFrozenAt" | "projectFrozenByStudentNumber" | "projectFreezeReason" | "latestOdinProjectPenalty" | "latestOdinExhibitorDeviceWarning"
 >) {
   const normalizedType = normalizeSubmissionType(submission.type, submission.area);
   const typeLabel = getSubmissionTypeLabel(submission.type, submission.area);
@@ -184,6 +201,7 @@ export function buildStudentSubmissionListItem(submission: Pick<
       reason: submission.latestOdinProjectPenalty.reason,
       createdAt: submission.latestOdinProjectPenalty.createdAt.toISOString(),
     } : null,
+    odinExhibitorDeviceWarning: submission.latestOdinExhibitorDeviceWarning ?? null,
     receiptPath: `/submissoes/${submission.id}`,
     exhibitorPdfPath: submission.status === "APPROVED" && isPaymentConfirmedByAdmin(submission.paymentStatus)
       ? `/submissions/${submission.id}/exhibitor-pack.pdf`

@@ -68,6 +68,7 @@ import {
 import { isStoredMediaUrl, persistMediaValue, resolveStoredMediaFile } from "../../media/application/media-storage";
 import { buildPaymentTimeline, isPaymentConfirmedByAdmin, normalizePaymentStatus, paymentStatusLabel } from "../../payments/payment-status";
 import { getStudentExhibitorPassportSummary } from "../../exhibitor-scoring/application/exhibitor-passport-student";
+import { getOdinExhibitorDeviceWarningsForStudent } from "../../security/application/odin.service";
 
 const submissionRepo = new PrismaSubmissionRepository();
 const submissionConfigRepo = new PrismaSubmissionConfigRepository();
@@ -235,6 +236,24 @@ const odinPenaltyWarningSchema = z.object({
   createdAt: z.string(),
 }).nullable();
 
+const odinExhibitorDeviceWarningSchema = z.object({
+  id: z.string(),
+  submissionId: z.number(),
+  submissionName: z.string(),
+  deviceId: z.string(),
+  severity: z.enum(["MEDIUM", "HIGH"]),
+  outsideVotes: z.number(),
+  distinctAccounts: z.number(),
+  firstDetectedAt: z.string(),
+  lastDetectedAt: z.string(),
+  outsideProjects: z.array(z.object({
+    submissionId: z.number(),
+    submissionName: z.string(),
+    votes: z.number(),
+  })),
+  message: z.string(),
+}).nullable();
+
 const studentSubmissionListItemSchema = z.object({
   id: z.number(),
   referenceCode: z.string(),
@@ -255,6 +274,7 @@ const studentSubmissionListItemSchema = z.object({
   bannerUrl: z.string().nullable(),
   ...projectFreezeStateSchema,
   odinPenaltyWarning: odinPenaltyWarningSchema,
+  odinExhibitorDeviceWarning: odinExhibitorDeviceWarningSchema,
   receiptPath: z.string(),
   exhibitorPdfPath: z.string().nullable(),
   viewerRole: z.enum(["RESPONSAVEL", "MEMBRO"]),
@@ -1246,7 +1266,17 @@ export async function submissionRoutes(app: FastifyInstance, { env }: { env: Ret
         return reply.code(401).send({ message: "Sessão inválida ou expirada. Inicia sessão novamente." });
       }
 
-      const submissions = await submissionRepo.listByStudent(request.student.id);
+      const [submissions, odinDeviceWarnings] = await Promise.all([
+        submissionRepo.listByStudent(request.student.id),
+        getOdinExhibitorDeviceWarningsForStudent({
+          studentId: request.student.id,
+          studentNumber: request.student.studentNumber,
+          windowHours: 48,
+        }),
+      ]);
+      const odinDeviceWarningBySubmission = new Map(
+        odinDeviceWarnings.map((warning) => [warning.submissionId, warning]),
+      );
       const items = await Promise.all(submissions.map(async (submission) => {
         const latestOdinProjectPenalty = await prisma.odinProjectPenalty.findFirst({
           where: {
@@ -1267,6 +1297,7 @@ export async function submissionRoutes(app: FastifyInstance, { env }: { env: Ret
         const base = buildStudentSubmissionListItem({
           ...submission,
           latestOdinProjectPenalty,
+          latestOdinExhibitorDeviceWarning: odinDeviceWarningBySubmission.get(submission.id) ?? null,
         });
         const team = await buildSubmissionTeamPayload(env, submission);
         const access = await resolveSubmissionViewerAccess(submission, request.student!);

@@ -99,6 +99,7 @@ const odinOverviewResponseSchema = z.object({
     suspectVotes: z.number(),
     multiAccountDevices: z.number(),
     projectPressureCount: z.number(),
+    exhibitorDeviceWarnings: z.number(),
   }),
   devices: z.array(z.object({
     deviceId: z.string(),
@@ -153,6 +154,32 @@ const odinOverviewResponseSchema = z.object({
     suspiciousVotes: z.number(),
     suspiciousDevices: z.number(),
     suspiciousStudents: z.number(),
+  })),
+  exhibitorDeviceWarnings: z.array(z.object({
+    id: z.string(),
+    deviceId: z.string(),
+    severity: z.enum(["MEDIUM", "HIGH"]),
+    outsideVotes: z.number(),
+    distinctAccounts: z.number(),
+    firstDetectedAt: z.string(),
+    lastDetectedAt: z.string(),
+    exhibitors: z.array(z.object({
+      submissionId: z.number(),
+      submissionName: z.string(),
+      studentId: z.number().nullable(),
+      studentNumber: z.string().nullable(),
+      memberName: z.string().nullable(),
+    })),
+    allowedProjects: z.array(z.object({
+      submissionId: z.number(),
+      submissionName: z.string(),
+    })),
+    outsideProjects: z.array(z.object({
+      submissionId: z.number(),
+      submissionName: z.string(),
+      votes: z.number(),
+    })),
+    message: z.string(),
   })),
   suggestions: z.array(z.string()),
 });

@@ -34,6 +34,7 @@ import {
   Save,
   ScanLine,
   Send,
+  ShieldAlert,
   ShieldCheck,
   Swords,
   TrendingUp,
@@ -1064,6 +1065,7 @@ export default function MinhaArea() {
   const [certificates, setCertificates] = useState<CertificateItem[]>([]);
   const [submissionsOpen, setSubmissionsOpen] = useState(true);
   const [dismissedOdinPenaltyId, setDismissedOdinPenaltyId] = useState<number | null>(null);
+  const [dismissedOdinDeviceWarningId, setDismissedOdinDeviceWarningId] = useState<string | null>(null);
   const [student, setStudent] = useState(() => getSessionStudent());
   const [profileState, setProfileState] = useState<StudentProfileState | null>(
     null,
@@ -2742,6 +2744,11 @@ export default function MinhaArea() {
     submissions.find((item) => item.projectFrozen) ?? null;
   const odinPenaltyBlocker =
     submissions.find((item) => item.odinPenaltyWarning && item.odinPenaltyWarning.id !== dismissedOdinPenaltyId) ?? null;
+  const odinDeviceWarningBlocker =
+    submissions.find((item) =>
+      item.odinExhibitorDeviceWarning
+      && item.odinExhibitorDeviceWarning.id !== dismissedOdinDeviceWarningId
+    ) ?? null;
   const teamConfirmationOverview =
     getProjectTeamConfirmationOverview(submissions);
   const teamSubmissions = teamConfirmationOverview.confirmableProjects;
@@ -6930,6 +6937,73 @@ export default function MinhaArea() {
                </div>
              </div>
        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(odinDeviceWarningBlocker)}>
+        <DialogContent className="w-[94vw] max-w-[480px] overflow-hidden rounded-3xl border-slate-300 p-0">
+          <div className="space-y-5 bg-[linear-gradient(180deg,rgba(15,23,42,0.98),rgba(30,41,59,0.98))] p-5 text-white sm:p-6">
+            <DialogHeader className="text-left">
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white text-slate-950 shadow-sm">
+                <ShieldAlert className="h-5 w-5" />
+              </div>
+              <DialogTitle className="font-heading text-xl">
+                Aviso ODIN
+              </DialogTitle>
+              <DialogDescription className="text-sm leading-relaxed text-slate-200">
+                O ODIN identificou uma prática suspeita ligada ao teu projeto. O sistema acompanha dispositivos, contas e votos para proteger a justiça da feira.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="rounded-2xl border border-white/10 bg-white/10 px-4 py-3 shadow-sm">
+              <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-amber-200">
+                dispositivo associado a expositor
+              </p>
+              <p className="safe-break mt-1 text-sm font-semibold">
+                {odinDeviceWarningBlocker?.name}
+              </p>
+              <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                <div className="rounded-xl bg-white/10 px-3 py-2">
+                  <span className="block font-bold text-amber-100">Votos fora do grupo</span>
+                  <strong className="text-lg text-white">
+                    {odinDeviceWarningBlocker?.odinExhibitorDeviceWarning?.outsideVotes ?? 0}
+                  </strong>
+                </div>
+                <div className="rounded-xl bg-white/10 px-3 py-2">
+                  <span className="block font-bold text-amber-100">Contas no dispositivo</span>
+                  <strong className="text-lg text-white">
+                    {odinDeviceWarningBlocker?.odinExhibitorDeviceWarning?.distinctAccounts ?? 0}
+                  </strong>
+                </div>
+              </div>
+              {odinDeviceWarningBlocker?.odinExhibitorDeviceWarning?.outsideProjects.length ? (
+                <div className="mt-3 rounded-xl bg-slate-950/30 px-3 py-2">
+                  <p className="text-[11px] font-bold uppercase tracking-[0.14em] text-slate-300">
+                    Projetos externos identificados
+                  </p>
+                  <p className="safe-break mt-1 text-xs leading-5 text-slate-100">
+                    {odinDeviceWarningBlocker.odinExhibitorDeviceWarning.outsideProjects
+                      .map((project) => `${project.submissionName} (${project.votes})`)
+                      .join(" · ")}
+                  </p>
+                </div>
+              ) : null}
+              <p className="safe-break mt-3 text-xs leading-5 text-slate-200">
+                {odinDeviceWarningBlocker?.odinExhibitorDeviceWarning?.message}
+              </p>
+              <p className="mt-3 text-xs leading-5 text-amber-100">
+                A repetição desta prática pode causar remoção de votos, perda de pontos, congelamento do projeto e possível suspensão/banimento temporário. Procura a organização se precisares esclarecer a situação.
+              </p>
+            </div>
+
+            <Button
+              type="button"
+              className="w-full rounded-2xl bg-white text-slate-950 hover:bg-slate-100"
+              onClick={() => setDismissedOdinDeviceWarningId(odinDeviceWarningBlocker?.odinExhibitorDeviceWarning?.id ?? null)}
+            >
+              Entendi o aviso ODIN
+            </Button>
+          </div>
+        </DialogContent>
       </Dialog>
 
       <Dialog open={Boolean(odinPenaltyBlocker)}>

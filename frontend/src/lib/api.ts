@@ -579,6 +579,23 @@ export interface StudentOwnedSubmissionListItem {
     reason: string;
     createdAt: string;
   } | null;
+  odinExhibitorDeviceWarning: {
+    id: string;
+    submissionId: number;
+    submissionName: string;
+    deviceId: string;
+    severity: "MEDIUM" | "HIGH";
+    outsideVotes: number;
+    distinctAccounts: number;
+    firstDetectedAt: string;
+    lastDetectedAt: string;
+    outsideProjects: Array<{
+      submissionId: number;
+      submissionName: string;
+      votes: number;
+    }>;
+    message: string;
+  } | null;
   receiptPath: string;
   exhibitorPdfPath: string | null;
   viewerRole?: "RESPONSAVEL" | "MEMBRO";
@@ -3114,6 +3131,33 @@ export interface OdinProjectPressure {
   suspiciousStudents: number;
 }
 
+export interface OdinExhibitorDeviceWarning {
+  id: string;
+  deviceId: string;
+  severity: "MEDIUM" | "HIGH";
+  outsideVotes: number;
+  distinctAccounts: number;
+  firstDetectedAt: string;
+  lastDetectedAt: string;
+  exhibitors: Array<{
+    submissionId: number;
+    submissionName: string;
+    studentId: number | null;
+    studentNumber: string | null;
+    memberName: string | null;
+  }>;
+  allowedProjects: Array<{
+    submissionId: number;
+    submissionName: string;
+  }>;
+  outsideProjects: Array<{
+    submissionId: number;
+    submissionName: string;
+    votes: number;
+  }>;
+  message: string;
+}
+
 export interface OdinOverview {
   generatedAt: string;
   stats: {
@@ -3124,10 +3168,12 @@ export interface OdinOverview {
     suspectVotes: number;
     multiAccountDevices: number;
     projectPressureCount: number;
+    exhibitorDeviceWarnings: number;
   };
   devices: OdinDeviceRisk[];
   students: OdinStudentRisk[];
   projects: OdinProjectPressure[];
+  exhibitorDeviceWarnings: OdinExhibitorDeviceWarning[];
   suggestions: string[];
 }
 

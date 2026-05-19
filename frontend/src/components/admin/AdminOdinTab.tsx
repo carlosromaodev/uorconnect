@@ -833,11 +833,12 @@ export default function AdminOdinTab() {
         </div>
       </section>
 
-      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-5">
         <StatCard label="Dispositivos suspeitos" value={overview?.stats.suspiciousDevices ?? 0} tone="rose" />
         <StatCard label="Contas em risco" value={overview?.stats.suspectStudents ?? 0} tone="orange" />
         <StatCard label="Votos sob análise" value={overview?.stats.suspectVotes ?? 0} tone="slate" />
         <StatCard label="Mesma cookie/dispositivo" value={overview?.stats.multiAccountDevices ?? 0} tone="emerald" />
+        <StatCard label="Telefones de expositores" value={overview?.stats.exhibitorDeviceWarnings ?? 0} tone="orange" />
       </div>
 
       {loading && !overview ? (

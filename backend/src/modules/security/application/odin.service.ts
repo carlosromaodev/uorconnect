@@ -86,6 +86,41 @@ export type OdinProjectPressure = {
   suspiciousStudents: number;
 };
 
+export type OdinExhibitorDeviceMembership = {
+  submissionId: number;
+  submissionName: string;
+  studentId?: number | null;
+  studentNumber?: string | null;
+  memberName?: string | null;
+};
+
+export type OdinExhibitorDeviceMisuseSignal = {
+  id: string;
+  deviceId: string;
+  severity: "MEDIUM" | "HIGH";
+  outsideVotes: number;
+  distinctAccounts: number;
+  firstDetectedAt: string;
+  lastDetectedAt: string;
+  exhibitors: Array<{
+    submissionId: number;
+    submissionName: string;
+    studentId: number | null;
+    studentNumber: string | null;
+    memberName: string | null;
+  }>;
+  allowedProjects: Array<{
+    submissionId: number;
+    submissionName: string;
+  }>;
+  outsideProjects: Array<{
+    submissionId: number;
+    submissionName: string;
+    votes: number;
+  }>;
+  message: string;
+};
+
 export type OdinOverview = {
   generatedAt: string;
   stats: {
@@ -96,11 +131,31 @@ export type OdinOverview = {
     suspectVotes: number;
     multiAccountDevices: number;
     projectPressureCount: number;
+    exhibitorDeviceWarnings: number;
   };
   devices: OdinDeviceRisk[];
   students: OdinStudentRisk[];
   projects: OdinProjectPressure[];
+  exhibitorDeviceWarnings: OdinExhibitorDeviceMisuseSignal[];
   suggestions: string[];
+};
+
+export type OdinStudentExhibitorDeviceWarning = {
+  id: string;
+  submissionId: number;
+  submissionName: string;
+  deviceId: string;
+  severity: "MEDIUM" | "HIGH";
+  outsideVotes: number;
+  distinctAccounts: number;
+  firstDetectedAt: string;
+  lastDetectedAt: string;
+  outsideProjects: Array<{
+    submissionId: number;
+    submissionName: string;
+    votes: number;
+  }>;
+  message: string;
 };
 
 export type OdinRecordEventInput = {
@@ -226,6 +281,125 @@ function latestEvent(left: OdinRawEvent, right: OdinRawEvent) {
 
 function projectKey(event: OdinRawEvent) {
   return event.targetType === "Submission" && event.targetId ? String(event.targetId) : null;
+}
+
+function normalizedStudentNumber(value?: string | null) {
+  return value?.trim().toLowerCase() || null;
+}
+
+function membershipStudentKeys(membership: OdinExhibitorDeviceMembership) {
+  const keys: string[] = [];
+  if (membership.studentId) keys.push(`id:${membership.studentId}`);
+  const number = normalizedStudentNumber(membership.studentNumber);
+  if (number) keys.push(`number:${number}`);
+  return keys;
+}
+
+function eventStudentKeys(event: Pick<OdinRawEvent, "studentId" | "studentNumber">) {
+  const keys: string[] = [];
+  if (event.studentId) keys.push(`id:${event.studentId}`);
+  const number = normalizedStudentNumber(event.studentNumber);
+  if (number) keys.push(`number:${number}`);
+  return keys;
+}
+
+function signalId(deviceId: string, submissionIds: number[], lastDetectedAt: string) {
+  return `odin-exhibitor-device:${deviceId}:${submissionIds.sort((left, right) => left - right).join("-")}:${lastDetectedAt}`;
+}
+
+export function detectExhibitorDeviceMisuse(
+  events: OdinRawEvent[],
+  memberships: OdinExhibitorDeviceMembership[],
+): OdinExhibitorDeviceMisuseSignal[] {
+  if (!events.length || !memberships.length) return [];
+
+  const eventsByDevice = new Map<string, OdinRawEvent[]>();
+  for (const event of events) {
+    eventsByDevice.set(event.deviceId, [...(eventsByDevice.get(event.deviceId) ?? []), event]);
+  }
+
+  const membershipByKey = new Map<string, OdinExhibitorDeviceMembership[]>();
+  for (const membership of memberships) {
+    for (const key of membershipStudentKeys(membership)) {
+      membershipByKey.set(key, [...(membershipByKey.get(key) ?? []), membership]);
+    }
+  }
+
+  return Array.from(eventsByDevice.entries()).flatMap(([deviceId, deviceEvents]) => {
+    const deviceMemberships = new Map<number, OdinExhibitorDeviceMembership>();
+    for (const event of deviceEvents) {
+      for (const key of eventStudentKeys(event)) {
+        for (const membership of membershipByKey.get(key) ?? []) {
+          deviceMemberships.set(membership.submissionId, membership);
+        }
+      }
+    }
+
+    if (deviceMemberships.size === 0) return [];
+
+    const allowedProjects = Array.from(deviceMemberships.values()).map((membership) => ({
+      submissionId: membership.submissionId,
+      submissionName: membership.submissionName,
+    }));
+    const allowedIds = new Set(allowedProjects.map((project) => project.submissionId));
+    const outsideVoteEvents = deviceEvents
+      .filter((event) =>
+        event.eventType === "PROJECT_VOTE"
+        && event.targetType === "Submission"
+        && event.targetId
+        && !allowedIds.has(event.targetId)
+      )
+      .sort((left, right) => left.createdAt.getTime() - right.createdAt.getTime());
+
+    if (!outsideVoteEvents.length) return [];
+
+    const outsideProjects = new Map<number, { submissionName: string; votes: number }>();
+    for (const vote of outsideVoteEvents) {
+      if (!vote.targetId) continue;
+      const current = outsideProjects.get(vote.targetId);
+      outsideProjects.set(vote.targetId, {
+        submissionName: vote.targetLabel ?? `Projeto ${vote.targetId}`,
+        votes: (current?.votes ?? 0) + 1,
+      });
+    }
+
+    const firstDetectedAt = outsideVoteEvents[0].createdAt.toISOString();
+    const lastDetectedAt = outsideVoteEvents[outsideVoteEvents.length - 1].createdAt.toISOString();
+    const distinctAccounts = unique(deviceEvents.map(studentKey).filter(Boolean)).length;
+    const severity: OdinExhibitorDeviceMisuseSignal["severity"] =
+      outsideVoteEvents.length >= 2 || distinctAccounts >= 3 ? "HIGH" : "MEDIUM";
+    const exhibitorProjects = allowedProjects.map((project) => project.submissionName).join(", ");
+    const outsideProjectNames = Array.from(outsideProjects.values()).map((project) => project.submissionName).join(", ");
+    const message = `Aviso ODIN: o dispositivo associado a expositor do projeto ${exhibitorProjects} foi usado para votar em projeto(s) fora do grupo (${outsideProjectNames}). Esta prática é proibida e pode resultar em remoção de votos, perda de pontos, congelamento do projeto e possível suspensão/banimento temporário da conta.`;
+
+    return [{
+      id: signalId(deviceId, Array.from(allowedIds), lastDetectedAt),
+      deviceId,
+      severity,
+      outsideVotes: outsideVoteEvents.length,
+      distinctAccounts,
+      firstDetectedAt,
+      lastDetectedAt,
+      exhibitors: Array.from(deviceMemberships.values()).map((membership) => ({
+        submissionId: membership.submissionId,
+        submissionName: membership.submissionName,
+        studentId: membership.studentId ?? null,
+        studentNumber: membership.studentNumber ?? null,
+        memberName: membership.memberName ?? null,
+      })),
+      allowedProjects,
+      outsideProjects: Array.from(outsideProjects.entries()).map(([submissionId, project]) => ({
+        submissionId,
+        submissionName: project.submissionName,
+        votes: project.votes,
+      })).sort((left, right) => right.votes - left.votes || left.submissionId - right.submissionId),
+      message,
+    }];
+  }).sort((left, right) =>
+    right.outsideVotes - left.outsideVotes
+    || right.distinctAccounts - left.distinctAccounts
+    || right.lastDetectedAt.localeCompare(left.lastDetectedAt)
+  );
 }
 
 function countVelocityVotes(events: OdinRawEvent[]) {
@@ -436,6 +610,61 @@ function projectPressure(devices: OdinDeviceRisk[]) {
   })).sort((left, right) => right.suspiciousVotes - left.suspiciousVotes);
 }
 
+function enrichOdinOverviewWithExhibitorMisuse(
+  overview: OdinOverview,
+  signals: OdinExhibitorDeviceMisuseSignal[],
+): OdinOverview {
+  if (!signals.length) return { ...overview, exhibitorDeviceWarnings: [] };
+
+  const signalsByDevice = new Map<string, OdinExhibitorDeviceMisuseSignal[]>();
+  for (const signal of signals) {
+    signalsByDevice.set(signal.deviceId, [...(signalsByDevice.get(signal.deviceId) ?? []), signal]);
+  }
+
+  const devices = overview.devices.map((device) => {
+    const deviceSignals = signalsByDevice.get(device.deviceId) ?? [];
+    if (!deviceSignals.length) return device;
+
+    const outsideVotes = deviceSignals.reduce((total, signal) => total + signal.outsideVotes, 0);
+    const signalRisk = outsideVotes >= 2 || device.distinctStudents >= 3 ? 90 : 65;
+    const nextRiskScore = Math.min(100, Math.max(device.riskScore, signalRisk));
+    const signalReasons = deviceSignals.map((signal) =>
+      `ODIN: dispositivo associado a expositor votou ${signal.outsideVotes} vez(es) em projetos fora do próprio grupo. Possível suspensão/banimento temporário se a prática for confirmada.`
+    );
+
+    return {
+      ...device,
+      riskScore: nextRiskScore,
+      riskLevel: riskLevel(nextRiskScore),
+      reasons: unique([...device.reasons, ...signalReasons]),
+    };
+  }).sort((left, right) => right.riskScore - left.riskScore || right.lastSeenAt.localeCompare(left.lastSeenAt));
+
+  const projects = projectPressure(devices);
+  const suspectVotes = devices
+    .filter((device) => device.riskScore >= 40)
+    .reduce((total, device) => total + device.voteCount, 0);
+
+  return {
+    ...overview,
+    stats: {
+      ...overview.stats,
+      suspiciousDevices: devices.filter((device) => device.riskScore >= 40).length,
+      suspectVotes,
+      projectPressureCount: projects.length,
+      exhibitorDeviceWarnings: signals.length,
+    },
+    devices,
+    projects,
+    exhibitorDeviceWarnings: signals,
+    suggestions: unique([
+      ...overview.suggestions,
+      "Avisar expositores: dispositivos associados a membros do projeto não podem ser usados para votar em projetos concorrentes.",
+      "Tratar voto em projeto externo por telefone de expositor como sinal ODIN de pressão indevida, sujeito a remoção de votos, perda de pontos e suspensão temporária.",
+    ]),
+  };
+}
+
 export function buildOdinRiskSnapshot(input: { generatedAt: Date; events: OdinRawEvent[] }): OdinOverview {
   const byDevice = new Map<string, OdinRawEvent[]>();
   for (const event of input.events) {
@@ -462,10 +691,12 @@ export function buildOdinRiskSnapshot(input: { generatedAt: Date; events: OdinRa
       suspectVotes,
       multiAccountDevices: devices.filter((device) => device.distinctStudents >= 2).length,
       projectPressureCount: projects.length,
+      exhibitorDeviceWarnings: 0,
     },
     devices,
     students,
     projects,
+    exhibitorDeviceWarnings: [],
     suggestions: [
       "Acompanhar contas diferentes na mesma cookie/dispositivo, mesmo que o utilizador troque de login.",
       "Comparar votos rápidos no mesmo dispositivo com pressão concentrada num único projeto.",
@@ -540,33 +771,197 @@ export async function recordOdinEvent(input: OdinRecordEventInput) {
   }
 }
 
+function toOdinRawEvent(event: {
+  id: number;
+  deviceId: string;
+  studentId: number | null;
+  studentNumber: string | null;
+  studentName: string | null;
+  studentCourse: string | null;
+  eventType: string;
+  targetType: string | null;
+  targetId: number | null;
+  targetLabel: string | null;
+  ipAddress: string | null;
+  userAgent: string | null;
+  createdAt: Date;
+}): OdinRawEvent {
+  return {
+    id: event.id,
+    deviceId: event.deviceId,
+    studentId: event.studentId,
+    studentNumber: event.studentNumber,
+    studentName: event.studentName,
+    studentCourse: event.studentCourse,
+    eventType: event.eventType,
+    targetType: event.targetType,
+    targetId: event.targetId,
+    targetLabel: event.targetLabel,
+    ipAddress: event.ipAddress,
+    userAgent: event.userAgent,
+    createdAt: event.createdAt,
+  };
+}
+
+async function loadExhibitorDeviceMemberships(): Promise<OdinExhibitorDeviceMembership[]> {
+  const submissions = await prisma.submission.findMany({
+    where: {
+      status: "APPROVED",
+      deletedAt: null,
+    },
+    select: {
+      id: true,
+      name: true,
+      studentId: true,
+      studentNumberSnapshot: true,
+      student: {
+        select: {
+          id: true,
+          studentNumber: true,
+          name: true,
+        },
+      },
+      memberConfirmations: {
+        select: {
+          studentId: true,
+          studentNumber: true,
+          expectedStudentNumber: true,
+          studentName: true,
+          name: true,
+          student: {
+            select: {
+              id: true,
+              studentNumber: true,
+              name: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  const memberships: OdinExhibitorDeviceMembership[] = [];
+  const seen = new Set<string>();
+  for (const submission of submissions) {
+    const pushMembership = (membership: OdinExhibitorDeviceMembership) => {
+      const key = `${membership.submissionId}:${membership.studentId ?? "none"}:${normalizedStudentNumber(membership.studentNumber) ?? "none"}`;
+      if (seen.has(key)) return;
+      if (!membership.studentId && !membership.studentNumber) return;
+      seen.add(key);
+      memberships.push(membership);
+    };
+
+    pushMembership({
+      submissionId: submission.id,
+      submissionName: submission.name,
+      studentId: submission.student?.id ?? submission.studentId ?? null,
+      studentNumber: submission.student?.studentNumber ?? submission.studentNumberSnapshot ?? null,
+      memberName: submission.student?.name ?? null,
+    });
+
+    for (const member of submission.memberConfirmations) {
+      pushMembership({
+        submissionId: submission.id,
+        submissionName: submission.name,
+        studentId: member.student?.id ?? member.studentId ?? null,
+        studentNumber: member.student?.studentNumber ?? member.studentNumber ?? member.expectedStudentNumber ?? null,
+        memberName: member.student?.name ?? member.studentName ?? member.name ?? null,
+      });
+    }
+  }
+
+  return memberships;
+}
+
 export async function getOdinOverview(windowHours = 48): Promise<OdinOverview> {
   const hours = Number.isFinite(windowHours) ? Math.min(24 * 14, Math.max(1, Math.floor(windowHours))) : 48;
   const from = new Date(Date.now() - hours * 60 * 60 * 1000);
-  const events = await prisma.odinEvent.findMany({
-    where: { createdAt: { gte: from } },
-    orderBy: { createdAt: "desc" },
-    take: 5000,
+  const [events, memberships] = await Promise.all([
+    prisma.odinEvent.findMany({
+      where: { createdAt: { gte: from } },
+      orderBy: { createdAt: "desc" },
+      take: 5000,
+    }),
+    loadExhibitorDeviceMemberships(),
+  ]);
+
+  const rawEvents = events.map(toOdinRawEvent);
+  const overview = buildOdinRiskSnapshot({
+    generatedAt: new Date(),
+    events: rawEvents,
   });
 
-  return buildOdinRiskSnapshot({
-    generatedAt: new Date(),
-    events: events.map((event) => ({
-      id: event.id,
-      deviceId: event.deviceId,
-      studentId: event.studentId,
-      studentNumber: event.studentNumber,
-      studentName: event.studentName,
-      studentCourse: event.studentCourse,
-      eventType: event.eventType,
-      targetType: event.targetType,
-      targetId: event.targetId,
-      targetLabel: event.targetLabel,
-      ipAddress: event.ipAddress,
-      userAgent: event.userAgent,
-      createdAt: event.createdAt,
-    })),
+  return enrichOdinOverviewWithExhibitorMisuse(
+    overview,
+    detectExhibitorDeviceMisuse(rawEvents, memberships),
+  );
+}
+
+export async function getOdinExhibitorDeviceWarningsForStudent(input: {
+  studentId: number;
+  studentNumber?: string | null;
+  windowHours?: number;
+}): Promise<OdinStudentExhibitorDeviceWarning[]> {
+  const hours = Number.isFinite(input.windowHours) ? Math.min(24 * 14, Math.max(1, Math.floor(input.windowHours ?? 48))) : 48;
+  const from = new Date(Date.now() - hours * 60 * 60 * 1000);
+  const number = normalizedStudentNumber(input.studentNumber);
+
+  const ownEvents = await prisma.odinEvent.findMany({
+    where: {
+      createdAt: { gte: from },
+      OR: [
+        { studentId: input.studentId },
+        ...(number ? [{ studentNumber: { equals: input.studentNumber ?? undefined } }] : []),
+      ],
+    },
+    select: { deviceId: true },
+    distinct: ["deviceId"],
   });
+  const deviceIds = ownEvents.map((event) => event.deviceId);
+  if (!deviceIds.length) return [];
+
+  const [events, memberships] = await Promise.all([
+    prisma.odinEvent.findMany({
+      where: {
+        createdAt: { gte: from },
+        deviceId: { in: deviceIds },
+      },
+      orderBy: { createdAt: "asc" },
+      take: 5000,
+    }),
+    loadExhibitorDeviceMemberships(),
+  ]);
+
+  const ownMemberships = memberships.filter((membership) =>
+    membership.studentId === input.studentId
+    || (number && normalizedStudentNumber(membership.studentNumber) === number)
+  );
+  if (!ownMemberships.length) return [];
+
+  const rawEvents = events.map(toOdinRawEvent);
+  const signals = detectExhibitorDeviceMisuse(rawEvents, memberships);
+  const ownProjectIds = new Set(ownMemberships.map((membership) => membership.submissionId));
+
+  return signals.flatMap((signal) =>
+    signal.exhibitors
+      .filter((exhibitor) => ownProjectIds.has(exhibitor.submissionId))
+      .map((exhibitor) => ({
+        id: `${signal.id}:${exhibitor.submissionId}`,
+        submissionId: exhibitor.submissionId,
+        submissionName: exhibitor.submissionName,
+        deviceId: signal.deviceId,
+        severity: signal.severity,
+        outsideVotes: signal.outsideVotes,
+        distinctAccounts: signal.distinctAccounts,
+        firstDetectedAt: signal.firstDetectedAt,
+        lastDetectedAt: signal.lastDetectedAt,
+        outsideProjects: signal.outsideProjects,
+        message: signal.message,
+      }))
+  ).sort((left, right) =>
+    right.outsideVotes - left.outsideVotes
+    || right.lastDetectedAt.localeCompare(left.lastDetectedAt)
+  );
 }
 
 export async function recordOdinStudentExclusion(input: OdinStudentExclusionInput): Promise<OdinStudentExclusionResult> {

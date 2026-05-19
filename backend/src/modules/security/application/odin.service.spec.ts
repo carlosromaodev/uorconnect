@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildOdinRiskSnapshot,
+  detectExhibitorDeviceMisuse,
   normalizeOdinDeviceId,
   type OdinRawEvent,
 } from "./odin.service";
@@ -135,5 +136,79 @@ describe("ODIN device risk analysis", () => {
       expect.stringContaining("5 votos em 10 minutos"),
     ]));
     expect(snapshot.stats.suspectVotes).toBe(5);
+  });
+
+  it("detects exhibitor devices used to vote outside their own project", () => {
+    const events = [
+      event({
+        id: 1,
+        deviceId: "device-exhibitor-001",
+        studentId: 10,
+        studentNumber: "20260010",
+        studentName: "Ana Expositora",
+        eventType: "LOGIN_SUCCESS",
+        createdAt: new Date("2026-05-18T09:00:00.000Z"),
+      }),
+      event({
+        id: 2,
+        deviceId: "device-exhibitor-001",
+        studentId: 20,
+        studentNumber: "20260020",
+        studentName: "Colega A",
+        eventType: "PROJECT_VOTE",
+        targetType: "Submission",
+        targetId: 77,
+        targetLabel: "Projeto da Ana",
+        createdAt: new Date("2026-05-18T09:01:00.000Z"),
+      }),
+      event({
+        id: 3,
+        deviceId: "device-exhibitor-001",
+        studentId: 21,
+        studentNumber: "20260021",
+        studentName: "Colega B",
+        eventType: "PROJECT_VOTE",
+        targetType: "Submission",
+        targetId: 88,
+        targetLabel: "Projeto concorrente",
+        createdAt: new Date("2026-05-18T09:02:00.000Z"),
+      }),
+      event({
+        id: 4,
+        deviceId: "device-exhibitor-001",
+        studentId: 22,
+        studentNumber: "20260022",
+        studentName: "Colega C",
+        eventType: "PROJECT_VOTE",
+        targetType: "Submission",
+        targetId: 89,
+        targetLabel: "Outro projeto",
+        createdAt: new Date("2026-05-18T09:03:00.000Z"),
+      }),
+    ];
+
+    const signals = detectExhibitorDeviceMisuse(events, [
+      {
+        submissionId: 77,
+        submissionName: "Projeto da Ana",
+        studentId: 10,
+        studentNumber: "20260010",
+        memberName: "Ana Expositora",
+      },
+    ]);
+
+    expect(signals).toHaveLength(1);
+    expect(signals[0]).toEqual(expect.objectContaining({
+      deviceId: "device-exhibitor-001",
+      outsideVotes: 2,
+      distinctAccounts: 4,
+      severity: "HIGH",
+    }));
+    expect(signals[0].outsideProjects).toEqual([
+      expect.objectContaining({ submissionId: 88, submissionName: "Projeto concorrente", votes: 1 }),
+      expect.objectContaining({ submissionId: 89, submissionName: "Outro projeto", votes: 1 }),
+    ]);
+    expect(signals[0].message).toContain("ODIN");
+    expect(signals[0].message).toContain("possível suspensão");
   });
 });
