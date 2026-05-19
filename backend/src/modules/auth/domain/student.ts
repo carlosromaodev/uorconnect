@@ -28,6 +28,7 @@ export interface Student {
   websiteUrl?: string | null;
   profileCompletedAt?: Date | null;
   accessType?: "OFFICIAL" | "TEMPORARY";
+  institutionFlag?: "UOR" | "ISPTEC" | "UNKNOWN";
   deletedAt?: Date | null;
   deletionReason?: string | null;
   lastLoginAt?: Date | null;
@@ -87,6 +88,7 @@ export interface StudentProfile {
   websiteUrl?: string | null;
   profileCompletedAt?: Date | null;
   accessType?: "OFFICIAL" | "TEMPORARY";
+  institutionFlag?: "UOR" | "ISPTEC" | "UNKNOWN";
 }
 
 export interface StudentStats {

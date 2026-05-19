@@ -63,6 +63,15 @@ function normalizeLoginIdentifier(value: string, identifierType: "studentNumber"
   return trimmed.replace(/\D/g, "").slice(0, 12);
 }
 
+function normalizeInstitutionalStudentLookup(value: string) {
+  const trimmed = value.trim();
+  if (/^ISPTEC[-_\s]/i.test(trimmed)) {
+    const raw = trimmed.replace(/^ISPTEC[-_\s]*/i, "").replace(/\D/g, "");
+    return raw ? `ISPTEC-${raw}` : trimmed.toUpperCase();
+  }
+  return trimmed.replace(/\D/g, "").slice(0, 12);
+}
+
 const loginSchema = z.object({
   studentNumber: z.string().trim().min(1).max(40),
   identifierType: z.enum(["studentNumber", "username"]).optional().default("studentNumber"),
@@ -238,6 +247,7 @@ const studentResponseSchema = z.object({
   id: z.number(),
   studentNumber: z.string(),
   accessType: z.enum(["OFFICIAL", "TEMPORARY"]),
+  institutionFlag: z.enum(["UOR", "ISPTEC", "UNKNOWN"]),
   name: z.string().nullable(),
   email: z.string().nullable(),
   course: z.string().nullable(),
@@ -1719,7 +1729,7 @@ export async function authRoutes(app: FastifyInstance, opts: { env?: Env } = {})
       }
     },
     async (request, reply) => {
-      const studentNumber = request.params.studentNumber.replace(/\\D/g, "");
+      const studentNumber = normalizeInstitutionalStudentLookup(request.params.studentNumber);
       const student = await studentRepository.findByStudentNumber(studentNumber);
       if (!student) {
         return reply.code(404).send({ message: "Student not found" });

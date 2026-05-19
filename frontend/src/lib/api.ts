@@ -239,6 +239,7 @@ export interface StudentProfile {
   id: number;
   studentNumber: string;
   accessType?: "OFFICIAL" | "TEMPORARY";
+  institutionFlag?: "UOR" | "ISPTEC" | "UNKNOWN";
   name: string | null;
   email: string | null;
   course: string | null;

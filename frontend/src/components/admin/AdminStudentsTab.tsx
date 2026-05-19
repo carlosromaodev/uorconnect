@@ -176,6 +176,24 @@ function StatBadge({
   );
 }
 
+function studentInstitutionLabel(student: StudentWithStats) {
+  if (student.institutionFlag === "ISPTEC") return "ISPTEC";
+  if (student.institutionFlag === "UOR") return "UOR";
+  if (student.registrationSource === "ISPTEC_OFFICIAL") return "ISPTEC";
+  if (student.registrationSource === "SECRETARIA") return "UOR";
+  return "Sem bandeira";
+}
+
+function studentInstitutionBadgeClass(student: StudentWithStats) {
+  if (studentInstitutionLabel(student) === "ISPTEC") {
+    return "shrink-0 border-yellow-500/30 bg-yellow-500/10 text-[10px] text-yellow-700 dark:text-yellow-300";
+  }
+  if (studentInstitutionLabel(student) === "UOR") {
+    return "shrink-0 border-orange-500/30 bg-orange-500/10 text-[10px] text-orange-700 dark:text-orange-300";
+  }
+  return "shrink-0 border-slate-500/30 bg-slate-500/10 text-[10px] text-slate-600 dark:text-slate-300";
+}
+
 /* ------------------------------------------------------------------ */
 /*  Student card                                                       */
 /* ------------------------------------------------------------------ */
@@ -282,6 +300,14 @@ function StudentCard({
                 }
               >
                 {isOfficialAccess ? "Oficial" : "Temporário"}
+              </Badge>
+              <Badge
+                variant="outline"
+                className={studentInstitutionBadgeClass(student)}
+                title="Bandeira institucional calculada pela origem oficial do estudante"
+              >
+                <Building2 className="mr-0.5 h-2.5 w-2.5" />
+                {studentInstitutionLabel(student)}
               </Badge>
             </div>
             <div className="mt-0.5 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
@@ -438,7 +464,7 @@ function StudentCard({
                   <Flag className="h-3.5 w-3.5 text-muted-foreground" />
                   <span>
                     {isOfficialAccess
-                      ? "Login oficial UOR/ISPTEC"
+                      ? `Login oficial ${studentInstitutionLabel(student)}`
                       : "Acesso temporário sem login oficial"}
                   </span>
                 </div>

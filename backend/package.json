@@ -19,6 +19,7 @@
     "prisma:push:postgres": "npm run prisma:prepare:postgres && prisma db push --schema prisma/schema.deploy.prisma",
     "migrate:data:postgres": "node scripts/migrate-sqlite-to-postgres.cjs",
     "media:migrate-base64-profile-photos": "tsx src/scripts/migrate-base64-profile-photos.ts",
+    "students:audit-institutions": "tsx src/scripts/audit-student-institution-integrity.ts",
     "passes:sample": "tsx src/scripts/generate-sample-credential-passes.ts",
     "scores:backfill": "tsx src/scripts/backfill-exhibitor-score-events.ts",
     "content:sync-telecom-workshop": "tsx src/scripts/sync-telecom-workshop-content.ts",

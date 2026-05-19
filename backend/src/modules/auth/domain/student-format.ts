@@ -1,12 +1,16 @@
 import { normalizeOfficialCourse } from "../../../shared/official-courses";
+import { resolveStudentInstitutionFlag, type StudentInstitutionFlag } from "./student-institution-integrity";
 
 type StudentLike = {
+  studentNumber?: string | null;
   name?: string | null;
   course?: string | null;
   phone?: string | null;
   alternatePhone?: string | null;
   academicSyncedAt?: Date | string | null;
   registrationSource?: string | null;
+  university?: string | null;
+  isUorStudent?: boolean | null;
 };
 
 export type StudentAccessType = "OFFICIAL" | "TEMPORARY";
@@ -63,7 +67,10 @@ export function resolveStudentAccessType(student: Pick<StudentLike, "academicSyn
   return "TEMPORARY";
 }
 
-export function normalizeStudentProfile<T extends StudentLike>(student: T): T & { accessType: StudentAccessType } {
+export function normalizeStudentProfile<T extends StudentLike>(student: T): T & {
+  accessType: StudentAccessType;
+  institutionFlag: StudentInstitutionFlag;
+} {
   return {
     ...student,
     name: normalizeStudentName(student.name) ?? null,
@@ -71,5 +78,12 @@ export function normalizeStudentProfile<T extends StudentLike>(student: T): T & 
     phone: normalizeAngolaPhone(student.phone) ?? null,
     alternatePhone: normalizeAngolaPhone(student.alternatePhone) ?? null,
     accessType: resolveStudentAccessType(student),
+    institutionFlag: resolveStudentInstitutionFlag({
+      studentNumber: student.studentNumber ?? "",
+      registrationSource: student.registrationSource,
+      university: student.university,
+      isUorStudent: student.isUorStudent,
+      academicSyncedAt: student.academicSyncedAt,
+    }),
   };
 }
