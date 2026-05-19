@@ -1,5 +1,19 @@
 export type StudentInstitutionFlag = "UOR" | "ISPTEC" | "UNKNOWN";
 
+export type StudentInstitutionEvidence =
+  | "REGISTRATION_SOURCE"
+  | "STUDENT_NUMBER_PREFIX"
+  | "INSTITUTIONAL_EMAIL"
+  | "UNIVERSITY"
+  | "BOOLEAN_FLAG"
+  | "CONTACT_PROFILE"
+  | "UNKNOWN";
+
+export type StudentInstitutionIdentity = {
+  flag: StudentInstitutionFlag;
+  evidence: StudentInstitutionEvidence;
+};
+
 export type StudentInstitutionIssueSeverity = "CRITICAL" | "HIGH" | "MEDIUM" | "LOW";
 
 export type StudentInstitutionIssueCode =
@@ -15,7 +29,9 @@ export type StudentInstitutionAuditRow = {
   id: number;
   studentNumber: string;
   name?: string | null;
+  email?: string | null;
   course?: string | null;
+  phone?: string | null;
   university?: string | null;
   registrationSource?: string | null;
   isUorStudent?: boolean | null;
@@ -48,6 +64,7 @@ export type StudentInstitutionAudit = {
   totals: {
     students: number;
     byInstitution: Record<StudentInstitutionFlag, number>;
+    byEvidence: Record<StudentInstitutionEvidence, number>;
     issues: number;
     criticalIssues: number;
     highIssues: number;
@@ -102,7 +119,6 @@ function institutionFromUniversity(university?: string | null): StudentInstituti
   if (
     normalized === "UOR" ||
     normalized.includes("OSCAR RIBAS") ||
-    normalized.includes("UNIVERSIDADE OSCAR RIBAS") ||
     normalized.includes("UNIVERSIDADE OSCAR RIBAS")
   ) {
     return "UOR";
@@ -110,21 +126,63 @@ function institutionFromUniversity(university?: string | null): StudentInstituti
   return "UNKNOWN";
 }
 
-export function resolveStudentInstitutionFlag(student: Pick<
-  StudentInstitutionAuditRow,
-  "studentNumber" | "registrationSource" | "university" | "isUorStudent" | "academicSyncedAt"
->): StudentInstitutionFlag {
-  const sourceInstitution = institutionFromRegistrationSource(student.registrationSource);
-  if (sourceInstitution !== "UNKNOWN") return sourceInstitution;
+function institutionFromEmail(email?: string | null): StudentInstitutionFlag {
+  const normalized = (email ?? "").trim().toLowerCase();
+  const domain = normalized.includes("@") ? normalized.split("@").pop() ?? "" : "";
+  if (!domain) return "UNKNOWN";
+  if (domain.includes("isptec")) return "ISPTEC";
+  if (domain.includes("uor") || domain.includes("oscar")) return "UOR";
+  return "UNKNOWN";
+}
 
-  if (hasIsptecPrefix(student.studentNumber)) return "ISPTEC";
+function hasPersonalEmail(email?: string | null) {
+  const normalized = (email ?? "").trim();
+  if (!normalized || !normalized.includes("@")) return false;
+  return institutionFromEmail(normalized) === "UNKNOWN";
+}
+
+function hasUsablePhone(phone?: string | null) {
+  return (phone ?? "").replace(/\D/g, "").length >= 8;
+}
+
+function hasRawNumericStudentNumber(studentNumber?: string | null) {
+  const raw = extractRawStudentNumber(studentNumber);
+  return Boolean(raw && /^\d{6,14}$/.test(raw) && !hasIsptecPrefix(studentNumber));
+}
+
+function hasUorContactProfile(student: Pick<StudentInstitutionAuditRow, "studentNumber" | "email" | "phone">) {
+  return hasRawNumericStudentNumber(student.studentNumber)
+    && hasUsablePhone(student.phone)
+    && hasPersonalEmail(student.email);
+}
+
+export function resolveStudentInstitutionIdentity(student: Pick<
+  StudentInstitutionAuditRow,
+  "studentNumber" | "registrationSource" | "university" | "isUorStudent" | "academicSyncedAt" | "email" | "phone"
+>): StudentInstitutionIdentity {
+  const sourceInstitution = institutionFromRegistrationSource(student.registrationSource);
+  if (sourceInstitution !== "UNKNOWN") return { flag: sourceInstitution, evidence: "REGISTRATION_SOURCE" };
+
+  if (hasIsptecPrefix(student.studentNumber)) return { flag: "ISPTEC", evidence: "STUDENT_NUMBER_PREFIX" };
+
+  const emailInstitution = institutionFromEmail(student.email);
+  if (emailInstitution !== "UNKNOWN") return { flag: emailInstitution, evidence: "INSTITUTIONAL_EMAIL" };
 
   const universityInstitution = institutionFromUniversity(student.university);
-  if (universityInstitution !== "UNKNOWN") return universityInstitution;
+  if (universityInstitution !== "UNKNOWN") return { flag: universityInstitution, evidence: "UNIVERSITY" };
 
-  if (student.isUorStudent === true) return "UOR";
+  if (student.isUorStudent === true) return { flag: "UOR", evidence: "BOOLEAN_FLAG" };
 
-  return "UNKNOWN";
+  if (hasUorContactProfile(student)) return { flag: "UOR", evidence: "CONTACT_PROFILE" };
+
+  return { flag: "UNKNOWN", evidence: "UNKNOWN" };
+}
+
+export function resolveStudentInstitutionFlag(student: Pick<
+  StudentInstitutionAuditRow,
+  "studentNumber" | "registrationSource" | "university" | "isUorStudent" | "academicSyncedAt" | "email" | "phone"
+>): StudentInstitutionFlag {
+  return resolveStudentInstitutionIdentity(student).flag;
 }
 
 export function buildInstitutionScopedStudentNumber(institution: StudentInstitutionFlag, studentNumber: string) {
@@ -156,8 +214,10 @@ function issue(input: {
 
 export function detectStudentInstitutionIssues(student: StudentInstitutionAuditRow): StudentInstitutionIssue[] {
   const issues: StudentInstitutionIssue[] = [];
-  const institutionFlag = resolveStudentInstitutionFlag(student);
+  const identity = resolveStudentInstitutionIdentity(student);
+  const institutionFlag = identity.flag;
   const sourceInstitution = institutionFromRegistrationSource(student.registrationSource);
+  const emailInstitution = institutionFromEmail(student.email);
   const universityInstitution = institutionFromUniversity(student.university);
 
   if (sourceInstitution === "ISPTEC" && !hasIsptecPrefix(student.studentNumber)) {
@@ -173,7 +233,7 @@ export function detectStudentInstitutionIssues(student: StudentInstitutionAuditR
 
   if (
     sourceInstitution !== "ISPTEC" &&
-    universityInstitution === "ISPTEC" &&
+    (universityInstitution === "ISPTEC" || emailInstitution === "ISPTEC") &&
     !hasIsptecPrefix(student.studentNumber)
   ) {
     issues.push(issue({
@@ -181,7 +241,7 @@ export function detectStudentInstitutionIssues(student: StudentInstitutionAuditR
       institutionFlag: "ISPTEC",
       code: "DECLARED_ISPTEC_WITHOUT_OFFICIAL_SOURCE",
       severity: "MEDIUM",
-      message: "Conta declara ISPTEC, mas não veio do login oficial ISPTEC. Deve ser revista antes de receber escopo institucional definitivo.",
+      message: "Conta aponta para ISPTEC, mas não veio do login oficial ISPTEC. Deve ser revista antes de receber escopo institucional definitivo.",
       expectedStudentNumber: buildInstitutionScopedStudentNumber("ISPTEC", student.studentNumber),
     }));
   }
@@ -226,7 +286,13 @@ export function detectStudentInstitutionIssues(student: StudentInstitutionAuditR
     }));
   }
 
-  if (student.academicSyncedAt && sourceInstitution === "UNKNOWN" && universityInstitution === "UNKNOWN") {
+  if (
+    student.academicSyncedAt &&
+    sourceInstitution === "UNKNOWN" &&
+    universityInstitution === "UNKNOWN" &&
+    emailInstitution === "UNKNOWN" &&
+    !hasUorContactProfile(student)
+  ) {
     issues.push(issue({
       student,
       institutionFlag,
@@ -258,12 +324,22 @@ function compareFlags(left: StudentInstitutionFlag, right: StudentInstitutionFla
 
 export function auditStudentInstitutionIntegrity(students: StudentInstitutionAuditRow[]): StudentInstitutionAudit {
   const byInstitution: Record<StudentInstitutionFlag, number> = { UOR: 0, ISPTEC: 0, UNKNOWN: 0 };
+  const byEvidence: Record<StudentInstitutionEvidence, number> = {
+    REGISTRATION_SOURCE: 0,
+    STUDENT_NUMBER_PREFIX: 0,
+    INSTITUTIONAL_EMAIL: 0,
+    UNIVERSITY: 0,
+    BOOLEAN_FLAG: 0,
+    CONTACT_PROFILE: 0,
+    UNKNOWN: 0,
+  };
   const issues = students.flatMap((student) => detectStudentInstitutionIssues(student));
   const rowsByRawNumber = new Map<string, StudentInstitutionAuditRow[]>();
 
   for (const student of students) {
-    const institution = resolveStudentInstitutionFlag(student);
-    byInstitution[institution] += 1;
+    const identity = resolveStudentInstitutionIdentity(student);
+    byInstitution[identity.flag] += 1;
+    byEvidence[identity.evidence] += 1;
     const raw = extractRawStudentNumber(student.studentNumber);
     if (!raw) continue;
     const list = rowsByRawNumber.get(raw) ?? [];
@@ -298,6 +374,7 @@ export function auditStudentInstitutionIntegrity(students: StudentInstitutionAud
     totals: {
       students: students.length,
       byInstitution,
+      byEvidence,
       issues: issues.length,
       criticalIssues: criticalIssues.length,
       highIssues: highIssues.length,

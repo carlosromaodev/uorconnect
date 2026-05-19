@@ -194,6 +194,19 @@ function studentInstitutionBadgeClass(student: StudentWithStats) {
   return "shrink-0 border-slate-500/30 bg-slate-500/10 text-[10px] text-slate-600 dark:text-slate-300";
 }
 
+function studentInstitutionEvidenceLabel(student: StudentWithStats) {
+  const labels: Record<NonNullable<StudentWithStats["institutionEvidence"]>, string> = {
+    REGISTRATION_SOURCE: "origem oficial",
+    STUDENT_NUMBER_PREFIX: "prefixo institucional",
+    INSTITUTIONAL_EMAIL: "email institucional",
+    UNIVERSITY: "universidade declarada",
+    BOOLEAN_FLAG: "flag interna",
+    CONTACT_PROFILE: "telefone + email proprio",
+    UNKNOWN: "sem evidencia suficiente",
+  };
+  return labels[student.institutionEvidence ?? "UNKNOWN"];
+}
+
 /* ------------------------------------------------------------------ */
 /*  Student card                                                       */
 /* ------------------------------------------------------------------ */
@@ -304,7 +317,7 @@ function StudentCard({
               <Badge
                 variant="outline"
                 className={studentInstitutionBadgeClass(student)}
-                title="Bandeira institucional calculada pela origem oficial do estudante"
+                title={`Bandeira institucional: ${studentInstitutionEvidenceLabel(student)}`}
               >
                 <Building2 className="mr-0.5 h-2.5 w-2.5" />
                 {studentInstitutionLabel(student)}

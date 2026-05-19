@@ -1,9 +1,14 @@
 import { normalizeOfficialCourse } from "../../../shared/official-courses";
-import { resolveStudentInstitutionFlag, type StudentInstitutionFlag } from "./student-institution-integrity";
+import {
+  resolveStudentInstitutionIdentity,
+  type StudentInstitutionEvidence,
+  type StudentInstitutionFlag,
+} from "./student-institution-integrity";
 
 type StudentLike = {
   studentNumber?: string | null;
   name?: string | null;
+  email?: string | null;
   course?: string | null;
   phone?: string | null;
   alternatePhone?: string | null;
@@ -70,7 +75,18 @@ export function resolveStudentAccessType(student: Pick<StudentLike, "academicSyn
 export function normalizeStudentProfile<T extends StudentLike>(student: T): T & {
   accessType: StudentAccessType;
   institutionFlag: StudentInstitutionFlag;
+  institutionEvidence: StudentInstitutionEvidence;
 } {
+  const institutionIdentity = resolveStudentInstitutionIdentity({
+    studentNumber: student.studentNumber ?? "",
+    registrationSource: student.registrationSource,
+    university: student.university,
+    isUorStudent: student.isUorStudent,
+    academicSyncedAt: student.academicSyncedAt,
+    email: student.email,
+    phone: student.phone,
+  });
+
   return {
     ...student,
     name: normalizeStudentName(student.name) ?? null,
@@ -78,12 +94,7 @@ export function normalizeStudentProfile<T extends StudentLike>(student: T): T & 
     phone: normalizeAngolaPhone(student.phone) ?? null,
     alternatePhone: normalizeAngolaPhone(student.alternatePhone) ?? null,
     accessType: resolveStudentAccessType(student),
-    institutionFlag: resolveStudentInstitutionFlag({
-      studentNumber: student.studentNumber ?? "",
-      registrationSource: student.registrationSource,
-      university: student.university,
-      isUorStudent: student.isUorStudent,
-      academicSyncedAt: student.academicSyncedAt,
-    }),
+    institutionFlag: institutionIdentity.flag,
+    institutionEvidence: institutionIdentity.evidence,
   };
 }

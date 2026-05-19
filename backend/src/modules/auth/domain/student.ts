@@ -29,6 +29,14 @@ export interface Student {
   profileCompletedAt?: Date | null;
   accessType?: "OFFICIAL" | "TEMPORARY";
   institutionFlag?: "UOR" | "ISPTEC" | "UNKNOWN";
+  institutionEvidence?:
+    | "REGISTRATION_SOURCE"
+    | "STUDENT_NUMBER_PREFIX"
+    | "INSTITUTIONAL_EMAIL"
+    | "UNIVERSITY"
+    | "BOOLEAN_FLAG"
+    | "CONTACT_PROFILE"
+    | "UNKNOWN";
   deletedAt?: Date | null;
   deletionReason?: string | null;
   lastLoginAt?: Date | null;
@@ -89,6 +97,14 @@ export interface StudentProfile {
   profileCompletedAt?: Date | null;
   accessType?: "OFFICIAL" | "TEMPORARY";
   institutionFlag?: "UOR" | "ISPTEC" | "UNKNOWN";
+  institutionEvidence?:
+    | "REGISTRATION_SOURCE"
+    | "STUDENT_NUMBER_PREFIX"
+    | "INSTITUTIONAL_EMAIL"
+    | "UNIVERSITY"
+    | "BOOLEAN_FLAG"
+    | "CONTACT_PROFILE"
+    | "UNKNOWN";
 }
 
 export interface StudentStats {

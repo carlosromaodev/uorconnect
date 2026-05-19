@@ -6,6 +6,7 @@ import {
   detectStudentInstitutionIssues,
   extractRawStudentNumber,
   resolveStudentInstitutionFlag,
+  resolveStudentInstitutionIdentity,
   type StudentInstitutionAudit,
   type StudentInstitutionAuditRow,
   type StudentInstitutionIssue,
@@ -61,6 +62,7 @@ function buildIssueRows(issues: StudentInstitutionIssue[], studentsById: Map<num
         issue.severity,
         issue.code,
         issue.institutionFlag,
+        student ? resolveStudentInstitutionIdentity(student).evidence : "UNKNOWN",
         issue.studentNumber,
         issue.expectedStudentNumber ?? "-",
         student?.name ?? "-",
@@ -99,7 +101,8 @@ function buildMarkdownReport(audit: StudentInstitutionAudit, students: StudentIn
     })
     .slice(0, 80)
     .map((student) => [
-      resolveStudentInstitutionFlag(student),
+      resolveStudentInstitutionIdentity(student).flag,
+      resolveStudentInstitutionIdentity(student).evidence,
       student.studentNumber,
       extractRawStudentNumber(student.studentNumber) ?? "-",
       student.name ?? "-",
@@ -118,6 +121,9 @@ Gerado em: ${formatDate(audit.generatedAt)}
 - UOR: ${audit.totals.byInstitution.UOR}
 - ISPTEC: ${audit.totals.byInstitution.ISPTEC}
 - Desconhecidos: ${audit.totals.byInstitution.UNKNOWN}
+- Por origem oficial: ${audit.totals.byEvidence.REGISTRATION_SOURCE}
+- Por email institucional: ${audit.totals.byEvidence.INSTITUTIONAL_EMAIL}
+- UOR inferido por telefone + email próprio: ${audit.totals.byEvidence.CONTACT_PROFILE}
 - Problemas encontrados: ${audit.totals.issues}
 - Críticos: ${audit.totals.criticalIssues}
 - Altos: ${audit.totals.highIssues}
@@ -130,12 +136,14 @@ Gerado em: ${formatDate(audit.generatedAt)}
 - UOR oficial mantém o número académico cru, por exemplo \`20200477\`.
 - ISPTEC oficial recebe escopo obrigatório, por exemplo \`ISPTEC-20200477\`.
 - A origem institucional vem primeiro de \`registrationSource\`: \`SECRETARIA\` para UOR e \`ISPTEC_OFFICIAL\` para ISPTEC.
+- Email institucional ISPTEC identifica ISPTEC, mesmo antes de login oficial.
+- Quando não há origem oficial, número cru + telefone + email pessoal identifica UOR/Óscar Ribas por inferência operacional.
 - A universidade e a flag \`isUorStudent\` servem como validação cruzada para detectar dados misturados.
 
 ## Problemas Encontrados
 
 ${markdownTable(
-  ["Severidade", "Código", "Bandeira", "Número atual", "Número esperado", "Nome", "Universidade", "Origem", "Mensagem"],
+  ["Severidade", "Código", "Bandeira", "Evidência", "Número atual", "Número esperado", "Nome", "Universidade", "Origem", "Mensagem"],
   issueRows,
 )}
 
@@ -151,7 +159,7 @@ ${markdownTable(
 ## Amostra Classificada
 
 ${markdownTable(
-  ["Bandeira", "Número", "Número cru", "Nome", "Curso", "Universidade", "Origem"],
+  ["Bandeira", "Evidência", "Número", "Número cru", "Nome", "Curso", "Universidade", "Origem"],
   sampleRows,
 )}
 
@@ -172,7 +180,9 @@ async function main() {
       id: true,
       studentNumber: true,
       name: true,
+      email: true,
       course: true,
+      phone: true,
       university: true,
       registrationSource: true,
       isUorStudent: true,
@@ -189,7 +199,8 @@ async function main() {
     students: students.map((student) => ({
       ...student,
       rawStudentNumber: extractRawStudentNumber(student.studentNumber),
-      institutionFlag: resolveStudentInstitutionFlag(student),
+      institutionFlag: resolveStudentInstitutionIdentity(student).flag,
+      institutionEvidence: resolveStudentInstitutionIdentity(student).evidence,
       issues: detectStudentInstitutionIssues(student).map((issue) => issue.code),
     })),
   };
@@ -205,6 +216,7 @@ async function main() {
   console.log(JSON.stringify({
     total: audit.totals.students,
     byInstitution: audit.totals.byInstitution,
+    byEvidence: audit.totals.byEvidence,
     issues: audit.totals.issues,
     criticalIssues: audit.totals.criticalIssues,
     highIssues: audit.totals.highIssues,

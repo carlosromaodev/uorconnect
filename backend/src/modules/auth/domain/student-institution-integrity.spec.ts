@@ -4,6 +4,7 @@ import {
   buildInstitutionScopedStudentNumber,
   detectStudentInstitutionIssues,
   resolveStudentInstitutionFlag,
+  resolveStudentInstitutionIdentity,
 } from "./student-institution-integrity";
 
 describe("student institution integrity", () => {
@@ -114,6 +115,49 @@ describe("student institution integrity", () => {
       expect.objectContaining({
         code: "ACADEMIC_SYNC_WITHOUT_INSTITUTION_SOURCE",
         severity: "MEDIUM",
+      }),
+    ]);
+  });
+
+  it("infers UOR for contact profiles with raw number, phone and personal email", () => {
+    const student = {
+      id: 14,
+      studentNumber: "20230999",
+      registrationSource: null,
+      university: null,
+      academicSyncedAt: new Date("2026-05-19T08:00:00.000Z"),
+      isUorStudent: null,
+      phone: "+244923000111",
+      email: "estudante@gmail.com",
+    };
+
+    expect(resolveStudentInstitutionIdentity(student)).toEqual({
+      flag: "UOR",
+      evidence: "CONTACT_PROFILE",
+    });
+    expect(detectStudentInstitutionIssues(student)).toEqual([]);
+  });
+
+  it("infers ISPTEC from institutional email without treating it as official login", () => {
+    const student = {
+      id: 15,
+      studentNumber: "20230998",
+      registrationSource: null,
+      university: null,
+      isUorStudent: null,
+      phone: "+244923000111",
+      email: "aluno@alunos.isptec.co.ao",
+    };
+
+    expect(resolveStudentInstitutionIdentity(student)).toEqual({
+      flag: "ISPTEC",
+      evidence: "INSTITUTIONAL_EMAIL",
+    });
+    expect(detectStudentInstitutionIssues(student)).toEqual([
+      expect.objectContaining({
+        code: "DECLARED_ISPTEC_WITHOUT_OFFICIAL_SOURCE",
+        severity: "MEDIUM",
+        expectedStudentNumber: "ISPTEC-20230998",
       }),
     ]);
   });
