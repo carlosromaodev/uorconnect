@@ -1,4 +1,6 @@
 import { randomUUID } from "node:crypto";
+import { readFile } from "node:fs/promises";
+import path from "node:path";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { z } from "zod";
 import type { Env } from "../../../config/env";
@@ -343,7 +345,27 @@ async function canReadCertificate(request: FastifyRequest, studentId: number | n
   return false;
 }
 
-function buildCertificateHtml(params: {
+export async function loadCertificateLogoDataUri() {
+  const candidates = [
+    { filePath: path.resolve(process.cwd(), "frontend/public/logo-uor.png"), mimeType: "image/png" },
+    { filePath: path.resolve(process.cwd(), "../frontend/public/logo-uor.png"), mimeType: "image/png" },
+    { filePath: path.resolve(process.cwd(), "public/logo-uor.png"), mimeType: "image/png" },
+    { filePath: path.resolve(process.cwd(), "backend/public/logo-uor.png"), mimeType: "image/png" },
+  ];
+
+  for (const candidate of candidates) {
+    try {
+      const logo = await readFile(candidate.filePath);
+      return `data:${candidate.mimeType};base64,${logo.toString("base64")}`;
+    } catch {
+      continue;
+    }
+  }
+
+  return loadLogoDataUri();
+}
+
+export function buildCertificateHtml(params: {
   logoDataUri: string | null;
   title: string;
   recipientName: string;
@@ -358,13 +380,16 @@ function buildCertificateHtml(params: {
 }) {
   const logoMarkup = params.logoDataUri
     ? `<img src="${params.logoDataUri}" alt="UÓR" class="logo-img" />`
-    : `<div class="logo-fallback"><div class="logo-icon">&#9632;</div><div class="logo-label"><strong>UÓR</strong><span>UNIVERSIDADE ÓSCAR RIBAS</span></div></div>`;
+    : `<div class="logo-fallback"><strong>UÓR</strong><span>UNIVERSIDADE ÓSCAR RIBAS</span></div>`;
 
-  const formattedDate = new Intl.DateTimeFormat("pt-PT", {
+  const rawFormattedDate = new Intl.DateTimeFormat("pt-PT", {
     day: "2-digit",
     month: "long",
     year: "numeric",
   }).format(params.issuedAt);
+  const formattedDate = rawFormattedDate.replace(/ de ([a-záéíóúâêôãõç]+)/i, (match) => match.charAt(0) + match.slice(1, 4) + match.charAt(4).toUpperCase() + match.slice(5));
+  const certificateCode = params.code.replace(/^UOR-/i, "GAC/DEI/PDI UÓR/");
+  const courseText = params.recipientCourse ? `, do curso de ${escapeHtml(params.recipientCourse)}` : "";
 
   return `<!DOCTYPE html>
 <html lang="pt">
@@ -373,20 +398,20 @@ function buildCertificateHtml(params: {
 <title>${escapeHtml(params.title)} &middot; ${escapeHtml(params.code)}</title>
 <style>
   :root {
-    --paper-bg: #f5edd4;
-    --paper-bg-light: #faf4e4;
-    --border-color: #a0361a;
-    --border-color-light: #b5462a;
-    --text-color: #2a2a2a;
-    --muted-text: #555;
-    --title-color: #333;
+    --paper-bg: #f2edcc;
+    --paper-bg-light: #fbf7dc;
+    --border-color: #c95a39;
+    --border-shadow: #a8462e;
+    --text-color: #33343a;
+    --muted-text: #4f5157;
+    --line-color: #383a40;
   }
 
   @page { size: A4 landscape; margin: 0; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
 
   body {
-    font-family: "Times New Roman", Georgia, "Palatino Linotype", serif;
+    font-family: Arial, Helvetica, sans-serif;
     color: var(--text-color);
     background: #fff;
     -webkit-print-color-adjust: exact;
@@ -398,43 +423,33 @@ function buildCertificateHtml(params: {
     height: 210mm;
     position: relative;
     overflow: hidden;
-    background: linear-gradient(170deg, var(--paper-bg-light) 0%, var(--paper-bg) 50%, #efe5c8 100%);
+    background:
+      radial-gradient(circle at 50% 42%, rgba(255,255,255,0.36) 0 18%, transparent 42%),
+      linear-gradient(135deg, var(--paper-bg-light) 0%, var(--paper-bg) 48%, #eee4bf 100%);
   }
 
-  /* ── Subtle paper texture ── */
   .certificate::before {
     content: "";
     position: absolute;
     inset: 0;
     background:
-      repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(180,160,120,0.015) 2px, rgba(180,160,120,0.015) 4px),
-      repeating-linear-gradient(90deg, transparent, transparent 2px, rgba(180,160,120,0.012) 2px, rgba(180,160,120,0.012) 4px);
+      radial-gradient(circle at 70% 35%, rgba(190, 120, 70, 0.055), transparent 22%),
+      repeating-linear-gradient(35deg, rgba(133, 113, 75, 0.018) 0 1px, transparent 1px 4px),
+      repeating-linear-gradient(115deg, rgba(133, 113, 75, 0.012) 0 1px, transparent 1px 5px);
     pointer-events: none;
     z-index: 0;
   }
 
-  /* ── Bottom decorative band (African geometric) ── */
   .certificate::after {
     content: "";
     position: absolute;
-    bottom: 0; left: 0; right: 0;
-    height: 18mm;
-    background:
-      repeating-linear-gradient(
-        45deg,
-        transparent, transparent 3mm,
-        rgba(160,54,26,0.025) 3mm, rgba(160,54,26,0.025) 6mm
-      ),
-      repeating-linear-gradient(
-        -45deg,
-        transparent, transparent 3mm,
-        rgba(160,54,26,0.02) 3mm, rgba(160,54,26,0.02) 6mm
-      );
-    pointer-events: none;
+    inset: 14mm;
+    border: 1.1mm solid var(--border-color);
+    box-shadow: inset 0 0 0 0.45mm rgba(201, 90, 57, 0.35);
     z-index: 0;
+    pointer-events: none;
   }
 
-  /* ── Ornamental SVG border frame ── */
   .frame {
     position: absolute;
     inset: 0;
@@ -447,285 +462,172 @@ function buildCertificateHtml(params: {
     display: block;
   }
 
-  /* ── Content layout ── */
   .certificate-body {
     position: relative;
     z-index: 2;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    padding: 16mm 30mm 13mm;
+    padding: 22mm 25mm 20mm;
     height: 210mm;
   }
 
-  /* ── Header / logo ── */
   .certificate-header {
-    width: 100%;
-    display: flex;
-    align-items: flex-start;
-    justify-content: flex-start;
+    position: absolute;
+    left: 28mm;
+    top: 35mm;
   }
   .logo-img {
-    width: 38mm;
+    width: 36mm;
     height: auto;
     display: block;
   }
   .logo-fallback {
-    display: flex;
-    align-items: center;
-    gap: 3mm;
+    color: #1f2430;
+    font-weight: 900;
+    text-transform: uppercase;
   }
-  .logo-icon {
-    width: 12mm;
-    height: 14mm;
-    background: var(--border-color);
-    border-radius: 1.5mm;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: #fff;
-    font-size: 18px;
-  }
-  .logo-label {
-    display: flex;
-    flex-direction: column;
-  }
-  .logo-label strong {
-    font-family: Georgia, serif;
-    font-size: 24px;
-    font-weight: 700;
-    color: var(--text-color);
-    letter-spacing: 0.02em;
+  .logo-fallback strong {
+    display: block;
+    font-size: 25px;
     line-height: 1;
   }
-  .logo-label span {
+  .logo-fallback span {
+    display: block;
     font-size: 7px;
-    font-weight: 600;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: var(--muted-text);
+    letter-spacing: 0.03em;
     margin-top: 1mm;
   }
-
-  /* ── Title ── */
-  .cert-title {
-    margin-top: 6mm;
-    font-family: Georgia, "Times New Roman", serif;
-    font-size: 44px;
-    font-weight: 700;
-    color: var(--title-color);
-    letter-spacing: 0.12em;
-    text-align: center;
-    text-transform: uppercase;
-  }
-
-  /* ── Intro text ── */
-  .cert-intro {
-    margin-top: 6mm;
-    font-size: 13px;
-    line-height: 1.55;
-    color: var(--text-color);
-    text-align: center;
-    max-width: 190mm;
-  }
-
-  /* ── Recipient name ── */
-  .recipient-block {
-    margin-top: 6mm;
-    text-align: center;
-    width: 100%;
-    position: relative;
-  }
-  .name-line {
-    display: inline-block;
-    position: relative;
-    min-width: 150mm;
-    padding-bottom: 1.5mm;
-    border-bottom: 1px solid #444;
-  }
-  .name-line::after {
-    content: ",";
+  .content {
     position: absolute;
-    right: -2mm;
-    bottom: 0;
+    left: 67mm;
+    top: 50mm;
+    width: 177mm;
+    text-align: left;
+  }
+  .cert-title {
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 48px;
+    font-weight: 500;
+    color: #33343a;
+    letter-spacing: 0;
+    text-transform: uppercase;
+    line-height: 0.96;
+    margin-bottom: 7mm;
+  }
+  .cert-intro {
+    font-family: Arial, Helvetica, sans-serif;
     font-size: 14px;
+    line-height: 1.45;
     color: var(--text-color);
+    margin-bottom: 4mm;
   }
   .recipient-name {
-    font-family: "Segoe Script", "Brush Script MT", "Apple Chancery", "Lucida Handwriting", cursive, Georgia, serif;
-    font-size: 28px;
-    font-style: italic;
-    color: var(--text-color);
-    display: inline-block;
-    padding: 0 8mm;
+    width: 100%;
+    color: #2f333b;
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 43px;
+    line-height: 0.98;
+    font-weight: 900;
+    letter-spacing: 0;
+    margin-bottom: 5mm;
+    max-height: 28mm;
+    overflow: hidden;
   }
-
-  /* ── Body text ── */
   .cert-body-text {
-    margin-top: 5mm;
-    font-size: 12.5px;
-    line-height: 1.9;
+    max-width: 140mm;
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 13px;
+    line-height: 1.43;
     color: var(--text-color);
-    text-align: center;
-    max-width: 210mm;
   }
   .cert-body-text .highlight {
-    font-weight: 700;
-    font-style: italic;
+    font-weight: 900;
   }
-
-  /* ── Date line ── */
   .cert-date {
     margin-top: 7mm;
-    font-size: 12.5px;
+    font-size: 13px;
     color: var(--text-color);
-    text-align: center;
+    line-height: 1.2;
   }
-
-  /* ── Authority title ── */
-  .authority-title {
-    margin-top: 5mm;
-    font-size: 11.5px;
-    font-style: italic;
+  .signature-row {
+    position: absolute;
+    left: 67mm;
+    right: 42mm;
+    bottom: 35mm;
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 40mm;
+    align-items: end;
     color: var(--text-color);
-    text-align: center;
   }
-
-  /* ── Signature area ── */
   .signature-block {
-    margin-top: 8mm;
+    text-align: left;
+  }
+  .signature-title {
+    font-size: 13px;
+    margin-bottom: 12mm;
     text-align: center;
-    position: relative;
   }
   .sig-line {
-    width: 50mm;
-    border-top: 1px solid #444;
-    margin: 0 auto;
+    width: 62mm;
+    height: 1px;
+    background: var(--line-color);
+    margin-bottom: 1.8mm;
   }
   .sig-authority-name {
-    margin-top: 2mm;
-    font-size: 11px;
-    font-weight: 700;
+    font-size: 13px;
+    line-height: 1.25;
     color: var(--text-color);
   }
-  .sig-authority-institution {
-    font-size: 8px;
-    color: var(--muted-text);
-    letter-spacing: 0.06em;
-    text-transform: uppercase;
-    margin-top: 0.5mm;
-  }
-
-  /* ── Footer ── */
-  .certificate-footer {
-    width: 100%;
-    display: flex;
-    align-items: flex-end;
-    justify-content: space-between;
-    margin-top: auto;
-  }
   .footer-ref {
-    font-family: "Courier New", monospace;
-    font-size: 7.5px;
-    color: #555;
-    letter-spacing: 0.02em;
-  }
-  .footer-brand {
-    text-align: center;
-  }
-  .footer-brand-name {
-    font-size: 10px;
+    position: absolute;
+    right: 22mm;
+    bottom: 40mm;
+    transform: rotate(-90deg);
+    transform-origin: right bottom;
+    color: var(--border-shadow);
+    font-family: Arial, Helvetica, sans-serif;
+    font-size: 6px;
     font-weight: 700;
-    color: var(--border-color);
-    letter-spacing: 0.06em;
-  }
-  .footer-brand-sub {
-    font-size: 7px;
-    color: #555;
-    letter-spacing: 0.08em;
     text-transform: uppercase;
-    margin-top: 0.5mm;
+    letter-spacing: 0.03em;
   }
 </style>
 </head>
 <body>
   <main class="certificate">
-    <!-- Ornamental SVG border frame with geometric corners and side decorations -->
     <div class="frame">
       <svg viewBox="0 0 842 595" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="none">
-        <!-- Outer border line -->
-        <rect x="18" y="18" width="806" height="559" rx="0" fill="none" stroke="#a0361a" stroke-width="2.2"/>
-        <!-- Inner border line -->
-        <rect x="26" y="26" width="790" height="543" rx="0" fill="none" stroke="#a0361a" stroke-width="0.8"/>
-
-        <!-- Corner ornaments: top-left -->
-        <g fill="none" stroke="#a0361a" stroke-width="1.6">
-          <polyline points="18,50 18,18 50,18"/>
-          <polyline points="26,48 26,26 48,26"/>
-          <rect x="14" y="14" width="10" height="10" rx="1" fill="#a0361a" stroke="none"/>
-          <line x1="28" y1="18" x2="28" y2="30"/>
-          <line x1="18" y1="28" x2="30" y2="28"/>
-          <polygon points="36,14 40,18 36,22 32,18" fill="#a0361a" stroke="none"/>
-          <polygon points="14,36 18,40 14,44 10,40" fill="#a0361a" stroke="none"/>
+        <g fill="none" stroke="#c95a39" stroke-width="4" stroke-linecap="square" stroke-linejoin="miter">
+          <path d="M82 44 H760" />
+          <path d="M82 551 H760" />
+          <path d="M44 82 V513" />
+          <path d="M798 82 V513" />
         </g>
-        <!-- Corner ornaments: top-right -->
-        <g fill="none" stroke="#a0361a" stroke-width="1.6">
-          <polyline points="824,50 824,18 792,18"/>
-          <polyline points="816,48 816,26 794,26"/>
-          <rect x="818" y="14" width="10" height="10" rx="1" fill="#a0361a" stroke="none"/>
-          <line x1="814" y1="18" x2="814" y2="30"/>
-          <line x1="812" y1="28" x2="824" y2="28"/>
-          <polygon points="806,14 810,18 806,22 802,18" fill="#a0361a" stroke="none"/>
-          <polygon points="828,36 824,40 828,44 832,40" fill="#a0361a" stroke="none"/>
+        <g fill="none" stroke="#c95a39" stroke-width="4" stroke-linejoin="miter">
+          <path d="M44 82 L44 44 L82 44" />
+          <path d="M798 82 L798 44 L760 44" />
+          <path d="M44 513 L44 551 L82 551" />
+          <path d="M798 513 L798 551 L760 551" />
         </g>
-        <!-- Corner ornaments: bottom-left -->
-        <g fill="none" stroke="#a0361a" stroke-width="1.6">
-          <polyline points="18,545 18,577 50,577"/>
-          <polyline points="26,547 26,569 48,569"/>
-          <rect x="14" y="573" width="10" height="10" rx="1" fill="#a0361a" stroke="none"/>
-          <line x1="28" y1="565" x2="28" y2="577"/>
-          <line x1="18" y1="567" x2="30" y2="567"/>
-          <polygon points="36,573 40,577 36,581 32,577" fill="#a0361a" stroke="none"/>
-          <polygon points="14,551 18,555 14,559 10,555" fill="#a0361a" stroke="none"/>
+        <g fill="none" stroke="#c95a39" stroke-width="5" stroke-linecap="square">
+          <path d="M82 44 l-28 16 l-10 -16 l16 -10 l22 10" />
+          <path d="M760 44 l28 16 l10 -16 l-16 -10 l-22 10" />
+          <path d="M82 551 l-28 -16 l-10 16 l16 10 l22 -10" />
+          <path d="M760 551 l28 -16 l10 16 l-16 10 l-22 -10" />
+          <path d="M44 82 l16 -28 l-16 -10 l-10 16 l10 22" />
+          <path d="M798 82 l-16 -28 l16 -10 l10 16 l-10 22" />
+          <path d="M44 513 l16 28 l-16 10 l-10 -16 l10 -22" />
+          <path d="M798 513 l-16 28 l16 10 l10 -16 l-10 -22" />
         </g>
-        <!-- Corner ornaments: bottom-right -->
-        <g fill="none" stroke="#a0361a" stroke-width="1.6">
-          <polyline points="824,545 824,577 792,577"/>
-          <polyline points="816,547 816,569 794,569"/>
-          <rect x="818" y="573" width="10" height="10" rx="1" fill="#a0361a" stroke="none"/>
-          <line x1="814" y1="565" x2="814" y2="577"/>
-          <line x1="812" y1="567" x2="824" y2="567"/>
-          <polygon points="806,573 810,577 806,581 802,577" fill="#a0361a" stroke="none"/>
-          <polygon points="828,551 824,555 828,559 832,555" fill="#a0361a" stroke="none"/>
+        <g fill="none" stroke="#c95a39" stroke-width="4">
+          <polygon points="134,44 148,32 162,44 148,56" />
+          <polygon points="708,44 694,32 680,44 694,56" />
+          <polygon points="134,551 148,539 162,551 148,563" />
+          <polygon points="708,551 694,539 680,551 694,563" />
+          <polygon points="44,134 32,148 44,162 56,148" />
+          <polygon points="798,134 810,148 798,162 786,148" />
+          <polygon points="44,461 32,447 44,433 56,447" />
+          <polygon points="798,461 810,447 798,433 786,447" />
         </g>
-
-        <!-- Side decorations: left -->
-        <g fill="#a0361a" stroke="none">
-          <rect x="15" y="180" width="3" height="12" rx="1.5"/>
-          <polygon points="16.5,200 19,204 16.5,208 14,204"/>
-          <rect x="15" y="216" width="3" height="12" rx="1.5"/>
-          <rect x="15" y="370" width="3" height="12" rx="1.5"/>
-          <polygon points="16.5,390 19,394 16.5,398 14,394"/>
-          <rect x="15" y="406" width="3" height="12" rx="1.5"/>
-        </g>
-        <!-- Side decorations: right -->
-        <g fill="#a0361a" stroke="none">
-          <rect x="824" y="180" width="3" height="12" rx="1.5"/>
-          <polygon points="825.5,200 828,204 825.5,208 823,204"/>
-          <rect x="824" y="216" width="3" height="12" rx="1.5"/>
-          <rect x="824" y="370" width="3" height="12" rx="1.5"/>
-          <polygon points="825.5,390 828,394 825.5,398 823,394"/>
-          <rect x="824" y="406" width="3" height="12" rx="1.5"/>
-        </g>
-
-        <!-- Top side small decorations -->
-        <g fill="#a0361a" stroke="none">
-          <polygon points="380,15 384,19 380,23 376,19"/>
-          <polygon points="462,15 466,19 462,23 458,19"/>
-        </g>
-        <!-- Bottom center gap for brand -->
-        <line x1="350" y1="577" x2="492" y2="577" stroke="var(--paper-bg)" stroke-width="4"/>
-        <line x1="350" y1="569" x2="492" y2="569" stroke="var(--paper-bg)" stroke-width="3"/>
       </svg>
     </div>
 
@@ -734,41 +636,34 @@ function buildCertificateHtml(params: {
         ${logoMarkup}
       </header>
 
-      <h1 class="cert-title">CERTIFICADO</h1>
+      <div class="content">
+        <h1 class="cert-title">CERTIFICADO</h1>
+        <p class="cert-intro">
+          A Faculdade de Ciências Sociais e Humanas da Universidade Óscar Ribas certifica que,
+        </p>
+        <div class="recipient-name">${escapeHtml(params.recipientName)}</div>
+        <section class="cert-body-text">
+          Participou como estudante na <span class="highlight">"${escapeHtml(params.title)}"</span>${courseText},
+          organizada por ${escapeHtml(params.organizerName)}, que decorreu nas instalações da Universidade Óscar Ribas,
+          no dia ${escapeHtml(formattedDate)}.
+        </section>
+        <p class="cert-date">Luanda, ${escapeHtml(formattedDate)}</p>
+      </div>
 
-      <p class="cert-intro">
-        A Direcção da ${escapeHtml(params.institutionName)} confere o presente certificado a
-      </p>
-
-      <div class="recipient-block">
-        <div class="name-line">
-          <span class="recipient-name">${escapeHtml(params.recipientName)}</span>
+      <div class="signature-row">
+        <div class="signature-block">
+          <div class="signature-title">O Reitor</div>
+          <div class="sig-line"></div>
+          <p class="sig-authority-name">Prof. Doutor André Pedro Neto</p>
+        </div>
+        <div class="signature-block">
+          <div class="signature-title">${escapeHtml(params.authorityTitle || "A Decana")}</div>
+          <div class="sig-line"></div>
+          <p class="sig-authority-name">${escapeHtml(params.authorityName || "Prof. Doutora Cristina de Oliveira")}</p>
         </div>
       </div>
 
-      <section class="cert-body-text">
-        participou como participante da <span class="highlight">${escapeHtml(params.title)}</span>${params.recipientCourse ? `, do curso de ${escapeHtml(params.recipientCourse)}` : ""},
-        organizado por ${escapeHtml(params.organizerName)}, nas instalações da
-        ${escapeHtml(params.institutionName)}${params.recipientNumber ? ` (N.º ${escapeHtml(params.recipientNumber)})` : ""}.
-      </section>
-
-      <p class="cert-date">Luanda, ${escapeHtml(formattedDate)}.</p>
-
-      <p class="authority-title">${escapeHtml(params.authorityTitle)}</p>
-
-      <div class="signature-block">
-        <div class="sig-line"></div>
-        <p class="sig-authority-name">${escapeHtml(params.authorityName)}</p>
-        <p class="sig-authority-institution">${escapeHtml(params.institutionName)}</p>
-      </div>
-
-      <footer class="certificate-footer">
-        <span class="footer-ref">${escapeHtml(params.code)}</span>
-        <div class="footer-brand">
-          <div class="footer-brand-name">UÓR</div>
-          <div class="footer-brand-sub">${escapeHtml(params.institutionName)}</div>
-        </div>
-      </footer>
+      <span class="footer-ref">${escapeHtml(certificateCode)}</span>
     </div>
   </main>
 </body>
@@ -838,7 +733,7 @@ async function sendCertificatePdf(reply: FastifyReply, env: Env, certificate: {
   }
 
   const html = buildCertificateHtml({
-    logoDataUri: await loadLogoDataUri(),
+    logoDataUri: await loadCertificateLogoDataUri(),
     title: certificate.title,
     recipientName: certificate.recipientName,
     recipientNumber: certificate.recipientNumber,
@@ -854,6 +749,8 @@ async function sendCertificatePdf(reply: FastifyReply, env: Env, certificate: {
     landscape: true,
     footerLabel: certificate.code,
     preferCssPageSize: true,
+    displayHeaderFooter: false,
+    margin: { top: "0", right: "0", bottom: "0", left: "0" },
   });
   const generatedAt = new Date();
   const metadata = parseCertificateMetadata(certificate.metadataJson);
