@@ -195,6 +195,7 @@ type OdinReportInvestigationContext = {
 
 const reportKind = "security.odin.report";
 const projectReportKind = "security.odin.project.report";
+const voteAuditReportKind = "security.odin.vote_audit.report";
 const officialRegistrationSources = new Set(["SECRETARIA", "ISPTEC_OFFICIAL"]);
 
 function clampWindowHours(windowHours?: number) {
@@ -378,6 +379,24 @@ function renderLogo(logoDataUri: string | null) {
   return logoDataUri
     ? `<img src="${logoDataUri}" alt="UOR Connect" class="brand-logo" />`
     : `<div class="brand-fallback"><strong>UOR Connect</strong></div>`;
+}
+
+function renderOdinAuditBrand(logoDataUri: string | null) {
+  const uorLogo = logoDataUri
+    ? `<img src="${logoDataUri}" alt="UOR Connect" class="audit-uor-logo" />`
+    : `<div class="audit-uor-fallback">UOR CONNECT</div>`;
+
+  return `
+    <div class="audit-brand-lockup">
+      ${uorLogo}
+      <div class="audit-brand-divider"></div>
+      <div class="odin-logo-light" aria-label="ODIN CONNECT">
+        <span class="odin-logo-eye"><i></i></span>
+        <span class="odin-logo-word">ODIN</span>
+        <small>CONNECT</small>
+      </div>
+    </div>
+  `;
 }
 
 function renderBorderLabels() {
@@ -1703,6 +1722,792 @@ function renderProjectMemberRows(members: Array<{
   `).join("");
 }
 
+type OdinVoteAuditStudentSource = OdinReportStudentSource & {
+  classCode: string | null;
+  academicYear: string | null;
+  curricularYear: string | null;
+};
+
+type OdinVoteAuditVoter = {
+  studentNumber: string;
+  name: string;
+  course: string;
+  university: string;
+  academicYear: string;
+  curricularYear: string;
+  classCode: string;
+  source: string;
+  votedAt: Date;
+  eventKey: string;
+  deviceId: string | null;
+  loginAt: Date | null;
+  loginToVoteSeconds: number | null;
+  integrity: string;
+};
+
+type OdinVoteAuditScoreEvent = {
+  action: string;
+  role: string | null;
+  roundKey: string | null;
+  roundLabel: string | null;
+  sourceType: string;
+  sourceId: string | null;
+  basePoints: number;
+  bonusPoints: number;
+  multiplier: number;
+  points: number;
+  status: string;
+  reason: string | null;
+  awardedAt: Date;
+  revokedAt: Date | null;
+  student: { name: string | null; studentNumber: string } | null;
+  actorStudent: { name: string | null; studentNumber: string } | null;
+  submissionMember: { name: string } | null;
+};
+
+type OdinVoteAuditProject = {
+  id: number;
+  referenceCode: string;
+  type: string;
+  status: string;
+  name: string;
+  description: string;
+  area: string;
+  course: string;
+  category: string;
+  stage: string;
+  productType: string;
+  leaderName: string;
+  memberCount: number;
+  confirmedMemberCount: number;
+  voters: OdinVoteAuditVoter[];
+  scoreEvents: OdinVoteAuditScoreEvent[];
+  projectEvents: OdinReportDetailedEvent[];
+};
+
+type OdinVoteAuditIndexRow = {
+  project: OdinVoteAuditProject;
+  summaryPage: number;
+  statsPage: number;
+  pointsPage: number;
+  rawStartPage: number;
+  rawEndPage: number;
+};
+
+function auditUnknown(value: string | null | undefined, fallback: string) {
+  return value?.trim() || fallback;
+}
+
+function buildVoteAuditVoters(input: {
+  votes: Array<{
+    createdAt: Date;
+    eventKey: string;
+    student: OdinVoteAuditStudentSource;
+  }>;
+  projectVoteEvents: OdinReportDetailedEvent[];
+  submissionId: number;
+}): OdinVoteAuditVoter[] {
+  const voteEventsByStudent = new Map<string, OdinReportDetailedEvent[]>();
+  const loginEventsByDevice = new Map<string, OdinReportDetailedEvent[]>();
+
+  for (const event of input.projectVoteEvents) {
+    const key = eventStudentKey(event);
+    if (key && event.eventType === "PROJECT_VOTE" && event.targetType === "Submission" && event.targetId === input.submissionId) {
+      voteEventsByStudent.set(key, [...(voteEventsByStudent.get(key) ?? []), event]);
+    }
+    if (event.eventType === "LOGIN_SUCCESS") {
+      loginEventsByDevice.set(event.deviceId, [...(loginEventsByDevice.get(event.deviceId) ?? []), event]);
+    }
+  }
+
+  return input.votes.map((vote) => {
+    const studentKey = `id:${vote.student.id}`;
+    const event =
+      voteEventsByStudent.get(studentKey)?.find((item) => Math.abs(item.createdAt.getTime() - vote.createdAt.getTime()) <= 10 * 60 * 1000)
+      ?? voteEventsByStudent.get(`number:${vote.student.studentNumber}`)?.[0]
+      ?? null;
+    const login = event
+      ? [...(loginEventsByDevice.get(event.deviceId) ?? [])].reverse().find((item) =>
+          eventStudentKey(item) === eventStudentKey(event) && item.createdAt <= event.createdAt
+        ) ?? null
+      : null;
+    const flags = studentIntegrityFlags(vote.student);
+    return {
+      studentNumber: vote.student.studentNumber,
+      name: auditUnknown(vote.student.name, "Nome em falta"),
+      course: auditUnknown(vote.student.course, "Curso em falta"),
+      university: auditUnknown(vote.student.university, "Universidade em falta"),
+      academicYear: auditUnknown(vote.student.academicYear, "Ano letivo em falta"),
+      curricularYear: auditUnknown(vote.student.curricularYear, "Ano curricular em falta"),
+      classCode: auditUnknown(vote.student.classCode, "Turma em falta"),
+      source: sourceLabel(vote.student),
+      votedAt: vote.createdAt,
+      eventKey: vote.eventKey,
+      deviceId: event?.deviceId ?? null,
+      loginAt: login?.createdAt ?? null,
+      loginToVoteSeconds: event && login
+        ? Math.max(0, Math.round((event.createdAt.getTime() - login.createdAt.getTime()) / 1000))
+        : null,
+      integrity: flags.length ? flags.slice(0, 3).join(", ") : "Perfil consistente",
+    };
+  }).sort((left, right) => left.votedAt.getTime() - right.votedAt.getTime());
+}
+
+function groupVoteAuditBy(
+  voters: OdinVoteAuditVoter[],
+  getLabel: (voter: OdinVoteAuditVoter) => string,
+) {
+  const grouped = new Map<string, number>();
+  for (const voter of voters) {
+    const label = auditUnknown(getLabel(voter), "Não informado");
+    grouped.set(label, (grouped.get(label) ?? 0) + 1);
+  }
+  return Array.from(grouped.entries())
+    .map(([label, value]) => ({ label, value, detail: `${value} voto(s)` }))
+    .sort((left, right) => right.value - left.value || left.label.localeCompare(right.label));
+}
+
+function groupVoteAuditPointsByStage(events: OdinVoteAuditScoreEvent[]) {
+  const grouped = new Map<string, { value: number; count: number; revoked: number }>();
+  for (const event of events) {
+    const label = auditUnknown(event.roundLabel ?? event.roundKey ?? event.action, "Etapa sem nome");
+    const current = grouped.get(label) ?? { value: 0, count: 0, revoked: 0 };
+    current.count += 1;
+    if (event.revokedAt || event.status !== "VALID") {
+      current.revoked += 1;
+    } else {
+      current.value += event.points;
+    }
+    grouped.set(label, current);
+  }
+  return Array.from(grouped.entries())
+    .map(([label, item]) => ({
+      label,
+      value: Math.round(item.value * 10) / 10,
+      detail: `${item.count} evento(s) · ${item.revoked} revogado(s)/inválido(s)`,
+    }))
+    .sort((left, right) => right.value - left.value || left.label.localeCompare(right.label));
+}
+
+function renderVoteAuditIndexRows(rows: OdinVoteAuditIndexRow[]) {
+  if (!rows.length) {
+    return `<tr><td colspan="7">Sem projetos com dados de votação para indexar.</td></tr>`;
+  }
+
+  return rows.map((row, index) => `
+    <tr>
+      <td class="number-cell">${index + 1}</td>
+      <td><strong>${escapeHtml(row.project.name)}</strong><small>${escapeHtml(row.project.referenceCode)} · ${escapeHtml(typeLabel(row.project.type))}</small></td>
+      <td>${escapeHtml(row.project.course || row.project.area || "Curso/área em falta")}</td>
+      <td class="number-cell">${row.summaryPage}</td>
+      <td class="number-cell">${row.statsPage}</td>
+      <td class="number-cell">${row.pointsPage}</td>
+      <td class="number-cell">${row.rawStartPage}${row.rawEndPage > row.rawStartPage ? `-${row.rawEndPage}` : ""}</td>
+    </tr>
+  `).join("");
+}
+
+function renderVoteAuditStatsRows(items: Array<{ label: string; value: number; detail?: string }>) {
+  if (!items.length) return `<tr><td colspan="3">Sem dados nesta categoria.</td></tr>`;
+  const total = items.reduce((sum, item) => sum + item.value, 0) || 1;
+  return items.slice(0, 18).map((item) => `
+    <tr>
+      <td><strong>${escapeHtml(item.label)}</strong><small>${escapeHtml(item.detail ?? `${item.value} registo(s)`)}</small></td>
+      <td class="number-cell">${escapeHtml(String(item.value))}</td>
+      <td>
+        <div class="audit-bar"><i style="width:${Math.max(4, Math.round((item.value / total) * 100))}%"></i></div>
+      </td>
+    </tr>
+  `).join("");
+}
+
+function renderVoteAuditRawRows(voters: OdinVoteAuditVoter[]) {
+  if (!voters.length) return `<tr><td colspan="10">Sem votos registados para este projeto.</td></tr>`;
+  return voters.map((voter) => `
+    <tr>
+      <td><strong>${escapeHtml(voter.name)}</strong><small>${escapeHtml(voter.studentNumber)}</small></td>
+      <td>${escapeHtml(voter.university)}<small>${escapeHtml(voter.source)}</small></td>
+      <td>${escapeHtml(voter.course)}</td>
+      <td>${escapeHtml(voter.curricularYear)}<small>${escapeHtml(voter.academicYear)}</small></td>
+      <td>${escapeHtml(voter.classCode)}</td>
+      <td>${escapeHtml(formatDateLabel(voter.votedAt))}</td>
+      <td>${escapeHtml(voter.loginAt ? formatDateLabel(voter.loginAt) : "Sem login ODIN")}</td>
+      <td>${escapeHtml(formatDuration(voter.loginToVoteSeconds))}</td>
+      <td>${escapeHtml(voter.deviceId ? shortId(voter.deviceId, 7, 5) : "Sem device")}</td>
+      <td>${escapeHtml(voter.integrity)}</td>
+    </tr>
+  `).join("");
+}
+
+function renderVoteAuditScoreEventRows(events: OdinVoteAuditScoreEvent[]) {
+  if (!events.length) return `<tr><td colspan="8">Sem pontos do expositor associados ao projeto.</td></tr>`;
+  return events.slice(0, 28).map((event) => `
+    <tr>
+      <td>${escapeHtml(formatDateLabel(event.awardedAt))}</td>
+      <td><strong>${escapeHtml(event.roundLabel ?? event.roundKey ?? "Sem etapa")}</strong><small>${escapeHtml(event.action)}</small></td>
+      <td>${escapeHtml(event.student?.name ?? event.student?.studentNumber ?? "Sem votante")}</td>
+      <td>${escapeHtml(event.actorStudent?.name ?? event.actorStudent?.studentNumber ?? event.submissionMember?.name ?? "Sem ator")}</td>
+      <td class="number-cell">${event.basePoints}</td>
+      <td class="number-cell">${event.bonusPoints}</td>
+      <td class="number-cell">${event.multiplier}x</td>
+      <td class="number-cell">${event.revokedAt || event.status !== "VALID" ? `(${event.points})` : event.points}<small>${escapeHtml(event.status)}</small></td>
+    </tr>
+  `).join("");
+}
+
+function renderVoteAuditProjectRawEventRows(events: OdinReportDetailedEvent[]) {
+  if (!events.length) return `<tr><td colspan="7">Sem eventos ODIN brutos nesta janela.</td></tr>`;
+  return events.slice(0, 44).map((event) => `
+    <tr>
+      <td>${escapeHtml(formatDateLabel(event.createdAt))}</td>
+      <td>${escapeHtml(eventTypeLabel(event.eventType))}</td>
+      <td><strong>${escapeHtml(event.studentName ?? event.studentNumber ?? "Conta não associada")}</strong><small>${escapeHtml(event.studentCourse ?? "Curso em falta")}</small></td>
+      <td>${escapeHtml(shortId(event.deviceId, 7, 5))}</td>
+      <td>${escapeHtml(event.ipAddress ?? "Sem IP")}</td>
+      <td>${escapeHtml(event.targetLabel ?? event.targetType ?? "Sem alvo")}</td>
+      <td>${escapeHtml(event.userAgent ? shortId(event.userAgent, 18, 12) : "Sem user-agent")}</td>
+    </tr>
+  `).join("");
+}
+
+export async function generateOdinVoteAuditReportPdf(
+  env: Env,
+  input: { windowHours?: number } = {},
+) {
+  const windowHours = clampWindowHours(input.windowHours);
+  const generatedAt = new Date();
+  const from = new Date(Date.now() - windowHours * 60 * 60 * 1000);
+
+  const [submissions, overview, logoDataUri] = await Promise.all([
+    prisma.submission.findMany({
+      where: { deletedAt: null },
+      orderBy: [{ name: "asc" }],
+      take: 120,
+      select: {
+        id: true,
+        referenceCode: true,
+        type: true,
+        status: true,
+        name: true,
+        description: true,
+        area: true,
+        course: true,
+        category: true,
+        stage: true,
+        productType: true,
+        leaderName: true,
+        memberConfirmations: {
+          select: { confirmedAt: true },
+        },
+        studentVotes: {
+          orderBy: { createdAt: "asc" },
+          take: 5000,
+          select: {
+            createdAt: true,
+            eventKey: true,
+            student: {
+              select: {
+                id: true,
+                studentNumber: true,
+                name: true,
+                email: true,
+                phone: true,
+                course: true,
+                classCode: true,
+                academicYear: true,
+                curricularYear: true,
+                university: true,
+                registrationSource: true,
+                academicSyncedAt: true,
+                profileCompletedAt: true,
+                avatarUrl: true,
+                deletedAt: true,
+                lastLoginAt: true,
+                createdAt: true,
+                _count: {
+                  select: {
+                    loginAudits: true,
+                    votes: true,
+                    comments: true,
+                    passportScans: true,
+                    submissionMemberships: true,
+                  },
+                },
+              },
+            },
+          },
+        },
+        exhibitorScoreEvents: {
+          orderBy: { awardedAt: "asc" },
+          take: 2000,
+          select: {
+            action: true,
+            role: true,
+            roundKey: true,
+            roundLabel: true,
+            sourceType: true,
+            sourceId: true,
+            basePoints: true,
+            bonusPoints: true,
+            multiplier: true,
+            points: true,
+            status: true,
+            reason: true,
+            awardedAt: true,
+            revokedAt: true,
+            student: { select: { name: true, studentNumber: true } },
+            actorStudent: { select: { name: true, studentNumber: true } },
+            submissionMember: { select: { name: true } },
+          },
+        },
+      },
+    }),
+    getOdinOverview(windowHours),
+    loadLogoDataUri(),
+  ]);
+
+  const submissionIds = submissions.map((submission) => submission.id);
+  const odinEvents = submissionIds.length
+    ? await prisma.odinEvent.findMany({
+        where: {
+          createdAt: { gte: from },
+          targetType: "Submission",
+          targetId: { in: submissionIds },
+        },
+        orderBy: { createdAt: "asc" },
+        take: 30000,
+        select: {
+          id: true,
+          deviceId: true,
+          studentId: true,
+          studentNumber: true,
+          studentName: true,
+          studentCourse: true,
+          eventType: true,
+          targetType: true,
+          targetId: true,
+          targetLabel: true,
+          ipAddress: true,
+          userAgent: true,
+          riskContextJson: true,
+          createdAt: true,
+          student: {
+            select: {
+              id: true,
+              studentNumber: true,
+              name: true,
+              email: true,
+              phone: true,
+              course: true,
+              university: true,
+              registrationSource: true,
+              academicSyncedAt: true,
+              profileCompletedAt: true,
+              avatarUrl: true,
+              deletedAt: true,
+              lastLoginAt: true,
+              createdAt: true,
+              _count: {
+                select: {
+                  loginAudits: true,
+                  votes: true,
+                  comments: true,
+                  passportScans: true,
+                  submissionMemberships: true,
+                },
+              },
+            },
+          },
+        },
+      })
+    : [];
+
+  const allEvents = odinEvents as OdinReportDetailedEvent[];
+  const eventsBySubmissionId = new Map<number, OdinReportDetailedEvent[]>();
+  for (const event of allEvents) {
+    if (event.targetId) {
+      eventsBySubmissionId.set(event.targetId, [...(eventsBySubmissionId.get(event.targetId) ?? []), event]);
+    }
+  }
+
+  const projects: OdinVoteAuditProject[] = submissions.map((submission) => {
+    const projectEvents = eventsBySubmissionId.get(submission.id) ?? [];
+    const voters = buildVoteAuditVoters({
+      votes: submission.studentVotes as Array<{
+        createdAt: Date;
+        eventKey: string;
+        student: OdinVoteAuditStudentSource;
+      }>,
+      projectVoteEvents: projectEvents,
+      submissionId: submission.id,
+    });
+
+    return {
+      id: submission.id,
+      referenceCode: submission.referenceCode,
+      type: String(submission.type),
+      status: String(submission.status),
+      name: submission.name,
+      description: submission.description,
+      area: submission.area,
+      course: submission.course ?? "",
+      category: submission.category ?? "",
+      stage: submission.stage ?? "",
+      productType: submission.productType ?? "",
+      leaderName: submission.leaderName ?? "Responsável por confirmar",
+      memberCount: submission.memberConfirmations.length,
+      confirmedMemberCount: submission.memberConfirmations.filter((member) => member.confirmedAt).length,
+      voters,
+      scoreEvents: submission.exhibitorScoreEvents as OdinVoteAuditScoreEvent[],
+      projectEvents,
+    };
+  });
+
+  const projectsWithData = projects.filter((project) =>
+    project.voters.length > 0 || project.scoreEvents.length > 0 || project.projectEvents.length > 0
+  );
+  const reportProjects = projectsWithData.length ? projectsWithData : projects;
+  const summaryStartPage = 6;
+  const statsStartPage = summaryStartPage + reportProjects.length;
+  const pointsStartPage = statsStartPage + reportProjects.length;
+  let rawCursor = pointsStartPage + reportProjects.length;
+  const indexRows: OdinVoteAuditIndexRow[] = reportProjects.map((project, index) => {
+    const rawChunks = chunkArray(project.voters, 28);
+    const row = {
+      project,
+      summaryPage: summaryStartPage + index,
+      statsPage: statsStartPage + index,
+      pointsPage: pointsStartPage + index,
+      rawStartPage: rawCursor,
+      rawEndPage: rawCursor + rawChunks.length - 1,
+    };
+    rawCursor += rawChunks.length;
+    return row;
+  });
+  const totalPages = Math.max(5, rawCursor - 1);
+  const reportNumber = `ODIN-VOTE-AUDIT-${generatedAt.toISOString().slice(0, 10)}`;
+  const brandMarkup = renderOdinAuditBrand(logoDataUri);
+
+  const allVoters = reportProjects.flatMap((project) => project.voters);
+  const allScoreEvents = reportProjects.flatMap((project) => project.scoreEvents);
+  const validPointTotal = allScoreEvents
+    .filter((event) => event.status === "VALID" && !event.revokedAt)
+    .reduce((sum, event) => sum + event.points, 0);
+  const uniqueUniversities = new Set(allVoters.map((voter) => voter.university)).size;
+  const uniqueCourses = new Set(allVoters.map((voter) => voter.course)).size;
+  const rapidVotes = allVoters.filter((voter) => voter.loginToVoteSeconds !== null && voter.loginToVoteSeconds <= 90).length;
+  const fragileVoters = allVoters.filter((voter) => voter.integrity !== "Perfil consistente").length;
+  const byUniversity = groupVoteAuditBy(allVoters, (voter) => voter.university);
+  const byCourse = groupVoteAuditBy(allVoters, (voter) => voter.course);
+  const byYear = groupVoteAuditBy(allVoters, (voter) => voter.curricularYear);
+  const byClass = groupVoteAuditBy(allVoters, (voter) => voter.classCode);
+  const globalPointsByStage = groupVoteAuditPointsByStage(allScoreEvents);
+
+  const summaryPages = indexRows.map((row) => `
+    <section class="page">
+      ${renderBorderLabels()}
+      <div class="page-content">
+        ${renderHeader(brandMarkup, "Dados do Projeto")}
+        <div class="section-card">
+          <p class="eyebrow">Página inicial · ${escapeHtml(row.project.referenceCode)}</p>
+          <h2>${escapeHtml(row.project.name)}</h2>
+          <p class="audit-copy">${escapeHtml(row.project.description.slice(0, 760) || "Sem descrição registada.")}</p>
+          <div class="metric-grid">
+            ${renderMetric("Categoria", typeLabel(row.project.type), "Projeto, negócio ou produto.")}
+            ${renderMetric("Curso/área", row.project.course || row.project.area || "Por confirmar", "Contexto académico do grupo.")}
+            ${renderMetric("Estado", row.project.status, "Estado administrativo atual.")}
+            ${renderMetric("Responsável", row.project.leaderName, "Nome declarado na candidatura.")}
+          </div>
+          <div class="metric-grid metric-grid--three">
+            ${renderMetric("Votos", row.project.voters.length, "Votos registados na tabela oficial.")}
+            ${renderMetric("Membros", `${row.project.confirmedMemberCount}/${row.project.memberCount}`, "Confirmados no sistema.")}
+            ${renderMetric("Eventos ODIN", row.project.projectEvents.length, `Janela de ${windowHours}h analisada.`)}
+          </div>
+        </div>
+        ${renderFooter(reportNumber, row.summaryPage, totalPages)}
+      </div>
+    </section>
+  `).join("");
+
+  const statsPages = indexRows.map((row) => {
+    const universityStats = groupVoteAuditBy(row.project.voters, (voter) => voter.university);
+    const courseStats = groupVoteAuditBy(row.project.voters, (voter) => voter.course);
+    const yearStats = groupVoteAuditBy(row.project.voters, (voter) => voter.curricularYear);
+    const classStats = groupVoteAuditBy(row.project.voters, (voter) => voter.classCode);
+    return `
+      <section class="page">
+        ${renderBorderLabels()}
+        <div class="page-content">
+          ${renderHeader(brandMarkup, "Estatísticas de Votação")}
+          <div class="split-grid">
+            <div class="section-card">
+              <p class="eyebrow">Estatística por universidade</p>
+              <h2>${escapeHtml(row.project.name)}</h2>
+              <table class="score-table"><thead><tr><th>Universidade</th><th>Votos</th><th>Distribuição</th></tr></thead><tbody>${renderVoteAuditStatsRows(universityStats)}</tbody></table>
+            </div>
+            <div class="section-card">
+              <p class="eyebrow">Estatística por curso</p>
+              <h2>Cursos dos votantes</h2>
+              <table class="score-table"><thead><tr><th>Curso</th><th>Votos</th><th>Distribuição</th></tr></thead><tbody>${renderVoteAuditStatsRows(courseStats)}</tbody></table>
+            </div>
+            <div class="section-card">
+              <p class="eyebrow">Estatística por ano</p>
+              <h2>Ano curricular</h2>
+              <table class="score-table"><thead><tr><th>Ano</th><th>Votos</th><th>Distribuição</th></tr></thead><tbody>${renderVoteAuditStatsRows(yearStats)}</tbody></table>
+            </div>
+            <div class="section-card">
+              <p class="eyebrow">Estatística por turma</p>
+              <h2>Turmas declaradas</h2>
+              <table class="score-table"><thead><tr><th>Turma</th><th>Votos</th><th>Distribuição</th></tr></thead><tbody>${renderVoteAuditStatsRows(classStats)}</tbody></table>
+            </div>
+          </div>
+          ${renderFooter(reportNumber, row.statsPage, totalPages)}
+        </div>
+      </section>
+    `;
+  }).join("");
+
+  const pointsPages = indexRows.map((row) => {
+    const pointsByStage = groupVoteAuditPointsByStage(row.project.scoreEvents);
+    const validPoints = row.project.scoreEvents
+      .filter((event) => event.status === "VALID" && !event.revokedAt)
+      .reduce((sum, event) => sum + event.points, 0);
+    return `
+      <section class="page">
+        ${renderBorderLabels()}
+        <div class="page-content">
+          ${renderHeader(brandMarkup, "Pontos do Projeto")}
+          <div class="section-card">
+            <p class="eyebrow">Pontos ganhos por etapa</p>
+            <h2>${escapeHtml(row.project.name)}</h2>
+            <div class="metric-grid metric-grid--three">
+              ${renderMetric("Pontos válidos", Math.round(validPoints * 10) / 10, "Soma atual depois de revogações.")}
+              ${renderMetric("Eventos de pontos", row.project.scoreEvents.length, "Ações registadas no expositor.")}
+              ${renderMetric("Votos rápidos", row.project.voters.filter((voter) => voter.loginToVoteSeconds !== null && voter.loginToVoteSeconds <= 90).length, "Login→voto em até 90s.")}
+            </div>
+            <table class="score-table">
+              <thead><tr><th>Etapa</th><th>Pontos</th><th>Distribuição</th></tr></thead>
+              <tbody>${renderVoteAuditStatsRows(pointsByStage)}</tbody>
+            </table>
+          </div>
+          <div class="section-card">
+            <p class="eyebrow">Eventos recentes de pontuação</p>
+            <h2>Base de cálculo</h2>
+            <table class="score-table">
+              <thead><tr><th>Hora</th><th>Etapa/ação</th><th>Votante</th><th>Ator</th><th>Base</th><th>Bónus</th><th>Mult.</th><th>Total</th></tr></thead>
+              <tbody>${renderVoteAuditScoreEventRows(row.project.scoreEvents)}</tbody>
+            </table>
+          </div>
+          ${renderFooter(reportNumber, row.pointsPage, totalPages)}
+        </div>
+      </section>
+    `;
+  }).join("");
+
+  const rawPages = indexRows.map((row) => {
+    const chunks = chunkArray(row.project.voters, 28);
+    return chunks.map((chunk, index) => {
+      const pageNumber = row.rawStartPage + index;
+      return `
+        <section class="page">
+          ${renderBorderLabels()}
+          <div class="page-content">
+            ${renderHeader(brandMarkup, "Dados em Bruto")}
+            <div class="section-card">
+              <p class="eyebrow">Dados em bruto da votação · parte ${index + 1}/${chunks.length}</p>
+              <h2>${escapeHtml(row.project.name)}</h2>
+              <table class="score-table score-table--dense">
+                <thead><tr><th>Estudante</th><th>Universidade</th><th>Curso</th><th>Ano</th><th>Turma</th><th>Hora do voto</th><th>Login</th><th>Tempo</th><th>Device</th><th>Integridade</th></tr></thead>
+                <tbody>${renderVoteAuditRawRows(chunk)}</tbody>
+              </table>
+            </div>
+            <div class="section-card compact-card">
+              <p class="eyebrow">Eventos ODIN brutos</p>
+              <h2>Eventos ligados ao projeto na janela auditada</h2>
+              <table class="score-table score-table--dense">
+                <thead><tr><th>Hora</th><th>Evento</th><th>Conta</th><th>Dispositivo</th><th>IP</th><th>Alvo</th><th>User-agent</th></tr></thead>
+                <tbody>${renderVoteAuditProjectRawEventRows(row.project.projectEvents.slice(index * 44, (index + 1) * 44))}</tbody>
+              </table>
+            </div>
+            ${renderFooter(reportNumber, pageNumber, totalPages)}
+          </div>
+        </section>
+      `;
+    }).join("");
+  }).join("");
+
+  const html = `<!doctype html>
+<html lang="pt-AO">
+<head>
+<meta charset="utf-8" />
+<title>${escapeHtml(reportNumber)} · Auditoria de votos</title>
+<style>
+  @page { size: A4 portrait; margin: 0; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: #fff; }
+  body { color: #152434; font-family: Inter, "SF Pro Text", "Helvetica Neue", Arial, sans-serif; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .page { width: 210mm; min-height: 297mm; padding: 13mm 17mm 12mm; position: relative; overflow: hidden; background: linear-gradient(180deg, #ffffff 0%, #fffdfa 50%, #f8fbfa 100%); page-break-after: always; }
+  .page:last-child { page-break-after: auto; }
+  .page::before { content: ""; position: absolute; inset: 0 0 auto 0; height: 4.2mm; background: linear-gradient(90deg, #fd8305 0%, #101820 45%, #223d42 100%); }
+  .page-content { position: relative; z-index: 2; min-height: calc(297mm - 25mm); display: flex; flex-direction: column; }
+  .border-label { position: absolute; top: 34mm; bottom: 32mm; z-index: 1; color: rgba(16,24,32,.10); font-size: 9px; font-weight: 900; letter-spacing: .22em; writing-mode: vertical-rl; text-transform: uppercase; }
+  .border-label--left { left: 6mm; transform: rotate(180deg); }
+  .border-label--right { right: 6mm; }
+  .header { display: flex; align-items: flex-start; justify-content: space-between; gap: 8mm; padding-top: 5mm; }
+  .audit-brand-lockup { display: flex; align-items: center; gap: 5mm; }
+  .audit-uor-logo { width: 34mm; max-height: 17mm; object-fit: contain; display: block; }
+  .audit-uor-fallback { color: #223d42; font-size: 13px; font-weight: 900; letter-spacing: .08em; }
+  .audit-brand-divider { width: .35mm; height: 15mm; background: #d7e0de; }
+  .odin-logo-light { display: grid; grid-template-columns: 11mm auto; align-items: center; column-gap: 2.5mm; color: #101820; }
+  .odin-logo-eye { position: relative; width: 10mm; height: 10mm; border: 2.1mm solid #101820; border-left-color: transparent; border-right-color: transparent; border-radius: 999px; display: block; }
+  .odin-logo-eye i { position: absolute; inset: 2.2mm; border-radius: 999px; background: #fd8305; }
+  .odin-logo-word { font-size: 18px; font-weight: 950; letter-spacing: -.02em; line-height: 1; }
+  .odin-logo-light small { grid-column: 2; color: #61707f; font-size: 6.8px; font-weight: 900; letter-spacing: .42em; line-height: 1; }
+  .doc-kicker { text-align: right; color: #61707f; font-size: 10px; line-height: 1.45; }
+  .doc-kicker strong { display: block; color: #152434; font-size: 12px; font-weight: 800; }
+  h1, h2, h3, p { margin: 0; }
+  .eyebrow { margin: 0 0 3mm; color: #fd8305; font-size: 9px; font-weight: 950; letter-spacing: 0; text-transform: uppercase; }
+  .hero { margin-top: 14mm; }
+  .hero h1 { max-width: 156mm; color: #101820; font-size: 29px; font-weight: 920; line-height: 1.04; letter-spacing: -.02em; }
+  .lead, .audit-copy { margin-top: 4mm; max-width: 166mm; color: #344958; font-size: 10.5px; line-height: 1.58; }
+  .section-card { margin-top: 6mm; border: 1px solid #dbe5e3; border-radius: 3.4mm; padding: 4mm 4.5mm; background: rgba(255,255,255,.94); break-inside: avoid; }
+  .compact-card { margin-top: 4mm; padding: 3mm; }
+  .section-card h2 { color: #152434; font-size: 14px; font-weight: 880; margin-bottom: 2.4mm; }
+  .metric-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 2.6mm; margin-top: 5mm; }
+  .metric-grid--three { grid-template-columns: repeat(3, 1fr); }
+  .metric-card { border: .3mm solid rgba(34,61,66,.08); border-radius: 3.4mm; padding: 3.4mm; background: #fff; min-height: 25mm; }
+  .metric-card span { display: block; color: #61707f; font-size: 7.4px; font-weight: 950; letter-spacing: .08em; text-transform: uppercase; }
+  .metric-card strong { display: block; margin-top: 1.3mm; color: #152434; font-size: 15px; font-weight: 900; line-height: 1.1; font-variant-numeric: tabular-nums; }
+  .metric-card p { margin-top: 1.8mm; color: #344958; font-size: 7.8px; line-height: 1.38; }
+  .split-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4mm; align-items: start; }
+  .score-table { width: 100%; border-collapse: collapse; margin-top: 3.4mm; font-size: 8.4px; }
+  .score-table th { text-align: left; padding: 1.8mm 2mm; background: #101820; color: #fff; font-weight: 850; font-size: 7px; letter-spacing: .035em; text-transform: uppercase; }
+  .score-table td { padding: 1.8mm 2mm; border-bottom: 1px solid #e2ebe9; color: #344958; font-size: 7.8px; line-height: 1.28; vertical-align: top; }
+  .score-table--dense td { font-size: 6.8px; padding: 1.35mm 1.4mm; }
+  .score-table--dense th { font-size: 6.4px; padding: 1.45mm 1.4mm; }
+  .score-table strong { display: block; color: #152434; font-weight: 900; }
+  .score-table small { display: block; margin-top: .6mm; color: #61707f; font-size: 6.4px; }
+  .number-cell { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .audit-bar { width: 100%; height: 4mm; border-radius: 999px; background: #e7efed; overflow: hidden; }
+  .audit-bar i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #fd8305, #223d42); }
+  .empty-state { border: 1px dashed #dbe5e3; border-radius: 4mm; background: #fff; padding: 7mm; text-align: center; color: #344958; }
+  .page-footer { margin-top: auto; padding-top: 4.6mm; border-top: 1px solid #dbe5e3; display: flex; justify-content: space-between; align-items: flex-end; color: #61707f; font-size: 8px; }
+  .page-footer strong { color: #152434; }
+</style>
+</head>
+<body>
+  <section class="page">
+    ${renderBorderLabels()}
+    <div class="page-content">
+      ${renderHeader(brandMarkup, "Auditoria de Votos")}
+      <div class="hero">
+        <p class="eyebrow">ODIN-VOTE-AUDIT · CONFIDENCIAL — uso interno</p>
+        <h1>Auditoria de votos, pontos e dados brutos por projeto</h1>
+        <p class="lead">Dossiê vertical para consulta da organização. Primeiro mostra o índice por projeto, depois o balanço estatístico, os pontos por etapa e, no final, os dados em bruto da votação para cada grupo.</p>
+      </div>
+      <div class="metric-grid">
+        ${renderMetric("Projetos no índice", reportProjects.length, "Grupos com votos, pontos ou eventos auditáveis.")}
+        ${renderMetric("Votos analisados", allVoters.length, "Total de votos registados na base.")}
+        ${renderMetric("Pontos válidos", Math.round(validPointTotal * 10) / 10, "Soma dos pontos válidos do expositor.")}
+        ${renderMetric("Janela ODIN", `${windowHours}h`, "Eventos brutos ligados aos projetos.")}
+      </div>
+      <div class="section-card">
+        <p class="eyebrow">Como usar este dossiê</p>
+        <h2>Consulta rápida por página</h2>
+        <p class="audit-copy">Procura o nome do projeto no índice da próxima página. A coluna “Página inicial” abre os dados do projeto; as colunas seguintes mostram onde estão as estatísticas, os pontos e os dados brutos da votação.</p>
+      </div>
+      ${renderFooter(reportNumber, 1, totalPages)}
+    </div>
+  </section>
+
+  <section class="page">
+    ${renderBorderLabels()}
+    <div class="page-content">
+      ${renderHeader(brandMarkup, "Índice por projeto")}
+      <div class="section-card">
+        <p class="eyebrow">Índice por projeto</p>
+        <h2>Onde encontrar cada grupo no relatório</h2>
+        <table class="score-table">
+          <thead><tr><th>#</th><th>Projeto</th><th>Curso/área</th><th>Página inicial</th><th>Estatística</th><th>Pontos</th><th>Brutos</th></tr></thead>
+          <tbody>${renderVoteAuditIndexRows(indexRows)}</tbody>
+        </table>
+      </div>
+      ${renderFooter(reportNumber, 2, totalPages)}
+    </div>
+  </section>
+
+  <section class="page">
+    ${renderBorderLabels()}
+    <div class="page-content">
+      ${renderHeader(brandMarkup, "Balanço Geral")}
+      <div class="metric-grid">
+        ${renderMetric("Universidades", uniqueUniversities, "Origem declarada dos votantes.")}
+        ${renderMetric("Cursos", uniqueCourses, "Cursos presentes nos votos.")}
+        ${renderMetric("Votos rápidos", rapidVotes, "Login→voto em até 90s.")}
+        ${renderMetric("Perfis frágeis", fragileVoters, "Dados incompletos ou origem não oficial.")}
+      </div>
+      <div class="section-card">
+        <p class="eyebrow">Projetos e pressão ODIN</p>
+        <h2>Resumo dos projetos mais sensíveis</h2>
+        <table class="score-table">
+          <thead><tr><th>Projeto</th><th>Votos</th><th>Eventos ODIN</th><th>Pontos</th><th>Sinais</th></tr></thead>
+          <tbody>${reportProjects.slice(0, 28).map((project) => {
+            const pressure = overview.projects.find((item) => item.submissionId === project.id);
+            const points = project.scoreEvents.filter((event) => event.status === "VALID" && !event.revokedAt).reduce((sum, event) => sum + event.points, 0);
+            return `<tr><td><strong>${escapeHtml(project.name)}</strong><small>${escapeHtml(project.referenceCode)}</small></td><td class="number-cell">${project.voters.length}</td><td class="number-cell">${project.projectEvents.length}</td><td class="number-cell">${Math.round(points * 10) / 10}</td><td>${escapeHtml(pressure ? `${pressure.suspiciousVotes} voto(s) suspeito(s), ${pressure.suspiciousDevices} dispositivo(s)` : "Sem pressão crítica no resumo ODIN")}</td></tr>`;
+          }).join("")}</tbody>
+        </table>
+      </div>
+      ${renderFooter(reportNumber, 3, totalPages)}
+    </div>
+  </section>
+
+  <section class="page">
+    ${renderBorderLabels()}
+    <div class="page-content">
+      ${renderHeader(brandMarkup, "Estatísticas Gerais")}
+      <div class="split-grid">
+        <div class="section-card"><p class="eyebrow">Estatística por universidade</p><h2>Origem institucional</h2><table class="score-table"><thead><tr><th>Universidade</th><th>Votos</th><th>Distribuição</th></tr></thead><tbody>${renderVoteAuditStatsRows(byUniversity)}</tbody></table></div>
+        <div class="section-card"><p class="eyebrow">Estatística por curso</p><h2>Cursos no voto</h2><table class="score-table"><thead><tr><th>Curso</th><th>Votos</th><th>Distribuição</th></tr></thead><tbody>${renderVoteAuditStatsRows(byCourse)}</tbody></table></div>
+        <div class="section-card"><p class="eyebrow">Estatística por ano</p><h2>Ano curricular</h2><table class="score-table"><thead><tr><th>Ano</th><th>Votos</th><th>Distribuição</th></tr></thead><tbody>${renderVoteAuditStatsRows(byYear)}</tbody></table></div>
+        <div class="section-card"><p class="eyebrow">Estatística por turma</p><h2>Turmas</h2><table class="score-table"><thead><tr><th>Turma</th><th>Votos</th><th>Distribuição</th></tr></thead><tbody>${renderVoteAuditStatsRows(byClass)}</tbody></table></div>
+      </div>
+      ${renderFooter(reportNumber, 4, totalPages)}
+    </div>
+  </section>
+
+  <section class="page">
+    ${renderBorderLabels()}
+    <div class="page-content">
+      ${renderHeader(brandMarkup, "Pontos Gerais")}
+      <div class="section-card">
+        <p class="eyebrow">Pontos ganhos por etapa</p>
+        <h2>Mapa global do desafio do expositor</h2>
+        <table class="score-table"><thead><tr><th>Etapa</th><th>Pontos</th><th>Distribuição</th></tr></thead><tbody>${renderVoteAuditStatsRows(globalPointsByStage)}</tbody></table>
+      </div>
+      ${renderFooter(reportNumber, 5, totalPages)}
+    </div>
+  </section>
+
+  ${summaryPages}
+  ${statsPages}
+  ${pointsPages}
+  ${rawPages}
+</body>
+</html>`;
+
+  const pdfBuffer = await renderPdfFromHtml(html, {
+    preferCssPageSize: true,
+    displayHeaderFooter: false,
+    margin: { top: "0", right: "0", bottom: "0", left: "0" },
+  });
+
+  return {
+    pdfBuffer,
+    fileName: `uor-connect-odin-auditoria-votos-${generatedAt.toISOString().slice(0, 10)}.pdf`,
+  };
+}
+
 export async function buildOdinProjectSecurityReportSnapshot(submissionId: number, windowHours?: number) {
   const hours = clampWindowHours(windowHours);
   const from = new Date(Date.now() - hours * 60 * 60 * 1000);
@@ -2654,4 +3459,7 @@ export async function generateOdinSecurityReportPdf(
   };
 }
 
-export { reportKind as ODIN_SECURITY_REPORT_KIND };
+export {
+  reportKind as ODIN_SECURITY_REPORT_KIND,
+  voteAuditReportKind as ODIN_VOTE_AUDIT_REPORT_KIND,
+};

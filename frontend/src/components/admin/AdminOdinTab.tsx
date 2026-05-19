@@ -515,6 +515,7 @@ export default function AdminOdinTab() {
   const [overview, setOverview] = useState<OdinOverview | null>(null);
   const [loading, setLoading] = useState(true);
   const [windowHours, setWindowHours] = useState(48);
+  const [activeOdinView, setActiveOdinView] = useState<"operations" | "vote-audit">("operations");
   const [aiAnalyses, setAiAnalyses] = useState<Record<string, OdinAiAnalysis>>({});
   const [aiLoadingKey, setAiLoadingKey] = useState<string | null>(null);
   const [aiFeedbackSendingId, setAiFeedbackSendingId] = useState<number | null>(null);
@@ -523,6 +524,7 @@ export default function AdminOdinTab() {
   const [excludeConfirmation, setExcludeConfirmation] = useState("");
   const [excluding, setExcluding] = useState(false);
   const [reportExporting, setReportExporting] = useState(false);
+  const [voteAuditExporting, setVoteAuditExporting] = useState(false);
   const [projectReportExportingId, setProjectReportExportingId] = useState<number | null>(null);
   const [penaltyDialogProject, setPenaltyDialogProject] = useState<OdinProjectPressure | null>(null);
   const [projectPenaltyOptions, setProjectPenaltyOptions] = useState<OdinProjectPenaltyInput>(defaultProjectPenaltyOptions);
@@ -662,6 +664,26 @@ export default function AdminOdinTab() {
     }
   };
 
+  const handleDownloadVoteAuditReport = async () => {
+    setVoteAuditExporting(true);
+    try {
+      const pdf = await api.odin.downloadVoteAuditReportPdf({ windowHours });
+      downloadBlobFile(
+        pdf,
+        `uor-connect-odin-auditoria-votos-${new Date().toISOString().slice(0, 10)}.pdf`,
+      );
+      toast.success("Auditoria de votos ODIN exportada com índice por projeto.");
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Não foi possível exportar a auditoria de votos ODIN.",
+      );
+    } finally {
+      setVoteAuditExporting(false);
+    }
+  };
+
   const handleAiFeedback = async (analysis: OdinAiAnalysis, useful: boolean) => {
     setAiFeedbackSendingId(analysis.id);
     try {
@@ -786,6 +808,23 @@ export default function AdminOdinTab() {
               O ODIN separa investigação de gestão. Casos críticos aparecem primeiro, a análise contextual vem antes da ação,
               e exclusões só entram pela zona restrita com confirmação auditável.
             </p>
+            <div className="mt-5 flex flex-wrap gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-1">
+              {[
+                ["operations", "Operação ODIN"],
+                ["vote-audit", "Auditoria de votos"],
+              ].map(([view, label]) => (
+                <Button
+                  key={view}
+                  type="button"
+                  size="sm"
+                  variant={activeOdinView === view ? "secondary" : "ghost"}
+                  className="rounded-xl text-xs font-black"
+                  onClick={() => setActiveOdinView(view as "operations" | "vote-audit")}
+                >
+                  {label}
+                </Button>
+              ))}
+            </div>
           </div>
           <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
             <p className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">Janela de análise</p>
@@ -821,6 +860,16 @@ export default function AdminOdinTab() {
             >
               {reportExporting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
               Baixar relatório de segurança
+            </Button>
+            <Button
+              type="button"
+              variant="outline"
+              className="mt-3 w-full rounded-xl bg-white"
+              onClick={() => void handleDownloadVoteAuditReport()}
+              disabled={voteAuditExporting}
+            >
+              {voteAuditExporting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
+              Baixar auditoria de votos
             </Button>
           </div>
         </div>
@@ -865,7 +914,76 @@ export default function AdminOdinTab() {
         <StatCard label="Telefones de expositores" value={overview?.stats.exhibitorDeviceWarnings ?? 0} tone="orange" />
       </div>
 
-      {loading && !overview ? (
+      {activeOdinView === "vote-audit" ? (
+        <Card className="border-slate-200">
+          <CardHeader className="pb-3">
+            <CardTitle className="flex items-center gap-2 text-lg">
+              <ShieldCheck className="h-5 w-5 text-slate-700" />
+              Auditoria de votos
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-5">
+            <div className="grid gap-4 lg:grid-cols-[1.1fr_0.9fr]">
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-5">
+                <p className="text-[11px] font-black uppercase tracking-[0.16em] text-slate-500">
+                  Dossiê vertical com índice
+                </p>
+                <h3 className="mt-2 text-xl font-black tracking-tight text-slate-950">
+                  Um PDF para localizar qualquer grupo sem procurar página por página
+                </h3>
+                <p className="mt-3 text-sm leading-6 text-slate-600">
+                  A auditoria separa os dados do projeto, estatísticas por universidade, curso, ano e turma,
+                  pontos ganhos por etapa e dados em bruto no final. O índice mostra a página inicial,
+                  a página de estatística, a página de pontos e o anexo bruto de cada projeto.
+                </p>
+                <Button
+                  type="button"
+                  className="mt-5 rounded-xl bg-slate-950 text-white hover:bg-slate-800"
+                  onClick={() => void handleDownloadVoteAuditReport()}
+                  disabled={voteAuditExporting}
+                >
+                  {voteAuditExporting ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
+                  Baixar auditoria de votos
+                </Button>
+              </div>
+              <div className="rounded-2xl border border-orange-200 bg-orange-50 p-5 text-orange-950">
+                <p className="text-[11px] font-black uppercase tracking-[0.16em] text-orange-700">
+                  Conteúdo do PDF
+                </p>
+                <div className="mt-4 grid gap-2 text-sm font-semibold">
+                  <span className="rounded-xl bg-white/80 px-3 py-2">1. Índice por projeto e página inicial</span>
+                  <span className="rounded-xl bg-white/80 px-3 py-2">2. Estatística por universidade, curso, ano e turma</span>
+                  <span className="rounded-xl bg-white/80 px-3 py-2">3. Pontos ganhos por etapa do expositor</span>
+                  <span className="rounded-xl bg-white/80 px-3 py-2">4. Dados em bruto da votação no final</span>
+                </div>
+              </div>
+            </div>
+            <div className="rounded-2xl border border-slate-200 bg-white">
+              <div className="grid gap-2 border-b border-slate-200 px-4 py-3 text-xs font-black uppercase tracking-[0.12em] text-slate-500 sm:grid-cols-[1fr_110px_110px_110px]">
+                <span>Projeto</span>
+                <span className="sm:text-right">Votos</span>
+                <span className="sm:text-right">Dispositivos</span>
+                <span className="sm:text-right">Contas</span>
+              </div>
+              <div className="divide-y divide-slate-100">
+                {(overview?.projects ?? []).slice(0, 12).map((project) => (
+                  <div key={`vote-audit-${project.submissionId}`} className="grid gap-2 px-4 py-3 text-sm sm:grid-cols-[1fr_110px_110px_110px] sm:items-center">
+                    <span className="min-w-0 truncate font-black text-slate-950">{project.submissionName}</span>
+                    <span className="font-semibold text-slate-600 sm:text-right">{project.suspiciousVotes}</span>
+                    <span className="font-semibold text-slate-600 sm:text-right">{project.suspiciousDevices}</span>
+                    <span className="font-semibold text-slate-600 sm:text-right">{project.suspiciousStudents}</span>
+                  </div>
+                ))}
+                {(overview?.projects ?? []).length === 0 ? (
+                  <p className="px-4 py-5 text-center text-sm font-semibold text-slate-500">
+                    O PDF ainda pode ser gerado; não há pressão suspeita resumida nesta janela.
+                  </p>
+                ) : null}
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      ) : loading && !overview ? (
         <Card>
           <CardContent className="flex items-center justify-center gap-3 py-14 text-sm font-semibold text-muted-foreground">
             <Loader2 className="h-5 w-5 animate-spin" />

@@ -15,5 +15,9 @@ describe("Minha Área ODIN exhibitor device warnings", () => {
     expect(minhaArea).toContain("Aviso ODIN");
     expect(minhaArea).toContain("dispositivo associado a expositor");
     expect(minhaArea).toContain("possível suspensão");
+    expect(minhaArea).toContain("onOpenChange");
+    expect(minhaArea).toContain("max-h-[calc(100dvh-1rem)]");
+    expect(minhaArea).toContain("overflow-y-auto");
+    expect(minhaArea).toContain("DialogClose");
   });
 });

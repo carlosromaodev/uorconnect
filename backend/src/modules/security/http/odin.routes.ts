@@ -25,6 +25,7 @@ import {
   buildOdinSecurityReportSnapshot,
   generateOdinProjectSecurityReportPdf,
   generateOdinSecurityReportPdf,
+  generateOdinVoteAuditReportPdf,
   ODIN_SECURITY_REPORT_KIND,
 } from "./odin-report-pdf";
 
@@ -45,6 +46,10 @@ const odinProjectReportParamsSchema = z.object({
 });
 
 const odinProjectReportQuerySchema = z.object({
+  windowHours: z.coerce.number().int().min(1).max(24 * 14).optional().default(48),
+});
+
+const odinVoteAuditReportQuerySchema = z.object({
   windowHours: z.coerce.number().int().min(1).max(24 * 14).optional().default(48),
 });
 
@@ -531,6 +536,54 @@ export async function odinRoutes(app: FastifyInstance, opts: { env: Env }) {
         } catch (error) {
           const message = error instanceof Error ? error.message : "Não foi possível gerar o relatório ODIN do projeto.";
           if (/não encontrado/i.test(message)) return reply.code(404).send({ message });
+          return reply.code(400).send({ message });
+        }
+      },
+    );
+
+    adminApp.get("/odin/votes/audit.pdf",
+      {
+        schema: {
+          description: "Gera o PDF vertical de auditoria de votos ODIN com índice por projeto, estatísticas, pontos e dados brutos.",
+          tags: ["Security"],
+          querystring: odinVoteAuditReportQuerySchema,
+          response: {
+            400: z.object({ message: z.string() }),
+            401: z.object({ message: z.string() }),
+            403: z.object({ message: z.string() }),
+          },
+        },
+      },
+      async (
+        request: FastifyRequest<{ Querystring: z.infer<typeof odinVoteAuditReportQuerySchema> }>,
+        reply,
+      ) => {
+        const query = odinVoteAuditReportQuerySchema.parse(request.query);
+        const actorStudentNumber = request.student?.studentNumber ?? request.jury?.phone ?? "unknown";
+
+        try {
+          const result = await generateOdinVoteAuditReportPdf(opts.env, {
+            windowHours: query.windowHours,
+          });
+
+          await recordAdminAudit({
+            actorStudentNumber,
+            actorRole: request.jury ? "jury_admin" : "admin",
+            action: "odin.vote_audit_report_pdf",
+            entityType: "OdinVoteAudit",
+            entityId: "all-projects",
+            summary: `Auditoria de votos ODIN exportada para ${query.windowHours}h.`,
+            metadata: {
+              windowHours: query.windowHours,
+              fileName: result.fileName,
+            },
+          });
+
+          reply.header("Content-Type", "application/pdf");
+          reply.header("Content-Disposition", `attachment; filename=\"${result.fileName}\"`);
+          return reply.send(result.pdfBuffer);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Não foi possível gerar a auditoria de votos ODIN.";
           return reply.code(400).send({ message });
         }
       },

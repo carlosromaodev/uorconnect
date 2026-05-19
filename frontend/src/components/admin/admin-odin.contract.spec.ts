@@ -22,6 +22,10 @@ describe("Admin ODIN contract", () => {
     const api = source("src/lib/api.ts");
 
     expect(odinTab).toContain("Sala de Operações ODIN");
+    expect(odinTab).toContain("Auditoria de votos");
+    expect(odinTab).toContain("activeOdinView");
+    expect(odinTab).toContain("vote-audit");
+    expect(odinTab).toContain("handleDownloadVoteAuditReport");
     expect(odinTab).toContain("Mesma cookie/dispositivo");
     expect(odinTab).toContain("Fila de prioridade");
     expect(odinTab).toContain("Ação imediata");
@@ -35,8 +39,10 @@ describe("Admin ODIN contract", () => {
     expect(odinTab).toContain("removeVotes");
     expect(odinTab).toContain("removePassport");
     expect(odinTab).toContain("api.odin.overview");
+    expect(odinTab).toContain("api.odin.downloadVoteAuditReportPdf");
     expect(odinTab).toContain("api.odin.excludeStudent");
     expect(api).toContain("/security/odin/overview");
+    expect(api).toContain("/security/odin/votes/audit.pdf");
     expect(api).toContain("/security/odin/students/");
   });
 });

@@ -54,6 +54,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
   Dialog,
+  DialogClose,
   DialogContent,
   DialogDescription,
   DialogHeader,
@@ -6939,10 +6940,17 @@ export default function MinhaArea() {
        </DialogContent>
       </Dialog>
 
-      <Dialog open={Boolean(odinDeviceWarningBlocker)}>
-        <DialogContent className="w-[94vw] max-w-[480px] overflow-hidden rounded-3xl border-slate-300 p-0">
-          <div className="space-y-5 bg-[linear-gradient(180deg,rgba(15,23,42,0.98),rgba(30,41,59,0.98))] p-5 text-white sm:p-6">
-            <DialogHeader className="text-left">
+      <Dialog
+        open={Boolean(odinDeviceWarningBlocker)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setDismissedOdinDeviceWarningId(odinDeviceWarningBlocker?.odinExhibitorDeviceWarning?.id ?? null);
+          }
+        }}
+      >
+        <DialogContent className="w-[94vw] max-w-[480px] max-h-[calc(100dvh-1rem)] overflow-y-auto rounded-3xl border-slate-300 p-0">
+          <div className="bg-[linear-gradient(180deg,rgba(15,23,42,0.98),rgba(30,41,59,0.98))] text-white">
+            <DialogHeader className="sticky top-0 z-10 space-y-3 bg-slate-950/95 p-5 text-left backdrop-blur sm:p-6">
               <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-white text-slate-950 shadow-sm">
                 <ShieldAlert className="h-5 w-5" />
               </div>
@@ -6954,7 +6962,7 @@ export default function MinhaArea() {
               </DialogDescription>
             </DialogHeader>
 
-            <div className="rounded-2xl border border-white/10 bg-white/10 px-4 py-3 shadow-sm">
+            <div className="mx-5 my-5 rounded-2xl border border-white/10 bg-white/10 px-4 py-3 shadow-sm sm:mx-6">
               <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-amber-200">
                 dispositivo associado a expositor
               </p>
@@ -6995,13 +7003,17 @@ export default function MinhaArea() {
               </p>
             </div>
 
-            <Button
-              type="button"
-              className="w-full rounded-2xl bg-white text-slate-950 hover:bg-slate-100"
-              onClick={() => setDismissedOdinDeviceWarningId(odinDeviceWarningBlocker?.odinExhibitorDeviceWarning?.id ?? null)}
-            >
-              Entendi o aviso ODIN
-            </Button>
+            <div className="sticky bottom-0 border-t border-white/10 bg-slate-900/95 p-5 backdrop-blur sm:p-6">
+              <DialogClose asChild>
+                <Button
+                  type="button"
+                  className="w-full rounded-2xl bg-white text-slate-950 hover:bg-slate-100"
+                  onClick={() => setDismissedOdinDeviceWarningId(odinDeviceWarningBlocker?.odinExhibitorDeviceWarning?.id ?? null)}
+                >
+                  Entendi o aviso ODIN
+                </Button>
+              </DialogClose>
+            </div>
           </div>
         </DialogContent>
       </Dialog>

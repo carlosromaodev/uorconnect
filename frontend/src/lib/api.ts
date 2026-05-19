@@ -3988,6 +3988,10 @@ export const api = {
       requestBlob(
         `/security/odin/projects/${submissionId}/report.pdf${toQueryString(params)}`,
       ),
+    downloadVoteAuditReportPdf: (params?: { windowHours?: number }) =>
+      requestBlob(
+        `/security/odin/votes/audit.pdf${toQueryString(params)}`,
+      ),
     penalizeProject: (submissionId: number, data: OdinProjectPenaltyInput) =>
       request<OdinProjectPenaltyResult>(
         `/security/odin/projects/${submissionId}/penalties`,
