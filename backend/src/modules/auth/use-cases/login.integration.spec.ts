@@ -94,6 +94,14 @@ describe("LoginUseCase – integração com secretaria", () => {
   it(
     "aceita login ISPTEC e registra o estudante como identidade académica oficial",
     async () => {
+      vi.mocked(repo.upsertProfile).mockResolvedValueOnce({
+        id: 2,
+        studentNumber: "ISPTEC-20200227",
+        name: "Aluno ISPTEC",
+        createdAt: new Date(),
+        updatedAt: new Date(),
+      } as any);
+
       const useCase = new LoginUseCase(repo);
       const result = await useCase.execute({
         studentNumber: "20200227",
@@ -102,10 +110,12 @@ describe("LoginUseCase – integração com secretaria", () => {
       });
 
       expect(result.success).toBe(true);
+      expect(result.studentNumber).toBe("ISPTEC-20200227");
+      expect(result.student?.studentNumber).toBe("ISPTEC-20200227");
       expect(loginIsptecPortal).toHaveBeenCalledWith("20200227", "senha_valida");
       expect(loginSecretaria).not.toHaveBeenLastCalledWith("20200227", "senha_valida");
       expect(repo.upsertProfile).toHaveBeenCalledWith(
-        "20200227",
+        "ISPTEC-20200227",
         expect.objectContaining({
           university: "ISPTEC",
           isUorStudent: false,

@@ -7,6 +7,15 @@ const INVALID_CREDENTIALS_MESSAGE = "Número de estudante ou palavra-passe invá
 const USERNAME_REQUIRES_OFFICIAL_NUMBER_MESSAGE =
   "A Secretaria validou a sessão, mas não devolveu o número oficial do estudante. Tenta entrar com o número de estudante.";
 
+export function buildInstitutionalStudentNumber(provider: LoginCredentials["provider"], studentNumber: string) {
+  const normalized = studentNumber.trim();
+  if (provider !== "isptec") return normalized;
+
+  const numeric = normalized.replace(/\D/g, "");
+  if (!numeric) return normalized.toUpperCase();
+  return `ISPTEC-${numeric}`;
+}
+
 export function isInvalidCredentialsErrorMessage(message?: string) {
   if (!message) return false;
   return message.trim().toLowerCase() === INVALID_CREDENTIALS_MESSAGE.toLowerCase();
@@ -95,14 +104,16 @@ export class LoginUseCase {
         : await loginSecretaria(credentials.studentNumber, credentials.password);
 
       if (result.success && result.profile) {
-        const officialStudentNumber = provider === "isptec"
+        const externalStudentNumber = provider === "isptec"
           ? credentials.studentNumber
           : result.profile.studentNumber?.replace(/\D/g, "").trim()
             || (identifierType === "studentNumber" ? numericStudentNumber : "");
 
-        if (!officialStudentNumber) {
+        if (!externalStudentNumber) {
           return { success: false, error: USERNAME_REQUIRES_OFFICIAL_NUMBER_MESSAGE };
         }
+
+        const officialStudentNumber = buildInstitutionalStudentNumber(provider, externalStudentNumber);
 
         // Persist the profile that veio da secretaria e devolve ao frontend
         const student = await this.studentRepository.upsertProfile(officialStudentNumber, {
