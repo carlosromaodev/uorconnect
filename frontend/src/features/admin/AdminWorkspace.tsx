@@ -388,6 +388,10 @@ type AdminSubmission = {
   primaryColor: string;
   secondaryColor: string;
   bannerUrl: string | null;
+  projectFrozen: boolean;
+  projectFrozenAt: string | null;
+  projectFrozenByStudentNumber: string | null;
+  projectFreezeReason: string | null;
   isWinner: boolean;
   canVote: boolean;
   paymentStatus: PaymentStatus | string;
@@ -437,6 +441,9 @@ type VoteProjectSummary = {
   authenticatedVisitors: number;
   status: "pendente" | "aprovado" | "recusado";
   isWinner: boolean;
+  projectFrozen: boolean;
+  projectFrozenAt: string | null;
+  projectFreezeReason: string | null;
 };
 
 type VoteEntry = {
@@ -1736,8 +1743,12 @@ const Admin = ({
     primaryColor: submission.primaryColor,
     secondaryColor: submission.secondaryColor,
     bannerUrl: submission.bannerUrl ?? null,
+    projectFrozen: submission.projectFrozen,
+    projectFrozenAt: submission.projectFrozenAt,
+    projectFrozenByStudentNumber: submission.projectFrozenByStudentNumber,
+    projectFreezeReason: submission.projectFreezeReason,
     isWinner: submission.isWinner,
-    canVote: submission.canVote,
+    canVote: submission.canVote && !submission.projectFrozen,
     paymentStatus: submission.paymentStatus,
     paymentStatusLabel: submission.paymentStatusLabel,
     paymentSubmittedAt: submission.paymentSubmittedAt,
@@ -1854,6 +1865,9 @@ const Admin = ({
         authenticatedVisitors: project.authenticatedVisitors ?? 0,
         status: submissionStatusMap.get(project.id) ?? "pendente",
         isWinner: submissionWinnerMap.get(project.id) ?? false,
+        projectFrozen: project.projectFrozen,
+        projectFrozenAt: project.projectFrozenAt,
+        projectFreezeReason: project.projectFreezeReason,
       })),
     );
     setVoteEntries(
@@ -3607,6 +3621,71 @@ const Admin = ({
           error instanceof Error
             ? error.message
             : "Falha ao atualizar a categoria da candidatura.",
+        );
+      }
+    } finally {
+      setBusyKey((current) => (current === busyId ? null : current));
+    }
+  };
+
+  const handleSubmissionFreezeToggle = async (submission: AdminSubmission) => {
+    const shouldFreeze = !submission.projectFrozen;
+    const busyId = `submission-freeze-${submission.id}`;
+    const reason = shouldFreeze
+      ? window.prompt(
+          `Motivo para congelar o projeto "${submission.nome}"`,
+          "Projeto congelado pela organização UOR Connect. Procura a organização com urgência.",
+        )
+      : null;
+
+    if (shouldFreeze && reason === null) return;
+
+    const confirmed = window.confirm(
+      shouldFreeze
+        ? `Congelar o projeto "${submission.nome}" agora? Os membros ficarão bloqueados na Minha Área e ninguém poderá votar neste projeto.`
+        : `Descongelar o projeto "${submission.nome}" e retomar o acesso normal?`,
+    );
+    if (!confirmed) return;
+
+    try {
+      setBusyKey(busyId);
+      const result = shouldFreeze
+        ? await api.submissions.freezeProject(submission.id, { reason })
+        : await api.submissions.unfreezeProject(submission.id);
+      const patchSubmission = (item: AdminSubmission): AdminSubmission =>
+        item.id === submission.id
+          ? {
+              ...item,
+              projectFrozen: result.projectFrozen,
+              projectFrozenAt: result.projectFrozenAt,
+              projectFrozenByStudentNumber: result.projectFrozenByStudentNumber,
+              projectFreezeReason: result.projectFreezeReason,
+              canVote: !result.projectFrozen && item.status === "aprovado" && item.tipo === "projeto",
+            }
+          : item;
+
+      setSubmissions((current) => current.map(patchSubmission));
+      setSubmissionListRows((current) => current.map(patchSubmission));
+      setProjectObligationRows((current) => current.map(patchSubmission));
+      setVoteProjects((current) =>
+        current.map((item) =>
+          item.id === submission.id
+            ? {
+                ...item,
+                projectFrozen: result.projectFrozen,
+                projectFrozenAt: result.projectFrozenAt,
+                projectFreezeReason: result.projectFreezeReason,
+              }
+            : item,
+        ),
+      );
+      toast.success(result.message);
+    } catch (error) {
+      if (!handleAdminAuthFailure(error)) {
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : "Falha ao atualizar a suspensão do projeto.",
         );
       }
     } finally {
@@ -6867,6 +6946,11 @@ const Admin = ({
                                       >
                                         {submission.status}
                                       </Badge>
+                                      {submission.projectFrozen ? (
+                                        <Badge variant="destructive">
+                                          Projeto suspenso
+                                        </Badge>
+                                      ) : null}
                                       <Badge
                                         variant="outline"
                                         className={
@@ -6900,6 +6984,11 @@ const Admin = ({
 
                                   {detailsOpen ? (
                                     <>
+                                      {submission.projectFrozen ? (
+                                        <div className="rounded-2xl border border-red-200 bg-red-50 px-4 py-3 text-sm font-semibold leading-6 text-red-800">
+                                          Procura a organização UOR Connect com urgência. Este projeto está suspenso: os membros ficam bloqueados na Minha Área e a votação pública fica indisponível até descongelamento.
+                                        </div>
+                                      ) : null}
                                       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
                                         <div className="rounded-xl border border-border/70 bg-muted/20 p-3">
                                           <p className="text-[11px] font-semibold uppercase tracking-[0.16em] text-muted-foreground">
@@ -7493,6 +7582,22 @@ const Admin = ({
                                         </a>
                                       </Button>
                                     ) : null}
+                                    <Button
+                                      size="sm"
+                                      variant={submission.projectFrozen ? "outline" : "destructive"}
+                                      className="h-auto whitespace-normal px-2.5 py-1.5 text-xs leading-tight"
+                                      disabled={busyKey === `submission-freeze-${submission.id}`}
+                                      onClick={() => void handleSubmissionFreezeToggle(submission)}
+                                    >
+                                      {busyKey === `submission-freeze-${submission.id}` ? (
+                                        <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
+                                      ) : submission.projectFrozen ? (
+                                        <Power className="mr-1 h-3.5 w-3.5" />
+                                      ) : (
+                                        <PowerOff className="mr-1 h-3.5 w-3.5" />
+                                      )}
+                                      {submission.projectFrozen ? "Descongelar projeto" : "Congelar projeto"}
+                                    </Button>
                                     {submission.status === "pendente" && (
                                       <>
                                         <Button
@@ -7844,6 +7949,9 @@ const Admin = ({
 	                                                <h4 className="min-w-0 truncate text-base font-black text-foreground">{submission.nome}</h4>
 	                                                <Badge variant="outline">{submission.referenceCode}</Badge>
 	                                                <Badge variant={submission.status === "aprovado" ? "default" : "outline"}>{submission.status}</Badge>
+	                                                {submission.projectFrozen ? (
+	                                                  <Badge variant="destructive">Projeto suspenso</Badge>
+	                                                ) : null}
 	                                              </div>
 	                                              <p className="mt-1 text-xs font-semibold text-muted-foreground">
 	                                                {submission.curso} · {submission.area} · {submission.tipo}
@@ -7897,6 +8005,22 @@ const Admin = ({
 	                                            <Button size="sm" variant="outline" className="rounded-xl" onClick={() => openSubmissionTeamMembersDialog(submission)}>
 	                                              <Edit className="mr-1 h-3.5 w-3.5" />
 	                                              Editar membros
+	                                            </Button>
+	                                            <Button
+	                                              size="sm"
+	                                              variant={submission.projectFrozen ? "outline" : "destructive"}
+	                                              className="rounded-xl"
+	                                              disabled={busyKey === `submission-freeze-${submission.id}`}
+	                                              onClick={() => void handleSubmissionFreezeToggle(submission)}
+	                                            >
+	                                              {busyKey === `submission-freeze-${submission.id}` ? (
+	                                                <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
+	                                              ) : submission.projectFrozen ? (
+	                                                <Power className="mr-1 h-3.5 w-3.5" />
+	                                              ) : (
+	                                                <PowerOff className="mr-1 h-3.5 w-3.5" />
+	                                              )}
+	                                              {submission.projectFrozen ? "Descongelar projeto" : "Congelar projeto"}
 	                                            </Button>
 	                                            <Button
 	                                              size="sm"

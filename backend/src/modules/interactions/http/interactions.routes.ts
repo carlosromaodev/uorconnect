@@ -59,6 +59,7 @@ import { renderPdfFromHtml } from "../../reports/http/pdf-report.utils";
 
 let optsEnvCache: Env;
 const ENGAGEMENT_MILESTONE_THRESHOLD = 3;
+const PROJECT_FROZEN_MESSAGE = "Projeto congelado. Procura a organização UOR Connect com urgência.";
 const ACTIVE_PUBLIC_PROJECT_WHERE = {
   status: "APPROVED" as const,
   deletedAt: null,
@@ -725,9 +726,12 @@ function buildProjectResponse(submission: ProjectSubmission, request: FastifyReq
     typeLabel: getSubmissionTypeLabel(submission.type, submission.area),
     createdAt: submission.createdAt.toISOString(),
     isWinner: competitionEligible ? submission.isWinner : false,
-    canVote: competitionEligible,
-    canLike: submission.status === "APPROVED",
+    canVote: competitionEligible && !submission.projectFrozen,
+    canLike: submission.status === "APPROVED" && !submission.projectFrozen,
     eligibleForAward: competitionEligible,
+    projectFrozen: submission.projectFrozen,
+    projectFrozenAt: submission.projectFrozenAt?.toISOString() ?? null,
+    projectFreezeReason: submission.projectFreezeReason ?? null,
     primaryColor: submission.primaryColor,
     secondaryColor: submission.secondaryColor,
     bannerUrl: getPublicProjectBannerUrl(submission.bannerUrl),
@@ -801,6 +805,9 @@ export async function interactionsRoutes(app: FastifyInstance, opts: { env: Env 
     canVote: z.boolean(),
     canLike: z.boolean(),
     eligibleForAward: z.boolean(),
+    projectFrozen: z.boolean(),
+    projectFrozenAt: z.string().nullable(),
+    projectFreezeReason: z.string().nullable(),
     primaryColor: z.string(),
     secondaryColor: z.string(),
     bannerUrl: z.string().nullable(),
@@ -2590,6 +2597,9 @@ export async function interactionsRoutes(app: FastifyInstance, opts: { env: Env 
         if (!submission) {
           return reply.status(404).send({ message: "Submission not found" });
         }
+        if (submission.projectFrozen) {
+          return reply.status(403).send({ message: PROJECT_FROZEN_MESSAGE });
+        }
 
         const existing = await prisma.studentLike.findUnique({
           where: { studentId_submissionId: { studentId: student.id, submissionId } }
@@ -2675,6 +2685,9 @@ export async function interactionsRoutes(app: FastifyInstance, opts: { env: Env 
         });
         if (!submission) {
           return reply.status(404).send({ message: "Submission not found" });
+        }
+        if (submission.projectFrozen) {
+          return reply.status(403).send({ message: PROJECT_FROZEN_MESSAGE });
         }
         if (!isCompetitionEligible(submission.type, submission.area)) {
           return reply.status(403).send({ message: "A votação pública está disponível apenas para projetos académicos aprovados." });
@@ -2797,6 +2810,9 @@ export async function interactionsRoutes(app: FastifyInstance, opts: { env: Env 
         });
         if (!submission) {
           return reply.status(404).send({ message: "Submission not found" });
+        }
+        if (submission.projectFrozen) {
+          return reply.status(403).send({ message: PROJECT_FROZEN_MESSAGE });
         }
 
         const comment = await prisma.studentComment.create({

@@ -219,6 +219,13 @@ const updateTeamMembersSchema = z.object({
   members: z.array(teamMemberSchema).min(1).max(MAX_TEAM_MEMBERS),
 });
 
+const projectFreezeStateSchema = {
+  projectFrozen: z.boolean(),
+  projectFrozenAt: z.string().nullable(),
+  projectFrozenByStudentNumber: z.string().nullable(),
+  projectFreezeReason: z.string().nullable(),
+};
+
 const studentSubmissionListItemSchema = z.object({
   id: z.number(),
   referenceCode: z.string(),
@@ -237,6 +244,7 @@ const studentSubmissionListItemSchema = z.object({
   linkedinUrl: z.string().nullable(),
   githubUrl: z.string().nullable(),
   bannerUrl: z.string().nullable(),
+  ...projectFreezeStateSchema,
   receiptPath: z.string(),
   exhibitorPdfPath: z.string().nullable(),
   viewerRole: z.enum(["RESPONSAVEL", "MEMBRO"]),
@@ -300,6 +308,7 @@ const studentSubmissionReceiptSchema = z.object({
   primaryColor: z.string(),
   secondaryColor: z.string(),
   bannerUrl: z.string().nullable(),
+  ...projectFreezeStateSchema,
   communityUrl: z.string().nullable(),
   boardingPassPath: z.string(),
   exhibitorPdfPath: z.string().nullable(),
@@ -581,6 +590,10 @@ const paymentReviewBodySchema = z.object({
   note: z.string().trim().max(400).nullable().optional(),
 });
 
+const projectFreezeBodySchema = z.object({
+  reason: z.string().trim().max(400).optional().nullable(),
+});
+
 function hexToRgb(value: string) {
   const normalized = value.replace("#", "");
   return {
@@ -698,8 +711,12 @@ function toAdminSubmissionResponse(
     primaryColor: s.primaryColor,
     secondaryColor: s.secondaryColor,
     bannerUrl: s.bannerUrl ?? null,
+    projectFrozen: s.projectFrozen ?? false,
+    projectFrozenAt: s.projectFrozenAt?.toISOString() ?? null,
+    projectFrozenByStudentNumber: s.projectFrozenByStudentNumber ?? null,
+    projectFreezeReason: s.projectFreezeReason ?? null,
     isWinner: competitionEligible ? s.isWinner ?? false : false,
-    canVote: competitionEligible,
+    canVote: competitionEligible && !s.projectFrozen,
     eligibleForAward: competitionEligible,
     teamInviteUrl: team?.inviteUrl ?? null,
     teamJourneyLabel: team?.journeyLabel ?? buildMemberJourneyLabel({ total: membersList.length, confirmed: 0 }),
@@ -1731,6 +1748,7 @@ export async function submissionRoutes(app: FastifyInstance, { env }: { env: Ret
             primaryColor: z.string(),
             secondaryColor: z.string(),
             bannerUrl: z.string().nullable(),
+            ...projectFreezeStateSchema,
             isWinner: z.boolean(),
             canVote: z.boolean(),
             eligibleForAward: z.boolean(),
@@ -1794,6 +1812,7 @@ export async function submissionRoutes(app: FastifyInstance, { env }: { env: Ret
               primaryColor: z.string(),
               secondaryColor: z.string(),
               bannerUrl: z.string().nullable(),
+              ...projectFreezeStateSchema,
               isWinner: z.boolean(),
               canVote: z.boolean(),
               eligibleForAward: z.boolean(),
@@ -2301,6 +2320,133 @@ export async function submissionRoutes(app: FastifyInstance, { env }: { env: Ret
         } catch (error) {
           return reply.code(404).send({ message: error instanceof Error ? error.message : "Submission not found" });
         }
+      });
+
+      adminApp.patch("/:id/freeze", {
+        config: requireAdminPermission(["SUBMISSIONS", "VOTES"]),
+        schema: {
+          params: z.object({ id: z.coerce.number().int().positive() }),
+          body: projectFreezeBodySchema.optional().default({}),
+          response: {
+            200: z.object({
+              success: z.literal(true),
+              message: z.string(),
+              ...projectFreezeStateSchema,
+            }),
+            401: z.object({ message: z.string() }),
+            403: z.object({ message: z.string() }),
+            404: z.object({ message: z.string() }),
+          }
+        }
+      }, async (request, reply) => {
+        const { id } = request.params as { id: number };
+        const body = projectFreezeBodySchema.parse(request.body ?? {});
+        const existing = await prisma.submission.findFirst({
+          where: { id, deletedAt: null },
+          select: { id: true, referenceCode: true, name: true, projectFrozen: true },
+        });
+
+        if (!existing) {
+          return reply.code(404).send({ message: "Candidatura não encontrada." });
+        }
+
+        const now = new Date();
+        const updated = await prisma.submission.update({
+          where: { id },
+          data: {
+            projectFrozen: true,
+            projectFrozenAt: existing.projectFrozen ? undefined : now,
+            projectFrozenByStudentNumber: request.student?.studentNumber ?? "unknown",
+            projectFreezeReason: body.reason?.trim() || "Projeto congelado pela organização UOR Connect.",
+          },
+          select: {
+            projectFrozen: true,
+            projectFrozenAt: true,
+            projectFrozenByStudentNumber: true,
+            projectFreezeReason: true,
+          },
+        });
+
+        await recordAdminAudit({
+          actorStudentNumber: request.student?.studentNumber,
+          action: "submission.project_freeze",
+          entityType: "Submission",
+          entityId: id,
+          summary: `Projeto congelado: ${existing.referenceCode} · ${existing.name}.`,
+          metadata: {
+            reason: updated.projectFreezeReason,
+            projectFrozenAt: updated.projectFrozenAt?.toISOString() ?? null,
+          },
+        });
+
+        return reply.send({
+          success: true as const,
+          message: "Projeto congelado. Os membros devem procurar a organização UOR Connect com urgência.",
+          projectFrozen: updated.projectFrozen,
+          projectFrozenAt: updated.projectFrozenAt?.toISOString() ?? null,
+          projectFrozenByStudentNumber: updated.projectFrozenByStudentNumber ?? null,
+          projectFreezeReason: updated.projectFreezeReason ?? null,
+        });
+      });
+
+      adminApp.patch("/:id/unfreeze", {
+        config: requireAdminPermission(["SUBMISSIONS", "VOTES"]),
+        schema: {
+          params: z.object({ id: z.coerce.number().int().positive() }),
+          response: {
+            200: z.object({
+              success: z.literal(true),
+              message: z.string(),
+              ...projectFreezeStateSchema,
+            }),
+            401: z.object({ message: z.string() }),
+            403: z.object({ message: z.string() }),
+            404: z.object({ message: z.string() }),
+          }
+        }
+      }, async (request, reply) => {
+        const { id } = request.params as { id: number };
+        const existing = await prisma.submission.findFirst({
+          where: { id, deletedAt: null },
+          select: { id: true, referenceCode: true, name: true },
+        });
+
+        if (!existing) {
+          return reply.code(404).send({ message: "Candidatura não encontrada." });
+        }
+
+        const updated = await prisma.submission.update({
+          where: { id },
+          data: {
+            projectFrozen: false,
+            projectFrozenAt: null,
+            projectFrozenByStudentNumber: null,
+            projectFreezeReason: null,
+          },
+          select: {
+            projectFrozen: true,
+            projectFrozenAt: true,
+            projectFrozenByStudentNumber: true,
+            projectFreezeReason: true,
+          },
+        });
+
+        await recordAdminAudit({
+          actorStudentNumber: request.student?.studentNumber,
+          action: "submission.project_unfreeze",
+          entityType: "Submission",
+          entityId: id,
+          summary: `Projeto descongelado: ${existing.referenceCode} · ${existing.name}.`,
+        });
+
+        return reply.send({
+          success: true as const,
+          message: "Projeto descongelado. O acesso dos membros e a votação voltaram ao estado normal.",
+          projectFrozen: updated.projectFrozen,
+          projectFrozenAt: updated.projectFrozenAt?.toISOString() ?? null,
+          projectFrozenByStudentNumber: updated.projectFrozenByStudentNumber ?? null,
+          projectFreezeReason: updated.projectFreezeReason ?? null,
+        });
       });
 
       adminApp.patch("/:id/type", {

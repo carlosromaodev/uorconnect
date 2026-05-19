@@ -10,6 +10,9 @@ export type AdminProjectVoteSummary = {
   pageViews: number;
   uniqueVisitors: number;
   authenticatedVisitors: number;
+  projectFrozen: boolean;
+  projectFrozenAt: string | null;
+  projectFreezeReason: string | null;
 };
 
 export type AdminVoteEntry = {

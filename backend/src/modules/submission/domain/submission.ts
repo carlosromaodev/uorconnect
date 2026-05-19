@@ -39,6 +39,10 @@ export type Submission = {
   primaryColor: string;
   secondaryColor: string;
   bannerUrl?: string | null;
+  projectFrozen?: boolean;
+  projectFrozenAt?: Date | null;
+  projectFrozenByStudentNumber?: string | null;
+  projectFreezeReason?: string | null;
   isWinner: boolean;
   winnerSelectedAt?: Date | null;
   deletedAt?: Date | null;

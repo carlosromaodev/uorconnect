@@ -15,6 +15,9 @@ type EligibleSubmission = {
   type: "PROJECT" | "BUSINESS" | "PRODUCT";
   area: string;
   createdAt: Date;
+  projectFrozen: boolean;
+  projectFrozenAt: Date | null;
+  projectFreezeReason: string | null;
 };
 
 function normalizePageInput(input?: AdminVotesPageInput) {
@@ -67,6 +70,9 @@ export class PrismaAdminVotesRepository implements AdminVotesRepository {
         type: true,
         area: true,
         createdAt: true,
+        projectFrozen: true,
+        projectFrozenAt: true,
+        projectFreezeReason: true,
       },
       orderBy: { createdAt: "desc" },
     });
@@ -165,6 +171,9 @@ export class PrismaAdminVotesRepository implements AdminVotesRepository {
       pageViews: viewsBySubmissionId.get(submission.id)?.pageViews ?? 0,
       uniqueVisitors: viewsBySubmissionId.get(submission.id)?.visitors.size ?? 0,
       authenticatedVisitors: viewsBySubmissionId.get(submission.id)?.authenticated.size ?? 0,
+      projectFrozen: submission.projectFrozen,
+      projectFrozenAt: submission.projectFrozenAt?.toISOString() ?? null,
+      projectFreezeReason: submission.projectFreezeReason ?? null,
     }));
 
     this.cachedSummaries = {

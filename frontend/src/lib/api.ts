@@ -567,6 +567,10 @@ export interface StudentOwnedSubmissionListItem {
   linkedinUrl: string | null;
   githubUrl: string | null;
   bannerUrl: string | null;
+  projectFrozen: boolean;
+  projectFrozenAt: string | null;
+  projectFrozenByStudentNumber: string | null;
+  projectFreezeReason: string | null;
   receiptPath: string;
   exhibitorPdfPath: string | null;
   viewerRole?: "RESPONSAVEL" | "MEMBRO";
@@ -711,6 +715,10 @@ export interface StudentSubmissionReceipt {
   primaryColor: string;
   secondaryColor: string;
   bannerUrl: string | null;
+  projectFrozen: boolean;
+  projectFrozenAt: string | null;
+  projectFrozenByStudentNumber: string | null;
+  projectFreezeReason: string | null;
   communityUrl: string | null;
   boardingPassPath: string;
   exhibitorPdfPath: string | null;
@@ -1447,6 +1455,9 @@ export interface ProjectPublicFeedItem {
   canVote: boolean;
   canLike: boolean;
   eligibleForAward: boolean;
+  projectFrozen: boolean;
+  projectFrozenAt: string | null;
+  projectFreezeReason: string | null;
   primaryColor: string;
   secondaryColor: string;
   bannerUrl: string | null;
@@ -4310,6 +4321,29 @@ export const api = {
         method: "PATCH",
         body: JSON.stringify({ status }),
       }),
+    freezeProject: (id: number, data?: { reason?: string | null }) =>
+      request<{
+        success: true;
+        message: string;
+        projectFrozen: boolean;
+        projectFrozenAt: string | null;
+        projectFrozenByStudentNumber: string | null;
+        projectFreezeReason: string | null;
+      }>(`/submissions/${id}/freeze`, {
+        method: "PATCH",
+        body: JSON.stringify(data ?? {}),
+      }),
+    unfreezeProject: (id: number) =>
+      request<{
+        success: true;
+        message: string;
+        projectFrozen: boolean;
+        projectFrozenAt: string | null;
+        projectFrozenByStudentNumber: string | null;
+        projectFreezeReason: string | null;
+      }>(`/submissions/${id}/unfreeze`, {
+        method: "PATCH",
+      }),
     updateType: (id: number, type: SubmissionType) =>
       request<{
         success: true;
@@ -4401,6 +4435,10 @@ export const api = {
             primaryColor: string;
             secondaryColor: string;
             bannerUrl: string | null;
+            projectFrozen: boolean;
+            projectFrozenAt: string | null;
+            projectFrozenByStudentNumber: string | null;
+            projectFreezeReason: string | null;
             isWinner: boolean;
             canVote: boolean;
             eligibleForAward: boolean;
@@ -4464,6 +4502,10 @@ export const api = {
             primaryColor: string;
             secondaryColor: string;
             bannerUrl: string | null;
+            projectFrozen: boolean;
+            projectFrozenAt: string | null;
+            projectFrozenByStudentNumber: string | null;
+            projectFreezeReason: string | null;
             isWinner: boolean;
             canVote: boolean;
             eligibleForAward: boolean;
@@ -5538,6 +5580,9 @@ export const api = {
           pageViews: number;
           uniqueVisitors: number;
           authenticatedVisitors: number;
+          projectFrozen: boolean;
+          projectFrozenAt: string | null;
+          projectFreezeReason: string | null;
         }>;
         votes: Array<{
           id: number;
@@ -5581,6 +5626,9 @@ export const api = {
           pageViews: number;
           uniqueVisitors: number;
           authenticatedVisitors: number;
+          projectFrozen: boolean;
+          projectFrozenAt: string | null;
+          projectFreezeReason: string | null;
         }>;
         votes: PagedResult<{
           id: number;

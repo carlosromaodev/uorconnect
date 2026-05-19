@@ -704,6 +704,10 @@ model Submission {
   bannerUrl        String?
   teamInviteToken  String?
   teamInviteSentAt DateTime?
+  projectFrozen    Boolean          @default(false)
+  projectFrozenAt  DateTime?
+  projectFrozenByStudentNumber String?
+  projectFreezeReason String?
   isWinner         Boolean          @default(false)
   winnerSelectedAt DateTime?
   deletedAt        DateTime?
@@ -729,6 +733,7 @@ model Submission {
   @@index([studentId, createdAt])
   @@index([teamInviteToken])
   @@index([paymentStatus, updatedAt])
+  @@index([projectFrozen, status, createdAt])
 }
 
 model SubmissionMember {

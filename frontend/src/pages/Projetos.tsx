@@ -87,8 +87,18 @@ function ProjectCompactCard({
 }) {
   const areaUi = getProjectAreaClasses(project.area, project.type);
   const displayArea = getSubmissionAreaLabel(project.area, project.type);
-  const canVote = canVoteSubmission(project.type, project.area, project.canVote);
-  const primaryLabel = canVote ? (project.userHasVoted ? "Votado" : "Votar") : (project.userHasLiked ? "Gostei" : "Gostar");
+  const isSuspended = project.projectFrozen;
+  const canVote =
+    !isSuspended && canVoteSubmission(project.type, project.area, project.canVote);
+  const primaryLabel = isSuspended
+    ? "Suspenso"
+    : canVote
+      ? project.userHasVoted
+        ? "Votado"
+        : "Votar"
+      : project.userHasLiked
+        ? "Gostei"
+        : "Gostar";
 
   return (
     <motion.article
@@ -112,9 +122,17 @@ function ProjectCompactCard({
         onClick={() => void onOpen(project)}
       >
         <div className="mb-3 flex items-start justify-between gap-2">
-          <span className={`max-w-[70%] truncate rounded-md px-2 py-1 text-[10px] font-bold uppercase tracking-wide ${areaUi.badge}`}>
-            {displayArea}
-          </span>
+          <div className="flex min-w-0 flex-wrap gap-1.5">
+            <span className={`max-w-[150px] truncate rounded-md px-2 py-1 text-[10px] font-bold uppercase tracking-wide ${areaUi.badge}`}>
+              {displayArea}
+            </span>
+            {isSuspended ? (
+              <span className="inline-flex items-center gap-1 rounded-md border border-red-200 bg-red-50 px-2 py-1 text-[10px] font-bold uppercase tracking-wide text-red-700">
+                <Lock className="h-3 w-3" />
+                Projeto suspenso
+              </span>
+            ) : null}
+          </div>
           <span className="inline-flex items-center gap-1 rounded-full border border-border/60 bg-background px-2 py-1 text-[10px] font-bold text-foreground">
             {canVote ? <ThumbsUp className="h-3 w-3 text-primary" /> : <Heart className="h-3 w-3 text-primary" />}
             {canVote ? project.votesCount : project.likesCount}
@@ -150,14 +168,21 @@ function ProjectCompactCard({
         </div>
       </button>
 
+      {isSuspended ? (
+        <div className="mt-3 rounded-lg border border-red-100 bg-red-50 px-3 py-2 text-[11px] font-semibold leading-5 text-red-800">
+          Este projeto está suspenso pela organização e não pode receber votos agora.
+        </div>
+      ) : null}
+
       <div className="mt-3 grid grid-cols-[minmax(0,1fr)_2.25rem_2.25rem_2.25rem] gap-1.5">
         <Button
           size="sm"
-          variant={canVote ? (project.userHasVoted ? "default" : "outline") : (project.userHasLiked ? "default" : "outline")}
+          variant={isSuspended ? "outline" : canVote ? (project.userHasVoted ? "default" : "outline") : (project.userHasLiked ? "default" : "outline")}
           className="h-9 min-w-0 rounded-lg px-2 text-[11px] font-bold"
+          disabled={isSuspended}
           onClick={() => void onPrimaryAction(project)}
         >
-          {canVote ? <Trophy className="h-3.5 w-3.5" /> : <Heart className={`h-3.5 w-3.5 ${project.userHasLiked ? "fill-current" : ""}`} />}
+          {isSuspended ? <Lock className="h-3.5 w-3.5" /> : canVote ? <Trophy className="h-3.5 w-3.5" /> : <Heart className={`h-3.5 w-3.5 ${project.userHasLiked ? "fill-current" : ""}`} />}
           <span className="truncate">{primaryLabel}</span>
         </Button>
 
@@ -166,6 +191,7 @@ function ProjectCompactCard({
           variant="outline"
           className="h-9 w-9 rounded-lg border-border/60"
           title="Gostar"
+          disabled={isSuspended}
           onClick={() => void onLikeAction(project)}
         >
           <Heart className={`h-3.5 w-3.5 ${project.userHasLiked ? "fill-current text-primary" : ""}`} />
@@ -282,7 +308,9 @@ function ProjectDetailModal({
   if (!project) return null;
   const areaUi = getProjectAreaClasses(project.area, project.type);
   const displayArea = getSubmissionAreaLabel(project.area, project.type);
-  const canVote = canVoteSubmission(project.type, project.area, project.canVote);
+  const isSuspended = project.projectFrozen;
+  const canVote =
+    !isSuspended && canVoteSubmission(project.type, project.area, project.canVote);
 
   const handleSubmitComment = async () => {
     if (!loggedIn) {
@@ -310,8 +338,14 @@ function ProjectDetailModal({
             <div className={`absolute inset-x-0 top-0 h-1.5 ${areaUi.topBar}`} />
             <div className="p-8">
               <div className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/10 px-3 py-1 text-xs font-semibold text-primary">
-                {project.isWinner ? <Crown className="h-3.5 w-3.5" /> : <Trophy className="h-3.5 w-3.5" />}
-                {project.isWinner ? "Projeto vencedor" : canVote ? "Projeto em destaque" : "Exposição em destaque"}
+                {isSuspended ? <Lock className="h-3.5 w-3.5" /> : project.isWinner ? <Crown className="h-3.5 w-3.5" /> : <Trophy className="h-3.5 w-3.5" />}
+                {isSuspended
+                  ? "Projeto suspenso"
+                  : project.isWinner
+                    ? "Projeto vencedor"
+                    : canVote
+                      ? "Projeto em destaque"
+                      : "Exposição em destaque"}
               </div>
               <h2 className="mt-6 max-w-xl font-heading text-4xl font-bold leading-tight">{project.name}</h2>
               <p className="mt-4 max-w-xl text-base leading-relaxed text-muted-foreground">{project.description}</p>
@@ -373,6 +407,12 @@ function ProjectDetailModal({
                 </div>
               </div>
 
+              {isSuspended ? (
+                <div className="mt-4 rounded-2xl border border-red-100 bg-red-50 px-4 py-3 text-sm font-semibold leading-6 text-red-800">
+                  Projeto suspenso pela organização. Não é possível votar, gostar ou comentar neste projeto até regularização.
+                </div>
+              ) : null}
+
               <div className="mt-4 flex flex-wrap items-center gap-2 sm:gap-3">
                 {canVote ? (
                   <button
@@ -384,6 +424,11 @@ function ProjectDetailModal({
                     <ThumbsUp className="h-3.5 w-3.5 text-primary" />
                     <span>{project.votesCount}</span>
                   </button>
+                ) : isSuspended ? (
+                  <div className="inline-flex h-10 items-center gap-2 rounded-full border border-red-200 bg-red-50 px-3 text-xs font-semibold text-red-700">
+                    <Lock className="h-3.5 w-3.5" />
+                    Projeto suspenso
+                  </div>
                 ) : (
                   <div className="inline-flex h-10 items-center gap-2 rounded-full border border-[hsl(var(--area-negocio))]/20 bg-[hsl(var(--area-negocio))]/10 px-3 text-xs font-semibold text-[hsl(var(--area-negocio))]">
                     <Shield className="h-3.5 w-3.5" />
@@ -398,6 +443,7 @@ function ProjectDetailModal({
                       ? "border-primary/30 bg-primary text-primary-foreground"
                       : "border-border bg-background hover:bg-primary/5"
                   }`}
+                  disabled={isSuspended}
                   onClick={() => void onLike(project.id)}
                 >
                   <Heart className={`h-3.5 w-3.5 ${project.userHasLiked ? "fill-current" : ""}`} />
@@ -453,7 +499,11 @@ function ProjectDetailModal({
             </div>
 
             <div className="border-t border-border/60 bg-background/95 px-4 py-4 backdrop-blur sm:px-6">
-              {!loggedIn ? (
+              {isSuspended ? (
+                <div className="w-full rounded-2xl border border-red-100 bg-red-50 p-4 text-sm font-semibold leading-6 text-red-800">
+                  As interações deste projeto estão bloqueadas. A equipa deve procurar a organização UOR Connect.
+                </div>
+              ) : !loggedIn ? (
                 <button
                   onClick={onRequestLogin}
                   className="w-full rounded-2xl border border-dashed border-primary/30 bg-primary/5 p-4 text-left transition-colors hover:bg-primary/10"
@@ -694,7 +744,12 @@ export default function Projetos() {
   };
 
   const handleVote = async (projectId: number) => {
-    const project = projects.find((item) => item.id === projectId);
+    const project = [...projects, ...topProjects].find((item) => item.id === projectId);
+
+    if (project?.projectFrozen) {
+      toast.error("Projeto suspenso pela organização. Não é possível votar neste projeto agora.");
+      return;
+    }
 
     if (project && !canVoteSubmission(project.type, project.area, project.canVote)) {
       toast.info("Esta candidatura está em exposição e não participa na votação pública.");
@@ -722,6 +777,13 @@ export default function Projetos() {
   };
 
   const handleLike = async (projectId: number) => {
+    const project = [...projects, ...topProjects].find((item) => item.id === projectId);
+
+    if (project?.projectFrozen) {
+      toast.error("Projeto suspenso pela organização. Não é possível interagir agora.");
+      return;
+    }
+
     if (!loggedIn) {
       setLoginOpen(true);
       return;
@@ -764,6 +826,13 @@ export default function Projetos() {
   };
 
   const handleComment = async (projectId: number, content: string) => {
+    const project = [...projects, ...topProjects].find((item) => item.id === projectId);
+
+    if (project?.projectFrozen) {
+      toast.error("Projeto suspenso pela organização. Não é possível comentar agora.");
+      return;
+    }
+
     try {
       const created = await api.interactions.comment(projectId, content);
       const newComment: ProjectPublicComment = {
@@ -905,7 +974,12 @@ export default function Projetos() {
                             <p className="mt-0.5 text-[11px] text-muted-foreground truncate">{project.course}</p>
                           )}
                           <div className="mt-2 flex items-center gap-3 text-[11px] text-muted-foreground">
-                            {canVoteSubmission(project.type, project.area, project.canVote) ? (
+                            {project.projectFrozen ? (
+                              <span className="inline-flex items-center gap-1 font-medium text-red-700">
+                                <Lock className="h-3 w-3" />
+                                Projeto suspenso
+                              </span>
+                            ) : canVoteSubmission(project.type, project.area, project.canVote) ? (
                               <span className="inline-flex items-center gap-1 font-medium"><ThumbsUp className="h-3 w-3" /> {project.votesCount}</span>
                             ) : (
                               <span className="inline-flex items-center gap-1 font-medium text-[hsl(var(--area-negocio))]"><Shield className="h-3 w-3" /> Exposição</span>

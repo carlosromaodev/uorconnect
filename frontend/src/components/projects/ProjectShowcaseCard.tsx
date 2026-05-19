@@ -3,6 +3,7 @@ import {
   ArrowUpRight,
   Crown,
   Heart,
+  Lock,
   MessageCircle,
   QrCode,
   Shield,
@@ -76,17 +77,21 @@ export function ProjectShowcaseCard({
 }) {
   const areaUi = getProjectAreaClasses(project.area, project.type);
   const displayArea = getSubmissionAreaLabel(project.area, project.type);
-  const canVote = canVoteSubmission(project.type, project.area, project.canVote);
+  const isSuspended = project.projectFrozen;
+  const canVote =
+    !isSuspended && canVoteSubmission(project.type, project.area, project.canVote);
   const bannerSource = getProjectBannerSource(project.bannerUrl);
   const location = useLocation();
   const heroGradient = `linear-gradient(145deg, ${withAlpha(project.primaryColor, "e8")} 0%, ${withAlpha(project.secondaryColor, "d0")} 60%, ${withAlpha(project.primaryColor, "b8")} 100%)`;
-  const primaryLabel = canVote
-    ? project.userHasVoted
-      ? "Voto registado"
-      : "Votar"
-    : project.userHasLiked
-      ? "Gostei"
-      : "Gostar";
+  const primaryLabel = isSuspended
+    ? "Projeto suspenso"
+    : canVote
+      ? project.userHasVoted
+        ? "Voto registado"
+        : "Votar"
+      : project.userHasLiked
+        ? "Gostei"
+        : "Gostar";
   const isPrimaryActive = canVote ? project.userHasVoted : project.userHasLiked;
   const showStandaloneLike = canVote && project.canLike;
   const standaloneLikeLabel = project.userHasLiked ? "Gostei" : "Gostar";
@@ -196,12 +201,22 @@ export function ProjectShowcaseCard({
           <span className="rounded-md bg-white/90 px-2.5 py-1 text-[10px] font-semibold text-foreground/80 shadow-sm backdrop-blur-sm sm:text-[11px]">
             {project.typeLabel}
           </span>
+          {isSuspended ? (
+            <span className="inline-flex items-center gap-1 rounded-md border border-red-200 bg-red-50 px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-red-700 shadow-sm">
+              <Lock className="h-3 w-3" />
+              Projeto suspenso
+            </span>
+          ) : null}
         </div>
 
         <div className="absolute inset-x-0 bottom-0 px-4 pb-3 sm:px-5 sm:pb-4">
           <div className="flex items-end justify-between gap-3">
             <p className="line-clamp-1 text-[11px] font-medium text-white/80 sm:text-xs">
-              {canVote ? "Projeto em votação" : "Exposição aberta"}
+              {isSuspended
+                ? "Projeto suspenso"
+                : canVote
+                  ? "Projeto em votação"
+                  : "Exposição aberta"}
               {project.course ? ` · ${project.course}` : ""}
             </p>
             <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-black/30 px-2 py-0.5 text-[11px] font-semibold text-white backdrop-blur-sm">
@@ -240,7 +255,11 @@ export function ProjectShowcaseCard({
           </div>
           <div className="min-w-0">
             <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
-              {canVote ? "Boletim de votação pública" : "Expositor em destaque"}
+              {isSuspended
+                ? "Projeto suspenso pela organização"
+                : canVote
+                  ? "Boletim de votação pública"
+                  : "Expositor em destaque"}
             </p>
             <p className="truncate text-xs font-semibold text-foreground">
               {project.course || displayArea}
@@ -251,6 +270,12 @@ export function ProjectShowcaseCard({
         <p className="line-clamp-2 text-[13px] leading-relaxed text-foreground/70">
           {project.summary || project.description}
         </p>
+
+        {isSuspended ? (
+          <div className="rounded-xl border border-red-100 bg-red-50 px-3 py-2 text-xs font-semibold leading-5 text-red-800">
+            Este projeto não pode receber votos nem interações até regularização com a organização.
+          </div>
+        ) : null}
 
         {project.teamSize > 0 && (
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -295,16 +320,21 @@ export function ProjectShowcaseCard({
           >
             <Button
               size="sm"
-              variant={isPrimaryActive ? "default" : "outline"}
+              variant={isSuspended ? "outline" : isPrimaryActive ? "default" : "outline"}
               className={cn(
                 "project-vote-card__primary-action h-10 w-full rounded-xl text-xs font-bold sm:h-11 sm:text-sm",
-                isPrimaryActive
+                isSuspended
+                  ? "border-red-200 bg-red-50 text-red-700"
+                  : isPrimaryActive
                   ? "bg-primary text-primary-foreground shadow-sm"
                   : "border-border/60 hover:bg-muted/50",
               )}
+              disabled={isSuspended}
               onClick={() => void onPrimaryAction(project)}
             >
-              {canVote ? (
+              {isSuspended ? (
+                <Lock className="mr-1.5 h-4 w-4" />
+              ) : canVote ? (
                 <Trophy className={cn("mr-1.5 h-4 w-4", isPrimaryActive && "text-primary-foreground")} />
               ) : (
                 <Heart className={cn("mr-1.5 h-4 w-4", isPrimaryActive && "fill-current")} />
@@ -322,6 +352,7 @@ export function ProjectShowcaseCard({
                     ? "bg-primary text-primary-foreground shadow-sm"
                     : "border-border/60 hover:bg-muted/50",
                 )}
+                disabled={isSuspended}
                 onClick={() => void onLikeAction(project)}
               >
                 <Heart className={cn("mr-1.5 h-4 w-4", project.userHasLiked && "fill-current")} />

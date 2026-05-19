@@ -2737,6 +2737,8 @@ export default function MinhaArea() {
   const voteQrSubmissions = submissions.filter(
     (item) => item.status === "APPROVED" && item.type === "PROJECT",
   );
+  const frozenProjectBlocker =
+    submissions.find((item) => item.projectFrozen) ?? null;
   const teamConfirmationOverview =
     getProjectTeamConfirmationOverview(submissions);
   const teamSubmissions = teamConfirmationOverview.confirmableProjects;
@@ -6924,8 +6926,48 @@ export default function MinhaArea() {
                  </div>
                </div>
              </div>
-         </DialogContent>
-       </Dialog>
+       </DialogContent>
+     </Dialog>
+
+      <Dialog open={Boolean(frozenProjectBlocker)}>
+        <DialogContent
+          className="w-[94vw] max-w-[440px] overflow-hidden rounded-3xl border-red-200 p-0"
+          onEscapeKeyDown={(event) => event.preventDefault()}
+          onInteractOutside={(event) => event.preventDefault()}
+        >
+          <div className="space-y-5 bg-[linear-gradient(180deg,rgba(254,242,242,0.98),rgba(255,255,255,0.98))] p-5 sm:p-6">
+            <DialogHeader className="text-left">
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-red-600 text-white shadow-sm">
+                <Lock className="h-5 w-5" />
+              </div>
+              <DialogTitle className="font-heading text-xl">
+                Projeto congelado
+              </DialogTitle>
+              <DialogDescription className="text-sm leading-relaxed">
+                Procura a organização UOR Connect com urgência.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="rounded-2xl border border-red-100 bg-white px-4 py-3 shadow-sm">
+              <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-red-700">
+                Projeto suspenso
+              </p>
+              <p className="safe-break mt-1 text-sm font-semibold text-foreground">
+                {frozenProjectBlocker?.name}
+              </p>
+              {frozenProjectBlocker?.projectFreezeReason ? (
+                <p className="safe-break mt-2 text-xs leading-5 text-muted-foreground">
+                  {frozenProjectBlocker.projectFreezeReason}
+                </p>
+              ) : null}
+            </div>
+
+            <p className="text-xs leading-5 text-muted-foreground">
+              Enquanto o projeto estiver congelado, a área UOR Connect dos membros fica bloqueada e o projeto não recebe votos. A equipa deve falar diretamente com a organização para regularizar a situação.
+            </p>
+          </div>
+        </DialogContent>
+      </Dialog>
 
        <Dialog
          open={Boolean(constructiveFeedbackProject)}

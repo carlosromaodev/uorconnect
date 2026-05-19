@@ -32,6 +32,10 @@ type StudentSubmissionPresenterInput = {
   primaryColor: string;
   secondaryColor: string;
   bannerUrl?: string | null;
+  projectFrozen?: boolean;
+  projectFrozenAt?: Date | null;
+  projectFrozenByStudentNumber?: string | null;
+  projectFreezeReason?: string | null;
   paymentStatus?: string | null;
   paymentSubmittedAt?: Date | null;
   paymentReviewedAt?: Date | null;
@@ -107,6 +111,10 @@ export function buildStudentSubmissionReceiptResponse(
     primaryColor: submission.primaryColor,
     secondaryColor: submission.secondaryColor,
     bannerUrl: submission.bannerUrl ?? null,
+    projectFrozen: submission.projectFrozen ?? false,
+    projectFrozenAt: submission.projectFrozenAt?.toISOString() ?? null,
+    projectFrozenByStudentNumber: submission.projectFrozenByStudentNumber ?? null,
+    projectFreezeReason: submission.projectFreezeReason ?? null,
     communityUrl: submission.status === "APPROVED" && paymentConfirmedByAdmin ? buildSubmissionCommunityUrl(submission.type, config) : null,
     boardingPassPath: `/submissions/${submission.id}/boarding-pass.pdf`,
     exhibitorPdfPath,
@@ -132,7 +140,7 @@ export function buildStudentSubmissionReceiptResponse(
 
 export function buildStudentSubmissionListItem(submission: Pick<
   StudentSubmissionPresenterInput,
-  "id" | "referenceCode" | "name" | "description" | "status" | "type" | "area" | "createdAt" | "bannerUrl" | "paymentStatus" | "repoUrl" | "websiteUrl" | "instagramUrl" | "facebookUrl" | "linkedinUrl" | "githubUrl"
+  "id" | "referenceCode" | "name" | "description" | "status" | "type" | "area" | "createdAt" | "bannerUrl" | "paymentStatus" | "repoUrl" | "websiteUrl" | "instagramUrl" | "facebookUrl" | "linkedinUrl" | "githubUrl" | "projectFrozen" | "projectFrozenAt" | "projectFrozenByStudentNumber" | "projectFreezeReason"
 >) {
   const normalizedType = normalizeSubmissionType(submission.type, submission.area);
   const typeLabel = getSubmissionTypeLabel(submission.type, submission.area);
@@ -156,6 +164,10 @@ export function buildStudentSubmissionListItem(submission: Pick<
     linkedinUrl: submission.linkedinUrl ?? null,
     githubUrl: submission.githubUrl ?? null,
     bannerUrl: submission.bannerUrl ?? null,
+    projectFrozen: submission.projectFrozen ?? false,
+    projectFrozenAt: submission.projectFrozenAt?.toISOString() ?? null,
+    projectFrozenByStudentNumber: submission.projectFrozenByStudentNumber ?? null,
+    projectFreezeReason: submission.projectFreezeReason ?? null,
     receiptPath: `/submissoes/${submission.id}`,
     exhibitorPdfPath: submission.status === "APPROVED" && isPaymentConfirmedByAdmin(submission.paymentStatus)
       ? `/submissions/${submission.id}/exhibitor-pack.pdf`
