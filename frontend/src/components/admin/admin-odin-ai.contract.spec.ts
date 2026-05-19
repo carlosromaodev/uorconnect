@@ -15,6 +15,8 @@ describe("Admin ODIN 2.0 AI contract", () => {
     expect(api).toContain("/security/odin/ai/analyze");
     expect(api).toContain("sendAiFeedback");
     expect(api).toContain("/security/odin/ai/analyses/${analysisId}/feedback");
+    expect(api).toContain("downloadProjectSecurityReportPdf");
+    expect(api).toContain("/security/odin/projects/${submissionId}/report.pdf");
   });
 
   it("renders AI narrative, probability, recommendation and feedback in ODIN admin", () => {
@@ -31,5 +33,7 @@ describe("Admin ODIN 2.0 AI contract", () => {
     expect(odinTab).toContain("Útil");
     expect(odinTab).toContain("api.odin.analyzeCase");
     expect(odinTab).toContain("api.odin.sendAiFeedback");
+    expect(odinTab).toContain("Relatório do projeto");
+    expect(odinTab).toContain("api.odin.downloadProjectSecurityReportPdf");
   });
 });

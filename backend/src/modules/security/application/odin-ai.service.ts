@@ -282,14 +282,42 @@ cannot_be_false_positive_if.
 action_type deve ser um destes valores:
 MONITOR, REVIEW, INVALIDATE_VOTES, NOTIFY_FOR_APPEAL, ESCALATE_TO_ORGANIZATION.`;
 
-function clampProbability(value: unknown, fallback: number) {
+export function clampOdinAiProbability(value: unknown, fallback: number) {
   const numeric = typeof value === "number"
     ? value
     : typeof value === "string"
       ? Number(value.replace("%", "").trim())
       : Number.NaN;
   if (!Number.isFinite(numeric)) return fallback;
-  return Math.max(0, Math.min(100, Math.round(numeric)));
+  const normalized = numeric > 0 && numeric < 1
+    ? numeric * 100
+    : numeric;
+  return Math.max(0, Math.min(100, Math.round(normalized)));
+}
+
+export function presentOdinAiProbabilities(input: {
+  fraudProbability: number;
+  legitimateProbability: number;
+  riskScore: number;
+  unifiedRiskScore?: number | null;
+  consistencyCheck?: string | null;
+}) {
+  const fraudProbability = clampOdinAiProbability(input.fraudProbability, input.riskScore);
+  const legitimateProbability = clampOdinAiProbability(input.legitimateProbability, 100 - fraudProbability);
+  const riskFloor = Math.max(input.riskScore, input.unifiedRiskScore ?? 0);
+  const contradictedByRules = input.consistencyCheck === "FAILED"
+    || (riskFloor >= 90 && fraudProbability < 50)
+    || (riskFloor >= 75 && fraudProbability < 35);
+  const finalFraudProbability = contradictedByRules
+    ? Math.max(fraudProbability, Math.min(100, Math.round(riskFloor)))
+    : fraudProbability;
+
+  return {
+    fraudProbability: finalFraudProbability,
+    legitimateProbability: contradictedByRules
+      ? Math.max(0, 100 - finalFraudProbability)
+      : legitimateProbability,
+  };
 }
 
 function safeText(value: unknown, fallback: string, maxLength = 1400) {
@@ -441,8 +469,8 @@ export function normalizeOdinAiVerdict(input: unknown): OdinAiVerdict {
   const source = input && typeof input === "object" && !Array.isArray(input)
     ? input as Record<string, unknown>
     : {};
-  const fraudProbability = clampProbability(readField(source, "fraud_probability", "fraudProbability"), 50);
-  const legitimateProbability = clampProbability(
+  const fraudProbability = clampOdinAiProbability(readField(source, "fraud_probability", "fraudProbability"), 50);
+  const legitimateProbability = clampOdinAiProbability(
     readField(source, "legitimate_probability", "legitimateProbability"),
     100 - fraudProbability,
   );
@@ -567,6 +595,13 @@ function serializeAnalysis(analysis: {
     });
   const fallbackPattern = analysis.riskScore >= 90 ? "TIPO-A" : "TIPO-B";
   const fallbackUrgency = analysis.riskScore >= 90 ? "IMEDIATA" : analysis.riskScore >= 40 ? "24H" : "PODE_ESPERAR";
+  const presentedProbabilities = presentOdinAiProbabilities({
+    fraudProbability: analysis.fraudProbability,
+    legitimateProbability: analysis.legitimateProbability,
+    riskScore: analysis.riskScore,
+    unifiedRiskScore: analysis.unifiedRiskScore,
+    consistencyCheck: consistency.consistencyCheck,
+  });
   return {
     id: analysis.id,
     caseType: analysis.caseType as OdinAiCaseType,
@@ -574,8 +609,8 @@ function serializeAnalysis(analysis: {
     riskScore: analysis.riskScore,
     riskLevel: analysis.riskLevel as OdinRiskLevel,
     narrative: analysis.narrative,
-    fraudProbability: analysis.fraudProbability,
-    legitimateProbability: analysis.legitimateProbability,
+    fraudProbability: presentedProbabilities.fraudProbability,
+    legitimateProbability: presentedProbabilities.legitimateProbability,
     mostLikelyScenario: analysis.mostLikelyScenario,
     alternativeScenario: analysis.alternativeScenario,
     recommendation: analysis.recommendation,
@@ -1500,6 +1535,13 @@ export async function runOdinAiCaseAnalysis(
       alternativePlausibility: gemini.verdict.alternativePlausibility,
     },
   });
+  const presentedProbabilities = presentOdinAiProbabilities({
+    fraudProbability: gemini.verdict.fraudProbability,
+    legitimateProbability: gemini.verdict.legitimateProbability,
+    riskScore: caseContext.riskScore,
+    unifiedRiskScore: forensic.unifiedRiskScore,
+    consistencyCheck: forensic.consistencyCheck,
+  });
   const payloadHash = hashPayload(payload);
   const analysis = await prisma.odinAiAnalysis.create({
     data: {
@@ -1508,8 +1550,8 @@ export async function runOdinAiCaseAnalysis(
       riskScore: caseContext.riskScore,
       riskLevel: caseContext.riskLevel,
       narrative: gemini.verdict.narrative,
-      fraudProbability: gemini.verdict.fraudProbability,
-      legitimateProbability: gemini.verdict.legitimateProbability,
+      fraudProbability: presentedProbabilities.fraudProbability,
+      legitimateProbability: presentedProbabilities.legitimateProbability,
       mostLikelyScenario: gemini.verdict.mostLikelyScenario,
       alternativeScenario: gemini.verdict.alternativeScenario,
       recommendation: gemini.verdict.recommendation,

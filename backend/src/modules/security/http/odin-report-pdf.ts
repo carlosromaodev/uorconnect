@@ -14,6 +14,7 @@ import {
   type OdinRiskLevel,
   type OdinStudentRisk,
 } from "../application/odin.service";
+import { presentOdinAiProbabilities } from "../application/odin-ai.service";
 import {
   buildForensicQueue,
   type ForensicActionUrgency,
@@ -193,6 +194,7 @@ type OdinReportInvestigationContext = {
 };
 
 const reportKind = "security.odin.report";
+const projectReportKind = "security.odin.project.report";
 const officialRegistrationSources = new Set(["SECRETARIA", "ISPTEC_OFFICIAL"]);
 
 function clampWindowHours(windowHours?: number) {
@@ -270,6 +272,25 @@ function formatDuration(seconds: number | null) {
   const minutes = Math.floor(seconds / 60);
   const rest = Math.round(seconds % 60);
   return rest ? `${minutes}m ${rest}s` : `${minutes}m`;
+}
+
+function formatProjectReportDate(value: Date | null | undefined) {
+  return value ? formatDateLabel(value) : "Sem registo";
+}
+
+function typeLabel(value: string) {
+  if (value === "PROJECT") return "Projeto";
+  if (value === "BUSINESS") return "Negócio";
+  if (value === "PRODUCT") return "Produto";
+  return value;
+}
+
+function chunkArray<T>(items: T[], size: number) {
+  const chunks: T[][] = [];
+  for (let index = 0; index < items.length; index += size) {
+    chunks.push(items.slice(index, index + size));
+  }
+  return chunks.length ? chunks : [[]];
 }
 
 function average(values: number[]) {
@@ -411,8 +432,16 @@ function renderAnalysisCards(analyses: OdinReportAnalysis[]) {
     `;
   }
 
-  return analyses.slice(0, 4).map((analysis) => `
-    <article class="analysis-card">
+  return analyses.slice(0, 4).map((analysis) => {
+    const probabilities = presentOdinAiProbabilities({
+      fraudProbability: analysis.fraudProbability,
+      legitimateProbability: analysis.legitimateProbability,
+      riskScore: analysis.riskScore,
+      unifiedRiskScore: analysis.unifiedRiskScore,
+      consistencyCheck: analysis.consistencyCheck,
+    });
+    return `
+      <article class="analysis-card">
       <div class="analysis-heading">
         <div>
           <span class="eyebrow">${escapeHtml(caseTypeLabel(analysis.caseType))} · ${escapeHtml(shortId(analysis.caseId, 10, 6))}</span>
@@ -422,8 +451,8 @@ function renderAnalysisCards(analyses: OdinReportAnalysis[]) {
       </div>
       <p class="analysis-narrative">${escapeHtml(analysis.narrative)}</p>
       <div class="probability-grid">
-        <div><span>Fraude provável</span><strong>${analysis.fraudProbability}%</strong></div>
-        <div><span>Explicação legítima</span><strong>${analysis.legitimateProbability}%</strong></div>
+        <div><span>Fraude provável</span><strong>${probabilities.fraudProbability}%</strong></div>
+        <div><span>Explicação legítima</span><strong>${probabilities.legitimateProbability}%</strong></div>
         <div><span>Confiança</span><strong>${escapeHtml(analysis.confidenceLevel)}</strong></div>
         <div><span>Feedback</span><strong>${analysis._count?.feedback ?? 0}</strong></div>
       </div>
@@ -436,7 +465,28 @@ function renderAnalysisCards(analyses: OdinReportAnalysis[]) {
         <p>${escapeHtml(analysis.recommendation)}</p>
       </div>
     </article>
-  `).join("");
+    `;
+  }).join("");
+}
+
+function renderHorizontalBars(items: Array<{ label: string; value: number; detail?: string }>, emptyLabel: string) {
+  if (!items.length) {
+    return `<div class="empty-state"><h3>${escapeHtml(emptyLabel)}</h3><p>Sem dados suficientes nesta janela.</p></div>`;
+  }
+  const max = Math.max(...items.map((item) => item.value), 1);
+  return `
+    <div class="course-chart">
+      ${items.slice(0, 12).map((item) => `
+        <div class="course-chart-row">
+          <div>
+            <strong>${escapeHtml(item.label)}</strong>
+            <span>${escapeHtml(item.detail ?? `${item.value} registo(s)`)}</span>
+          </div>
+          <div class="course-chart-track"><i style="width:${Math.max(8, Math.round((item.value / max) * 100))}%"></i></div>
+        </div>
+      `).join("")}
+    </div>
+  `;
 }
 
 function renderForensicQueueRows(queue: ReturnType<typeof buildForensicQueue>) {
@@ -1361,6 +1411,856 @@ export async function buildOdinReportInvestigationContext(
     courseRisks,
     projectInvestigations,
     exhibitorDeviceSignals,
+  };
+}
+
+type OdinProjectReportDevice = {
+  deviceId: string;
+  riskScore: number;
+  riskLevel: string;
+  totalEvents: number;
+  loginCount: number;
+  projectVotes: number;
+  distinctAccounts: number;
+  firstAccountLabel: string;
+  firstLoginAt: Date | null;
+  lastLoginAt: Date | null;
+  courses: Array<{ course: string; count: number }>;
+  accounts: string[];
+  loginTimeline: Array<{ label: string; loginAt: Date }>;
+  averageLoginToVoteSeconds: number | null;
+  fastestLoginToVoteSeconds: number | null;
+  rapidConversions: number;
+  rapidAccountSwitches: number;
+  invalidOrTemporaryAccounts: number;
+  officialAccounts: number;
+};
+
+type OdinProjectReportVoter = {
+  studentNumber: string;
+  name: string;
+  course: string;
+  university: string;
+  source: string;
+  votedAt: Date;
+  deviceId: string | null;
+  loginAt: Date | null;
+  loginToVoteSeconds: number | null;
+  integrity: string;
+};
+
+function buildProjectReportDeviceSummaries(
+  deviceEvents: OdinReportDetailedEvent[],
+  projectId: number,
+  overview: OdinOverview,
+): OdinProjectReportDevice[] {
+  const byDevice = new Map<string, OdinReportDetailedEvent[]>();
+  for (const event of deviceEvents) {
+    byDevice.set(event.deviceId, [...(byDevice.get(event.deviceId) ?? []), event]);
+  }
+  const overviewDevices = new Map(overview.devices.map((device) => [device.deviceId, device]));
+
+  return Array.from(byDevice.entries()).map(([deviceId, events]) => {
+    const sortedEvents = [...events].sort((left, right) => left.createdAt.getTime() - right.createdAt.getTime());
+    const studentEvents = sortedEvents.filter((event) => eventStudentKey(event));
+    const accountEvents = new Map<string, OdinReportDetailedEvent>();
+    for (const event of studentEvents) {
+      const key = eventStudentKey(event);
+      if (key && !accountEvents.has(key)) accountEvents.set(key, event);
+    }
+    const loginEvents = sortedEvents.filter((event) => event.eventType === "LOGIN_SUCCESS" && eventStudentKey(event));
+    const projectVotes = sortedEvents.filter((event) =>
+      event.eventType === "PROJECT_VOTE"
+      && event.targetType === "Submission"
+      && event.targetId === projectId
+    );
+    const durations: number[] = [];
+    for (const vote of projectVotes) {
+      const key = eventStudentKey(vote);
+      const login = [...loginEvents].reverse().find((item) =>
+        eventStudentKey(item) === key && item.createdAt <= vote.createdAt
+      );
+      if (!login) continue;
+      durations.push(Math.max(0, Math.round((vote.createdAt.getTime() - login.createdAt.getTime()) / 1000)));
+    }
+    const { rapidSwitches } = transitionCount(loginEvents);
+    const accountRows = Array.from(accountEvents.values());
+    const courseCounts = new Map<string, number>();
+    for (const event of accountRows) {
+      const course = event.student?.course?.trim() || event.studentCourse?.trim() || "Curso em falta";
+      courseCounts.set(course, (courseCounts.get(course) ?? 0) + 1);
+    }
+    const overviewDevice = overviewDevices.get(deviceId);
+    const invalidOrTemporaryAccounts = accountRows.filter((event) =>
+      !isOfficialStudent(event.student) || studentIntegrityFlags(event.student).length > 0
+    ).length;
+    const officialAccounts = accountRows.filter((event) => isOfficialStudent(event.student)).length;
+    const firstAccount = studentEvents[0] ?? null;
+
+    return {
+      deviceId,
+      riskScore: overviewDevice?.riskScore ?? clampScore(
+        projectVotes.length * 12
+        + accountRows.length * 8
+        + invalidOrTemporaryAccounts * 8
+        + durations.filter((duration) => duration <= 90).length * 10
+        + rapidSwitches * 12,
+      ),
+      riskLevel: overviewDevice?.riskLevel ?? (projectVotes.length >= 8 || accountRows.length >= 8 ? "HIGH" : "MEDIUM"),
+      totalEvents: sortedEvents.length,
+      loginCount: loginEvents.length,
+      projectVotes: projectVotes.length,
+      distinctAccounts: accountRows.length,
+      firstAccountLabel: firstAccount ? personLabel(firstAccount) : "Sem primeira conta",
+      firstLoginAt: loginEvents[0]?.createdAt ?? null,
+      lastLoginAt: loginEvents[loginEvents.length - 1]?.createdAt ?? null,
+      courses: Array.from(courseCounts.entries()).map(([course, count]) => ({ course, count }))
+        .sort((left, right) => right.count - left.count || left.course.localeCompare(right.course)),
+      accounts: accountRows.map((event) => event.student?.name ?? event.studentName ?? event.studentNumber ?? "Conta sem nome").slice(0, 12),
+      loginTimeline: loginEvents.slice(-12).map((event) => ({
+        label: `${event.student?.name ?? event.studentName ?? event.studentNumber ?? "Conta sem nome"} · ${event.student?.course ?? event.studentCourse ?? "curso por confirmar"}`,
+        loginAt: event.createdAt,
+      })),
+      averageLoginToVoteSeconds: average(durations),
+      fastestLoginToVoteSeconds: durations.length ? Math.min(...durations) : null,
+      rapidConversions: durations.filter((duration) => duration <= 90).length,
+      rapidAccountSwitches: rapidSwitches,
+      invalidOrTemporaryAccounts,
+      officialAccounts,
+    };
+  }).filter((device) => device.projectVotes > 0 || device.distinctAccounts > 0)
+    .sort((left, right) =>
+      right.riskScore - left.riskScore
+      || right.projectVotes - left.projectVotes
+      || right.distinctAccounts - left.distinctAccounts
+    );
+}
+
+function projectReportVoters(input: {
+  votes: Array<{
+    createdAt: Date;
+    student: OdinReportStudentSource;
+  }>;
+  projectVoteEvents: OdinReportDetailedEvent[];
+}): OdinProjectReportVoter[] {
+  const voteEventsByStudent = new Map<string, OdinReportDetailedEvent>();
+  const loginEventsByDevice = new Map<string, OdinReportDetailedEvent[]>();
+  for (const event of input.projectVoteEvents) {
+    const key = eventStudentKey(event);
+    if (key && event.eventType === "PROJECT_VOTE" && !voteEventsByStudent.has(key)) {
+      voteEventsByStudent.set(key, event);
+    }
+    if (event.eventType === "LOGIN_SUCCESS") {
+      loginEventsByDevice.set(event.deviceId, [...(loginEventsByDevice.get(event.deviceId) ?? []), event]);
+    }
+  }
+
+  return input.votes.map((vote) => {
+    const studentKey = `id:${vote.student.id}`;
+    const event = voteEventsByStudent.get(studentKey) ?? voteEventsByStudent.get(`number:${vote.student.studentNumber}`);
+    const login = event
+      ? [...(loginEventsByDevice.get(event.deviceId) ?? [])].reverse().find((item) =>
+          eventStudentKey(item) === eventStudentKey(event) && item.createdAt <= event.createdAt
+        ) ?? null
+      : null;
+    const flags = studentIntegrityFlags(vote.student);
+    return {
+      studentNumber: vote.student.studentNumber,
+      name: vote.student.name?.trim() || "Nome em falta",
+      course: vote.student.course?.trim() || "Curso em falta",
+      university: vote.student.university?.trim() || "Universidade em falta",
+      source: sourceLabel(vote.student),
+      votedAt: vote.createdAt,
+      deviceId: event?.deviceId ?? null,
+      loginAt: login?.createdAt ?? null,
+      loginToVoteSeconds: event && login
+        ? Math.max(0, Math.round((event.createdAt.getTime() - login.createdAt.getTime()) / 1000))
+        : null,
+      integrity: flags.length ? flags.slice(0, 3).join(", ") : "Perfil consistente",
+    };
+  }).sort((left, right) => left.votedAt.getTime() - right.votedAt.getTime());
+}
+
+function groupProjectReportByCourse(voters: OdinProjectReportVoter[]) {
+  const byCourse = new Map<string, number>();
+  for (const voter of voters) byCourse.set(voter.course, (byCourse.get(voter.course) ?? 0) + 1);
+  return Array.from(byCourse.entries())
+    .map(([label, value]) => ({ label, value, detail: `${value} voto(s)` }))
+    .sort((left, right) => right.value - left.value || left.label.localeCompare(right.label));
+}
+
+function groupProjectReportByHour(voters: OdinProjectReportVoter[]) {
+  const byHour = new Map<string, number>();
+  for (const voter of voters) {
+    const label = new Intl.DateTimeFormat("pt-AO", {
+      day: "2-digit",
+      month: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+    }).format(voter.votedAt).replace(/:\d{2}$/, ":00");
+    byHour.set(label, (byHour.get(label) ?? 0) + 1);
+  }
+  return Array.from(byHour.entries())
+    .map(([label, value]) => ({ label, value, detail: `${value} voto(s) nesta hora` }))
+    .sort((left, right) => left.label.localeCompare(right.label));
+}
+
+function renderProjectDeviceRows(devices: OdinProjectReportDevice[]) {
+  if (!devices.length) return `<tr><td colspan="8">Sem dispositivos ODIN ligados a votos deste projeto nesta janela.</td></tr>`;
+  return devices.slice(0, 18).map((device) => `
+    <tr>
+      <td><strong>${escapeHtml(shortId(device.deviceId, 7, 5))}</strong><small>${escapeHtml(device.firstAccountLabel)}</small></td>
+      <td>${renderRiskPill(device.riskLevel, device.riskScore)}</td>
+      <td class="number-cell">${device.projectVotes}</td>
+      <td class="number-cell">${device.distinctAccounts}<small>${device.officialAccounts} oficiais · ${device.invalidOrTemporaryAccounts} frágeis</small></td>
+      <td>${escapeHtml(formatDuration(device.averageLoginToVoteSeconds))}<small>Mais rápido: ${escapeHtml(formatDuration(device.fastestLoginToVoteSeconds))}</small></td>
+      <td class="number-cell">${device.rapidConversions}<small>${device.rapidAccountSwitches} troca(s) rápida(s)</small></td>
+      <td>${escapeHtml(device.courses.map((course) => `${course.course} (${course.count})`).join(", ") || "Sem curso")}</td>
+      <td>${escapeHtml(device.loginTimeline.slice(-4).map((login) => `${formatDateLabel(login.loginAt)} — ${login.label}`).join(" · ") || "Sem logins")}</td>
+    </tr>
+  `).join("");
+}
+
+function renderProjectVoterRows(voters: OdinProjectReportVoter[]) {
+  if (!voters.length) return `<tr><td colspan="8">Sem votantes registados para este projeto.</td></tr>`;
+  return voters.map((voter) => `
+    <tr>
+      <td><strong>${escapeHtml(voter.name)}</strong><small>${escapeHtml(voter.studentNumber)}</small></td>
+      <td>${escapeHtml(voter.course)}<small>${escapeHtml(voter.university)}</small></td>
+      <td>${escapeHtml(voter.source)}</td>
+      <td>${escapeHtml(formatDateLabel(voter.votedAt))}</td>
+      <td>${escapeHtml(voter.loginAt ? formatDateLabel(voter.loginAt) : "Sem login ODIN")}</td>
+      <td>${escapeHtml(formatDuration(voter.loginToVoteSeconds))}</td>
+      <td>${escapeHtml(voter.deviceId ? shortId(voter.deviceId, 7, 5) : "Sem device")}</td>
+      <td>${escapeHtml(voter.integrity)}</td>
+    </tr>
+  `).join("");
+}
+
+function renderProjectAuditRows(logs: Array<{
+  actorStudentNumber: string;
+  actorRole: string;
+  action: string;
+  summary: string;
+  createdAt: Date;
+}>) {
+  if (!logs.length) return `<tr><td colspan="4">Sem auditoria administrativa diretamente associada ao projeto.</td></tr>`;
+  return logs.slice(0, 18).map((log) => `
+    <tr>
+      <td>${escapeHtml(formatDateLabel(log.createdAt))}</td>
+      <td><strong>${escapeHtml(log.actorStudentNumber)}</strong><small>${escapeHtml(log.actorRole)}</small></td>
+      <td>${escapeHtml(log.action)}</td>
+      <td>${escapeHtml(log.summary)}</td>
+    </tr>
+  `).join("");
+}
+
+function renderProjectScoreRows(events: Array<{
+  action: string;
+  role: string | null;
+  points: number;
+  status: string;
+  reason: string | null;
+  awardedAt: Date;
+  student: { name: string | null; studentNumber: string } | null;
+  actorStudent: { name: string | null; studentNumber: string } | null;
+  submissionMember: { name: string } | null;
+}>) {
+  if (!events.length) return `<tr><td colspan="6">Sem eventos de pontuação do expositor neste projeto.</td></tr>`;
+  return events.slice(0, 20).map((event) => `
+    <tr>
+      <td>${escapeHtml(formatDateLabel(event.awardedAt))}</td>
+      <td><strong>${escapeHtml(event.action)}</strong><small>${escapeHtml(event.role ?? "sem papel")}</small></td>
+      <td>${escapeHtml(event.student?.name ?? event.student?.studentNumber ?? "Sem votante")}</td>
+      <td>${escapeHtml(event.actorStudent?.name ?? event.actorStudent?.studentNumber ?? event.submissionMember?.name ?? "Sem ator")}</td>
+      <td class="number-cell">${event.points}</td>
+      <td>${escapeHtml(`${event.status}${event.reason ? ` · ${event.reason}` : ""}`)}</td>
+    </tr>
+  `).join("");
+}
+
+function renderProjectMemberRows(members: Array<{
+  name: string;
+  studentNumber: string | null;
+  expectedStudentNumber: string | null;
+  studentCourse: string | null;
+  studentPhone: string | null;
+  isExternal: boolean;
+  externalOrganization: string | null;
+  confirmedAt: Date | null;
+  student: OdinReportStudentSource | null;
+}>) {
+  if (!members.length) return `<tr><td colspan="6">Sem membros confirmados no cadastro do projeto.</td></tr>`;
+  return members.map((member) => `
+    <tr>
+      <td><strong>${escapeHtml(member.name)}</strong><small>${escapeHtml(member.studentNumber ?? member.expectedStudentNumber ?? "Sem número")}</small></td>
+      <td>${escapeHtml(member.student?.course ?? member.studentCourse ?? "Curso em falta")}</td>
+      <td>${escapeHtml(member.isExternal ? member.externalOrganization ?? "Externo" : sourceLabel(member.student))}</td>
+      <td>${member.confirmedAt ? "Confirmado" : "Por confirmar"}<small>${escapeHtml(formatProjectReportDate(member.confirmedAt))}</small></td>
+      <td>${escapeHtml(studentIntegrityFlags(member.student).slice(0, 3).join(", ") || "Perfil consistente")}</td>
+      <td>${escapeHtml(member.studentPhone ? "Telefone informado" : "Telefone não informado")}</td>
+    </tr>
+  `).join("");
+}
+
+export async function buildOdinProjectSecurityReportSnapshot(submissionId: number, windowHours?: number) {
+  const hours = clampWindowHours(windowHours);
+  const from = new Date(Date.now() - hours * 60 * 60 * 1000);
+  const [submission, votes, events, audits] = await Promise.all([
+    prisma.submission.findUnique({
+      where: { id: submissionId },
+      select: { id: true, name: true, updatedAt: true },
+    }),
+    prisma.studentVote.aggregate({
+      where: { submissionId },
+      _count: { _all: true },
+      _max: { createdAt: true },
+    }),
+    prisma.odinEvent.aggregate({
+      where: { targetType: "Submission", targetId: submissionId, createdAt: { gte: from } },
+      _count: { _all: true },
+      _max: { createdAt: true },
+    }),
+    prisma.adminAuditLog.aggregate({
+      where: { entityType: "Submission", entityId: String(submissionId) },
+      _count: { _all: true },
+      _max: { createdAt: true },
+    }),
+  ]);
+
+  return {
+    report: projectReportKind,
+    submissionId,
+    submissionName: submission?.name ?? null,
+    updatedAt: submission?.updatedAt.toISOString() ?? null,
+    windowHours: hours,
+    voteCount: votes._count._all,
+    latestVoteAt: votes._max.createdAt?.toISOString() ?? null,
+    odinEventCount: events._count._all,
+    latestOdinEventAt: events._max.createdAt?.toISOString() ?? null,
+    auditCount: audits._count._all,
+    latestAuditAt: audits._max.createdAt?.toISOString() ?? null,
+  };
+}
+
+export async function generateOdinProjectSecurityReportPdf(
+  env: Env,
+  input: { submissionId: number; windowHours?: number },
+) {
+  const windowHours = clampWindowHours(input.windowHours);
+  const generatedAt = new Date();
+  const from = new Date(Date.now() - windowHours * 60 * 60 * 1000);
+
+  const [submission, overview, projectEvents, logoDataUri, projectAnalysis] = await Promise.all([
+    prisma.submission.findUnique({
+      where: { id: input.submissionId },
+      select: {
+        id: true,
+        referenceCode: true,
+        type: true,
+        status: true,
+        name: true,
+        description: true,
+        area: true,
+        course: true,
+        category: true,
+        leaderName: true,
+        leaderEmail: true,
+        projectFrozen: true,
+        projectFrozenAt: true,
+        projectFrozenByStudentNumber: true,
+        projectFreezeReason: true,
+        createdAt: true,
+        updatedAt: true,
+        memberConfirmations: {
+          select: {
+            name: true,
+            studentNumber: true,
+            expectedStudentNumber: true,
+            studentCourse: true,
+            studentPhone: true,
+            isExternal: true,
+            externalOrganization: true,
+            confirmedAt: true,
+            student: {
+              select: {
+                id: true,
+                studentNumber: true,
+                name: true,
+                email: true,
+                phone: true,
+                course: true,
+                university: true,
+                registrationSource: true,
+                academicSyncedAt: true,
+                profileCompletedAt: true,
+                avatarUrl: true,
+                deletedAt: true,
+                lastLoginAt: true,
+                createdAt: true,
+                _count: {
+                  select: {
+                    loginAudits: true,
+                    votes: true,
+                    comments: true,
+                    passportScans: true,
+                    submissionMemberships: true,
+                  },
+                },
+              },
+            },
+          },
+          orderBy: { id: "asc" },
+        },
+        studentVotes: {
+          select: {
+            createdAt: true,
+            student: {
+              select: {
+                id: true,
+                studentNumber: true,
+                name: true,
+                email: true,
+                phone: true,
+                course: true,
+                university: true,
+                registrationSource: true,
+                academicSyncedAt: true,
+                profileCompletedAt: true,
+                avatarUrl: true,
+                deletedAt: true,
+                lastLoginAt: true,
+                createdAt: true,
+                _count: {
+                  select: {
+                    loginAudits: true,
+                    votes: true,
+                    comments: true,
+                    passportScans: true,
+                    submissionMemberships: true,
+                  },
+                },
+              },
+            },
+          },
+          orderBy: { createdAt: "asc" },
+          take: 2500,
+        },
+        studentComments: {
+          select: {
+            content: true,
+            moderationStatus: true,
+            createdAt: true,
+            student: { select: { name: true, studentNumber: true, course: true } },
+          },
+          orderBy: { createdAt: "desc" },
+          take: 18,
+        },
+        exhibitorScoreEvents: {
+          select: {
+            action: true,
+            role: true,
+            points: true,
+            status: true,
+            reason: true,
+            awardedAt: true,
+            student: { select: { name: true, studentNumber: true } },
+            actorStudent: { select: { name: true, studentNumber: true } },
+            submissionMember: { select: { name: true } },
+          },
+          orderBy: { awardedAt: "desc" },
+          take: 60,
+        },
+      },
+    }),
+    getOdinOverview(windowHours),
+    prisma.odinEvent.findMany({
+      where: {
+        createdAt: { gte: from },
+        targetType: "Submission",
+        targetId: input.submissionId,
+      },
+      orderBy: { createdAt: "asc" },
+      take: 5000,
+      select: {
+        id: true,
+        deviceId: true,
+        studentId: true,
+        studentNumber: true,
+        studentName: true,
+        studentCourse: true,
+        eventType: true,
+        targetType: true,
+        targetId: true,
+        targetLabel: true,
+        ipAddress: true,
+        userAgent: true,
+        riskContextJson: true,
+        createdAt: true,
+        student: {
+          select: {
+            id: true,
+            studentNumber: true,
+            name: true,
+            email: true,
+            phone: true,
+            course: true,
+            university: true,
+            registrationSource: true,
+            academicSyncedAt: true,
+            profileCompletedAt: true,
+            avatarUrl: true,
+            deletedAt: true,
+            lastLoginAt: true,
+            createdAt: true,
+            _count: {
+              select: {
+                loginAudits: true,
+                votes: true,
+                comments: true,
+                passportScans: true,
+                submissionMemberships: true,
+              },
+            },
+          },
+        },
+      },
+    }),
+    loadLogoDataUri(),
+    prisma.odinAiAnalysis.findFirst({
+      where: { caseType: "PROJECT", caseId: String(input.submissionId) },
+      orderBy: { createdAt: "desc" },
+      include: { _count: { select: { feedback: true } } },
+    }),
+  ]);
+
+  if (!submission) {
+    throw new Error("Projeto não encontrado para gerar o relatório ODIN.");
+  }
+
+  const projectDeviceIds = Array.from(new Set(projectEvents.map((event) => event.deviceId)));
+  const deviceEvents = projectDeviceIds.length
+    ? await prisma.odinEvent.findMany({
+        where: {
+          createdAt: { gte: from },
+          deviceId: { in: projectDeviceIds },
+        },
+        orderBy: { createdAt: "asc" },
+        take: 8000,
+        select: {
+          id: true,
+          deviceId: true,
+          studentId: true,
+          studentNumber: true,
+          studentName: true,
+          studentCourse: true,
+          eventType: true,
+          targetType: true,
+          targetId: true,
+          targetLabel: true,
+          ipAddress: true,
+          userAgent: true,
+          riskContextJson: true,
+          createdAt: true,
+          student: {
+            select: {
+              id: true,
+              studentNumber: true,
+              name: true,
+              email: true,
+              phone: true,
+              course: true,
+              university: true,
+              registrationSource: true,
+              academicSyncedAt: true,
+              profileCompletedAt: true,
+              avatarUrl: true,
+              deletedAt: true,
+              lastLoginAt: true,
+              createdAt: true,
+              _count: {
+                select: {
+                  loginAudits: true,
+                  votes: true,
+                  comments: true,
+                  passportScans: true,
+                  submissionMemberships: true,
+                },
+              },
+            },
+          },
+        },
+      })
+    : [];
+  const auditLogs = await prisma.adminAuditLog.findMany({
+    where: {
+      OR: [
+        { entityType: "Submission", entityId: String(submission.id) },
+        { summary: { contains: submission.name } },
+        { metadataJson: { contains: `"submissionId":${submission.id}` } },
+      ],
+    },
+    orderBy: { createdAt: "desc" },
+    take: 60,
+  });
+
+  const projectDetailedEvents = projectEvents as OdinReportDetailedEvent[];
+  const allDeviceDetailedEvents = deviceEvents as OdinReportDetailedEvent[];
+  const projectVoteEvents = allDeviceDetailedEvents.filter((event) =>
+    event.eventType === "PROJECT_VOTE"
+    && event.targetType === "Submission"
+    && event.targetId === submission.id
+  );
+  const voters = projectReportVoters({
+    votes: submission.studentVotes as Array<{ createdAt: Date; student: OdinReportStudentSource }>,
+    projectVoteEvents: allDeviceDetailedEvents,
+  });
+  const deviceSummaries = buildProjectReportDeviceSummaries(allDeviceDetailedEvents, submission.id, overview);
+  const invalidVoters = voters.filter((voter) => voter.integrity !== "Perfil consistente").length;
+  const officialVoters = voters.filter((voter) => voter.source.includes("Oficial") || voter.source.includes("sincronizado")).length;
+  const rapidVoteCount = voters.filter((voter) => voter.loginToVoteSeconds !== null && voter.loginToVoteSeconds <= 90).length;
+  const courseStats = groupProjectReportByCourse(voters);
+  const hourStats = groupProjectReportByHour(voters);
+  const voterChunks = chunkArray(voters, 26);
+  const reportNumber = `ODIN-PROJECT-${submission.id}-${generatedAt.toISOString().slice(0, 10)}`;
+  const logoMarkup = renderLogo(logoDataUri);
+  const totalPages = 5 + voterChunks.length;
+  const aiBlock = projectAnalysis ? renderAnalysisCards([projectAnalysis]) : `
+    <div class="empty-state">
+      <h3>Sem análise ODIN específica deste projeto</h3>
+      <p>O relatório usa a prova matemática da base. Para acrescentar narrativa contextual, usa “Analisar com AI” no card do projeto antes de exportar.</p>
+    </div>
+  `;
+
+  const voterPages = voterChunks.map((chunk, index) => `
+    <section class="page">
+      ${renderBorderLabels()}
+      <div class="page-content">
+        ${renderHeader(logoMarkup, "Votantes do Projeto")}
+        <div class="section-card">
+          <p class="eyebrow">Todos os votantes · parte ${index + 1}/${voterChunks.length}</p>
+          <h2>${escapeHtml(submission.name)}</h2>
+          <table class="score-table">
+            <thead><tr><th>Estudante</th><th>Curso/universidade</th><th>Origem</th><th>Hora do voto</th><th>Login</th><th>Tempo</th><th>Dispositivo</th><th>Integridade</th></tr></thead>
+            <tbody>${renderProjectVoterRows(chunk)}</tbody>
+          </table>
+        </div>
+        ${renderFooter(reportNumber, 5 + index, totalPages)}
+      </div>
+    </section>
+  `).join("");
+
+  const html = `<!doctype html>
+<html lang="pt-AO">
+<head>
+<meta charset="utf-8" />
+<title>${escapeHtml(reportNumber)} · Dossiê ODIN do Projeto</title>
+<style>
+  @page { size: A4; margin: 0; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: #fff; }
+  body { color: #152434; font-family: Inter, "SF Pro Text", "Helvetica Neue", Arial, sans-serif; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .page { width: 210mm; min-height: 297mm; padding: 14mm 18mm 12mm; position: relative; overflow: hidden; background: linear-gradient(180deg, #fffdfa 0%, #ffffff 46%, #f8fbfa 100%); page-break-after: always; }
+  .page:last-child { page-break-after: auto; }
+  .page::before { content: ""; position: absolute; inset: 0 0 auto 0; height: 5mm; background: linear-gradient(90deg, #fd8305 0%, #223d42 72%, #4aa391 100%); }
+  .page::after { content: ""; position: absolute; left: 18mm; right: 18mm; top: 11mm; height: 1px; background: rgba(34,61,66,.08); }
+  .page-content { position: relative; z-index: 2; min-height: calc(297mm - 26mm); display: flex; flex-direction: column; }
+  .border-label { position: absolute; top: 38mm; bottom: 32mm; z-index: 1; color: rgba(34,61,66,.12); font-size: 9px; font-weight: 900; letter-spacing: .22em; writing-mode: vertical-rl; text-transform: uppercase; }
+  .border-label--left { left: 6mm; transform: rotate(180deg); }
+  .border-label--right { right: 6mm; }
+  .header { display: flex; align-items: flex-start; justify-content: space-between; gap: 10mm; padding-top: 6mm; }
+  .brand-logo { width: 43mm; max-height: 20mm; object-fit: contain; display: block; }
+  .brand-fallback { font-size: 18px; font-weight: 900; color: #223d42; }
+  .doc-kicker { text-align: right; color: #61707f; font-size: 10px; line-height: 1.45; }
+  .doc-kicker strong { display: block; color: #152434; font-size: 12px; font-weight: 750; }
+  h1, h2, h3, p { margin: 0; }
+  .eyebrow { margin: 0 0 3mm; color: #fd8305; font-size: 10px; font-weight: 900; letter-spacing: 0; text-transform: uppercase; }
+  .hero { margin-top: 12mm; }
+  .hero h1 { max-width: 150mm; color: #152434; font-size: 25px; font-weight: 860; line-height: 1.1; }
+  .lead { margin-top: 4mm; max-width: 160mm; color: #344958; font-size: 11px; line-height: 1.55; }
+  .section-card { margin-top: 7mm; border: 1px solid #dbe5e3; border-radius: 4mm; padding: 4.5mm 5mm; background: #fbfdfc; break-inside: avoid; }
+  .section-card h2 { color: #152434; font-size: 15px; font-weight: 850; margin-bottom: 2.5mm; }
+  .metric-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 3mm; margin-top: 7mm; }
+  .metric-grid--three { grid-template-columns: repeat(3, 1fr); }
+  .metric-card { border: .3mm solid rgba(34,61,66,.08); border-radius: 4mm; padding: 4mm; background: #fff; min-height: 27mm; }
+  .metric-card span { display: block; color: #61707f; font-size: 8px; font-weight: 900; letter-spacing: .08em; text-transform: uppercase; }
+  .metric-card strong { display: block; margin-top: 1.5mm; color: #152434; font-size: 17px; font-weight: 860; line-height: 1.1; font-variant-numeric: tabular-nums; }
+  .metric-card p { margin-top: 2mm; color: #344958; font-size: 8.7px; line-height: 1.4; }
+  .risk-pill { display: inline-flex; align-items: center; justify-content: center; border-radius: 999px; padding: 1.7mm 2.5mm; font-size: 8px; font-weight: 900; letter-spacing: .08em; text-transform: uppercase; white-space: nowrap; }
+  .risk-low { background: #f1f5f9; color: #334155; }
+  .risk-medium { background: #fff7ed; color: #9a3412; }
+  .risk-high { background: #ffedd5; color: #c2410c; }
+  .risk-critical { background: #ffe4e6; color: #be123c; }
+  .analysis-card { margin-top: 4mm; border: 1px solid #dbe5e3; border-radius: 4mm; padding: 4mm; background: #fff; break-inside: avoid; }
+  .analysis-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 4mm; }
+  .analysis-heading h3 { color: #152434; font-size: 14px; font-weight: 850; }
+  .analysis-narrative { margin-top: 3mm; color: #344958; font-size: 10px; line-height: 1.5; }
+  .probability-grid, .scenario-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 2.5mm; margin-top: 3mm; }
+  .probability-grid div, .scenario-grid div, .recommendation-box { border-radius: 3mm; background: #f8fbfa; padding: 3mm; border: 1px solid rgba(34,61,66,.08); }
+  .probability-grid span, .scenario-grid span, .recommendation-box span { display: block; color: #61707f; font-size: 7.5px; font-weight: 900; letter-spacing: .08em; text-transform: uppercase; }
+  .probability-grid strong { display: block; margin-top: 1mm; color: #152434; font-size: 15px; font-weight: 850; }
+  .scenario-grid p, .recommendation-box p { margin-top: 1mm; color: #344958; font-size: 9px; line-height: 1.45; }
+  .recommendation-box { margin-top: 3mm; }
+  .score-table { width: 100%; border-collapse: collapse; margin-top: 4mm; font-size: 9px; }
+  .score-table th { text-align: left; padding: 2mm 2.3mm; background: #223d42; color: #fff; font-weight: 800; font-size: 7.5px; letter-spacing: .04em; text-transform: uppercase; }
+  .score-table td { padding: 2mm 2.3mm; border-bottom: 1px solid #e2ebe9; color: #344958; font-size: 8.2px; line-height: 1.32; vertical-align: top; }
+  .score-table strong { display: block; color: #152434; font-weight: 850; }
+  .score-table small { display: block; margin-top: .7mm; color: #61707f; font-size: 7px; }
+  .number-cell { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
+  .course-chart { display: grid; gap: 2.4mm; margin-top: 4mm; }
+  .course-chart-row { display: grid; grid-template-columns: 54mm 1fr; gap: 4mm; align-items: center; }
+  .course-chart-row strong { display: block; color: #152434; font-size: 9px; font-weight: 850; }
+  .course-chart-row span { display: block; margin-top: .6mm; color: #61707f; font-size: 7.4px; line-height: 1.25; }
+  .course-chart-track { height: 5mm; border-radius: 999px; background: #e7efed; overflow: hidden; }
+  .course-chart-track i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #fd8305, #223d42); }
+  .empty-state { border: 1px dashed #dbe5e3; border-radius: 4mm; background: #fff; padding: 7mm; text-align: center; color: #344958; }
+  .empty-state h3 { color: #152434; font-size: 14px; font-weight: 850; }
+  .empty-state p { margin-top: 2mm; font-size: 10px; line-height: 1.55; }
+  .muted { color: #61707f; font-size: 9.5px; line-height: 1.45; }
+  .page-footer { margin-top: auto; padding-top: 5mm; border-top: 1px solid #dbe5e3; display: flex; justify-content: space-between; align-items: flex-end; color: #61707f; font-size: 8.5px; }
+  .page-footer strong { color: #152434; }
+</style>
+</head>
+<body>
+  <section class="page">
+    ${renderBorderLabels()}
+    <div class="page-content">
+      ${renderHeader(logoMarkup, "Dossiê ODIN do Projeto")}
+      <div class="hero">
+        <p class="eyebrow">ODIN-PROJECT · CONFIDENCIAL — uso interno</p>
+        <h1>${escapeHtml(submission.name)}</h1>
+        <p class="lead">${escapeHtml(submission.description.slice(0, 520))}</p>
+      </div>
+      <div class="metric-grid">
+        ${renderMetric("Tipo", typeLabel(String(submission.type)), "Categoria operacional do projeto.")}
+        ${renderMetric("Votos totais", voters.length, "Votos registados para este projeto.")}
+        ${renderMetric("Dispositivos ODIN", deviceSummaries.length, "Cookies/dispositivos ligados aos votos.")}
+        ${renderMetric("Rápidos", rapidVoteCount, "Login→voto em até 90s.")}
+      </div>
+      <div class="section-card">
+        <p class="eyebrow">Estado e integridade</p>
+        <h2>Leitura operacional do projeto</h2>
+        <div class="metric-grid">
+          ${renderMetric("Votantes oficiais", officialVoters, "Origem Secretaria UOR, ISPTEC ou académico sincronizado.")}
+          ${renderMetric("Perfis frágeis", invalidVoters, "Votantes com falhas de cadastro ou origem não oficial.")}
+          ${renderMetric("Membros", submission.memberConfirmations.length, `${submission.memberConfirmations.filter((member) => member.confirmedAt).length} confirmado(s).`)}
+          ${renderMetric("Projeto congelado", submission.projectFrozen ? "Sim" : "Não", submission.projectFrozen ? submission.projectFreezeReason ?? "Suspenso pela organização." : "Sem suspensão ativa.")}
+        </div>
+      </div>
+      ${renderFooter(reportNumber, 1, totalPages)}
+    </div>
+  </section>
+
+  <section class="page">
+    ${renderBorderLabels()}
+    <div class="page-content">
+      ${renderHeader(logoMarkup, "Estatística de Votos")}
+      <div class="section-card">
+        <p class="eyebrow">Votos por curso</p>
+        <h2>Distribuição académica dos votantes</h2>
+        ${renderHorizontalBars(courseStats, "Sem votos por curso")}
+      </div>
+      <div class="section-card">
+        <p class="eyebrow">Tempo e hora do voto</p>
+        <h2>Mapa horário da votação</h2>
+        ${renderHorizontalBars(hourStats, "Sem votos por horário")}
+      </div>
+      ${renderFooter(reportNumber, 2, totalPages)}
+    </div>
+  </section>
+
+  <section class="page">
+    ${renderBorderLabels()}
+    <div class="page-content">
+      ${renderHeader(logoMarkup, "Dispositivos")}
+      <div class="section-card">
+        <p class="eyebrow">Mapa de dispositivos</p>
+        <h2>Cookies, contas, logins e tempo de conversão</h2>
+        <table class="score-table">
+          <thead><tr><th>Dispositivo</th><th>Risco</th><th>Votos</th><th>Contas</th><th>Tempo login→voto</th><th>Rápidos</th><th>Cursos</th><th>Horários de login</th></tr></thead>
+          <tbody>${renderProjectDeviceRows(deviceSummaries)}</tbody>
+        </table>
+      </div>
+      ${renderFooter(reportNumber, 3, totalPages)}
+    </div>
+  </section>
+
+  <section class="page">
+    ${renderBorderLabels()}
+    <div class="page-content">
+      ${renderHeader(logoMarkup, "Auditoria do Projeto")}
+      <div class="section-card">
+        <p class="eyebrow">Expositores e membros</p>
+        <h2>Auditoria de presença, dados e responsabilidades</h2>
+        <table class="score-table">
+          <thead><tr><th>Membro</th><th>Curso</th><th>Origem</th><th>Presença</th><th>Integridade</th><th>Contacto</th></tr></thead>
+          <tbody>${renderProjectMemberRows(submission.memberConfirmations as Array<{
+            name: string;
+            studentNumber: string | null;
+            expectedStudentNumber: string | null;
+            studentCourse: string | null;
+            studentPhone: string | null;
+            isExternal: boolean;
+            externalOrganization: string | null;
+            confirmedAt: Date | null;
+            student: OdinReportStudentSource | null;
+          }>)}</tbody>
+        </table>
+      </div>
+      <div class="section-card">
+        <p class="eyebrow">Pontuação do expositor</p>
+        <h2>Eventos de pontos associados ao projeto</h2>
+        <table class="score-table">
+          <thead><tr><th>Hora</th><th>Ação</th><th>Votante</th><th>Ator/membro</th><th>Pontos</th><th>Estado</th></tr></thead>
+          <tbody>${renderProjectScoreRows(submission.exhibitorScoreEvents)}</tbody>
+        </table>
+      </div>
+      ${renderFooter(reportNumber, 4, totalPages)}
+    </div>
+  </section>
+
+  ${voterPages}
+
+  <section class="page">
+    ${renderBorderLabels()}
+    <div class="page-content">
+      ${renderHeader(logoMarkup, "Linha do Tempo e Decisão")}
+      <div class="section-card">
+        <p class="eyebrow">Análise ODIN do projeto</p>
+        <h2>Contexto assistido e recomendação</h2>
+        ${aiBlock}
+      </div>
+      <div class="section-card">
+        <p class="eyebrow">Auditoria administrativa</p>
+        <h2>Ações registadas sobre o projeto</h2>
+        <table class="score-table">
+          <thead><tr><th>Hora</th><th>Admin</th><th>Ação</th><th>Resumo</th></tr></thead>
+          <tbody>${renderProjectAuditRows(auditLogs)}</tbody>
+        </table>
+      </div>
+      <div class="section-card">
+        <p class="eyebrow">Eventos ODIN recentes</p>
+        <h2>Eventos ligados diretamente ao projeto</h2>
+        <table class="score-table">
+          <thead><tr><th>Hora</th><th>Evento</th><th>Estudante</th><th>Dispositivo</th><th>Alvo</th></tr></thead>
+          <tbody>${renderEventRows(projectDetailedEvents.slice(-32))}</tbody>
+        </table>
+      </div>
+      ${renderFooter(reportNumber, totalPages, totalPages)}
+    </div>
+  </section>
+</body>
+</html>`;
+
+  const pdfBuffer = await renderPdfFromHtml(html, {
+    preferCssPageSize: true,
+    displayHeaderFooter: false,
+    margin: { top: "0", right: "0", bottom: "0", left: "0" },
+  });
+
+  return {
+    pdfBuffer,
+    fileName: `uor-connect-odin-projeto-${submission.id}-${generatedAt.toISOString().slice(0, 10)}.pdf`,
   };
 }
 

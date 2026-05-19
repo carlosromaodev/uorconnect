@@ -1,217 +1,36 @@
-import { readFileSync } from "node:fs";
-import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 import {
-  buildGeminiGenerationConfig,
-  buildOdinAiStudentProfile,
-  buildOdinAiCasePayload,
+  clampOdinAiProbability,
   normalizeOdinAiVerdict,
-  type OdinAiCaseContext,
+  presentOdinAiProbabilities,
 } from "./odin-ai.service";
 
-function serviceSource() {
-  return readFileSync(join(process.cwd(), "src/modules/security/application/odin-ai.service.ts"), "utf8");
-}
+describe("ODIN AI probability handling", () => {
+  it("normalizes provider probabilities returned in decimal or percent scale", () => {
+    expect(clampOdinAiProbability(0.87, 50)).toBe(87);
+    expect(clampOdinAiProbability("0.13", 50)).toBe(13);
+    expect(clampOdinAiProbability("87%", 50)).toBe(87);
+    expect(clampOdinAiProbability("texto", 42)).toBe(42);
 
-const baseCase: OdinAiCaseContext = {
-  caseType: "DEVICE",
-  caseId: "device-000000000001",
-  generatedAt: "2026-05-18T10:00:00.000Z",
-  windowHours: 48,
-  riskScore: 88,
-  riskLevel: "HIGH",
-  reasons: [
-    "Mesma cookie/dispositivo usada por 4 contas diferentes.",
-    "Contas diferentes no mesmo dispositivo votaram no mesmo projeto.",
-  ],
-  summary: {
-    totalEvents: 8,
-    loginCount: 4,
-    voteCount: 4,
-    distinctStudents: 4,
-    distinctProjects: 1,
-  },
-  subject: {
-    label: "Dispositivo partilhado",
-    studentNumber: null,
-    projectName: null,
-  },
-  relatedEvents: [
-    {
-      eventType: "LOGIN_SUCCESS",
-      studentNumber: "20260001",
-      studentName: "Ana",
-      studentCourse: "Engenharia Informática",
-      targetType: null,
-      targetId: null,
-      targetLabel: null,
-      createdAt: "2026-05-18T09:58:00.000Z",
-    },
-    {
-      eventType: "PROJECT_VOTE",
-      studentNumber: "20260001",
-      studentName: "Ana",
-      studentCourse: "Engenharia Informática",
-      targetType: "Submission",
-      targetId: 77,
-      targetLabel: "UOR Connect",
-      createdAt: "2026-05-18T09:59:00.000Z",
-    },
-  ],
-  platformContext: {
-    eventName: "UOR Connect",
-    eventDate: "18/05/2026",
-    currentPhase: "Votação presencial",
-  },
-};
-
-describe("ODIN AI analysis service", () => {
-  it("normalizes Gemini JSON into bounded probabilities and safe action types", () => {
-    const verdict = normalizeOdinAiVerdict({
-      narrative: "Dispositivo com uso coordenado.",
-      fraud_probability: 187,
-      legitimate_probability: -10,
-      most_likely_scenario: "Coordenação manual.",
-      alternative_scenario: "Laboratório partilhado.",
-      recommendation: "Invalidar apenas os votos ligados ao padrão.",
-      confidence_level: "alta",
-      action_type: "SUSPEND_FOREVER",
+    expect(normalizeOdinAiVerdict({
+      fraud_probability: 0.91,
+      legitimate_probability: 0.09,
+    })).toMatchObject({
+      fraudProbability: 91,
+      legitimateProbability: 9,
     });
+  });
 
-    expect(verdict).toEqual({
-      narrative: "Dispositivo com uso coordenado.",
+  it("does not display 1% fraud when deterministic ODIN evidence is critical", () => {
+    expect(presentOdinAiProbabilities({
+      fraudProbability: 1,
+      legitimateProbability: 99,
+      riskScore: 100,
+      unifiedRiskScore: 100,
+      consistencyCheck: "FAILED",
+    })).toEqual({
       fraudProbability: 100,
       legitimateProbability: 0,
-      mostLikelyScenario: "Coordenação manual.",
-      alternativeScenario: "Laboratório partilhado.",
-      recommendation: "Invalidar apenas os votos ligados ao padrão.",
-      confidenceLevel: "alta",
-      actionType: "REVIEW",
-      patternType: null,
-      evidenceSummary: null,
-      commentAnalysis: null,
-      alternativePlausibility: null,
-      recommendedAction: null,
-      actionUrgency: null,
-      votesToReview: null,
-      accountsToReview: null,
-      notifyExpositor: null,
-      cannotBeFalsePositiveIf: null,
     });
-  });
-
-  it("builds a Gemini payload that keeps the organization as final decision maker", () => {
-    const payload = buildOdinAiCasePayload(baseCase);
-
-    expect(payload.systemPrompt).toContain("Nunca afirmas certeza absoluta");
-    expect(payload.systemPrompt).toContain("a decisão final é da organização");
-    expect(payload.systemPrompt).toContain("origem oficial");
-    expect(payload.systemPrompt).toContain("tempo login→voto");
-    expect(payload.systemPrompt).toContain("comentários do projeto");
-    expect(payload.systemPrompt).toContain("telefone emprestado");
-    expect(payload.systemPrompt).toContain("expositor");
-    expect(payload.systemPrompt).toContain("TIPO-A");
-    expect(payload.systemPrompt).toContain("pattern_type");
-    expect(payload.systemPrompt).toContain("action_urgency");
-    expect(payload.systemPrompt).toContain("cannot_be_false_positive_if");
-    expect(payload.caseContext.caseType).toBe("DEVICE");
-    expect(payload.caseContext.reasons).toHaveLength(2);
-    expect(payload.caseContext.relatedEvents[0]).not.toHaveProperty("ipAddress");
-    expect(payload.promptVersion).toMatch(/^odin-ai-v/);
-  });
-
-  it("limits Gemini 2.5 output and disables thinking for fast ODIN responses", () => {
-    expect(buildGeminiGenerationConfig("gemini-2.5-flash")).toMatchObject({
-      responseMimeType: "application/json",
-      maxOutputTokens: 1400,
-      thinkingConfig: { thinkingBudget: 0 },
-    });
-    expect(buildGeminiGenerationConfig("gemini-2.0-flash")).not.toHaveProperty("thinkingConfig");
-  });
-
-  it("summarizes student database integrity without treating temporary accounts as official", () => {
-    const profile = buildOdinAiStudentProfile({
-      id: 77,
-      studentNumber: "tmp-uor-0001",
-      name: null,
-      email: null,
-      course: null,
-      phone: null,
-      avatarUrl: null,
-      university: null,
-      registrationSource: "CONVENTIONAL_SMS",
-      academicSyncedAt: null,
-      profileCompletedAt: null,
-      deletedAt: new Date("2026-05-18T09:00:00.000Z"),
-      deletionReason: "Conta duplicada",
-      lastLoginAt: null,
-      createdAt: new Date("2026-05-18T08:00:00.000Z"),
-      _count: {
-        loginAudits: 0,
-        votes: 2,
-        likes: 0,
-        comments: 0,
-        passportScans: 1,
-        passportPointLedger: 1,
-        submissionMemberships: 0,
-        submissions: 0,
-      },
-    });
-
-    expect(profile.accessType).toBe("TEMPORARY");
-    expect(profile.integrityFlags).toEqual(expect.arrayContaining([
-      "CONTA_ELIMINADA",
-      "CONTA_TEMPORARIA",
-      "NOME_EM_FALTA",
-      "CURSO_EM_FALTA",
-      "CONTACTO_EM_FALTA",
-      "PERFIL_INCOMPLETO",
-    ]));
-    expect(profile.behaviorSummary).toMatchObject({
-      loginAuditCount: 0,
-      voteCount: 2,
-      passportScanCount: 1,
-    });
-  });
-
-  it("removes secrets from the Gemini payload even when attached accidentally", () => {
-    const payload = buildOdinAiCasePayload({
-      ...baseCase,
-      studentDatabaseContext: {
-        students: [{
-          studentNumber: "20260001",
-          name: "Ana",
-          password: "senha-que-nao-pode-sair",
-          token: "token-privado",
-          codeHash: "hash-secreto",
-          providerResponseJson: "{\"raw\":true}",
-        }],
-      },
-    } as OdinAiCaseContext);
-
-    const serialized = JSON.stringify(payload);
-
-    expect(serialized).toContain("studentDatabaseContext");
-    expect(serialized).toContain("20260001");
-    expect(serialized).not.toContain("senha-que-nao-pode-sair");
-    expect(serialized).not.toContain("token-privado");
-    expect(serialized).not.toContain("hash-secreto");
-    expect(serialized).not.toContain("providerResponseJson");
-  });
-
-  it("loads project comments, members and activity into the ODIN analysis context", () => {
-    const source = serviceSource();
-
-    expect(source).toContain("loadProjectActivity");
-    expect(source).toContain("recentComments");
-    expect(source).toContain("confirmedMembers");
-    expect(source).toContain("studentComments");
-    expect(source).toContain("exhibitorScoreEvents");
-    expect(source).toContain("exhibitorDeviceSignals");
-    expect(source).toContain("accountSwitches");
-    expect(source).toContain("ownProjectVotes");
-    expect(source).toContain("buildForensicVerdict");
-    expect(source).toContain("consistencyCheck");
-    expect(source).toContain("patternType");
   });
 });

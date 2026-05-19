@@ -48,6 +48,15 @@ describe("ODIN security PDF report", () => {
     expect(report).toContain("border-label border-label--right");
     expect(report).toContain("renderPdfFromHtml");
     expect(report).toContain("buildOdinSecurityReportSnapshot");
+    expect(report).toContain("generateOdinProjectSecurityReportPdf");
+    expect(report).toContain("ODIN-PROJECT");
+    expect(report).toContain("Todos os votantes");
+    expect(report).toContain("Votos por curso");
+    expect(report).toContain("Mapa horário da votação");
+    expect(report).toContain("Mapa de dispositivos");
+    expect(report).toContain("Auditoria de presença");
+    expect(report).toContain("Hora do voto");
+    expect(report).toContain("Tempo login→voto");
     expect(report).not.toContain("Gemini");
     expect(report).not.toContain("gemini");
   });
@@ -61,13 +70,19 @@ describe("ODIN security PDF report", () => {
     expect(routes).toContain('adminApp.post("/odin/report/pdf-jobs"');
     expect(routes).toContain('adminApp.get("/odin/report/pdf-jobs/:id"');
     expect(routes).toContain('adminApp.get("/odin/report/pdf-jobs/:id/file"');
+    expect(routes).toContain('adminApp.get("/odin/projects/:submissionId/report.pdf"');
     expect(`${routes}\n${report}`).toContain("security.odin.report");
     expect(routes).toContain("generateOdinSecurityReportPdf");
+    expect(routes).toContain("generateOdinProjectSecurityReportPdf");
 
     expect(api).toContain("createSecurityReportPdfJob");
     expect(api).toContain("getSecurityReportPdfJob");
     expect(api).toContain("downloadSecurityReportPdfJobFile");
+    expect(api).toContain("downloadProjectSecurityReportPdf");
+    expect(api).toContain("/security/odin/projects/${submissionId}/report.pdf");
     expect(admin).toContain("Baixar relatório de segurança");
     expect(admin).toContain("handleDownloadSecurityReport");
+    expect(admin).toContain("Relatório do projeto");
+    expect(admin).toContain("handleDownloadProjectReport");
   });
 });

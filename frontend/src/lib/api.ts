@@ -3895,6 +3895,10 @@ export const api = {
       request<PdfJobStatus>(`/security/odin/report/pdf-jobs/${jobId}`),
     downloadSecurityReportPdfJobFile: (jobId: string) =>
       requestBlob(`/security/odin/report/pdf-jobs/${jobId}/file`),
+    downloadProjectSecurityReportPdf: (submissionId: number, params?: { windowHours?: number }) =>
+      requestBlob(
+        `/security/odin/projects/${submissionId}/report.pdf${toQueryString(params)}`,
+      ),
     analyzeCase: (data: { caseType: OdinAiCaseType; caseId: string; windowHours?: number }) =>
       request<OdinAiAnalysis>("/security/odin/ai/analyze", {
         method: "POST",

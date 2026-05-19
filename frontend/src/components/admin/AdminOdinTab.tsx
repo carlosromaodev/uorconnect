@@ -509,6 +509,7 @@ export default function AdminOdinTab() {
   const [excludeConfirmation, setExcludeConfirmation] = useState("");
   const [excluding, setExcluding] = useState(false);
   const [reportExporting, setReportExporting] = useState(false);
+  const [projectReportExportingId, setProjectReportExportingId] = useState<number | null>(null);
 
   const topDevices = useMemo(
     () => (overview?.devices ?? []).filter((device) => device.riskScore >= 40).slice(0, 8),
@@ -609,6 +610,26 @@ export default function AdminOdinTab() {
       );
     } finally {
       setReportExporting(false);
+    }
+  };
+
+  const handleDownloadProjectReport = async (project: { submissionId: number; submissionName: string }) => {
+    setProjectReportExportingId(project.submissionId);
+    try {
+      const pdf = await api.odin.downloadProjectSecurityReportPdf(project.submissionId, { windowHours });
+      downloadBlobFile(
+        pdf,
+        `uor-connect-odin-projeto-${project.submissionId}-${new Date().toISOString().slice(0, 10)}.pdf`,
+      );
+      toast.success(`Dossiê ODIN de ${project.submissionName} exportado.`);
+    } catch (error) {
+      toast.error(
+        error instanceof Error
+          ? error.message
+          : "Não foi possível exportar o dossiê ODIN do projeto.",
+      );
+    } finally {
+      setProjectReportExportingId(null);
     }
   };
 
@@ -850,8 +871,23 @@ export default function AdminOdinTab() {
                         analyzing={aiLoadingKey === odinAiCaseKey("PROJECT", String(project.submissionId))}
                         onClick={() => void handleAnalyzeCase("PROJECT", String(project.submissionId))}
                       />
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="h-8 rounded-xl bg-white text-xs font-black"
+                        disabled={projectReportExportingId === project.submissionId}
+                        onClick={() => void handleDownloadProjectReport(project)}
+                      >
+                        {projectReportExportingId === project.submissionId ? (
+                          <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Download className="mr-1.5 h-3.5 w-3.5" />
+                        )}
+                        Relatório do projeto
+                      </Button>
                       <span className="text-xs font-semibold text-slate-500">
-                        Avalia pressão macro do projeto sem punir automaticamente.
+                        Inclui votantes, cursos, dispositivos, horários e auditoria.
                       </span>
                     </div>
                     {aiAnalyses[odinAiCaseKey("PROJECT", String(project.submissionId))] ? (

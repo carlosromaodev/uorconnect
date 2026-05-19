@@ -22,6 +22,7 @@ import {
 } from "../application/odin-ai.service";
 import {
   buildOdinSecurityReportSnapshot,
+  generateOdinProjectSecurityReportPdf,
   generateOdinSecurityReportPdf,
   ODIN_SECURITY_REPORT_KIND,
 } from "./odin-report-pdf";
@@ -36,6 +37,14 @@ const odinReportPdfJobBodySchema = z.object({
 
 const odinReportPdfJobParamsSchema = z.object({
   id: z.string().trim().min(8).max(120),
+});
+
+const odinProjectReportParamsSchema = z.object({
+  submissionId: z.coerce.number().int().positive(),
+});
+
+const odinProjectReportQuerySchema = z.object({
+  windowHours: z.coerce.number().int().min(1).max(24 * 14).optional().default(48),
 });
 
 const odinExcludeParamsSchema = z.object({
@@ -403,6 +412,63 @@ export async function odinRoutes(app: FastifyInstance, opts: { env: Env }) {
         reply.header("Content-Type", result.contentType ?? "application/pdf");
         reply.header("Content-Disposition", `attachment; filename=\"${result.fileName}\"`);
         return reply.send(result.buffer);
+      },
+    );
+
+    adminApp.get("/odin/projects/:submissionId/report.pdf",
+      {
+        schema: {
+          description: "Gera um dossiê ODIN individual para um projeto com votos, dispositivos, cursos, horários e auditoria.",
+          tags: ["Security"],
+          params: odinProjectReportParamsSchema,
+          querystring: odinProjectReportQuerySchema,
+          response: {
+            400: z.object({ message: z.string() }),
+            401: z.object({ message: z.string() }),
+            403: z.object({ message: z.string() }),
+            404: z.object({ message: z.string() }),
+          },
+        },
+      },
+      async (
+        request: FastifyRequest<{
+          Params: z.infer<typeof odinProjectReportParamsSchema>;
+          Querystring: z.infer<typeof odinProjectReportQuerySchema>;
+        }>,
+        reply,
+      ) => {
+        const params = odinProjectReportParamsSchema.parse(request.params);
+        const query = odinProjectReportQuerySchema.parse(request.query);
+        const actorStudentNumber = request.student?.studentNumber ?? request.jury?.phone ?? "unknown";
+
+        try {
+          const result = await generateOdinProjectSecurityReportPdf(opts.env, {
+            submissionId: params.submissionId,
+            windowHours: query.windowHours,
+          });
+
+          await recordAdminAudit({
+            actorStudentNumber,
+            actorRole: request.jury ? "jury_admin" : "admin",
+            action: "odin.project_security_report_pdf",
+            entityType: "Submission",
+            entityId: params.submissionId,
+            summary: `Relatório ODIN individual do projeto #${params.submissionId} exportado.`,
+            metadata: {
+              submissionId: params.submissionId,
+              windowHours: query.windowHours,
+              fileName: result.fileName,
+            },
+          });
+
+          reply.header("Content-Type", "application/pdf");
+          reply.header("Content-Disposition", `attachment; filename=\"${result.fileName}\"`);
+          return reply.send(result.pdfBuffer);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Não foi possível gerar o relatório ODIN do projeto.";
+          if (/não encontrado/i.test(message)) return reply.code(404).send({ message });
+          return reply.code(400).send({ message });
+        }
       },
     );
 
