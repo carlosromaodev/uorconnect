@@ -1063,6 +1063,7 @@ export default function MinhaArea() {
   );
   const [certificates, setCertificates] = useState<CertificateItem[]>([]);
   const [submissionsOpen, setSubmissionsOpen] = useState(true);
+  const [dismissedOdinPenaltyId, setDismissedOdinPenaltyId] = useState<number | null>(null);
   const [student, setStudent] = useState(() => getSessionStudent());
   const [profileState, setProfileState] = useState<StudentProfileState | null>(
     null,
@@ -2739,6 +2740,8 @@ export default function MinhaArea() {
   );
   const frozenProjectBlocker =
     submissions.find((item) => item.projectFrozen) ?? null;
+  const odinPenaltyBlocker =
+    submissions.find((item) => item.odinPenaltyWarning && item.odinPenaltyWarning.id !== dismissedOdinPenaltyId) ?? null;
   const teamConfirmationOverview =
     getProjectTeamConfirmationOverview(submissions);
   const teamSubmissions = teamConfirmationOverview.confirmableProjects;
@@ -6927,7 +6930,61 @@ export default function MinhaArea() {
                </div>
              </div>
        </DialogContent>
-     </Dialog>
+      </Dialog>
+
+      <Dialog open={Boolean(odinPenaltyBlocker)}>
+        <DialogContent className="w-[94vw] max-w-[460px] overflow-hidden rounded-3xl border-amber-200 p-0">
+          <div className="space-y-5 bg-[linear-gradient(180deg,rgba(255,251,235,0.98),rgba(255,255,255,0.98))] p-5 sm:p-6">
+            <DialogHeader className="text-left">
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-amber-500 text-white shadow-sm">
+                <AlertTriangle className="h-5 w-5" />
+              </div>
+              <DialogTitle className="font-heading text-xl">
+                Penalização ODIN aplicada
+              </DialogTitle>
+              <DialogDescription className="text-sm leading-relaxed">
+                A organização aplicou uma penalização administrativa ao teu projeto. Fala com a equipa UOR Connect para esclarecimentos.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="rounded-2xl border border-amber-100 bg-white px-4 py-3 shadow-sm">
+              <p className="text-[11px] font-bold uppercase tracking-[0.16em] text-amber-700">
+                Projeto em revisão
+              </p>
+              <p className="safe-break mt-1 text-sm font-semibold text-foreground">
+                {odinPenaltyBlocker?.name}
+              </p>
+              <div className="mt-3 grid grid-cols-2 gap-2 text-xs">
+                <div className="rounded-xl bg-amber-50 px-3 py-2">
+                  <span className="block font-bold text-amber-700">Votos removidos</span>
+                  <strong className="text-lg text-amber-950">
+                    {odinPenaltyBlocker?.odinPenaltyWarning?.removedVoteCount ?? 0}
+                  </strong>
+                </div>
+                <div className="rounded-xl bg-amber-50 px-3 py-2">
+                  <span className="block font-bold text-amber-700">Pontos removidos</span>
+                  <strong className="text-lg text-amber-950">
+                    {odinPenaltyBlocker?.odinPenaltyWarning?.removedPointCount ?? 0}
+                  </strong>
+                </div>
+              </div>
+              {odinPenaltyBlocker?.odinPenaltyWarning?.reason ? (
+                <p className="safe-break mt-3 text-xs leading-5 text-muted-foreground">
+                  {odinPenaltyBlocker.odinPenaltyWarning.reason}
+                </p>
+              ) : null}
+            </div>
+
+            <Button
+              type="button"
+              className="w-full rounded-2xl bg-amber-600 text-white hover:bg-amber-700"
+              onClick={() => setDismissedOdinPenaltyId(odinPenaltyBlocker?.odinPenaltyWarning?.id ?? null)}
+            >
+              Entendi
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={Boolean(frozenProjectBlocker)}>
         <DialogContent

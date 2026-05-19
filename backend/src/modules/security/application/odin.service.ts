@@ -149,6 +149,38 @@ export type OdinStudentExclusionResult = {
   };
 };
 
+export type OdinProjectPenaltyMode = "SUSPECT_VOTES" | "EXACT_VOTES" | "POINTS_ONLY";
+
+export type OdinProjectPenaltyInput = {
+  submissionId: number;
+  actorStudentNumber: string;
+  penaltyMode: OdinProjectPenaltyMode;
+  reason: string;
+  windowHours?: number;
+  exactVoteCount?: number | null;
+  pointsToRemove?: number | null;
+  notifyProjectMembers?: boolean;
+  eventKey?: string;
+};
+
+export type OdinProjectPenaltyResult = {
+  success: true;
+  penaltyId: number;
+  submissionId: number;
+  submissionName: string;
+  penaltyMode: OdinProjectPenaltyMode;
+  removedVoteCount: number;
+  removedPointCount: number;
+  revokedScoreEventCount: number;
+  notifiedProjectMembers: boolean;
+  affectedStudents: Array<{
+    studentId: number;
+    studentNumber: string;
+    studentName: string | null;
+  }>;
+  message: string;
+};
+
 export function normalizeOdinDeviceId(value?: string | null) {
   const trimmed = value?.trim();
   if (!trimmed) return null;
@@ -635,6 +667,222 @@ export async function recordOdinStudentExclusion(input: OdinStudentExclusionInpu
         passportPointLedgerRevoked: passportPointLedger.count,
         exhibitorScoreEventsRevoked: exhibitorScoreEvents.count,
       },
+    };
+  });
+}
+
+function safeJson(value: unknown) {
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return null;
+  }
+}
+
+function normalizePositiveInt(value?: number | null) {
+  if (!Number.isFinite(value ?? NaN)) return 0;
+  return Math.max(0, Math.floor(Number(value)));
+}
+
+function normalizePositivePoints(value?: number | null) {
+  if (!Number.isFinite(value ?? NaN)) return 0;
+  return Math.max(0, Number(value));
+}
+
+export async function recordOdinProjectPenalty(input: OdinProjectPenaltyInput): Promise<OdinProjectPenaltyResult> {
+  const eventKey = input.eventKey ?? "main-event";
+  const reason = input.reason.trim();
+  if (reason.length < 8) throw new Error("Informa um motivo claro para a penalização ODIN.");
+
+  const pointsToRemove = normalizePositivePoints(input.pointsToRemove);
+  const exactVoteCount = normalizePositiveInt(input.exactVoteCount);
+  if (input.penaltyMode === "EXACT_VOTES" && exactVoteCount < 1) {
+    throw new Error("Informa a quantidade exata de votos a remover.");
+  }
+  if (input.penaltyMode === "POINTS_ONLY" && pointsToRemove <= 0) {
+    throw new Error("Informa os pontos a remover.");
+  }
+
+  const overview = input.penaltyMode === "SUSPECT_VOTES" || input.penaltyMode === "EXACT_VOTES"
+    ? await getOdinOverview(input.windowHours ?? 48)
+    : null;
+  const suspiciousDevices = new Set(
+    (overview?.devices ?? [])
+      .filter((device) => device.riskScore >= 40 && device.projects.some((project) => project.submissionId === input.submissionId))
+      .map((device) => device.deviceId),
+  );
+
+  return prisma.$transaction(async (tx) => {
+    const submission = await tx.submission.findFirst({
+      where: { id: input.submissionId, deletedAt: null },
+      select: { id: true, name: true },
+    });
+    if (!submission) throw new Error("Projeto não encontrado.");
+
+    const since = new Date(Date.now() - Math.max(1, Math.min(24 * 14, input.windowHours ?? 48)) * 60 * 60 * 1000);
+    const suspiciousVoteEvents = suspiciousDevices.size > 0
+      ? await tx.odinEvent.findMany({
+        where: {
+          eventType: "PROJECT_VOTE",
+          targetType: "Submission",
+          targetId: submission.id,
+          deviceId: { in: Array.from(suspiciousDevices) },
+          createdAt: { gte: since },
+        },
+        select: {
+          studentId: true,
+          studentNumber: true,
+          deviceId: true,
+          createdAt: true,
+        },
+        orderBy: { createdAt: "desc" },
+      })
+      : [];
+    const suspiciousStudentIds = new Set(
+      suspiciousVoteEvents
+        .map((event) => event.studentId)
+        .filter((studentId): studentId is number => typeof studentId === "number"),
+    );
+    const suspiciousStudentNumbers = new Set(
+      suspiciousVoteEvents
+        .map((event) => event.studentNumber)
+        .filter((studentNumber): studentNumber is string => Boolean(studentNumber)),
+    );
+
+    const voteCandidates = await tx.studentVote.findMany({
+      where: { submissionId: submission.id, eventKey },
+      select: {
+        id: true,
+        studentId: true,
+        createdAt: true,
+        student: {
+          select: {
+            id: true,
+            studentNumber: true,
+            name: true,
+          },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    const orderedCandidates = [...voteCandidates].sort((left, right) => {
+      const leftSuspicious = suspiciousStudentIds.has(left.studentId) || suspiciousStudentNumbers.has(left.student.studentNumber);
+      const rightSuspicious = suspiciousStudentIds.has(right.studentId) || suspiciousStudentNumbers.has(right.student.studentNumber);
+      if (leftSuspicious !== rightSuspicious) return leftSuspicious ? -1 : 1;
+      return right.createdAt.getTime() - left.createdAt.getTime();
+    });
+
+    const selectedVotes = input.penaltyMode === "SUSPECT_VOTES"
+      ? voteCandidates.filter((vote) => suspiciousStudentIds.has(vote.studentId) || suspiciousStudentNumbers.has(vote.student.studentNumber))
+      : input.penaltyMode === "EXACT_VOTES"
+        ? orderedCandidates.slice(0, exactVoteCount)
+        : [];
+
+    const selectedVoteIds = selectedVotes.map((vote) => vote.id);
+    const selectedVoteSourceIds = selectedVoteIds.map(String);
+
+    const scoreEventsToRevoke = selectedVoteSourceIds.length > 0
+      ? await tx.exhibitorScoreEvent.findMany({
+        where: {
+          submissionId: submission.id,
+          eventKey,
+          sourceType: "STUDENT_VOTE",
+          sourceId: { in: selectedVoteSourceIds },
+          status: { not: "REVOKED" },
+        },
+        select: { id: true },
+      })
+      : [];
+    const revokedScoreEventIds = scoreEventsToRevoke.map((event) => event.id);
+
+    if (revokedScoreEventIds.length > 0) {
+      await tx.exhibitorScoreEvent.updateMany({
+        where: { id: { in: revokedScoreEventIds } },
+        data: {
+          status: "REVOKED",
+          revokedAt: new Date(),
+          revokedByStudentNumber: input.actorStudentNumber,
+          revokeReason: `ODIN: ${reason}`,
+        },
+      });
+    }
+
+    const removedVotes = selectedVoteIds.length > 0
+      ? await tx.studentVote.deleteMany({ where: { id: { in: selectedVoteIds } } })
+      : { count: 0 };
+
+    const penalty = await tx.odinProjectPenalty.create({
+      data: {
+        submissionId: submission.id,
+        penaltyMode: input.penaltyMode,
+        requestedVoteCount: input.penaltyMode === "EXACT_VOTES" ? exactVoteCount : null,
+        removedVoteCount: removedVotes.count,
+        removedPointCount: pointsToRemove,
+        reason,
+        affectedVoteIdsJson: safeJson(selectedVoteIds),
+        affectedStudentIdsJson: safeJson(selectedVotes.map((vote) => vote.studentId)),
+        affectedScoreEventIdsJson: safeJson(revokedScoreEventIds),
+        notifiedProjectMembers: input.notifyProjectMembers ?? true,
+        createdByStudentNumber: input.actorStudentNumber,
+      },
+    });
+
+    const penaltyScoreEvent = pointsToRemove > 0
+      ? await tx.exhibitorScoreEvent.create({
+        data: {
+          businessKey: `odin-project-penalty:${eventKey}:${submission.id}:${penalty.id}`,
+          eventKey,
+          submissionId: submission.id,
+          sourceType: "ODIN_PROJECT_PENALTY",
+          sourceId: String(penalty.id),
+          action: "ODIN_PROJECT_PENALTY",
+          role: "PROJECT",
+          basePoints: -pointsToRemove,
+          bonusPoints: 0,
+          multiplier: 1,
+          points: -pointsToRemove,
+          status: "VALID",
+          reason: `Penalização ODIN: ${reason}`,
+          metadataJson: safeJson({
+            penaltyId: penalty.id,
+            penaltyMode: input.penaltyMode,
+            removedVoteCount: removedVotes.count,
+          }),
+          scoreConfigVersion: 1,
+          createdByStudentNumber: input.actorStudentNumber,
+          awardedAt: new Date(),
+        },
+      })
+      : null;
+
+    if (penaltyScoreEvent) {
+      await tx.odinProjectPenalty.update({
+        where: { id: penalty.id },
+        data: {
+          affectedScoreEventIdsJson: safeJson([...revokedScoreEventIds, penaltyScoreEvent.id]),
+        },
+      });
+    }
+
+    const affectedStudents = selectedVotes.map((vote) => ({
+      studentId: vote.student.id,
+      studentNumber: vote.student.studentNumber,
+      studentName: vote.student.name,
+    }));
+
+    return {
+      success: true as const,
+      penaltyId: penalty.id,
+      submissionId: submission.id,
+      submissionName: submission.name,
+      penaltyMode: input.penaltyMode,
+      removedVoteCount: removedVotes.count,
+      removedPointCount: pointsToRemove,
+      revokedScoreEventCount: revokedScoreEventIds.length,
+      notifiedProjectMembers: penalty.notifiedProjectMembers,
+      affectedStudents,
+      message: `Penalização ODIN aplicada a ${submission.name}: ${removedVotes.count} voto(s) removido(s), ${pointsToRemove} ponto(s) descontado(s).`,
     };
   });
 }

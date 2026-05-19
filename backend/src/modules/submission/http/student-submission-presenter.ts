@@ -41,6 +41,14 @@ type StudentSubmissionPresenterInput = {
   paymentReviewedAt?: Date | null;
   paymentReviewedByStudentNumber?: string | null;
   paymentReviewNote?: string | null;
+  latestOdinProjectPenalty?: {
+    id: number;
+    penaltyMode: string;
+    removedVoteCount: number;
+    removedPointCount: number;
+    reason: string;
+    createdAt: Date;
+  } | null;
 };
 
 export function getSubmissionStatusLabel(status: string) {
@@ -140,7 +148,7 @@ export function buildStudentSubmissionReceiptResponse(
 
 export function buildStudentSubmissionListItem(submission: Pick<
   StudentSubmissionPresenterInput,
-  "id" | "referenceCode" | "name" | "description" | "status" | "type" | "area" | "createdAt" | "bannerUrl" | "paymentStatus" | "repoUrl" | "websiteUrl" | "instagramUrl" | "facebookUrl" | "linkedinUrl" | "githubUrl" | "projectFrozen" | "projectFrozenAt" | "projectFrozenByStudentNumber" | "projectFreezeReason"
+  "id" | "referenceCode" | "name" | "description" | "status" | "type" | "area" | "createdAt" | "bannerUrl" | "paymentStatus" | "repoUrl" | "websiteUrl" | "instagramUrl" | "facebookUrl" | "linkedinUrl" | "githubUrl" | "projectFrozen" | "projectFrozenAt" | "projectFrozenByStudentNumber" | "projectFreezeReason" | "latestOdinProjectPenalty"
 >) {
   const normalizedType = normalizeSubmissionType(submission.type, submission.area);
   const typeLabel = getSubmissionTypeLabel(submission.type, submission.area);
@@ -168,6 +176,14 @@ export function buildStudentSubmissionListItem(submission: Pick<
     projectFrozenAt: submission.projectFrozenAt?.toISOString() ?? null,
     projectFrozenByStudentNumber: submission.projectFrozenByStudentNumber ?? null,
     projectFreezeReason: submission.projectFreezeReason ?? null,
+    odinPenaltyWarning: submission.latestOdinProjectPenalty ? {
+      id: submission.latestOdinProjectPenalty.id,
+      penaltyMode: submission.latestOdinProjectPenalty.penaltyMode,
+      removedVoteCount: submission.latestOdinProjectPenalty.removedVoteCount,
+      removedPointCount: submission.latestOdinProjectPenalty.removedPointCount,
+      reason: submission.latestOdinProjectPenalty.reason,
+      createdAt: submission.latestOdinProjectPenalty.createdAt.toISOString(),
+    } : null,
     receiptPath: `/submissoes/${submission.id}`,
     exhibitorPdfPath: submission.status === "APPROVED" && isPaymentConfirmedByAdmin(submission.paymentStatus)
       ? `/submissions/${submission.id}/exhibitor-pack.pdf`

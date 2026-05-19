@@ -571,6 +571,14 @@ export interface StudentOwnedSubmissionListItem {
   projectFrozenAt: string | null;
   projectFrozenByStudentNumber: string | null;
   projectFreezeReason: string | null;
+  odinPenaltyWarning: {
+    id: number;
+    penaltyMode: string;
+    removedVoteCount: number;
+    removedPointCount: number;
+    reason: string;
+    createdAt: string;
+  } | null;
   receiptPath: string;
   exhibitorPdfPath: string | null;
   viewerRole?: "RESPONSAVEL" | "MEMBRO";
@@ -3195,6 +3203,33 @@ export interface OdinAiFeedbackInput {
   note?: string | null;
 }
 
+export interface OdinProjectPenaltyInput {
+  penaltyMode: "SUSPECT_VOTES" | "EXACT_VOTES" | "POINTS_ONLY";
+  reason: string;
+  windowHours?: number;
+  exactVoteCount?: number | null;
+  pointsToRemove?: number | null;
+  notifyProjectMembers?: boolean;
+}
+
+export interface OdinProjectPenaltyResult {
+  success: true;
+  penaltyId: number;
+  submissionId: number;
+  submissionName: string;
+  penaltyMode: "SUSPECT_VOTES" | "EXACT_VOTES" | "POINTS_ONLY";
+  removedVoteCount: number;
+  removedPointCount: number;
+  revokedScoreEventCount: number;
+  notifiedProjectMembers: boolean;
+  affectedStudents: Array<{
+    studentId: number;
+    studentNumber: string;
+    studentName: string | null;
+  }>;
+  message: string;
+}
+
 export interface AnalyticsConsentState {
   essential: true;
   analytics: boolean;
@@ -3898,6 +3933,14 @@ export const api = {
     downloadProjectSecurityReportPdf: (submissionId: number, params?: { windowHours?: number }) =>
       requestBlob(
         `/security/odin/projects/${submissionId}/report.pdf${toQueryString(params)}`,
+      ),
+    penalizeProject: (submissionId: number, data: OdinProjectPenaltyInput) =>
+      request<OdinProjectPenaltyResult>(
+        `/security/odin/projects/${submissionId}/penalties`,
+        {
+          method: "POST",
+          body: JSON.stringify(data),
+        },
       ),
     analyzeCase: (data: { caseType: OdinAiCaseType; caseId: string; windowHours?: number }) =>
       request<OdinAiAnalysis>("/security/odin/ai/analyze", {

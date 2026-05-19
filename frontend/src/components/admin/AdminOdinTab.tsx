@@ -37,6 +37,8 @@ import {
   type OdinDeviceRisk,
   type OdinExcludeStudentInput,
   type OdinOverview,
+  type OdinProjectPenaltyInput,
+  type OdinProjectPressure,
   type PdfJobStatus,
   type OdinRiskLevel,
   type OdinStudentRisk,
@@ -84,6 +86,14 @@ const defaultExcludeOptions: OdinExcludeStudentInput = {
   removeLikes: true,
   removeComments: true,
   removePassport: false,
+};
+
+const defaultProjectPenaltyOptions: OdinProjectPenaltyInput = {
+  penaltyMode: "SUSPECT_VOTES",
+  reason: "",
+  exactVoteCount: null,
+  pointsToRemove: 0,
+  notifyProjectMembers: true,
 };
 
 function odinAiCaseKey(caseType: OdinAiCaseType, caseId: string) {
@@ -510,6 +520,10 @@ export default function AdminOdinTab() {
   const [excluding, setExcluding] = useState(false);
   const [reportExporting, setReportExporting] = useState(false);
   const [projectReportExportingId, setProjectReportExportingId] = useState<number | null>(null);
+  const [penaltyDialogProject, setPenaltyDialogProject] = useState<OdinProjectPressure | null>(null);
+  const [projectPenaltyOptions, setProjectPenaltyOptions] = useState<OdinProjectPenaltyInput>(defaultProjectPenaltyOptions);
+  const [projectPenaltyConfirmation, setProjectPenaltyConfirmation] = useState("");
+  const [penalizingProject, setPenalizingProject] = useState(false);
 
   const topDevices = useMemo(
     () => (overview?.devices ?? []).filter((device) => device.riskScore >= 40).slice(0, 8),
@@ -570,6 +584,17 @@ export default function AdminOdinTab() {
     setExcludeOptions({
       ...defaultExcludeOptions,
       reason: `Suspeita ODIN: ${student.reasons[0] ?? "atividade incomum no mesmo dispositivo."}`,
+    });
+  };
+
+  const openProjectPenaltyDialog = (project: OdinProjectPressure) => {
+    setPenaltyDialogProject(project);
+    setProjectPenaltyConfirmation("");
+    setProjectPenaltyOptions({
+      ...defaultProjectPenaltyOptions,
+      windowHours,
+      exactVoteCount: Math.max(1, project.suspiciousVotes),
+      reason: `Penalização ODIN: ${project.suspiciousVotes} voto(s) suspeito(s), ${project.suspiciousDevices} dispositivo(s) e ${project.suspiciousStudents} conta(s) ligados ao projeto.`,
     });
   };
 
@@ -681,6 +706,43 @@ export default function AdminOdinTab() {
       toast.error(error instanceof Error ? error.message : "Não foi possível executar a ação ODIN.");
     } finally {
       setExcluding(false);
+    }
+  };
+
+  const handleApplyProjectPenalty = async () => {
+    if (!penaltyDialogProject) return;
+    if (projectPenaltyOptions.reason.trim().length < 8) {
+      toast.error("Escreve um motivo claro para a auditoria ODIN.");
+      return;
+    }
+    if (projectPenaltyOptions.penaltyMode === "EXACT_VOTES" && !projectPenaltyOptions.exactVoteCount) {
+      toast.error("Informa a quantidade exata de votos a remover.");
+      return;
+    }
+    if (projectPenaltyOptions.penaltyMode === "POINTS_ONLY" && !projectPenaltyOptions.pointsToRemove) {
+      toast.error("Informa os pontos a remover.");
+      return;
+    }
+    if (projectPenaltyConfirmation.trim().toUpperCase() !== "PENALIZAR") {
+      toast.error("Confirma escrevendo PENALIZAR.");
+      return;
+    }
+
+    setPenalizingProject(true);
+    try {
+      const result = await api.odin.penalizeProject(penaltyDialogProject.submissionId, {
+        ...projectPenaltyOptions,
+        windowHours,
+      });
+      toast.success(`${result.removedVoteCount} voto(s) e ${result.removedPointCount} ponto(s) removido(s).`);
+      setPenaltyDialogProject(null);
+      setProjectPenaltyConfirmation("");
+      setProjectPenaltyOptions(defaultProjectPenaltyOptions);
+      await loadOverview(windowHours);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Não foi possível penalizar este projeto.");
+    } finally {
+      setPenalizingProject(false);
     }
   };
 
@@ -886,6 +948,16 @@ export default function AdminOdinTab() {
                         )}
                         Relatório do projeto
                       </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="outline"
+                        className="h-8 rounded-xl border-rose-200 bg-rose-50 text-xs font-black text-rose-800 hover:bg-rose-100"
+                        onClick={() => openProjectPenaltyDialog(project)}
+                      >
+                        <Ban className="mr-1.5 h-3.5 w-3.5" />
+                        Penalizar projeto
+                      </Button>
                       <span className="text-xs font-semibold text-slate-500">
                         Inclui votantes, cursos, dispositivos, horários e auditoria.
                       </span>
@@ -1018,6 +1090,151 @@ export default function AdminOdinTab() {
             >
               {excluding ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Ban className="mr-2 h-4 w-4" />}
               Confirmar ODIN
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog
+        open={Boolean(penaltyDialogProject)}
+        onOpenChange={(open) => {
+          if (!open) {
+            setPenaltyDialogProject(null);
+            setProjectPenaltyConfirmation("");
+            setProjectPenaltyOptions(defaultProjectPenaltyOptions);
+          }
+        }}
+      >
+        <DialogContent className="max-h-[88vh] overflow-y-auto sm:max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ShieldAlert className="h-5 w-5 text-rose-600" />
+              Penalizar projeto
+            </DialogTitle>
+            <DialogDescription>
+              Remove votos suspeitos, uma quantidade exata de votos ou apenas pontos. A ação fica guardada no ODIN e aparece como aviso para os membros do projeto.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <p className="font-black text-slate-950">{penaltyDialogProject?.submissionName}</p>
+              <p className="mt-1 text-xs text-slate-500">
+                {penaltyDialogProject?.suspiciousVotes ?? 0} voto(s) suspeito(s) · {penaltyDialogProject?.suspiciousDevices ?? 0} dispositivo(s) · {penaltyDialogProject?.suspiciousStudents ?? 0} conta(s)
+              </p>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-3">
+              {[
+                ["SUSPECT_VOTES", "Remover votos suspeitos"],
+                ["EXACT_VOTES", "Quantidade exata"],
+                ["POINTS_ONLY", "Apenas pontos"],
+              ].map(([mode, label]) => (
+                <button
+                  key={mode}
+                  type="button"
+                  className={`rounded-2xl border px-3 py-3 text-left text-xs font-black transition ${
+                    projectPenaltyOptions.penaltyMode === mode
+                      ? "border-rose-300 bg-rose-50 text-rose-900"
+                      : "border-slate-200 bg-white text-slate-700 hover:bg-slate-50"
+                  }`}
+                  onClick={() => setProjectPenaltyOptions((current) => ({
+                    ...current,
+                    penaltyMode: mode as OdinProjectPenaltyInput["penaltyMode"],
+                  }))}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="space-y-2 text-sm font-semibold text-slate-700">
+                Quantidade exata de votos
+                <input
+                  type="number"
+                  min={0}
+                  value={projectPenaltyOptions.exactVoteCount ?? ""}
+                  disabled={projectPenaltyOptions.penaltyMode !== "EXACT_VOTES"}
+                  onChange={(event) => setProjectPenaltyOptions((current) => ({
+                    ...current,
+                    exactVoteCount: event.target.value ? Number(event.target.value) : null,
+                  }))}
+                  className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-900 outline-none disabled:bg-slate-100 disabled:text-slate-400"
+                />
+              </label>
+              <label className="space-y-2 text-sm font-semibold text-slate-700">
+                Pontos a remover
+                <input
+                  type="number"
+                  min={0}
+                  step="0.5"
+                  value={projectPenaltyOptions.pointsToRemove ?? 0}
+                  onChange={(event) => setProjectPenaltyOptions((current) => ({
+                    ...current,
+                    pointsToRemove: event.target.value ? Number(event.target.value) : 0,
+                  }))}
+                  className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-900 outline-none"
+                />
+              </label>
+            </div>
+
+            <label className="space-y-2 text-sm font-semibold text-slate-700">
+              Motivo para auditoria
+              <Textarea
+                value={projectPenaltyOptions.reason}
+                onChange={(event) => setProjectPenaltyOptions((current) => ({ ...current, reason: event.target.value }))}
+                className="min-h-28"
+                maxLength={700}
+              />
+            </label>
+
+            <label className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-3 text-sm font-semibold text-slate-700">
+              <Checkbox
+                checked={projectPenaltyOptions.notifyProjectMembers !== false}
+                onCheckedChange={(checked) => setProjectPenaltyOptions((current) => ({
+                  ...current,
+                  notifyProjectMembers: checked === true,
+                }))}
+              />
+              Mostrar modal de aviso aos estudantes do projeto
+            </label>
+
+            <label className="space-y-2 text-sm font-semibold text-slate-700">
+              Escreve PENALIZAR para confirmar
+              <input
+                value={projectPenaltyConfirmation}
+                onChange={(event) => setProjectPenaltyConfirmation(event.target.value)}
+                className="h-11 w-full rounded-xl border border-slate-200 bg-white px-3 text-sm font-bold text-slate-900 outline-none focus:border-slate-400"
+                placeholder="PENALIZAR"
+              />
+            </label>
+
+            <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm leading-6 text-amber-900">
+              <AlertTriangle className="mr-2 inline h-4 w-4" />
+              Remover votos apaga o voto público e revoga os eventos de pontuação ligados a esses votos. Remover pontos cria um lançamento negativo separado no livro de pontuação do expositor.
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Button
+              variant="outline"
+              onClick={() => {
+                setPenaltyDialogProject(null);
+                setProjectPenaltyConfirmation("");
+                setProjectPenaltyOptions(defaultProjectPenaltyOptions);
+              }}
+              disabled={penalizingProject}
+            >
+              Cancelar
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => void handleApplyProjectPenalty()}
+              disabled={penalizingProject || projectPenaltyConfirmation.trim().toUpperCase() !== "PENALIZAR"}
+            >
+              {penalizingProject ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Ban className="mr-2 h-4 w-4" />}
+              Aplicar penalização
             </Button>
           </DialogFooter>
         </DialogContent>

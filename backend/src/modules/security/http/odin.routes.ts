@@ -13,6 +13,7 @@ import {
 } from "../../../shared/pdf-job-queue";
 import {
   getOdinOverview,
+  recordOdinProjectPenalty,
   recordOdinStudentExclusion,
 } from "../application/odin.service";
 import {
@@ -45,6 +46,17 @@ const odinProjectReportParamsSchema = z.object({
 
 const odinProjectReportQuerySchema = z.object({
   windowHours: z.coerce.number().int().min(1).max(24 * 14).optional().default(48),
+});
+
+const odinProjectPenaltyModeSchema = z.enum(["SUSPECT_VOTES", "EXACT_VOTES", "POINTS_ONLY"]);
+
+const odinProjectPenaltyBodySchema = z.object({
+  penaltyMode: odinProjectPenaltyModeSchema,
+  reason: z.string().trim().min(8).max(700),
+  windowHours: z.coerce.number().int().min(1).max(24 * 14).optional().default(48),
+  exactVoteCount: z.coerce.number().int().min(0).max(1000).nullable().optional(),
+  pointsToRemove: z.coerce.number().min(0).max(100000).nullable().optional(),
+  notifyProjectMembers: z.boolean().optional().default(true),
 });
 
 const odinExcludeParamsSchema = z.object({
@@ -162,6 +174,24 @@ const odinExcludeResponseSchema = z.object({
     passportPointLedgerRevoked: z.number(),
     exhibitorScoreEventsRevoked: z.number(),
   }),
+});
+
+const odinProjectPenaltyResponseSchema = z.object({
+  success: z.literal(true),
+  penaltyId: z.number(),
+  submissionId: z.number(),
+  submissionName: z.string(),
+  penaltyMode: odinProjectPenaltyModeSchema,
+  removedVoteCount: z.number(),
+  removedPointCount: z.number(),
+  revokedScoreEventCount: z.number(),
+  notifiedProjectMembers: z.boolean(),
+  affectedStudents: z.array(z.object({
+    studentId: z.number(),
+    studentNumber: z.string(),
+    studentName: z.string().nullable(),
+  })),
+  message: z.string(),
 });
 
 const odinAiAnalysisSchema = z.object({
@@ -468,6 +498,71 @@ export async function odinRoutes(app: FastifyInstance, opts: { env: Env }) {
           const message = error instanceof Error ? error.message : "Não foi possível gerar o relatório ODIN do projeto.";
           if (/não encontrado/i.test(message)) return reply.code(404).send({ message });
           return reply.code(400).send({ message });
+        }
+      },
+    );
+
+    adminApp.post("/odin/projects/:submissionId/penalties",
+      {
+        schema: {
+          description: "Aplica uma penalização ODIN a um projeto, removendo votos suspeitos/exatos e/ou pontos com auditoria.",
+          tags: ["Security"],
+          params: odinProjectReportParamsSchema,
+          body: odinProjectPenaltyBodySchema,
+          response: {
+            200: odinProjectPenaltyResponseSchema,
+            400: z.object({ message: z.string() }),
+            401: z.object({ message: z.string() }),
+            403: z.object({ message: z.string() }),
+            404: z.object({ message: z.string() }),
+          },
+        },
+      },
+      async (
+        request: FastifyRequest<{
+          Params: z.infer<typeof odinProjectReportParamsSchema>;
+          Body: z.infer<typeof odinProjectPenaltyBodySchema>;
+        }>,
+        reply,
+      ) => {
+        const params = odinProjectReportParamsSchema.parse(request.params);
+        const body = odinProjectPenaltyBodySchema.parse(request.body);
+        const actorStudentNumber = request.student?.studentNumber ?? request.jury?.phone ?? "unknown";
+
+        try {
+          const result = await recordOdinProjectPenalty({
+            submissionId: params.submissionId,
+            actorStudentNumber,
+            penaltyMode: body.penaltyMode,
+            reason: body.reason,
+            windowHours: body.windowHours,
+            exactVoteCount: body.exactVoteCount,
+            pointsToRemove: body.pointsToRemove,
+            notifyProjectMembers: body.notifyProjectMembers,
+          });
+
+          await recordAdminAudit({
+            actorStudentNumber,
+            actorRole: request.jury ? "jury_admin" : "admin",
+            action: "odin.project_penalty",
+            entityType: "Submission",
+            entityId: params.submissionId,
+            summary: `ODIN penalizou ${result.submissionName}: ${result.removedVoteCount} voto(s) e ${result.removedPointCount} ponto(s).`,
+            metadata: {
+              body,
+              penaltyId: result.penaltyId,
+              removedVoteCount: result.removedVoteCount,
+              removedPointCount: result.removedPointCount,
+              revokedScoreEventCount: result.revokedScoreEventCount,
+              notifiedProjectMembers: result.notifiedProjectMembers,
+            },
+          });
+
+          return reply.send(result);
+        } catch (error) {
+          const message = error instanceof Error ? error.message : "Não foi possível aplicar a penalização ODIN.";
+          if (/não encontrado/i.test(message)) return reply.status(404).send({ message });
+          return reply.status(400).send({ message });
         }
       },
     );

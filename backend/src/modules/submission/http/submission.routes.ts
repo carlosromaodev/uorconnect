@@ -226,6 +226,15 @@ const projectFreezeStateSchema = {
   projectFreezeReason: z.string().nullable(),
 };
 
+const odinPenaltyWarningSchema = z.object({
+  id: z.number(),
+  penaltyMode: z.string(),
+  removedVoteCount: z.number(),
+  removedPointCount: z.number(),
+  reason: z.string(),
+  createdAt: z.string(),
+}).nullable();
+
 const studentSubmissionListItemSchema = z.object({
   id: z.number(),
   referenceCode: z.string(),
@@ -245,6 +254,7 @@ const studentSubmissionListItemSchema = z.object({
   githubUrl: z.string().nullable(),
   bannerUrl: z.string().nullable(),
   ...projectFreezeStateSchema,
+  odinPenaltyWarning: odinPenaltyWarningSchema,
   receiptPath: z.string(),
   exhibitorPdfPath: z.string().nullable(),
   viewerRole: z.enum(["RESPONSAVEL", "MEMBRO"]),
@@ -1238,7 +1248,26 @@ export async function submissionRoutes(app: FastifyInstance, { env }: { env: Ret
 
       const submissions = await submissionRepo.listByStudent(request.student.id);
       const items = await Promise.all(submissions.map(async (submission) => {
-        const base = buildStudentSubmissionListItem(submission);
+        const latestOdinProjectPenalty = await prisma.odinProjectPenalty.findFirst({
+          where: {
+            submissionId: submission.id,
+            revokedAt: null,
+            notifiedProjectMembers: true,
+          },
+          select: {
+            id: true,
+            penaltyMode: true,
+            removedVoteCount: true,
+            removedPointCount: true,
+            reason: true,
+            createdAt: true,
+          },
+          orderBy: { createdAt: "desc" },
+        });
+        const base = buildStudentSubmissionListItem({
+          ...submission,
+          latestOdinProjectPenalty,
+        });
         const team = await buildSubmissionTeamPayload(env, submission);
         const access = await resolveSubmissionViewerAccess(submission, request.student!);
         const canManageSubmission = access.canManageSubmission;
