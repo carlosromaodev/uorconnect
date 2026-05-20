@@ -43,6 +43,25 @@ export async function loadLogoDataUri() {
   return null;
 }
 
+export async function loadCertificateTemplateDataUri() {
+  const candidates = [
+    { filePath: path.resolve(process.cwd(), "backend/public/certificate-template-transparent.png"), mimeType: "image/png" },
+    { filePath: path.resolve(process.cwd(), "public/certificate-template-transparent.png"), mimeType: "image/png" },
+    { filePath: path.resolve(process.cwd(), "../backend/public/certificate-template-transparent.png"), mimeType: "image/png" },
+  ];
+
+  for (const candidate of candidates) {
+    try {
+      const img = await readFile(candidate.filePath);
+      return `data:${candidate.mimeType};base64,${img.toString("base64")}`;
+    } catch {
+      continue;
+    }
+  }
+
+  return null;
+}
+
 async function getPdfBrowser() {
   if (!browserPromise) {
     browserPromise = chromium.launch({ headless: true });
