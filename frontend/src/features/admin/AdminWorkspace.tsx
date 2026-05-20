@@ -11749,49 +11749,37 @@ const Admin = ({
                                 </div>
                                 <GraduationCap className="h-5 w-5 text-primary" />
                               </div>
-                              <div className="mt-4 space-y-3">
-                                {voteCourseStats.slice(0, 5).map((course) => {
-                                  const pct = Math.max(
-                                    8,
-                                    Math.round(
-                                      (course.votes /
-                                        Math.max(voteEntries.length, 1)) *
-                                        100,
-                                    ),
-                                  );
+                              <div className="mt-4 space-y-1.5">
+                                {voteCourseStats.slice(0, 8).map((course, idx) => {
+                                  const pct = Math.max(0, Math.round((course.votes / Math.max(voteEntries.length, 1)) * 100));
                                   return (
-                                    <div
-                                      key={course.course}
-                                      className="admin-votes-course-row"
-                                    >
-                                      <div className="flex items-center justify-between gap-3">
-                                        <span className="truncate text-sm font-black text-slate-950">
-                                          {course.course}
-                                        </span>
-                                        <span className="text-xs font-black text-slate-500">
-                                          {course.votes}
+                                    <div key={course.course} className="flex items-center justify-between gap-3 border-b border-slate-200/60 pb-1.5">
+                                      <div className="flex min-w-0 flex-1 items-center gap-2">
+                                        <span className="shrink-0 font-mono text-[10px] text-slate-400">{(idx + 1).toString().padStart(2, "0")}</span>
+                                        <span className="truncate text-xs font-bold uppercase tracking-wider text-slate-900">{course.course}</span>
+                                        {course.recent > 0 && (
+                                          <span className="shrink-0 text-[10px] font-bold text-emerald-600">+{course.recent}</span>
+                                        )}
+                                      </div>
+                                      <div className="flex shrink-0 items-center gap-3">
+                                        <div className="h-1.5 w-16 overflow-hidden bg-slate-100">
+                                          <motion.div
+                                            initial={{ width: 0 }}
+                                            animate={{ width: `${pct}%` }}
+                                            className="h-full bg-slate-900"
+                                            transition={{ ease: "linear" }}
+                                          />
+                                        </div>
+                                        <span className="w-8 text-right font-mono text-xs font-medium text-slate-900">
+                                          {String(course.votes).padStart(3, "0")}
                                         </span>
                                       </div>
-                                      <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-200">
-                                        <motion.div
-                                          initial={{ width: 0 }}
-                                          animate={{ width: `${pct}%` }}
-                                          className="h-full rounded-full bg-primary"
-                                        />
-                                      </div>
-                                      <p className="mt-1 text-[11px] font-semibold text-slate-500">
-                                        {course.students} estudante(s) unico(s)
-                                        {course.recent > 0
-                                          ? ` · +${course.recent} recente(s)`
-                                          : ""}
-                                      </p>
                                     </div>
                                   );
                                 })}
                                 {voteCourseStats.length === 0 && (
-                                  <p className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-4 text-sm font-semibold text-slate-500">
-                                    Sem cursos no feed atual. Assim que os votos
-                                    entrarem, o pulso aparece aqui.
+                                  <p className="border-l-2 border-slate-200 pl-3 text-xs font-medium text-slate-500">
+                                    A aguardar telemetria...
                                   </p>
                                 )}
                               </div>
@@ -11870,224 +11858,103 @@ const Admin = ({
                               </p>
                             </div>
                           </CardHeader>
-                          <CardContent className="space-y-3">
-                            {rankedProjects
-                              .slice()
-                              .sort(
-                                (a, b) =>
-                                  b.pontos - a.pontos ||
-                                  b.votos - a.votos ||
-                                  b.comentarios - a.comentarios,
-                              )
-                              .map((project, idx) => {
-                                const sharePct =
-                                  scoreTotalFromProjects > 0
-                                    ? Math.round(
-                                        (project.pontos /
-                                          scoreTotalFromProjects) *
-                                          100,
-                                      )
-                                    : 0;
-                                const recentVotes =
-                                  recentVotesByProject.get(project.id) ?? 0;
-                                const medalColor =
-                                  idx === 0
-                                    ? "from-amber-400 to-amber-500"
-                                    : idx === 1
-                                      ? "from-slate-200 to-slate-400"
-                                      : idx === 2
-                                        ? "from-orange-300 to-orange-400"
-                                        : "from-muted to-muted";
-                                return (
-                                  <motion.div
-                                    key={project.id}
-                                    initial={{ opacity: 0, y: 12 }}
-                                    animate={{ opacity: 1, y: 0 }}
-                                    className="admin-votes-project-card group"
-                                  >
-                                    <div className="flex items-start justify-between gap-3">
-                                      <div className="space-y-1">
-                                        <p className="text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
-                                          {project.equipa ?? "Equipa"}
-                                        </p>
-                                        <p className="text-lg font-heading font-bold leading-tight">
-                                          {project.nome}
-                                        </p>
-                                        <div className="flex flex-wrap gap-1.5">
-                                          {idx === 0 && (
-                                            <span className="rounded-full bg-amber-100 px-2 py-1 text-[10px] font-black uppercase text-amber-800">
-                                              Lider
-                                            </span>
-                                          )}
-                                          {recentVotes > 0 && (
-                                            <span className="rounded-full bg-emerald-100 px-2 py-1 text-[10px] font-black uppercase text-emerald-800">
-                                              +{recentVotes} recente(s)
-                                            </span>
-                                          )}
-                                          {project.authenticatedVisitors >
-                                            0 && (
-                                            <span className="rounded-full bg-blue-100 px-2 py-1 text-[10px] font-black uppercase text-blue-800">
-                                              cookie verificado
-                                            </span>
-                                          )}
-                                        </div>
-                                      </div>
-                                      <div
-                                        className={`flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br ${medalColor} text-xs font-bold text-white shadow-lg`}
-                                      >
-                                        #{idx + 1}
-                                      </div>
-                                    </div>
-                                    <div className="mt-2 flex items-center gap-2 text-xs text-muted-foreground">
-                                      <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-1 text-primary">
-                                        <PhHeart className="h-3.5 w-3.5" />
-                                        {project.rating} likes
-                                      </span>
-                                      <span className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-1 text-primary">
-                                        <PhChatTeardrop className="h-3.5 w-3.5" />
-                                        {project.comentarios} comentários
-                                      </span>
-                                      <span className="inline-flex items-center gap-1 rounded-full bg-slate-950/5 px-2 py-1 text-slate-700">
-                                        <Cookie className="h-3.5 w-3.5" />
-                                        {project.uniqueVisitors} visitantes
-                                      </span>
-                                    </div>
-                                    <div
-                                      className="admin-votes-sparkline"
-                                      aria-hidden="true"
-                                    >
-                                      {[0, 1, 2, 3, 4, 5, 6].map((slot) => (
-                                        <span
-                                          key={slot}
-                                          style={{
-                                            height: `${18 + ((project.pontos + project.id * (slot + 1) + recentVotes * 9) % 64)}%`,
-                                          }}
-                                        />
-                                      ))}
-                                    </div>
-                                    <div className="mt-3 h-2 overflow-hidden rounded-full bg-muted">
-                                      <motion.div
-                                        initial={{ width: 0 }}
-                                        animate={{ width: `${sharePct}%` }}
-                                        transition={{ duration: 0.6 }}
-                                        className="h-full rounded-full bg-primary"
-                                      />
-                                    </div>
-                                    <div className="mt-1 flex items-center justify-between text-[11px] font-bold text-slate-500">
-                                      <span>{sharePct}% dos pontos</span>
-                                      <span>{project.pontos} ponto(s)</span>
-                                    </div>
-                                    <div className="mt-3 grid grid-cols-3 gap-2">
-                                      <div className="rounded-xl border border-slate-200 bg-slate-50 px-2.5 py-2">
-                                        <p className="text-[10px] font-bold uppercase text-slate-400">
-                                          Pontos
-                                        </p>
-                                        <p className="text-sm font-black text-slate-950">
-                                          {project.pontos}
-                                        </p>
-                                      </div>
-                                      <div className="rounded-xl border border-slate-200 bg-slate-50 px-2.5 py-2">
-                                        <p className="text-[10px] font-bold uppercase text-slate-400">
-                                          Acessos
-                                        </p>
-                                        <p className="text-sm font-black text-slate-950">
-                                          {project.pageViews}
-                                        </p>
-                                      </div>
-                                      <div className="rounded-xl border border-slate-200 bg-slate-50 px-2.5 py-2">
-                                        <p className="text-[10px] font-bold uppercase text-slate-400">
-                                          Login
-                                        </p>
-                                        <p className="text-sm font-black text-slate-950">
-                                          {project.authenticatedVisitors}
-                                        </p>
-                                      </div>
-                                    </div>
-                                    <div className="mt-3 grid gap-2 sm:grid-cols-4">
-                                      <Button
-                                        type="button"
-                                        size="sm"
-                                        variant="outline"
-                                        className="h-8 rounded-xl border-slate-200 bg-white text-xs font-bold text-slate-700 hover:bg-slate-50"
-                                        disabled={busyKey === `vote-qr-${project.id}`}
-                                        onClick={() => void handleOpenExhibitorVoteQr(project)}
-                                      >
-                                        {busyKey === `vote-qr-${project.id}` ? (
-                                          <Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />
-                                        ) : (
-                                          <QrCode className="mr-1 h-3.5 w-3.5" />
-                                        )}
-                                        QR de voto
-                                      </Button>
-                                      <Button
-                                        type="button"
-                                        size="sm"
-                                        variant="outline"
-                                        className="h-8 rounded-xl border-emerald-200 bg-emerald-50 text-xs font-bold text-emerald-700 hover:bg-emerald-100"
-                                        disabled={busyKey === `score-${project.id}-QUALIFIED_FEEDBACK`}
-                                        onClick={() => void handleQuickScoreEvent(
-                                          project,
-                                          "QUALIFIED_FEEDBACK",
-                                          2,
-                                          "Feedback qualificado aprovado.",
-                                        )}
-                                      >
-                                        <MessageCircle className="mr-1 h-3.5 w-3.5" />
-                                        +2 feedback
-                                      </Button>
-                                      <Button
-                                        type="button"
-                                        size="sm"
-                                        variant="outline"
-                                        className="h-8 rounded-xl border-blue-200 bg-blue-50 text-xs font-bold text-blue-700 hover:bg-blue-100"
-                                        disabled={busyKey === `score-${project.id}-TEAM_BONUS`}
-                                        onClick={() => void handleQuickScoreEvent(
-                                          project,
-                                          "TEAM_BONUS",
-                                          5,
-                                          "Bónus manual validado pela organização.",
-                                        )}
-                                      >
-                                        <Award className="mr-1 h-3.5 w-3.5" />
-                                        +5 bónus
-                                      </Button>
-                                      <Button
-                                        type="button"
-                                        size="sm"
-                                        variant="outline"
-                                        className="h-8 rounded-xl border-rose-200 bg-rose-50 text-xs font-bold text-rose-700 hover:bg-rose-100"
-                                        disabled={busyKey === `score-${project.id}-PENALTY`}
-                                        onClick={() => void handleQuickScoreEvent(
-                                          project,
-                                          "PENALTY",
-                                          -10,
-                                          "Falha operacional leve.",
-                                        )}
-                                      >
-                                        <AlertTriangle className="mr-1 h-3.5 w-3.5" />
-                                        -10 penalizar
-                                      </Button>
-                                    </div>
-                                    <div className="mt-3 flex items-center justify-between gap-2 text-xs text-muted-foreground">
-                                      <span className="inline-flex items-center gap-1 rounded-full bg-muted px-2 py-1">
-                                        <Eye className="h-3.5 w-3.5 text-primary" />
-                                        {project.pageViews} acessos totais
-                                      </span>
-                                      <Button
-                                        asChild
-                                        size="sm"
-                                        variant="outline"
-                                        className="h-8 rounded-xl text-xs"
-                                      >
-                                        <Link to={project.detailPath}>
-                                          <ExternalLink className="mr-1 h-3.5 w-3.5" />
-                                          Ver página
-                                        </Link>
-                                      </Button>
-                                    </div>
-                                  </motion.div>
-                                );
-                              })}
+                          <CardContent className="p-0">
+                            <div className="overflow-x-auto">
+                              <table className="w-full text-left text-sm">
+                                <thead className="border-y border-slate-200 bg-slate-50 text-[10px] font-bold uppercase tracking-wider text-slate-500">
+                                  <tr>
+                                    <th className="px-4 py-2 font-mono">Pos</th>
+                                    <th className="px-4 py-2">Projeto</th>
+                                    <th className="px-4 py-2 text-right">Pts</th>
+                                    <th className="px-4 py-2 text-right">Votos</th>
+                                    <th className="px-4 py-2 text-right">Part</th>
+                                    <th className="px-4 py-2">Monitorização & Auditoria</th>
+                                  </tr>
+                                </thead>
+                                <tbody className="divide-y divide-slate-100 bg-white">
+                                  {rankedProjects
+                                    .slice()
+                                    .sort((a, b) => b.pontos - a.pontos || b.votos - a.votos || b.comentarios - a.comentarios)
+                                    .map((project, idx) => {
+                                      const sharePct = scoreTotalFromProjects > 0 ? Math.round((project.pontos / scoreTotalFromProjects) * 100) : 0;
+                                      const recentVotes = recentVotesByProject.get(project.id) ?? 0;
+                                      return (
+                                        <tr key={project.id} className="transition-colors hover:bg-slate-50/50">
+                                          <td className="px-4 py-3 font-mono text-xs font-medium text-slate-900">
+                                            {(idx + 1).toString().padStart(2, '0')}
+                                          </td>
+                                          <td className="px-4 py-3">
+                                            <p className="text-[10px] font-bold uppercase text-slate-400">{project.equipa ?? "Equipa"}</p>
+                                            <p className="max-w-[200px] truncate text-xs font-bold text-slate-900" title={project.nome}>{project.nome}</p>
+                                          </td>
+                                          <td className="px-4 py-3 text-right font-mono text-xs font-bold text-slate-900">
+                                            {project.pontos}
+                                          </td>
+                                          <td className="px-4 py-3 text-right">
+                                            <span className="font-mono text-xs font-medium text-slate-700">{project.votos}</span>
+                                            {recentVotes > 0 && <span className="ml-1 text-[10px] font-bold text-emerald-600">+{recentVotes}</span>}
+                                          </td>
+                                          <td className="px-4 py-3 text-right">
+                                            <div className="flex items-center justify-end gap-2">
+                                              <span className="font-mono text-[10px] text-slate-500">{sharePct}%</span>
+                                              <div className="h-1.5 w-12 overflow-hidden bg-slate-100">
+                                                <div className="h-full bg-slate-900" style={{ width: `${sharePct}%` }} />
+                                              </div>
+                                            </div>
+                                          </td>
+                                          <td className="px-4 py-3">
+                                            <div className="flex flex-wrap items-center gap-1.5">
+                                              <Button
+                                                type="button"
+                                                variant="outline"
+                                                size="sm"
+                                                className="h-6 rounded-none border-slate-200 px-2 text-[10px] font-bold"
+                                                disabled={busyKey === `vote-qr-${project.id}`}
+                                                onClick={() => void handleOpenExhibitorVoteQr(project)}
+                                              >
+                                                QR
+                                              </Button>
+                                              <Button
+                                                type="button"
+                                                variant="outline"
+                                                size="sm"
+                                                className="h-6 rounded-none border-emerald-200 bg-emerald-50 px-2 text-[10px] font-bold text-emerald-700 hover:bg-emerald-100"
+                                                disabled={busyKey === `score-${project.id}-QUALIFIED_FEEDBACK`}
+                                                onClick={() => void handleQuickScoreEvent(project, "QUALIFIED_FEEDBACK", 2, "Feedback qualificado aprovado.")}
+                                              >
+                                                +2 FD
+                                              </Button>
+                                              <Button
+                                                type="button"
+                                                variant="outline"
+                                                size="sm"
+                                                className="h-6 rounded-none border-blue-200 bg-blue-50 px-2 text-[10px] font-bold text-blue-700 hover:bg-blue-100"
+                                                disabled={busyKey === `score-${project.id}-TEAM_BONUS`}
+                                                onClick={() => void handleQuickScoreEvent(project, "TEAM_BONUS", 5, "Bónus manual validado pela organização.")}
+                                              >
+                                                +5 BN
+                                              </Button>
+                                              <Button
+                                                type="button"
+                                                variant="outline"
+                                                size="sm"
+                                                className="h-6 rounded-none border-rose-200 bg-rose-50 px-2 text-[10px] font-bold text-rose-700 hover:bg-rose-100"
+                                                disabled={busyKey === `score-${project.id}-PENALTY`}
+                                                onClick={() => void handleQuickScoreEvent(project, "PENALTY", -10, "Falha operacional leve.")}
+                                              >
+                                                -10 PN
+                                              </Button>
+                                              <Button asChild variant="outline" size="sm" className="h-6 rounded-none px-2 text-[10px]">
+                                                <Link to={project.detailPath} target="_blank"><ExternalLink className="h-3 w-3" /></Link>
+                                              </Button>
+                                            </div>
+                                          </td>
+                                        </tr>
+                                      );
+                                    })}
+                                </tbody>
+                              </table>
+                            </div>
                             {rankedProjects.length === 0 && (
                               <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 p-5 text-center text-sm font-semibold text-slate-500">
                                 Nenhum projeto elegivel encontrado para a

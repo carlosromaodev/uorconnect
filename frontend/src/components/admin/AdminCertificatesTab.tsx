@@ -61,6 +61,11 @@ export default function AdminCertificatesTab() {
   const [notifyStudentByWhatsApp, setNotifyStudentByWhatsApp] = useState(false);
   const [title, setTitle] = useState("Certificado de Participação");
   const [type, setType] = useState("PARTICIPATION");
+  const [organizerName, setOrganizerName] = useState("Faculdade de Ciências e Tecnologia");
+  const [rectorTitle, setRectorTitle] = useState("O Reitor");
+  const [rectorName, setRectorName] = useState("Prof. Doutor André Pedro Neto");
+  const [authorityTitle, setAuthorityTitle] = useState("A Decana");
+  const [authorityName, setAuthorityName] = useState("Prof. Doutora Cristina de Oliveira");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState("todos");
@@ -110,6 +115,14 @@ export default function AdminCertificatesTab() {
     setTitle(template.title);
   };
 
+  const buildCertificateMetadata = () => ({
+    organizerName: organizerName.trim(),
+    rectorTitle: rectorTitle.trim(),
+    rectorName: rectorName.trim(),
+    authorityTitle: authorityTitle.trim(),
+    authorityName: authorityName.trim(),
+  });
+
   const handleIssue = async () => {
     if (!studentNumber.trim()) {
       toast.error("Informa o número de estudante.");
@@ -123,6 +136,7 @@ export default function AdminCertificatesTab() {
         studentNumber: normalizedStudentNumber,
         title,
         type,
+        metadata: buildCertificateMetadata(),
       });
 
       if (notifyStudentBySms || notifyStudentByWhatsApp) {
@@ -176,6 +190,7 @@ export default function AdminCertificatesTab() {
           title,
           type: type || "EVENT_PARTICIPATION",
           eventKey: bulkEventKey || "main-event",
+          metadata: buildCertificateMetadata(),
         })
         : await api.certificates.issueBulk({
           mode: bulkMode,
@@ -185,6 +200,7 @@ export default function AdminCertificatesTab() {
           studentCourse: bulkMode === "STUDENT_COURSE" ? bulkStudentCourse.trim() : undefined,
           courseId: bulkMode === "COURSE_ENROLLMENT" && bulkCourseId ? Number(bulkCourseId) : undefined,
           submissionId: bulkMode === "PROJECT" && bulkSubmissionId ? Number(bulkSubmissionId) : undefined,
+          metadata: buildCertificateMetadata(),
         });
       toast.success(`${result.issued} certificado(s) emitido(s). ${result.skipped} já existiam.`);
       await load(1, search.trim(), statusFilter, typeFilter);
@@ -280,6 +296,45 @@ export default function AdminCertificatesTab() {
                 Destinatário: {studentNumber.trim() ? `Estudante ${studentNumber.trim()}` : "número ainda não informado"}
               </p>
               <p className="mt-1 font-mono text-xs text-muted-foreground">Tipo: {type || "PARTICIPATION"}</p>
+            </div>
+            <div className="rounded-[16px] border border-border/70 bg-background p-4">
+              <p className="mb-3 text-sm font-semibold">Entidades e assinaturas do certificado</p>
+              <div className="grid gap-3 md:grid-cols-2">
+                <Input
+                  value={organizerName}
+                  onChange={(event) => setOrganizerName(event.target.value)}
+                  placeholder="Entidade organizadora"
+                  aria-label="Entidade organizadora"
+                />
+                <Input
+                  value={rectorTitle}
+                  onChange={(event) => setRectorTitle(event.target.value)}
+                  placeholder="Título do Reitor"
+                  aria-label="Título do Reitor"
+                />
+                <Input
+                  value={rectorName}
+                  onChange={(event) => setRectorName(event.target.value)}
+                  placeholder="Nome do Reitor"
+                  aria-label="Nome do Reitor"
+                />
+                <Input
+                  value={authorityTitle}
+                  onChange={(event) => setAuthorityTitle(event.target.value)}
+                  placeholder="Título da autoridade direita"
+                  aria-label="Título da autoridade direita"
+                />
+                <Input
+                  value={authorityName}
+                  onChange={(event) => setAuthorityName(event.target.value)}
+                  placeholder="Nome da autoridade direita"
+                  aria-label="Nome da autoridade direita"
+                  className="md:col-span-2"
+                />
+              </div>
+              <p className="mt-3 text-xs leading-5 text-muted-foreground">
+                Estes campos alteram apenas o certificado que está a ser emitido, sem mudar o design visual do PDF.
+              </p>
             </div>
             <div className="flex flex-col gap-3 rounded-[16px] border border-border/70 bg-background p-4 sm:flex-row sm:items-center sm:justify-between">
               <div>

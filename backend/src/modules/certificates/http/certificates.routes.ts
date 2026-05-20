@@ -26,6 +26,7 @@ const certificateIssueAttendeesBodySchema = z.object({
   type: z.string().trim().min(2).max(80).default("EVENT_PARTICIPATION"),
   title: z.string().trim().min(4).max(160).optional(),
   eventKey: z.string().trim().min(2).max(80).default("main-event"),
+  metadata: z.record(z.string(), z.unknown()).optional(),
 });
 
 const certificateIssueBulkBodySchema = z.object({
@@ -36,6 +37,7 @@ const certificateIssueBulkBodySchema = z.object({
   studentCourse: z.string().trim().min(2).max(120).optional(),
   courseId: z.coerce.number().int().positive().optional(),
   submissionId: z.coerce.number().int().positive().optional(),
+  metadata: z.record(z.string(), z.unknown()).optional(),
 }).superRefine((value, ctx) => {
   if (value.mode === "STUDENT_LIST" && !value.studentNumbers?.length) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["studentNumbers"], message: "Informe pelo menos um número de estudante." });
@@ -121,6 +123,36 @@ const certificateTemplates = [
     type: "PROJECT_EXHIBITION",
     title: "Certificado de Exposição de Projeto",
     description: "Emitido para líderes e membros confirmados de projetos.",
+  },
+  {
+    key: "PHYSICS_CONTEST_WINNER",
+    type: "PHYSICS_CONTEST_WINNER",
+    title: "Vencedor do Concurso de Física",
+    description: "Certificado para estudante vencedor do concurso de Física.",
+  },
+  {
+    key: "PROGRAMMING_CONTEST_WINNER",
+    type: "PROGRAMMING_CONTEST_WINNER",
+    title: "Vencedor do Concurso de Programação",
+    description: "Certificado para estudante vencedor do concurso de Programação.",
+  },
+  {
+    key: "STUDENT_VOTED_BEST_PROJECT",
+    type: "STUDENT_VOTED_BEST_PROJECT",
+    title: "Melhor Projeto Votado pelos Estudantes",
+    description: "Certificado para projeto vencedor pelo voto dos estudantes.",
+  },
+  {
+    key: "JURY_SELECTED_BEST_PROJECT",
+    type: "JURY_SELECTED_BEST_PROJECT",
+    title: "Melhor Projeto Eleito pelos Júris",
+    description: "Certificado para projeto escolhido pela avaliação dos júris.",
+  },
+  {
+    key: "FAIR_OUTSTANDING_PARTICIPATION",
+    type: "FAIR_OUTSTANDING_PARTICIPATION",
+    title: "Certificado de Melhor Participação",
+    description: "Certificado para estudantes que se destacaram na feira.",
   },
 ] as const;
 
@@ -355,6 +387,8 @@ export function buildCertificateHtml(params: {
   issuedAt: Date;
   institutionName: string;
   organizerName: string;
+  rectorTitle?: string | null;
+  rectorName?: string | null;
   authorityTitle: string;
   authorityName: string;
   validationUrl: string;
@@ -371,6 +405,8 @@ export function buildCertificateHtml(params: {
 
   // Smart signature logic: if organizer is the Social Sciences and Humanities faculty
   // and the authority is the default Vice-Reitora, show the specific Decana from the photo
+  const rectorTitle = params.rectorTitle?.trim() || "O Reitor";
+  const rectorName = params.rectorName?.trim() || "Prof. Doutor André Pedro Neto";
   let rightTitle = params.authorityTitle;
   let rightName = params.authorityName;
 
@@ -392,6 +428,14 @@ export function buildCertificateHtml(params: {
     bodyTextHtml = `concluiu com aproveitamento a formação de ${titleHtml}${courseHtml}, que decorreu nas instalações da ${escapeHtml(params.institutionName)}${numberHtml}.`;
   } else if (params.type === "PROJECT_EXHIBITION") {
     bodyTextHtml = `participou como expositor com o projeto ${titleHtml}${courseHtml}, no evento ${escapeHtml(params.organizerName)}, realizado nas instalações da ${escapeHtml(params.institutionName)}${numberHtml}.`;
+  } else if (params.type === "PHYSICS_CONTEST_WINNER" || params.type === "PROGRAMMING_CONTEST_WINNER") {
+    bodyTextHtml = `destacou-se como vencedor de ${titleHtml}${courseHtml}, no âmbito das atividades académicas realizadas nas instalações da ${escapeHtml(params.institutionName)}${numberHtml}.`;
+  } else if (params.type === "STUDENT_VOTED_BEST_PROJECT") {
+    bodyTextHtml = `integrou o projeto reconhecido como ${titleHtml}${courseHtml}, eleito pelo voto dos estudantes durante a feira académica${numberHtml}.`;
+  } else if (params.type === "JURY_SELECTED_BEST_PROJECT") {
+    bodyTextHtml = `integrou o projeto reconhecido como ${titleHtml}${courseHtml}, eleito pela avaliação dos júris durante a feira académica${numberHtml}.`;
+  } else if (params.type === "FAIR_OUTSTANDING_PARTICIPATION") {
+    bodyTextHtml = `foi distinguido com ${titleHtml}${courseHtml}, pelo empenho, responsabilidade e destaque demonstrados durante a feira académica${numberHtml}.`;
   } else {
     // Default / PARTICIPATION / EVENT_PARTICIPATION
     bodyTextHtml = `participou na atividade ${titleHtml}${courseHtml}, organizada por ${escapeHtml(params.organizerName)}, nas instalações da ${escapeHtml(params.institutionName)}${numberHtml}.`;
@@ -401,7 +445,7 @@ export function buildCertificateHtml(params: {
 <html lang="pt">
 <head>
 <meta charset="utf-8" />
-<title>${escapeHtml(params.title)} &middot; ${escapeHtml(params.code)}</title>
+<title>${escapeHtml(params.title)}</title>
 <style>
   @import url('https://fonts.googleapis.com/css2?family=Outfit:wght@400;600;700;800&family=Playfair+Display:ital,wght@0,600;0,700;1,600&display=swap');
 
@@ -576,25 +620,6 @@ export function buildCertificateHtml(params: {
     line-height: 1.3;
   }
 
-  /* Footer reference number and validation url */
-  .certificate-footer {
-    position: absolute;
-    bottom: 11mm;
-    left: 35mm;
-    right: 35mm;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
-    z-index: 2;
-    font-family: monospace;
-    font-size: 8.5px;
-    color: #8c8c8c;
-  }
-
-  .footer-validation-url {
-    font-size: 8.5px;
-    color: #777777;
-  }
 </style>
 </head>
 <body>
@@ -618,9 +643,9 @@ export function buildCertificateHtml(params: {
 
       <div class="signatures-container">
         <div class="signature-block">
-          <div class="sig-title">O Reitor</div>
+          <div class="sig-title">${escapeHtml(rectorTitle)}</div>
           <div class="sig-line"></div>
-          <div class="sig-name">Prof. Doutor André Pedro Neto</div>
+          <div class="sig-name">${escapeHtml(rectorName)}</div>
         </div>
         <div class="signature-block">
           <div class="sig-title">${escapeHtml(rightTitle)}</div>
@@ -629,10 +654,6 @@ export function buildCertificateHtml(params: {
         </div>
       </div>
 
-      <footer class="certificate-footer">
-        <span>${escapeHtml(params.code)}</span>
-        <span class="footer-validation-url">Validação em: ${escapeHtml(params.validationUrl)}</span>
-      </footer>
     </div>
   </main>
 </body>
@@ -647,6 +668,18 @@ function parseCertificateMetadata(metadataJson?: string | null) {
   } catch {
     return {};
   }
+}
+
+function metadataString(metadata: Record<string, unknown>, key: string) {
+  const value = metadata[key];
+  return typeof value === "string" && value.trim() ? value.trim() : null;
+}
+
+function mergeCertificateMetadata(base: Record<string, unknown> | undefined, extra: Record<string, unknown>) {
+  return {
+    ...(base ?? {}),
+    ...extra,
+  };
 }
 
 function certificatePdfSnapshot(env: Env, certificate: {
@@ -701,6 +734,14 @@ async function sendCertificatePdf(reply: FastifyReply, env: Env, certificate: {
     return reply.code(404).send({ message: "Certificate not found" });
   }
 
+  const metadata = parseCertificateMetadata(certificate.metadataJson);
+  const institutionName = metadataString(metadata, "institutionName") ?? env.UORCONNECT_INSTITUTION_NAME;
+  const organizerName = metadataString(metadata, "organizerName") ?? env.UORCONNECT_CERTIFICATE_ORGANIZER_NAME;
+  const rectorTitle = metadataString(metadata, "rectorTitle") ?? "O Reitor";
+  const rectorName = metadataString(metadata, "rectorName") ?? "Prof. Doutor André Pedro Neto";
+  const authorityTitle = metadataString(metadata, "authorityTitle") ?? env.UORCONNECT_CERTIFICATE_AUTHORITY_TITLE;
+  const authorityName = metadataString(metadata, "authorityName") ?? env.UORCONNECT_CERTIFICATE_AUTHORITY_NAME;
+
   const html = buildCertificateHtml({
     logoDataUri: await loadLogoDataUri(),
     templateBackgroundDataUri: await loadCertificateTemplateDataUri(),
@@ -711,10 +752,12 @@ async function sendCertificatePdf(reply: FastifyReply, env: Env, certificate: {
     recipientCourse: certificate.recipientCourse,
     code: certificate.code,
     issuedAt: certificate.issuedAt,
-    institutionName: env.UORCONNECT_INSTITUTION_NAME,
-    organizerName: env.UORCONNECT_CERTIFICATE_ORGANIZER_NAME,
-    authorityTitle: env.UORCONNECT_CERTIFICATE_AUTHORITY_TITLE,
-    authorityName: env.UORCONNECT_CERTIFICATE_AUTHORITY_NAME,
+    institutionName,
+    organizerName,
+    rectorTitle,
+    rectorName,
+    authorityTitle,
+    authorityName,
     validationUrl: buildValidationUrl(env, certificate.validationToken),
   });
   const pdf = await renderPdfFromHtml(html, {
@@ -729,7 +772,6 @@ async function sendCertificatePdf(reply: FastifyReply, env: Env, certificate: {
     },
   });
   const generatedAt = new Date();
-  const metadata = parseCertificateMetadata(certificate.metadataJson);
   await prisma.certificate.update({
     where: { id: certificate.id },
     data: {
@@ -971,11 +1013,11 @@ export async function certificatesRoutes(app: FastifyInstance, opts: { env: Env 
               course: checkIn.studentCourse,
               sourceType: "ATTENDANCE",
               sourceId: checkIn.id,
-              metadata: {
+              metadata: mergeCertificateMetadata(body.metadata, {
                 eventKey: checkIn.eventKey,
                 eventLabel: checkIn.eventLabel,
                 checkedInAt: checkIn.checkedInAt.toISOString(),
-              },
+              }),
             },
             type: template.type,
             title: template.title,
@@ -1070,7 +1112,7 @@ export async function certificatesRoutes(app: FastifyInstance, opts: { env: Env 
               course: normalized.course ?? null,
               sourceType: "STUDENT_LIST",
               sourceId: null,
-              metadata: { mode: body.mode },
+              metadata: mergeCertificateMetadata(body.metadata, { mode: body.mode }),
             });
           }
 
@@ -1108,7 +1150,7 @@ export async function certificatesRoutes(app: FastifyInstance, opts: { env: Env 
               course: normalized.course ?? null,
               sourceType: "STUDENT_COURSE",
               sourceId: null,
-              metadata: { studentCourse: body.studentCourse },
+              metadata: mergeCertificateMetadata(body.metadata, { studentCourse: body.studentCourse }),
             });
           }
         }
@@ -1134,7 +1176,7 @@ export async function certificatesRoutes(app: FastifyInstance, opts: { env: Env 
               course: enrollment.studentCourse,
               sourceType: "COURSE_ENROLLMENT",
               sourceId: enrollment.id,
-              metadata: { courseId: course.id, courseName: course.name },
+              metadata: mergeCertificateMetadata(body.metadata, { courseId: course.id, courseName: course.name }),
             });
           }
         }
@@ -1169,7 +1211,7 @@ export async function certificatesRoutes(app: FastifyInstance, opts: { env: Env 
             course: submission.course ?? submission.student?.course ?? null,
             sourceType: "PROJECT",
             sourceId: submission.id,
-            metadata: { submissionName: submission.name, referenceCode: submission.referenceCode },
+            metadata: mergeCertificateMetadata(body.metadata, { submissionName: submission.name, referenceCode: submission.referenceCode }),
           });
 
           const includedNumbers = new Set<string>([studentNumber]);
@@ -1185,12 +1227,12 @@ export async function certificatesRoutes(app: FastifyInstance, opts: { env: Env 
               course: member.student?.course ?? member.studentCourse ?? submission.course ?? null,
               sourceType: "PROJECT",
               sourceId: submission.id,
-              metadata: {
+              metadata: mergeCertificateMetadata(body.metadata, {
                 submissionName: submission.name,
                 referenceCode: submission.referenceCode,
                 memberName: member.name,
                 role: "member",
-              },
+              }),
             });
           }
         }

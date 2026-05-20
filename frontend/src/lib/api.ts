@@ -538,7 +538,12 @@ export type CertificateType =
   | "PARTICIPATION"
   | "EVENT_PARTICIPATION"
   | "COURSE_COMPLETION"
-  | "PROJECT_EXHIBITION";
+  | "PROJECT_EXHIBITION"
+  | "PHYSICS_CONTEST_WINNER"
+  | "PROGRAMMING_CONTEST_WINNER"
+  | "STUDENT_VOTED_BEST_PROJECT"
+  | "JURY_SELECTED_BEST_PROJECT"
+  | "FAIR_OUTSTANDING_PARTICIPATION";
 export type CertificateStatus = "ISSUED" | "REVOKED";
 
 export interface PaymentTimelineItem {
@@ -5215,6 +5220,7 @@ export const api = {
       type?: string;
       title?: string;
       eventKey?: string;
+      metadata?: Record<string, unknown>;
     }) =>
       request<{
         issued: number;
@@ -5232,6 +5238,7 @@ export const api = {
       studentCourse?: string;
       courseId?: number;
       submissionId?: number;
+      metadata?: Record<string, unknown>;
     }) =>
       request<{
         issued: number;
