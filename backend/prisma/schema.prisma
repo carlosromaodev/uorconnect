@@ -716,6 +716,7 @@ model Submission {
   deletedAt        DateTime?
   deletedByStudentNumber String?
   deletionReason   String?
+  projectFrozen    Boolean          @default(false)
   createdAt        DateTime         @default(now())
   updatedAt        DateTime         @updatedAt
   leader           User             @relation("UserSubmissions", fields: [leaderId], references: [id])
@@ -730,12 +731,41 @@ model Submission {
   studentComments  StudentComment[]
   memberConfirmations SubmissionMember[]
   exhibitorScoreEvents ExhibitorScoreEvent[]
+  odinProjectPenalties OdinProjectPenalty[]
 
   @@index([status, createdAt])
   @@index([type, status, createdAt])
   @@index([studentId, createdAt])
   @@index([teamInviteToken])
   @@index([paymentStatus, updatedAt])
+}
+
+model OdinProjectPenalty {
+  id                         Int        @id @default(autoincrement())
+  submission                 Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  submissionId               Int
+  penaltyMode                String
+  requestedVoteCount         Int?
+  removedVoteCount           Int        @default(0)
+  removedPointCount          Float      @default(0)
+  reason                     String
+  automationProofSummary     String?
+  automationProofUrl         String?
+  automationEvidenceJson     String?
+  automationConfidence       Int?
+  affectedVoteIdsJson        String?
+  affectedStudentIdsJson     String?
+  affectedScoreEventIdsJson  String?
+  notifiedProjectMembers     Boolean    @default(true)
+  createdByStudentNumber     String?
+  createdAt                  DateTime   @default(now())
+  revokedAt                  DateTime?
+  revokedByStudentNumber     String?
+  revokeReason               String?
+
+  @@index([submissionId, createdAt])
+  @@index([penaltyMode, createdAt])
+  @@index([createdByStudentNumber, createdAt])
 }
 
 model SubmissionMember {
