@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   buildStudentIdentityWhere,
+  canonicalStudentUniversityName,
   hasIsptecInstitutionalEmail,
   hasOfficialStudentNumberShape,
   normalizeStudentNumberForIdentity,
@@ -65,6 +66,11 @@ describe("student identity", () => {
       email: "20230096@isptec.co.ao",
       course: "UNIMESTRE - Sistema de gestão educacional",
     })).toBe("ISPTEC");
+  });
+
+  it("provides a canonical university display value for the resolved institution", () => {
+    expect(canonicalStudentUniversityName("UOR")).toBe("UOR");
+    expect(canonicalStudentUniversityName("ISPTEC")).toBe("ISPTEC");
   });
 
   it("normalizes legacy ISPTEC-prefixed numbers back to their real student number", () => {

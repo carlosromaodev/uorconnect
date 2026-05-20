@@ -81,6 +81,10 @@ export function resolveStudentInstitutionCode(input: StudentInstitutionInput): S
   return hasIsptecInstitutionalEmail(input.email) ? "ISPTEC" : "UOR";
 }
 
+export function canonicalStudentUniversityName(institutionCode: StudentInstitutionCode) {
+  return institutionCode;
+}
+
 export function buildStudentIdentityWhere(studentNumber: string, institutionCode: StudentInstitutionCode) {
   return {
     institutionCode_studentNumber: {

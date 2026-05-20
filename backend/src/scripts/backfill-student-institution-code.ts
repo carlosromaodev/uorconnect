@@ -1,5 +1,6 @@
 import { prisma } from "../shared/prisma";
 import {
+  canonicalStudentUniversityName,
   hasIsptecInstitutionalEmail,
   hasOfficialStudentNumberShape,
   normalizeStudentNumberForIdentity,
@@ -43,6 +44,7 @@ async function main() {
       ...student,
       nextStudentNumber: normalizeStudentNumberForIdentity(student.studentNumber),
       nextInstitutionCode: resolveStudentInstitutionCode(student),
+      nextUniversity: canonicalStudentUniversityName(resolveStudentInstitutionCode(student)),
       shouldDeactivate: !hasOfficialStudentNumberShape(student.studentNumber),
     }));
 
@@ -87,7 +89,11 @@ async function main() {
   const deactivations = plans.filter((student) => student.shouldDeactivate || duplicateDeactivateIds.has(student.id));
   const updates = plans.filter((student) => {
     if (!keepIds.has(student.id)) return false;
-    if (student.studentNumber === student.nextStudentNumber && student.institutionCode === student.nextInstitutionCode) return false;
+    if (
+      student.studentNumber === student.nextStudentNumber
+      && student.institutionCode === student.nextInstitutionCode
+      && student.university === student.nextUniversity
+    ) return false;
 
     const targetKey = `${student.nextInstitutionCode}:${student.nextStudentNumber}`;
     const existingId = existingKeys.get(targetKey);
@@ -96,7 +102,11 @@ async function main() {
 
   const blockedUpdates = plans.filter((student) => {
     if (!keepIds.has(student.id)) return false;
-    if (student.studentNumber === student.nextStudentNumber && student.institutionCode === student.nextInstitutionCode) return false;
+    if (
+      student.studentNumber === student.nextStudentNumber
+      && student.institutionCode === student.nextInstitutionCode
+      && student.university === student.nextUniversity
+    ) return false;
 
     const targetKey = `${student.nextInstitutionCode}:${student.nextStudentNumber}`;
     const existingId = existingKeys.get(targetKey);
@@ -127,6 +137,7 @@ async function main() {
         data: {
           institutionCode: student.nextInstitutionCode,
           studentNumber: student.nextStudentNumber,
+          university: student.nextUniversity,
         },
       });
     }
@@ -149,6 +160,7 @@ async function main() {
       email: student.email,
       course: student.course,
       university: student.university,
+      nextUniversity: student.nextUniversity,
       registrationSource: student.registrationSource,
     })),
     sampleDeactivations: deactivations.slice(0, 20).map((student) => ({

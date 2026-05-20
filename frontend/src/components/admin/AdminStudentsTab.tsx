@@ -120,6 +120,10 @@ function formatDateTime(dateStr: string | null | undefined): string {
   }
 }
 
+function getStudentInstitutionLabel(student: StudentWithStats) {
+  return student.institutionCode === "ISPTEC" ? "ISPTEC" : "UOR";
+}
+
 /* ------------------------------------------------------------------ */
 /*  Skeleton loader                                                    */
 /* ------------------------------------------------------------------ */
@@ -199,9 +203,8 @@ function StudentCard({
   const isProfileComplete = !!student.profileCompletedAt;
   const hasProfilePhoto = !!student.avatarUrl;
   const isOfficialAccess = student.accessType === "OFFICIAL";
-  const officialLoginLabel = student.institutionCode === "ISPTEC"
-    ? "Login oficial ISPTEC"
-    : "Login oficial UOR";
+  const institutionLabel = getStudentInstitutionLabel(student);
+  const officialLoginLabel = `Login oficial ${institutionLabel}`;
   const activity = student.activitySummary;
   const projectActivityTotal = (activity?.projects.length ?? 0)
     + (activity?.businesses.length ?? 0)
@@ -298,12 +301,10 @@ function StudentCard({
                   <span className="truncate">{student.course}</span>
                 </span>
               )}
-              {student.university && (
-                <span className="flex items-center gap-1 truncate">
-                  <MapPin className="h-3 w-3 shrink-0" />
-                  <span className="truncate">{student.university}</span>
-                </span>
-              )}
+              <span className="flex items-center gap-1 truncate">
+                <MapPin className="h-3 w-3 shrink-0" />
+                <span className="truncate">{institutionLabel}</span>
+              </span>
             </div>
           </div>
         </div>
@@ -399,7 +400,7 @@ function StudentCard({
                 </div>
                 <div className="flex items-center gap-2">
                   <MapPin className="h-3.5 w-3.5 text-muted-foreground" />
-                  <span>{student.university || "Universidade não definida"}</span>
+                  <span>{institutionLabel}</span>
                 </div>
                 <div className="flex items-center gap-2">
                   <Layers className="h-3.5 w-3.5 text-muted-foreground" />
@@ -729,7 +730,7 @@ export default function AdminStudentsTab({
       if (s.academicSyncedAt) synced++;
       if (s.accessType === "OFFICIAL") official++;
       if (s.accessType === "TEMPORARY") temporary++;
-      if (s.university?.trim()) universities.add(s.university.trim());
+      universities.add(getStudentInstitutionLabel(s));
       interactions += totalInteractions(s);
     }
     return {
