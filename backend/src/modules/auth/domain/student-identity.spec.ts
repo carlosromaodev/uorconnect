@@ -37,6 +37,36 @@ describe("student identity", () => {
     })).toBe("UOR");
   });
 
+  it("uses exclusive course names to repair mixed institution data", () => {
+    expect(resolveStudentInstitutionCode({
+      email: "estudante@gmail.com",
+      course: "Engenharia Química",
+    })).toBe("ISPTEC");
+    expect(resolveStudentInstitutionCode({
+      email: "20230096@isptec.co.ao",
+      course: "Engenharia Informática e Comunicações",
+    })).toBe("UOR");
+    expect(resolveStudentInstitutionCode({
+      email: "estudante@gmail.com",
+      course: "Contabilidade e Finanças",
+    })).toBe("UOR");
+  });
+
+  it("keeps shared or unknown courses decided by the institutional email fallback", () => {
+    expect(resolveStudentInstitutionCode({
+      email: "20230096@isptec.co.ao",
+      course: "Engenharia Civil",
+    })).toBe("ISPTEC");
+    expect(resolveStudentInstitutionCode({
+      email: "estudante@gmail.com",
+      course: "Engenharia Civil",
+    })).toBe("UOR");
+    expect(resolveStudentInstitutionCode({
+      email: "20230096@isptec.co.ao",
+      course: "UNIMESTRE - Sistema de gestão educacional",
+    })).toBe("ISPTEC");
+  });
+
   it("normalizes legacy ISPTEC-prefixed numbers back to their real student number", () => {
     expect(normalizeStudentNumberForIdentity("ISPTEC-20230096")).toBe("20230096");
     expect(normalizeStudentNumberForIdentity(" 20242099 ")).toBe("20242099");
