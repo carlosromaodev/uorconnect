@@ -18,6 +18,11 @@ import {
   hashLocalStudentPassword,
   LOCAL_STUDENT_PASSWORD_PURPOSE,
 } from "../domain/local-student-credentials";
+import {
+  buildStudentIdentityWhere,
+  resolveStudentInstitutionCode,
+  type StudentInstitutionCode,
+} from "../domain/student-identity";
 
 type StudentAccessFilter = "OFFICIAL" | "TEMPORARY" | "all" | "todos" | undefined;
 
@@ -250,9 +255,25 @@ export class StudentRepository {
   }
 
   async findByStudentNumber(studentNumber: string): Promise<Student | null> {
-    // Busca aluno pelo número na base local (sqlite)
+    const uorStudent = await this.prisma.student.findUnique({
+      where: buildStudentIdentityWhere(studentNumber, "UOR"),
+    });
+    if (uorStudent && !uorStudent.deletedAt) return uorStudent;
+
+    return this.prisma.student.findFirst({
+      where: { studentNumber, deletedAt: null },
+      orderBy: [
+        { updatedAt: "desc" },
+      ],
+    });
+  }
+
+  async findByInstitutionalStudentNumber(
+    studentNumber: string,
+    institutionCode: StudentInstitutionCode,
+  ): Promise<Student | null> {
     return this.prisma.student.findUnique({
-      where: { studentNumber }
+      where: buildStudentIdentityWhere(studentNumber, institutionCode),
     }).then((student) => student?.deletedAt ? null : student);
   }
 
@@ -276,7 +297,7 @@ export class StudentRepository {
 
   async findByLocalPassword(studentNumber: string, password: string, secret: string): Promise<Student | null> {
     const student = await this.prisma.student.findUnique({
-      where: { studentNumber },
+      where: buildStudentIdentityWhere(studentNumber, "UOR"),
       include: {
         accessCodes: {
           where: {
@@ -307,24 +328,31 @@ export class StudentRepository {
   }
 
   async create(studentNumber: string, profile?: StudentProfile): Promise<Student> {
+    const institutionCode = resolveStudentInstitutionCode({ studentNumber, ...profile });
     // Cria aluno já preenchendo o perfil capturado da secretaria, quando existir
     return this.prisma.student.create({
       data: {
         studentNumber,
-        ...this.mapProfile(profile)
+        ...this.mapProfile(profile),
+        institutionCode,
       }
     });
   }
 
   async upsertProfile(studentNumber: string, profile?: StudentProfile): Promise<Student> {
+    const institutionCode = resolveStudentInstitutionCode({ studentNumber, ...profile });
     // Atualiza se já existir ou cria novo com os dados mais recentes
     const student = await this.prisma.student.upsert({
-      where: { studentNumber },
+      where: buildStudentIdentityWhere(studentNumber, institutionCode),
       create: {
         studentNumber,
-        ...this.mapProfile(profile)
+        ...this.mapProfile(profile),
+        institutionCode,
       },
-      update: this.mapProfile(profile)
+      update: {
+        ...this.mapProfile(profile),
+        institutionCode,
+      }
     });
 
     await this.touchLastLogin(student.id);

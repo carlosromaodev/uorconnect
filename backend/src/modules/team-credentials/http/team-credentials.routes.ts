@@ -3645,7 +3645,7 @@ export async function teamCredentialsRoutes(app: FastifyInstance, opts: { env: E
 
       const [credential, student, pendingClaim] = await Promise.all([
         prisma.eventTeamCredential.findUnique({ where: { token: params.token } }),
-        prisma.student.findUnique({
+        prisma.student.findFirst({
           where: { studentNumber },
           select: {
             id: true,
@@ -3779,7 +3779,7 @@ export async function teamCredentialsRoutes(app: FastifyInstance, opts: { env: E
 
       const [credential, student, existingApproved, existingPending] = await Promise.all([
         prisma.eventTeamCredential.findUnique({ where: { token: params.token } }),
-        prisma.student.findUnique({ where: { studentNumber } }),
+        prisma.student.findFirst({ where: { studentNumber, deletedAt: null } }),
         prisma.teamMembershipClaim.findFirst({
           where: { studentNumber, status: "APPROVED" },
           orderBy: [{ updatedAt: "desc" }],
@@ -3958,7 +3958,7 @@ export async function teamCredentialsRoutes(app: FastifyInstance, opts: { env: E
 
       const [credential, student] = await Promise.all([
         prisma.eventTeamCredential.findUnique({ where: { token: params.token } }),
-        prisma.student.findUnique({
+        prisma.student.findFirst({
           where: { studentNumber },
           select: { id: true, studentNumber: true, name: true, email: true, course: true, phone: true, avatarUrl: true },
         }),
@@ -4036,7 +4036,7 @@ export async function teamCredentialsRoutes(app: FastifyInstance, opts: { env: E
 
       const [existing, student, submission] = await Promise.all([
         prisma.eventTeamCredential.findUnique({ where: { token: params.token } }),
-        prisma.student.findUnique({ where: { studentNumber } }),
+        prisma.student.findFirst({ where: { studentNumber, deletedAt: null } }),
         prisma.submission.findUnique({ where: { id: body.submissionId }, select: { id: true, name: true, type: true, area: true, referenceCode: true, status: true, paymentStatus: true, studentId: true } }),
       ]);
 
@@ -4302,7 +4302,7 @@ export async function teamCredentialsRoutes(app: FastifyInstance, opts: { env: E
       });
 
       const [student, adminProfile, linkedCredentials] = await Promise.all([
-        prisma.student.findUnique({ where: { studentNumber }, select: { name: true } }),
+        prisma.student.findFirst({ where: { studentNumber, deletedAt: null }, select: { name: true } }),
         getAdminProfileByStudentNumber(studentNumber),
         memberships.length > 0
           ? prisma.eventTeamCredential.findMany({
@@ -5155,7 +5155,7 @@ export async function teamCredentialsRoutes(app: FastifyInstance, opts: { env: E
       }
 
       const [student, adminProfile, membership] = await Promise.all([
-        prisma.student.findUnique({
+        prisma.student.findFirst({
           where: { studentNumber },
           select: {
             studentNumber: true,

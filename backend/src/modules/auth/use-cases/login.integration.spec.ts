@@ -83,6 +83,7 @@ describe("LoginUseCase – integração com secretaria", () => {
       expect(repo.upsertProfile).toHaveBeenCalledWith(
         STUDENT_NUMBER,
         expect.objectContaining({
+          institutionCode: "UOR",
           isUorStudent: true,
           registrationSource: "SECRETARIA",
         }),
@@ -107,6 +108,7 @@ describe("LoginUseCase – integração com secretaria", () => {
       expect(repo.upsertProfile).toHaveBeenCalledWith(
         "20200227",
         expect.objectContaining({
+          institutionCode: "ISPTEC",
           university: "ISPTEC",
           isUorStudent: false,
           registrationSource: "ISPTEC_OFFICIAL",
@@ -148,6 +150,7 @@ describe("LoginUseCase – integração com secretaria", () => {
       expect(repo.upsertProfile).toHaveBeenCalledWith(
         "20200477",
         expect.objectContaining({
+          institutionCode: "UOR",
           isUorStudent: true,
           registrationSource: "SECRETARIA",
         }),

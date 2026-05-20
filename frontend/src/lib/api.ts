@@ -237,6 +237,7 @@ export interface ExhibitorEmptyStandPenaltyInput {
 
 export interface StudentProfile {
   id: number;
+  institutionCode?: "UOR" | "ISPTEC" | string;
   studentNumber: string;
   accessType?: "OFFICIAL" | "TEMPORARY";
   name: string | null;

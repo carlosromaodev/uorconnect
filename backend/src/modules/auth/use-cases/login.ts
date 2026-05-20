@@ -110,6 +110,7 @@ export class LoginUseCase {
           university: provider === "isptec"
             ? result.profile.university ?? "ISPTEC"
             : result.profile.university,
+          institutionCode: provider === "isptec" ? "ISPTEC" : "UOR",
           isUorStudent: provider === "isptec" ? false : true,
           registrationSource: provider === "isptec" ? "ISPTEC_OFFICIAL" : "SECRETARIA",
           academicSyncedAt: result.profile.academicSyncedAt ?? new Date(),

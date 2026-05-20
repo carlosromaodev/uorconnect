@@ -1,12 +1,18 @@
 import { normalizeOfficialCourse } from "../../../shared/official-courses";
+import { resolveStudentInstitutionCode } from "./student-identity";
 
 type StudentLike = {
+  studentNumber?: string | null;
+  institutionCode?: string | null;
   name?: string | null;
+  email?: string | null;
   course?: string | null;
   phone?: string | null;
   alternatePhone?: string | null;
   academicSyncedAt?: Date | string | null;
   registrationSource?: string | null;
+  university?: string | null;
+  isUorStudent?: boolean | null;
 };
 
 export type StudentAccessType = "OFFICIAL" | "TEMPORARY";
@@ -66,6 +72,7 @@ export function resolveStudentAccessType(student: Pick<StudentLike, "academicSyn
 export function normalizeStudentProfile<T extends StudentLike>(student: T): T & { accessType: StudentAccessType } {
   return {
     ...student,
+    institutionCode: resolveStudentInstitutionCode(student),
     name: normalizeStudentName(student.name) ?? null,
     course: normalizeCourse(student.course) ?? null,
     phone: normalizeAngolaPhone(student.phone) ?? null,

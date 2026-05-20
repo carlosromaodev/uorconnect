@@ -236,6 +236,7 @@ function resolveProfileFieldSources(student: {
 
 const studentResponseSchema = z.object({
   id: z.number(),
+  institutionCode: z.string().optional(),
   studentNumber: z.string(),
   accessType: z.enum(["OFFICIAL", "TEMPORARY"]),
   name: z.string().nullable(),
@@ -722,7 +723,7 @@ function hashStudentAccessCode(phone: string, code: string, env: Env) {
 async function generateConventionalStudentNumber() {
   for (let index = 0; index < 8; index += 1) {
     const candidate = `8${String(randomInt(0, 100_000_000_000)).padStart(11, "0")}`;
-    const existing = await prisma.student.findUnique({ where: { studentNumber: candidate }, select: { id: true } });
+    const existing = await prisma.student.findFirst({ where: { studentNumber: candidate }, select: { id: true } });
     if (!existing) return candidate;
   }
   return `8${Date.now().toString().slice(-11)}`;

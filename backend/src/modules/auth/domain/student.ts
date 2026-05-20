@@ -1,5 +1,6 @@
 export interface Student {
   id: number;
+  institutionCode?: "UOR" | "ISPTEC" | string;
   studentNumber: string;
   // Campos abaixo podem ainda não ter sido sincronizados com a secretaria,
   // por isso são opcionais e nulos.
@@ -62,6 +63,7 @@ export interface LoginResponse {
 
 export interface StudentProfile {
   studentNumber?: string;
+  institutionCode?: "UOR" | "ISPTEC" | string;
   name?: string;
   email?: string;
   course?: string;

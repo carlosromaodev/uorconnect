@@ -870,7 +870,7 @@ export async function resolvePassportReferralInvite(input: {
 }) {
   const studentNumber = parsePassportReferralCode(input.referralCode, input.secret);
   if (!studentNumber) return null;
-  const referrer = await prisma.student.findUnique({
+  const referrer = await prisma.student.findFirst({
     where: { studentNumber },
     select: { studentNumber: true, name: true, course: true },
   });
@@ -906,7 +906,7 @@ export async function recordPassportReferralJoin(input: {
         isUorStudent: true,
       },
     }),
-    prisma.student.findUnique({
+    prisma.student.findFirst({
       where: { studentNumber: referrerStudentNumber },
       select: {
         id: true,

@@ -235,7 +235,7 @@ function normalizeExternalText(value?: string | null, maxLength = 160) {
 async function generateExternalStudentNumber() {
   for (let attempt = 0; attempt < 8; attempt += 1) {
     const candidate = `8${String(randomInt(0, 100_000_000_000)).padStart(11, "0")}`;
-    const existing = await prisma.student.findUnique({
+    const existing = await prisma.student.findFirst({
       where: { studentNumber: candidate },
       select: { id: true },
     });
@@ -287,8 +287,9 @@ async function upsertExternalTeamMemberStudent(env: Env, input: {
   const preserveOfficialProfile = Boolean(existingByPhone?.academicSyncedAt);
 
   const student = await prisma.student.upsert({
-    where: { studentNumber },
+    where: { institutionCode_studentNumber: { institutionCode: "UOR", studentNumber } },
     create: {
+      institutionCode: "UOR",
       studentNumber,
       name,
       phone,
@@ -732,7 +733,7 @@ export async function setSubmissionTeamMemberExpectedStudentNumber(
     throw new Error("O responsável já está ligado à candidatura.");
   }
 
-  const student = await prisma.student.findUnique({
+  const student = await prisma.student.findFirst({
     where: { studentNumber: expectedStudentNumber },
     select: {
       id: true,
@@ -810,7 +811,7 @@ export async function adminConfirmSubmissionTeamMember(
     throw new Error("Indica primeiro o número de estudante deste membro.");
   }
 
-  const student = await prisma.student.findUnique({
+  const student = await prisma.student.findFirst({
     where: { studentNumber: expectedStudentNumber },
     select: {
       id: true,

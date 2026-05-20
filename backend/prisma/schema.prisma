@@ -42,7 +42,8 @@ model User {
 
 model Student {
   id                Int                @id @default(autoincrement())
-  studentNumber     String             @unique
+  institutionCode   String             @default("UOR")
+  studentNumber     String
   name              String?
   email             String?
   course            String?
@@ -104,6 +105,10 @@ model Student {
   exhibitorActorScoreEvents ExhibitorScoreEvent[] @relation("ExhibitorScoreActor")
   teamMemberships       TeamMembership[]
   teamMembershipClaims  TeamMembershipClaim[]
+
+  @@unique([institutionCode, studentNumber])
+  @@index([studentNumber])
+  @@index([institutionCode])
 }
 
 model StudentProfileExtra {
@@ -171,8 +176,9 @@ model AdminAuthorizedStudent {
 
 model TeamMembership {
   id                     Int      @id @default(autoincrement())
+  studentId              Int?
   studentNumber          String?
-  student                Student? @relation(fields: [studentNumber], references: [studentNumber], onDelete: SetNull, onUpdate: Cascade)
+  student                Student? @relation(fields: [studentId], references: [id], onDelete: SetNull, onUpdate: Cascade)
   fullName               String
   firstName              String?
   lastName               String?
@@ -197,6 +203,7 @@ model TeamMembership {
   claims                 TeamMembershipClaim[]
   assignedTasks          AdminTask[] @relation("AdminTaskAssignee")
 
+  @@index([studentId])
   @@index([studentNumber])
   @@index([status, team])
   @@index([category, role])

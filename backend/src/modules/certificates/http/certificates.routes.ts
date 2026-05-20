@@ -311,7 +311,7 @@ async function notifyCertificateIssued(env: Env, certificate: {
       select: { phone: true },
     })
     : certificate.recipientNumber
-      ? await prisma.student.findUnique({
+      ? await prisma.student.findFirst({
         where: { studentNumber: certificate.recipientNumber },
         select: { phone: true },
       })
@@ -1003,7 +1003,7 @@ export async function certificatesRoutes(app: FastifyInstance, opts: { env: Env 
         const body = certificateIssueBodySchema.parse(request.body);
         const actor = request.student?.studentNumber ?? (request.jury ? `jury-${request.jury.id}` : "unknown");
         const template = resolveCertificateTemplate(body.type, body.title);
-        const student = await prisma.student.findUnique({
+        const student = await prisma.student.findFirst({
           where: { studentNumber: body.studentNumber.replace(/\D/g, "").trim() },
         });
 

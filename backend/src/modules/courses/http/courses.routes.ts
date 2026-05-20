@@ -895,7 +895,7 @@ export async function coursesRoutes(app: FastifyInstance, opts: { env: Env }) {
         const course = await prisma.course.findUnique({ where: { id: courseId } });
         if (!course) return reply.code(404).send({ message: "Curso não encontrado." });
 
-        const student = await prisma.student.findUnique({ where: { studentNumber } });
+        const student = await prisma.student.findFirst({ where: { studentNumber, deletedAt: null } });
         if (!student) return reply.code(404).send({ message: "Estudante não encontrado com este número." });
 
         const existing = await prisma.courseEnrollment.findUnique({
@@ -968,7 +968,7 @@ export async function coursesRoutes(app: FastifyInstance, opts: { env: Env }) {
 
         const nextStudentNumber = body.studentNumber ? body.studentNumber.replace(/\D/g, "") : existing.studentNumber;
         const nextStudent = nextStudentNumber !== existing.studentNumber
-          ? await prisma.student.findUnique({ where: { studentNumber: nextStudentNumber } })
+          ? await prisma.student.findFirst({ where: { studentNumber: nextStudentNumber, deletedAt: null } })
           : existing.student;
         if (!nextStudent) return reply.code(404).send({ message: "Estudante não encontrado com este número." });
 

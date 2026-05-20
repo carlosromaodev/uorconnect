@@ -669,7 +669,7 @@ async function ensureCredentialForStudent(studentId: number) {
 }
 
 async function ensureCredentialByStudentNumber(studentNumber: string) {
-  const student = await prisma.student.findUnique({ where: { studentNumber } });
+  const student = await prisma.student.findFirst({ where: { studentNumber, deletedAt: null } });
   if (!student) return null;
   return ensureCredentialForStudent(student.id);
 }
