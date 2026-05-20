@@ -9,62 +9,26 @@ export type StudentInstitutionInput = {
   isUorStudent?: boolean | null;
 };
 
-function normalizeText(value?: string | null) {
-  return (value ?? "")
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .replace(/\s+/g, " ")
-    .trim()
-    .toUpperCase();
-}
-
-export function normalizeStudentNumberForIdentity(studentNumber?: string | null) {
-  return (studentNumber ?? "").trim();
+export function hasIsptecInstitutionalEmail(email?: string | null) {
+  return (email ?? "").trim().toLowerCase().endsWith("@isptec.co.ao");
 }
 
 export function hasIsptecEmailReference(email?: string | null) {
-  return (email ?? "").trim().toLowerCase().includes("isptec");
+  return hasIsptecInstitutionalEmail(email);
 }
 
-function hasPersonalEmail(email?: string | null) {
-  const normalized = (email ?? "").trim();
-  return normalized.includes("@") && !hasIsptecEmailReference(normalized);
+export function normalizeStudentNumberForIdentity(studentNumber?: string | null) {
+  const normalized = (studentNumber ?? "").trim();
+  const legacyIsptecMatch = normalized.match(/^ISPTEC[-_\s]*(2\d+)$/i);
+  return legacyIsptecMatch?.[1] ?? normalized;
 }
 
-function hasUsablePhone(phone?: string | null) {
-  return (phone ?? "").replace(/\D/g, "").length >= 8;
-}
-
-function hasStudentNumber(studentNumber?: string | null) {
-  return normalizeStudentNumberForIdentity(studentNumber).length > 0;
-}
-
-function hasUorContactProfile(input: StudentInstitutionInput) {
-  return hasStudentNumber(input.studentNumber) && hasUsablePhone(input.phone) && hasPersonalEmail(input.email);
+export function hasOfficialStudentNumberShape(studentNumber?: string | null) {
+  return normalizeStudentNumberForIdentity(studentNumber).startsWith("2");
 }
 
 export function resolveStudentInstitutionCode(input: StudentInstitutionInput): StudentInstitutionCode {
-  const source = normalizeText(input.registrationSource);
-  if (source === "ISPTEC_OFFICIAL") return "ISPTEC";
-
-  if (hasIsptecEmailReference(input.email)) return "ISPTEC";
-  if (normalizeText(input.studentNumber).includes("ISPTEC")) return "ISPTEC";
-
-  const university = normalizeText(input.university);
-  if (
-    university.includes("ISPTEC") ||
-    university.includes("INSTITUTO SUPERIOR POLITECNICO DE TECNOLOGIAS E CIENCIAS")
-  ) {
-    return "ISPTEC";
-  }
-
-  if (source === "SECRETARIA") return "UOR";
-
-  if (university === "UOR" || university.includes("OSCAR RIBAS")) return "UOR";
-  if (input.isUorStudent === true) return "UOR";
-  if (hasUorContactProfile(input)) return "UOR";
-
-  return "UOR";
+  return hasIsptecInstitutionalEmail(input.email) ? "ISPTEC" : "UOR";
 }
 
 export function buildStudentIdentityWhere(studentNumber: string, institutionCode: StudentInstitutionCode) {

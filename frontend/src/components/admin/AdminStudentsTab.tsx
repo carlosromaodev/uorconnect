@@ -199,6 +199,9 @@ function StudentCard({
   const isProfileComplete = !!student.profileCompletedAt;
   const hasProfilePhoto = !!student.avatarUrl;
   const isOfficialAccess = student.accessType === "OFFICIAL";
+  const officialLoginLabel = student.institutionCode === "ISPTEC"
+    ? "Login oficial ISPTEC"
+    : "Login oficial UOR";
   const activity = student.activitySummary;
   const projectActivityTotal = (activity?.projects.length ?? 0)
     + (activity?.businesses.length ?? 0)
@@ -438,7 +441,7 @@ function StudentCard({
                   <Flag className="h-3.5 w-3.5 text-muted-foreground" />
                   <span>
                     {isOfficialAccess
-                      ? "Login oficial UOR/ISPTEC"
+                      ? officialLoginLabel
                       : "Acesso temporário sem login oficial"}
                   </span>
                 </div>

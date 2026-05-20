@@ -1,7 +1,17 @@
 import { prisma } from "../shared/prisma";
-import { resolveStudentInstitutionCode } from "../modules/auth/domain/student-identity";
+import {
+  hasIsptecInstitutionalEmail,
+  hasOfficialStudentNumberShape,
+  normalizeStudentNumberForIdentity,
+  resolveStudentInstitutionCode,
+} from "../modules/auth/domain/student-identity";
 
 const apply = process.argv.includes("--apply");
+
+function isOfficialRegistrationSource(value?: string | null) {
+  const source = value?.trim().toUpperCase() ?? "";
+  return source === "SECRETARIA" || source === "ISPTEC_OFFICIAL";
+}
 
 async function main() {
   const students = await prisma.student.findMany({
@@ -14,27 +24,109 @@ async function main() {
       university: true,
       registrationSource: true,
       isUorStudent: true,
+      deletedAt: true,
+      lastLoginAt: true,
+      createdAt: true,
     },
     orderBy: [{ id: "asc" }],
   });
 
-  const changes = students
+  const activeStudents = students.filter((student) => !student.deletedAt);
+  const existingKeys = new Map(students.map((student) => [
+    `${student.institutionCode}:${student.studentNumber}`,
+    student.id,
+  ]));
+
+  const plans = activeStudents
     .map((student) => ({
       ...student,
+      nextStudentNumber: normalizeStudentNumberForIdentity(student.studentNumber),
       nextInstitutionCode: resolveStudentInstitutionCode(student),
-    }))
-    .filter((student) => student.institutionCode !== student.nextInstitutionCode);
+      shouldDeactivate: !hasOfficialStudentNumberShape(student.studentNumber),
+    }));
 
-  const byNext = changes.reduce<Record<string, number>>((acc, student) => {
+  const groupedByTarget = plans
+    .filter((student) => !student.shouldDeactivate)
+    .reduce<Map<string, typeof plans>>((acc, student) => {
+      const key = `${student.nextInstitutionCode}:${student.nextStudentNumber}`;
+      const group = acc.get(key) ?? [];
+      group.push(student);
+      acc.set(key, group);
+      return acc;
+    }, new Map());
+
+  const keepIds = new Set<number>();
+  const duplicateDeactivateIds = new Set<number>();
+
+  for (const group of groupedByTarget.values()) {
+    const sorted = [...group].sort((left, right) => {
+      const leftAlreadyCanonical = left.studentNumber === left.nextStudentNumber ? 1 : 0;
+      const rightAlreadyCanonical = right.studentNumber === right.nextStudentNumber ? 1 : 0;
+      if (leftAlreadyCanonical !== rightAlreadyCanonical) return rightAlreadyCanonical - leftAlreadyCanonical;
+
+      const leftInstitutionalEmail = hasIsptecInstitutionalEmail(left.email) ? 1 : 0;
+      const rightInstitutionalEmail = hasIsptecInstitutionalEmail(right.email) ? 1 : 0;
+      if (leftInstitutionalEmail !== rightInstitutionalEmail) return rightInstitutionalEmail - leftInstitutionalEmail;
+
+      const leftOfficial = isOfficialRegistrationSource(left.registrationSource) ? 1 : 0;
+      const rightOfficial = isOfficialRegistrationSource(right.registrationSource) ? 1 : 0;
+      if (leftOfficial !== rightOfficial) return rightOfficial - leftOfficial;
+
+      const leftLogin = left.lastLoginAt?.getTime() ?? left.createdAt.getTime();
+      const rightLogin = right.lastLoginAt?.getTime() ?? right.createdAt.getTime();
+      return rightLogin - leftLogin;
+    });
+
+    keepIds.add(sorted[0].id);
+    for (const duplicate of sorted.slice(1)) {
+      duplicateDeactivateIds.add(duplicate.id);
+    }
+  }
+
+  const deactivations = plans.filter((student) => student.shouldDeactivate || duplicateDeactivateIds.has(student.id));
+  const updates = plans.filter((student) => {
+    if (!keepIds.has(student.id)) return false;
+    if (student.studentNumber === student.nextStudentNumber && student.institutionCode === student.nextInstitutionCode) return false;
+
+    const targetKey = `${student.nextInstitutionCode}:${student.nextStudentNumber}`;
+    const existingId = existingKeys.get(targetKey);
+    return !existingId || existingId === student.id;
+  });
+
+  const blockedUpdates = plans.filter((student) => {
+    if (!keepIds.has(student.id)) return false;
+    if (student.studentNumber === student.nextStudentNumber && student.institutionCode === student.nextInstitutionCode) return false;
+
+    const targetKey = `${student.nextInstitutionCode}:${student.nextStudentNumber}`;
+    const existingId = existingKeys.get(targetKey);
+    return Boolean(existingId && existingId !== student.id);
+  });
+
+  const byNext = updates.reduce<Record<string, number>>((acc, student) => {
     acc[student.nextInstitutionCode] = (acc[student.nextInstitutionCode] ?? 0) + 1;
     return acc;
   }, {});
 
   if (apply) {
-    for (const student of changes) {
+    for (const student of deactivations) {
       await prisma.student.update({
         where: { id: student.id },
-        data: { institutionCode: student.nextInstitutionCode },
+        data: {
+          deletedAt: new Date(),
+          deletionReason: student.shouldDeactivate
+            ? "Removido da lista ativa: login temporário ou número de estudante fora do padrão oficial iniciado por 2."
+            : "Removido da lista ativa: duplicado após normalização institucional.",
+        },
+      });
+    }
+
+    for (const student of updates) {
+      await prisma.student.update({
+        where: { id: student.id },
+        data: {
+          institutionCode: student.nextInstitutionCode,
+          studentNumber: student.nextStudentNumber,
+        },
       });
     }
   }
@@ -42,16 +134,27 @@ async function main() {
   console.log(JSON.stringify({
     mode: apply ? "apply" : "dry-run",
     totalStudents: students.length,
-    changes: changes.length,
+    activeStudents: activeStudents.length,
+    updates: updates.length,
+    deactivations: deactivations.length,
+    blockedUpdates: blockedUpdates.length,
     byNextInstitutionCode: byNext,
-    sample: changes.slice(0, 20).map((student) => ({
+    sampleUpdates: updates.slice(0, 20).map((student) => ({
       id: student.id,
       studentNumber: student.studentNumber,
+      nextStudentNumber: student.nextStudentNumber,
       currentInstitutionCode: student.institutionCode,
       nextInstitutionCode: student.nextInstitutionCode,
       email: student.email,
       university: student.university,
       registrationSource: student.registrationSource,
+    })),
+    sampleDeactivations: deactivations.slice(0, 20).map((student) => ({
+      id: student.id,
+      studentNumber: student.studentNumber,
+      email: student.email,
+      registrationSource: student.registrationSource,
+      reason: student.shouldDeactivate ? "INVALID_STUDENT_NUMBER" : "DUPLICATE_AFTER_NORMALIZATION",
     })),
   }, null, 2));
 }
