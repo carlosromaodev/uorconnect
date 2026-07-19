@@ -69,4 +69,40 @@ describe("PrismaAdminVotesRepository", () => {
       score: 12.5,
     }));
   });
+
+  it("returns project summaries ordered by audited points for admin winners", async () => {
+    prismaMock.submission.findMany.mockResolvedValueOnce([
+      {
+        id: 77,
+        name: "Mais votos",
+        type: "PROJECT",
+        area: "Tecnologia",
+        createdAt: new Date("2026-05-14T10:00:00.000Z"),
+      },
+      {
+        id: 88,
+        name: "Mais pontos",
+        type: "PROJECT",
+        area: "Tecnologia",
+        createdAt: new Date("2026-05-13T10:00:00.000Z"),
+      },
+    ]);
+    prismaMock.studentVote.groupBy.mockResolvedValueOnce([
+      { submissionId: 77, _count: { _all: 30 } },
+      { submissionId: 88, _count: { _all: 8 } },
+    ]);
+    prismaMock.exhibitorScoreEvent.groupBy.mockResolvedValueOnce([
+      { submissionId: 77, _sum: { points: 30 } },
+      { submissionId: 88, _sum: { points: 120 } },
+    ]);
+
+    const repository = new PrismaAdminVotesRepository();
+
+    const result = await repository.listProjectSummariesPaged({ page: 1, limit: 10 });
+
+    expect(result.items.map((project) => project.name)).toEqual([
+      "Mais pontos",
+      "Mais votos",
+    ]);
+  });
 });

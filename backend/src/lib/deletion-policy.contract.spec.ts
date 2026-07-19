@@ -8,10 +8,22 @@ const source = (relativePath: string) => readFileSync(path.join(root, relativePa
 describe("deletion policy contracts", () => {
   it("desativa estudante por soft delete preservando historico", () => {
     const repository = source("src/modules/auth/infra/student.repository.ts");
+    const lifecycle = source("src/shared/student-deactivation.ts");
 
-    expect(repository).toContain("deletedAt: new Date()");
+    expect(repository).toContain("softDeleteStudentWithMoodlePurge");
     expect(repository).toContain("teamMembership.updateMany");
     expect(repository).not.toContain("student.delete({ where: { id } })");
+    expect(lifecycle).toContain("credentialsEnvelope: null");
+    expect(lifecycle).toContain("sessionEnvelope: null");
+    expect(lifecycle).toContain("connectionGeneration: { increment: 1 }");
+  });
+
+  it("todos os fluxos conhecidos de soft delete purgam a integracao Moodle na mesma transacao", () => {
+    const odin = source("src/modules/security/application/odin.service.ts");
+    const backfill = source("src/scripts/backfill-student-institution-code.ts");
+
+    expect(odin).toContain("softDeleteStudentWithMoodlePurge(tx");
+    expect(backfill).toContain("softDeleteStudentWithMoodlePurge(tx");
   });
 
   it("desativa submissao por soft delete preservando interacoes", () => {

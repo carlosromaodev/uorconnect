@@ -116,6 +116,7 @@ import {
   type AdminAuthorizedStudent,
   type AdminAccessConflict,
   type AdminAccessProfile,
+  type AdminProjectMapPayload,
   type AnalyticsDashboard,
   type AnalyticsEventsPayload,
   type AnalyticsFilterInput,
@@ -147,6 +148,7 @@ import {
   type Speaker,
   type SpeakerInput,
   type SubmissionConfig,
+  type SubmissionPagedStats,
   type SubmissionTeamMember,
   type StudentWithStats,
   type StudentProfile,
@@ -271,7 +273,7 @@ const tabs = [
     permission: "CERTIFICATES",
   },
   { id: "audit", label: "Auditoria", icon: History, permission: "AUDIT" },
-  { id: "nucleus", label: "Núcleo", icon: Users, permission: "NUCLEUS" },
+  { id: "nucleus", label: "Equipa", icon: Users, permission: "NUCLEUS" },
   {
     id: "credentials",
     label: "Credenciais",
@@ -322,9 +324,15 @@ const credentialSubpages = [
   { id: "pending", label: "Pendentes", icon: AlertTriangle },
 ] as const;
 type CredentialAdminSubpage = (typeof credentialSubpages)[number]["id"];
+const passportSubpages = [
+  { id: "operations", label: "Operação", icon: Route },
+  { id: "ranking", label: "Ranking", icon: Trophy },
+] as const;
+type PassportAdminSubpage = (typeof passportSubpages)[number]["id"];
 const submissionSubpages = [
   { id: "overview", label: "Gestão", icon: ClipboardCheck },
   { id: "projects", label: "Projetos e obrigações", icon: FolderOpen },
+  { id: "project-map", label: "Mapa de projetos", icon: BarChart3 },
 ] as const;
 type SubmissionAdminSubpage = (typeof submissionSubpages)[number]["id"];
 type AdminDataSection =
@@ -367,6 +375,28 @@ const defaultAdminAccessForm: AdminAccessForm = {
 };
 
 const resetVotesPhrase = "REMOVER VOTOS";
+
+type AdminSubmissionStats = {
+  total: number;
+  pendentes: number;
+  aprovados: number;
+  recusados: number;
+};
+
+const mapSubmissionStats = (stats: SubmissionPagedStats): AdminSubmissionStats => ({
+  total: stats.total,
+  pendentes: stats.pending,
+  aprovados: stats.approved,
+  recusados: stats.rejected,
+});
+
+const submissionStatusStatsKey = (
+  status: AdminSubmission["status"],
+): keyof Omit<AdminSubmissionStats, "total"> => {
+  if (status === "aprovado") return "aprovados";
+  if (status === "recusado") return "recusados";
+  return "pendentes";
+};
 
 type AdminSubmission = {
   id: number;
@@ -1462,6 +1492,8 @@ const Admin = ({
   const [activeTab, setActiveTab] = useState<TabId>("overview");
   const [activeCredentialSubpage, setActiveCredentialSubpage] =
     useState<CredentialAdminSubpage>("overview");
+  const [activePassportSubpage, setActivePassportSubpage] =
+    useState<PassportAdminSubpage>("operations");
   const [activeSubmissionSubpage, setActiveSubmissionSubpage] =
     useState<SubmissionAdminSubpage>("overview");
   const [showLeftGradient, setShowLeftGradient] = useState(false);
@@ -1527,6 +1559,8 @@ const Admin = ({
     useState<AnalyticsFilterInput>(defaultAnalyticsFilters);
 
   const [submissions, setSubmissions] = useState<AdminSubmission[]>([]);
+  const [submissionStatsSummary, setSubmissionStatsSummary] =
+    useState<AdminSubmissionStats | null>(null);
   const [submissionListRows, setSubmissionListRows] = useState<
     AdminSubmission[]
   >([]);
@@ -1535,6 +1569,12 @@ const Admin = ({
   >([]);
   const [loadingProjectObligations, setLoadingProjectObligations] =
     useState(false);
+  const [projectMapPayload, setProjectMapPayload] =
+    useState<AdminProjectMapPayload | null>(null);
+  const [projectMapYearFilter, setProjectMapYearFilter] = useState("todos");
+  const [projectMapSearchTerm, setProjectMapSearchTerm] = useState("");
+  const [loadingProjectMap, setLoadingProjectMap] = useState(false);
+  const [projectMapRefreshKey, setProjectMapRefreshKey] = useState(0);
   const [projectObligationRefreshKey, setProjectObligationRefreshKey] =
     useState(0);
   const [projectObligationNoticeType, setProjectObligationNoticeType] =
@@ -1703,6 +1743,7 @@ const Admin = ({
     defaultAdminAccessForm,
   );
   const deferredSubmissionSearch = useDeferredValue(searchTerm);
+  const deferredProjectMapSearch = useDeferredValue(projectMapSearchTerm);
   const deferredStudentSearch = useDeferredValue(studentSearchTerm);
   const deferredModerationSearch = useDeferredValue(moderationSearchTerm);
   const visibleTabs = useMemo(
@@ -1852,7 +1893,7 @@ const Admin = ({
         pageViews: project.pageViews ?? 0,
         uniqueVisitors: project.uniqueVisitors ?? 0,
         authenticatedVisitors: project.authenticatedVisitors ?? 0,
-        status: submissionStatusMap.get(project.id) ?? "pendente",
+        status: submissionStatusMap.get(project.id) ?? "aprovado",
         isWinner: submissionWinnerMap.get(project.id) ?? false,
       })),
     );
@@ -1989,6 +2030,11 @@ const Admin = ({
           submissionResult.status === "fulfilled"
             ? submissionResult.value.total
             : mappedSubmissions.length,
+        );
+        setSubmissionStatsSummary(
+          submissionResult.status === "fulfilled"
+            ? mapSubmissionStats(submissionResult.value.stats)
+            : null,
         );
         setSubmissionsTotalPages(
           submissionResult.status === "fulfilled"
@@ -2417,7 +2463,11 @@ const Admin = ({
         const projectsPage = activeTab === "votes" ? votesProjectsPage : 1;
         const votesPage = activeTab === "votes" ? votesEntriesPage : 1;
         const projectsLimit =
-          activeTab === "votes" ? votesProjectsPageSize : 12;
+          activeTab === "votes"
+            ? votesProjectsPageSize
+            : activeTab === "winners"
+              ? 200
+              : 12;
         const votesLimit = activeTab === "votes" ? votesEntriesPageSize : 40;
 
         jobs.push(
@@ -2533,6 +2583,13 @@ const Admin = ({
         setSubmissionsTotal(payload.total);
         setSubmissionsTotalPages(payload.totalPages);
         setSubmissionPage(payload.page);
+        if (
+          !deferredSubmissionSearch.trim() &&
+          filterStatus === "todos" &&
+          filterTipo === "todos"
+        ) {
+          setSubmissionStatsSummary(mapSubmissionStats(payload.stats));
+        }
         setSubmissionBannerDrafts((current) => {
           const next = { ...current };
           for (const item of mapped) {
@@ -2640,6 +2697,57 @@ const Admin = ({
     activeTab,
     loadedSections.base,
     projectObligationRefreshKey,
+  ]);
+
+  useEffect(() => {
+    if (
+      accessState !== "allowed" ||
+      activeTab !== "submissions" ||
+      activeSubmissionSubpage !== "project-map" ||
+      !loadedSections.base
+    )
+      return;
+
+    let cancelled = false;
+
+    const loadProjectMap = async () => {
+      try {
+        setLoadingProjectMap(true);
+        const payload = await api.submissions.projectMap({
+          responsibleYear:
+            projectMapYearFilter === "todos"
+              ? undefined
+              : projectMapYearFilter,
+          search: deferredProjectMapSearch.trim() || undefined,
+        });
+        if (cancelled) return;
+        setProjectMapPayload(payload);
+      } catch (error) {
+        if (cancelled) return;
+        toast.error(
+          error instanceof Error
+            ? error.message
+            : "Falha ao carregar o mapa de projetos.",
+        );
+      } finally {
+        if (!cancelled) {
+          setLoadingProjectMap(false);
+        }
+      }
+    };
+
+    void loadProjectMap();
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    accessState,
+    activeSubmissionSubpage,
+    activeTab,
+    deferredProjectMapSearch,
+    loadedSections.base,
+    projectMapRefreshKey,
+    projectMapYearFilter,
   ]);
 
   useEffect(() => {
@@ -2994,6 +3102,20 @@ const Admin = ({
       (item) => item.id === projectObligationNoticeChannel,
     ) ?? projectObligationChannelOptions[0];
 
+  const projectMapItems = projectMapPayload?.items ?? [];
+  const projectMapSummary = projectMapPayload?.summary ?? {
+    totalProjects: 0,
+    approvedProjects: 0,
+    totalVotes: 0,
+    totalLikes: 0,
+    totalComments: 0,
+    uniqueVoters: 0,
+    universitiesReached: 0,
+    coursesReached: 0,
+    classesReached: 0,
+  };
+  const projectMapYearOptions = projectMapPayload?.yearOptions ?? [];
+
   const toggleSubmissionDetails = (submissionId: number) => {
     setExpandedSubmissionIds((current) => {
       const next = new Set(current);
@@ -3118,11 +3240,18 @@ const Admin = ({
     setModerationChatPage(1);
   }, [moderationPageSize, moderationSearchTerm]);
 
-  const stats = {
+  const localSubmissionStats = {
     total: submissionsTotal || submissions.length,
     pendentes: submissions.filter((item) => item.status === "pendente").length,
     aprovados: submissions.filter((item) => item.status === "aprovado").length,
     recusados: submissions.filter((item) => item.status === "recusado").length,
+  };
+  const resolvedSubmissionStats = submissionStatsSummary ?? localSubmissionStats;
+  const stats = {
+    total: resolvedSubmissionStats.total,
+    pendentes: resolvedSubmissionStats.pendentes,
+    aprovados: resolvedSubmissionStats.aprovados,
+    recusados: resolvedSubmissionStats.recusados,
     totalVotos: votesEntriesTotal || voteEntries.length,
     totalEstudantes: studentsTotal || students.length,
   };
@@ -3163,6 +3292,9 @@ const Admin = ({
   const activeCredentialSubpageMeta =
     credentialSubpages.find((item) => item.id === activeCredentialSubpage) ??
     credentialSubpages[0];
+  const activePassportSubpageMeta =
+    passportSubpages.find((item) => item.id === activePassportSubpage) ??
+    passportSubpages[0];
   const activeSubmissionSubpageMeta =
     submissionSubpages.find((item) => item.id === activeSubmissionSubpage) ??
     submissionSubpages[0];
@@ -3528,6 +3660,12 @@ const Admin = ({
     id: number,
     status: AdminSubmission["status"],
   ) => {
+    const previousStatus =
+      submissions.find((item) => item.id === id)?.status ??
+      submissionListRows.find((item) => item.id === id)?.status ??
+      projectObligationRows.find((item) => item.id === id)?.status ??
+      null;
+
     try {
       await api.submissions.updateStatus(id, toBackendStatus(status));
       setSubmissions((current) =>
@@ -3542,6 +3680,18 @@ const Admin = ({
       setVoteProjects((current) =>
         current.map((item) => (item.id === id ? { ...item, status } : item)),
       );
+      if (previousStatus && previousStatus !== status) {
+        setSubmissionStatsSummary((current) => {
+          if (!current) return current;
+          const previousKey = submissionStatusStatsKey(previousStatus);
+          const nextKey = submissionStatusStatsKey(status);
+          return {
+            ...current,
+            [previousKey]: Math.max(0, current[previousKey] - 1),
+            [nextKey]: current[nextKey] + 1,
+          };
+        });
+      }
       toast.success(
         status === "aprovado"
           ? "Candidatura aprovada."
@@ -6093,6 +6243,9 @@ const Admin = ({
 		                              if (tab.id === "credentials") {
 		                                setActiveCredentialSubpage("overview");
 		                              }
+		                              if (tab.id === "passport") {
+		                                setActivePassportSubpage("operations");
+		                              }
 		                              if (tab.id === "submissions") {
 		                                setActiveSubmissionSubpage("overview");
 		                              }
@@ -6136,6 +6289,35 @@ const Admin = ({
 	                                  </button>
 	                                );
 	                              })}
+		                            </div>
+		                          )}
+		                          {tab.id === "passport" && (
+		                            <div className="admin-nav-subitems ml-6 border-l border-border/70 pl-3">
+		                              {passportSubpages.map((subpage) => {
+		                                const SubIcon = subpage.icon;
+		                                const isSubpageActive =
+		                                  activeTab === "passport" &&
+		                                  activePassportSubpage === subpage.id;
+		                                return (
+		                                  <button
+		                                    key={subpage.id}
+		                                    type="button"
+		                                    onClick={() => {
+		                                      setActiveTab("passport");
+		                                      setActivePassportSubpage(subpage.id);
+		                                      setSidebarOpen(false);
+		                                    }}
+		                                    className={`admin-nav-subitem mt-1 flex w-full min-w-0 items-center gap-2 rounded-md px-2.5 py-1.5 text-left text-xs transition-colors ${
+		                                      isSubpageActive
+		                                        ? "bg-primary/10 font-semibold text-primary"
+		                                        : "font-medium text-muted-foreground hover:bg-muted/60 hover:text-foreground"
+		                                    }`}
+		                                  >
+		                                    <SubIcon className="h-3.5 w-3.5 shrink-0" />
+		                                    <span className="truncate">{subpage.label}</span>
+		                                  </button>
+		                                );
+		                              })}
 		                            </div>
 		                          )}
 		                          {tab.id === "submissions" && (
@@ -6213,6 +6395,8 @@ const Admin = ({
                 <h2 className="mt-0.5 text-lg font-black tracking-tight text-foreground">
 		                  {activeTab === "credentials"
 		                    ? `Credenciais · ${activeCredentialSubpageMeta.label}`
+		                    : activeTab === "passport"
+		                      ? `Passaporte · ${activePassportSubpageMeta.label}`
 		                    : activeTab === "submissions"
 		                      ? `Candidaturas · ${activeSubmissionSubpageMeta.label}`
 		                    : activeTabMeta?.label ?? "Administração"}
@@ -6345,7 +6529,10 @@ const Admin = ({
                     <Suspense
                       fallback={<AdminPanelFallback label="Passaporte" />}
                     >
-                      <AdminPassportTab />
+                      <AdminPassportTab
+                        activeSubpage={activePassportSubpage}
+                        onSubpageChange={setActivePassportSubpage}
+                      />
                     </Suspense>
                   )}
 
@@ -6367,7 +6554,7 @@ const Admin = ({
 
 	                  {activeTab === "submissions" && (
 	                    <>
-	                      <div className="grid gap-2 sm:grid-cols-2">
+	                      <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
 	                        {submissionSubpages.map((subpage) => {
 	                          const Icon = subpage.icon;
 	                          const isActive = activeSubmissionSubpage === subpage.id;
@@ -6388,9 +6575,11 @@ const Admin = ({
 	                              <span className="min-w-0">
 	                                <span className="block truncate text-sm font-bold">{subpage.label}</span>
 	                                <span className="mt-1 line-clamp-2 block text-[11px] leading-4">
-	                                  {subpage.id === "overview"
-	                                    ? "Configuração, filtros e revisão normal das candidaturas."
-	                                    : "Mapa de cumprimento por projeto, membros e manual."}
+		                                  {subpage.id === "overview"
+		                                    ? "Configuração, filtros e revisão normal das candidaturas."
+		                                    : subpage.id === "project-map"
+		                                      ? "Estatística visual por projeto, responsável, ano e alcance."
+		                                      : "Mapa de cumprimento por projeto, membros e manual."}
 	                                </span>
 	                              </span>
 	                            </button>
@@ -7592,9 +7781,360 @@ const Admin = ({
 	                          </Button>
 	                        </div>
 	                      </div>
-	                        </>
-	                      ) : (
-	                        <div className="space-y-4">
+		                        </>
+		                      ) : activeSubmissionSubpage === "project-map" ? (
+		                        <div className="space-y-4">
+		                          <div className="overflow-hidden rounded-2xl border border-border/60 bg-card shadow-sm">
+		                            <div className="grid gap-0 xl:grid-cols-[minmax(0,0.95fr)_minmax(0,1.45fr)]">
+		                              <div className="border-b border-border/60 bg-[#172f34] p-5 text-white xl:border-b-0 xl:border-r">
+		                                <div className="flex items-center gap-3">
+		                                  <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-white/10 text-primary">
+		                                    <BarChart3 className="h-5 w-5" />
+		                                  </span>
+		                                  <div className="min-w-0">
+		                                    <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-white/60">
+		                                      Candidaturas
+		                                    </p>
+		                                    <h3 className="text-xl font-black leading-tight">
+		                                      Mapa de projetos
+		                                    </h3>
+		                                  </div>
+		                                </div>
+		                                <p className="mt-4 max-w-xl text-sm leading-6 text-white/72">
+		                                  Visão operacional dos projetos por responsável, ano curricular, equipa e alcance real de votação.
+		                                </p>
+		                                {projectMapPayload?.generatedAt ? (
+		                                  <p className="mt-4 text-xs font-semibold text-white/55">
+		                                    Atualizado em {formatDateTime(projectMapPayload.generatedAt)}
+		                                  </p>
+		                                ) : null}
+		                              </div>
+
+		                              <div className="grid gap-3 p-4 sm:grid-cols-2 xl:grid-cols-4">
+		                                {[
+		                                  {
+		                                    label: "Projetos",
+		                                    value: projectMapSummary.totalProjects,
+		                                    detail: `${projectMapSummary.approvedProjects} aprovados`,
+		                                    icon: FolderOpen,
+		                                  },
+		                                  {
+		                                    label: "Votos",
+		                                    value: projectMapSummary.totalVotes,
+		                                    detail: `${projectMapSummary.uniqueVoters} votantes únicos`,
+		                                    icon: ThumbsUp,
+		                                  },
+		                                  {
+		                                    label: "Universidades alcançadas",
+		                                    value: projectMapSummary.universitiesReached,
+		                                    detail: `${projectMapSummary.coursesReached} cursos`,
+		                                    icon: GraduationCap,
+		                                  },
+		                                  {
+		                                    label: "Interações",
+		                                    value: projectMapSummary.totalLikes + projectMapSummary.totalComments,
+		                                    detail: `${projectMapSummary.totalLikes} curtidas · ${projectMapSummary.totalComments} comentários`,
+		                                    icon: MessageCircle,
+		                                  },
+		                                ].map((item) => {
+		                                  const Icon = item.icon;
+		                                  return (
+		                                    <div key={item.label} className="rounded-2xl border border-border/60 bg-background px-4 py-3">
+		                                      <div className="flex items-start justify-between gap-3">
+		                                        <div className="min-w-0">
+		                                          <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
+		                                            {item.label}
+		                                          </p>
+		                                          <p className="mt-1 text-2xl font-black text-foreground">
+		                                            {item.value}
+		                                          </p>
+		                                          <p className="mt-1 truncate text-xs text-muted-foreground">
+		                                            {item.detail}
+		                                          </p>
+		                                        </div>
+		                                        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
+		                                          <Icon className="h-4 w-4" />
+		                                        </span>
+		                                      </div>
+		                                    </div>
+		                                  );
+		                                })}
+		                              </div>
+		                            </div>
+		                          </div>
+
+		                          <div className="rounded-2xl border border-border/60 bg-card p-4 shadow-sm">
+		                            <div className="grid gap-3 lg:grid-cols-[minmax(0,1fr)_220px_120px]">
+		                              <div className="relative min-w-0">
+		                                <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/60" />
+		                                <Input
+		                                  className="h-10 rounded-xl pl-9 text-sm"
+		                                  placeholder="Pesquisar projeto, responsável, curso ou membro..."
+		                                  value={projectMapSearchTerm}
+		                                  onChange={(event) =>
+		                                    setProjectMapSearchTerm(event.target.value)
+		                                  }
+		                                />
+		                              </div>
+		                              <select
+		                                className="h-10 rounded-xl border border-input/70 bg-white px-3 text-sm font-semibold transition-colors focus:outline-none focus:ring-2 focus:ring-ring/20"
+		                                value={projectMapYearFilter}
+		                                onChange={(event) =>
+		                                  setProjectMapYearFilter(event.target.value)
+		                                }
+		                              >
+		                                <option value="todos">Todos os anos</option>
+		                                {projectMapYearOptions.map((year) => (
+		                                  <option key={year} value={year}>
+		                                    {year}
+		                                  </option>
+		                                ))}
+		                              </select>
+		                              <Button
+		                                type="button"
+		                                variant="outline"
+		                                className="h-10 rounded-xl"
+		                                disabled={loadingProjectMap}
+		                                onClick={() => {
+		                                  setProjectMapPayload(null);
+		                                  setProjectMapYearFilter("todos");
+		                                  setProjectMapSearchTerm("");
+		                                  setProjectMapRefreshKey((current) => current + 1);
+		                                }}
+		                              >
+		                                {loadingProjectMap ? (
+		                                  <Loader2 className="mr-1.5 h-4 w-4 animate-spin" />
+		                                ) : (
+		                                  <RefreshCw className="mr-1.5 h-4 w-4" />
+		                                )}
+		                                Limpar
+		                              </Button>
+		                            </div>
+		                          </div>
+
+		                          {loadingProjectMap && projectMapItems.length === 0 ? (
+		                            <div className="flex items-center justify-center rounded-2xl border border-dashed border-border/70 bg-muted/20 py-12 text-sm text-muted-foreground">
+		                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+		                              A carregar mapa de projetos
+		                            </div>
+		                          ) : projectMapItems.length === 0 ? (
+		                            <div className="rounded-2xl border border-dashed border-border/70 bg-muted/20 p-8 text-center text-sm text-muted-foreground">
+		                              Nenhum projeto encontrado para os filtros selecionados.
+		                            </div>
+		                          ) : (
+		                            <div className="grid gap-4">
+		                              {projectMapItems.map((project) => {
+		                                const statusLabel =
+		                                  project.status === "APPROVED"
+		                                    ? "Aprovado"
+		                                    : project.status === "REJECTED"
+		                                      ? "Recusado"
+		                                      : "Pendente";
+		                                const topUniversity = project.voteUniversities[0];
+		                                const topCourse = project.voteCourses[0];
+		                                const topClass = project.voteClasses[0];
+		                                return (
+		                                  <section key={project.id} className="overflow-hidden rounded-2xl border border-border/60 bg-card shadow-sm">
+		                                    <div
+		                                      className="h-1.5"
+		                                      style={{
+		                                        background: `linear-gradient(90deg, ${project.primaryColor}, ${project.secondaryColor})`,
+		                                      }}
+		                                    />
+		                                    <div className="grid gap-0 xl:grid-cols-[minmax(0,0.88fr)_minmax(0,1.42fr)]">
+		                                      <div className="min-w-0 border-b border-border/60 p-4 xl:border-b-0 xl:border-r">
+		                                        <div className="flex min-w-0 gap-3">
+		                                          <div className="h-24 w-24 shrink-0 overflow-hidden rounded-2xl border border-border/70 bg-muted">
+		                                            {project.bannerUrl ? (
+		                                              <img
+		                                                src={project.bannerUrl}
+		                                                alt={`Foto do projeto ${project.name}`}
+		                                                className="h-full w-full object-cover"
+		                                              />
+		                                            ) : (
+		                                              <div className="flex h-full w-full items-center justify-center text-xl font-black text-muted-foreground">
+		                                                {project.name.slice(0, 2).toUpperCase()}
+		                                              </div>
+		                                            )}
+		                                          </div>
+		                                          <div className="min-w-0 flex-1">
+		                                            <div className="flex flex-wrap items-center gap-2">
+		                                              <Badge variant="outline">{project.referenceCode}</Badge>
+		                                              <Badge variant={project.status === "APPROVED" ? "default" : "outline"}>
+		                                                {statusLabel}
+		                                              </Badge>
+		                                              <Badge variant="outline">{project.typeLabel}</Badge>
+		                                            </div>
+		                                            <h4 className="mt-2 line-clamp-2 text-lg font-black leading-tight text-foreground">
+		                                              {project.name}
+		                                            </h4>
+		                                            <p className="mt-1 text-xs font-semibold text-muted-foreground">
+		                                              {project.course} · {project.area}
+		                                            </p>
+		                                            <p className="mt-2 line-clamp-3 text-sm leading-6 text-muted-foreground">
+		                                              {project.description}
+		                                            </p>
+		                                          </div>
+		                                        </div>
+
+		                                        <div className="mt-4 grid gap-2 sm:grid-cols-2">
+		                                          <div className="rounded-xl border border-border/60 bg-muted/20 px-3 py-2">
+		                                            <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
+		                                              Responsável
+		                                            </p>
+		                                            <p className="mt-1 truncate text-sm font-black text-foreground">
+		                                              {project.responsible.name}
+		                                            </p>
+		                                            <p className="mt-0.5 truncate text-xs text-muted-foreground">
+		                                              {project.responsible.studentNumber ?? "Sem número"} · {project.responsibleYear}
+		                                            </p>
+		                                          </div>
+		                                          <div className="rounded-xl border border-border/60 bg-muted/20 px-3 py-2">
+		                                            <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
+		                                              Equipa
+		                                            </p>
+		                                            <p className="mt-1 text-sm font-black text-foreground">
+		                                              {project.memberStats.confirmed}/{project.memberStats.total} confirmados
+		                                            </p>
+		                                            <p className="mt-0.5 truncate text-xs text-muted-foreground">
+		                                              {project.memberStats.pending} pendentes · {project.memberStats.external} externos
+		                                            </p>
+		                                          </div>
+		                                        </div>
+
+		                                        <div className="mt-4 flex flex-wrap gap-2">
+		                                          <Button asChild size="sm" variant="outline" className="rounded-xl">
+		                                            <Link to={project.detailPath}>
+		                                              <ExternalLink className="mr-1.5 h-3.5 w-3.5" />
+		                                              Ver página
+		                                            </Link>
+		                                          </Button>
+		                                          <span className="inline-flex min-h-9 items-center gap-1.5 rounded-xl border border-border/60 px-3 text-xs font-semibold text-muted-foreground">
+		                                            <Eye className="h-3.5 w-3.5" />
+		                                            Alcance {project.stats.reachCount}
+		                                          </span>
+		                                        </div>
+		                                      </div>
+
+		                                      <div className="min-w-0 p-4">
+		                                        <div className="grid gap-2 sm:grid-cols-4">
+		                                          {[
+		                                            { label: "Votaram", value: project.stats.uniqueVoters, detail: `${project.stats.voteCount} votos`, icon: ThumbsUp },
+		                                            { label: "Universidades", value: project.stats.universitiesReached, detail: topUniversity?.label ?? "sem votos", icon: GraduationCap },
+		                                            { label: "Cursos", value: project.stats.coursesReached, detail: topCourse?.label ?? "sem votos", icon: BookOpen },
+		                                            { label: "Turmas", value: project.stats.classesReached, detail: topClass?.label ?? "sem votos", icon: Users },
+		                                          ].map((item) => {
+		                                            const Icon = item.icon;
+		                                            return (
+		                                              <div key={item.label} className="rounded-2xl border border-border/60 bg-background px-3 py-2">
+		                                                <div className="flex items-center justify-between gap-2">
+		                                                  <p className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
+		                                                    {item.label}
+		                                                  </p>
+		                                                  <Icon className="h-3.5 w-3.5 text-primary" />
+		                                                </div>
+		                                                <p className="mt-1 text-xl font-black text-foreground">
+		                                                  {item.value}
+		                                                </p>
+		                                                <p className="mt-0.5 truncate text-[11px] text-muted-foreground">
+		                                                  {item.detail}
+		                                                </p>
+		                                              </div>
+		                                            );
+		                                          })}
+		                                        </div>
+
+		                                        <div className="mt-4 grid gap-3 xl:grid-cols-3">
+		                                          {[
+		                                            { title: "Universidades alcançadas", rows: project.voteUniversities },
+		                                            { title: "Cursos que mais votaram", rows: project.voteCourses },
+		                                            { title: "Turmas que mais votaram", rows: project.voteClasses },
+		                                          ].map((section) => (
+		                                            <div key={section.title} className="rounded-2xl border border-border/60 bg-muted/10 p-3">
+		                                              <p className="text-[10px] font-black uppercase tracking-[0.14em] text-muted-foreground">
+		                                                {section.title}
+		                                              </p>
+		                                              <div className="mt-3 space-y-2">
+		                                                {section.rows.length > 0 ? (
+		                                                  section.rows.slice(0, 4).map((row) => (
+		                                                    <div key={row.label} className="space-y-1">
+		                                                      <div className="flex items-center justify-between gap-2 text-xs">
+		                                                        <span className="min-w-0 truncate font-semibold text-foreground">
+		                                                          {row.label}
+		                                                        </span>
+		                                                        <span className="shrink-0 text-muted-foreground">
+		                                                          {row.total} · {row.percent}%
+		                                                        </span>
+		                                                      </div>
+		                                                      <div className="h-1.5 overflow-hidden rounded-full bg-border/60">
+		                                                        <div
+		                                                          className="h-full rounded-full bg-primary"
+		                                                          style={{ width: `${Math.min(100, row.percent)}%` }}
+		                                                        />
+		                                                      </div>
+		                                                    </div>
+		                                                  ))
+		                                                ) : (
+		                                                  <p className="text-xs leading-5 text-muted-foreground">
+		                                                    Sem dados de votação registados.
+		                                                  </p>
+		                                                )}
+		                                              </div>
+		                                            </div>
+		                                          ))}
+		                                        </div>
+
+		                                        <div className="mt-4 rounded-2xl border border-border/60">
+		                                          <div className="flex items-center justify-between gap-2 border-b border-border/60 px-3 py-2">
+		                                            <p className="text-xs font-black uppercase tracking-[0.14em] text-muted-foreground">
+		                                              Membros e dados académicos
+		                                            </p>
+		                                            <Badge variant="outline">
+		                                              {project.members.length}
+		                                            </Badge>
+		                                          </div>
+		                                          <div className="grid max-h-72 gap-2 overflow-y-auto p-3 md:grid-cols-2">
+		                                            {project.members.length > 0 ? (
+		                                              project.members.map((member) => (
+		                                                <div key={member.memberId} className="rounded-xl border border-border/60 bg-background px-3 py-2">
+		                                                  <div className="flex items-start justify-between gap-2">
+		                                                    <div className="min-w-0">
+		                                                      <p className="truncate text-sm font-bold text-foreground">
+		                                                        {member.name}
+		                                                      </p>
+		                                                      <p className="mt-0.5 truncate text-xs text-muted-foreground">
+		                                                        {member.role === "RESPONSAVEL" ? "Responsável" : "Membro"} · {member.institutionLabel}
+		                                                      </p>
+		                                                    </div>
+		                                                    <Badge variant={member.confirmed ? "default" : "outline"}>
+		                                                      {member.confirmed ? "Confirmado" : "Pendente"}
+		                                                    </Badge>
+		                                                  </div>
+		                                                  <div className="mt-2 grid gap-1 text-[11px] text-muted-foreground">
+		                                                    <span className="truncate">Nº: {member.studentNumber ?? "por validar"}</span>
+		                                                    <span className="truncate">Curso: {member.course}</span>
+		                                                    <span className="truncate">Turma: {member.classCode}</span>
+		                                                    <span className="truncate">Ano: {member.curricularYear}</span>
+		                                                  </div>
+		                                                </div>
+		                                              ))
+		                                            ) : (
+		                                              <p className="rounded-xl border border-dashed border-border/70 bg-muted/10 px-3 py-4 text-sm text-muted-foreground md:col-span-2">
+		                                                Sem membros confirmados ou detalhados neste projeto.
+		                                              </p>
+		                                            )}
+		                                          </div>
+		                                        </div>
+		                                      </div>
+		                                    </div>
+		                                  </section>
+		                                );
+		                              })}
+		                            </div>
+		                          )}
+		                        </div>
+		                      ) : (
+		                        <div className="space-y-4">
 	                          <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-5">
 	                            {[
 	                              {
@@ -12163,7 +12703,7 @@ const Admin = ({
                   )}
 
                   {activeTab === "nucleus" && (
-                    <Suspense fallback={<AdminPanelFallback label="Núcleo" />}>
+                    <Suspense fallback={<AdminPanelFallback label="Equipa" />}>
                       <AdminSecurityTab
                         scope="nucleus"
                         accessForm={adminAccessForm}

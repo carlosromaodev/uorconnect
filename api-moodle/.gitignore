@@ -1,0 +1,8 @@
+node_modules/
+.env
+.env.*
+!.env.example
+evidence/
+storage-state*.json
+*.png
+*.har

@@ -37,6 +37,10 @@ describe("team credential print batches contract", () => {
     expect(routes).toContain("isCredentialPrintableForAdminBatch");
     expect(routes).toContain("isCredentialOperationallyUsable(member)");
     expect(routes).toContain("max(1000)");
+    expect(routes).toContain("syncSubmissionTeamMembers(submission)");
+    expect(routes).toContain("buildExpositorCredentialImportCandidates");
+    expect(routes).toContain("expectedStudentNumber");
+    expect(routes).toContain("EXPOSITOR_IMPORT_REFRESH");
   });
 
   it("syncs site speakers and guests into printable credentials", () => {

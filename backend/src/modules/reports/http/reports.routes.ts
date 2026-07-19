@@ -28,6 +28,13 @@ type SubmissionInteractionStudent = {
   studentNumber: string;
   name: string | null;
   course: string | null;
+  institutionCode?: string | null;
+  email?: string | null;
+  classCode?: string | null;
+  academicYear?: string | null;
+  curricularYear?: string | null;
+  university?: string | null;
+  registrationSource?: string | null;
 };
 
 type ReportSubmission = {
@@ -49,9 +56,28 @@ type ReportSubmission = {
 };
 
 type SubmissionInteractionRow = {
-  name: string;
+  id: number;
+  institutionCode: "UOR" | "ISPTEC" | string;
   course: string | null;
+  yearLabel: string;
   actionsLabel: string;
+  actionCount: number;
+};
+
+type ProjectReachSummary = {
+  index: number;
+  name: string;
+  typeLabel: string;
+  statusLabel: string;
+  course: string | null;
+  area: string;
+  totalReach: number;
+  uorReach: number;
+  isptecReach: number;
+  otherReach: number;
+  coursesReached: number;
+  yearsReached: number;
+  publicSignals: number;
 };
 
 type DetailedSubmission = {
@@ -75,6 +101,21 @@ type DetailedSubmission = {
   votesCount: number;
   commentsCount: number;
   interactingStudents: SubmissionInteractionRow[];
+  uniqueReachCount: number;
+  uorReachCount: number;
+  isptecReachCount: number;
+  otherReachCount: number;
+  coursesReachedCount: number;
+  yearsReachedCount: number;
+  publicSignalsCount: number;
+};
+
+type ReachRow = {
+  label: string;
+  total: number;
+  uor: number;
+  isptec: number;
+  other: number;
 };
 
 type ReportCourse = {
@@ -144,77 +185,117 @@ function interactionLabel(actions: Set<string>) {
     .join(", ");
 }
 
-function collectInteractingStudents(submission: ReportSubmission): SubmissionInteractionRow[] {
-  const interactingStudents = new Map<number, ReportStudent>();
+function formatYearLabel(value?: string | null) {
+  const normalized = (value ?? "").trim();
+  if (!normalized) return "Ano por validar";
 
-  for (const like of submission.studentLikes) {
-    const profile = normalizeStudentProfile(like.student);
-    const student = interactingStudents.get(like.student.id) ?? {
-      id: like.student.id,
-      name: profile.name ?? `Estudante ${like.student.studentNumber}`,
+  const directMatch = normalized.match(/^([1-6])(?:\.|º|o|°)?(?:\s*ano)?$/i);
+  if (directMatch?.[1]) return `${directMatch[1]}.º ano`;
+
+  const textualMatch = normalized.match(/([1-6])\s*(?:º|o|°)?\s*ano/i);
+  if (textualMatch?.[1]) return `${textualMatch[1]}.º ano`;
+
+  return "Ano por validar";
+}
+
+function collectInteractingStudents(submission: ReportSubmission): SubmissionInteractionRow[] {
+  const interactingStudents = new Map<number, ReportStudent & {
+    institutionCode: string;
+    yearLabel: string;
+  }>();
+
+  const upsertStudent = (studentInput: SubmissionInteractionStudent, action: string) => {
+    const profile = normalizeStudentProfile(studentInput);
+    const institutionCode = profile.institutionCode ?? "UOR";
+    const student = interactingStudents.get(studentInput.id) ?? {
+      id: studentInput.id,
+      name: profile.name ?? `Estudante ${studentInput.studentNumber}`,
+      institutionCode,
       course: profile.course ?? null,
+      yearLabel: formatYearLabel(studentInput.curricularYear ?? studentInput.academicYear),
       actions: new Set<string>(),
     };
-    student.actions.add("like");
-    interactingStudents.set(like.student.id, student);
+    student.actions.add(action);
+    interactingStudents.set(studentInput.id, student);
+  };
+
+  for (const like of submission.studentLikes) {
+    upsertStudent(like.student, "like");
   }
 
   for (const vote of submission.studentVotes) {
-    const profile = normalizeStudentProfile(vote.student);
-    const student = interactingStudents.get(vote.student.id) ?? {
-      id: vote.student.id,
-      name: profile.name ?? `Estudante ${vote.student.studentNumber}`,
-      course: profile.course ?? null,
-      actions: new Set<string>(),
-    };
-    student.actions.add("vote");
-    interactingStudents.set(vote.student.id, student);
+    upsertStudent(vote.student, "vote");
   }
 
   for (const comment of submission.studentComments) {
-    const profile = normalizeStudentProfile(comment.student);
-    const student = interactingStudents.get(comment.student.id) ?? {
-      id: comment.student.id,
-      name: profile.name ?? `Estudante ${comment.student.studentNumber}`,
-      course: profile.course ?? null,
-      actions: new Set<string>(),
-    };
-    student.actions.add("comment");
-    interactingStudents.set(comment.student.id, student);
+    upsertStudent(comment.student, "comment");
   }
 
   return Array.from(interactingStudents.values())
-    .sort((left, right) => left.name.localeCompare(right.name))
+    .sort((left, right) =>
+      left.institutionCode.localeCompare(right.institutionCode)
+      || (left.course ?? "").localeCompare(right.course ?? "")
+      || left.yearLabel.localeCompare(right.yearLabel)
+      || left.id - right.id,
+    )
     .map((student) => ({
-      name: student.name,
+      id: student.id,
+      institutionCode: student.institutionCode,
       course: student.course ?? null,
+      yearLabel: student.yearLabel,
       actionsLabel: interactionLabel(student.actions),
+      actionCount: student.actions.size,
     }));
 }
 
 function buildDetailedSubmissions(submissions: ReportSubmission[], unitAmount: number): DetailedSubmission[] {
-  return submissions.map((submission, index) => ({
-    index: index + 1,
-    referenceCode: submission.referenceCode,
-    name: submission.name,
-    typeLabel: submissionTypeLabel(submission.type),
-    statusLabel: submissionStatusLabel(submission.status),
-    area: submission.area,
-    course: submission.course ?? null,
-    members: submission.members,
-    leaderPhone: submission.leaderPhone ?? null,
-    description: escapeText(submission.description),
-    createdAtLabel: formatDateLabel(submission.createdAt),
-    paymentConfirmed: isPaymentConfirmedByAdmin(submission.paymentStatus),
-    paymentStatusLabel: financialPaymentStatusLabel(submission.paymentStatus, true),
-    unitAmount,
-    expectedAmount: unitAmount,
-    collectedAmount: isPaymentConfirmedByAdmin(submission.paymentStatus) ? unitAmount : 0,
-    likesCount: submission.studentLikes.length,
-    votesCount: submission.studentVotes.length,
-    commentsCount: submission.studentComments.length,
-    interactingStudents: collectInteractingStudents(submission),
-  }));
+  return submissions.map((submission, index) => {
+    const interactingStudents = collectInteractingStudents(submission);
+    const reachedCourses = new Set(
+      interactingStudents
+        .map((student) => student.course)
+        .filter((course): course is string => Boolean(course)),
+    );
+    const reachedYears = new Set(
+      interactingStudents
+        .map((student) => student.yearLabel)
+        .filter((year) => year !== "Ano por validar"),
+    );
+    const uorReachCount = interactingStudents.filter((student) => student.institutionCode === "UOR").length;
+    const isptecReachCount = interactingStudents.filter((student) => student.institutionCode === "ISPTEC").length;
+    const otherReachCount = Math.max(0, interactingStudents.length - uorReachCount - isptecReachCount);
+    const publicSignalsCount = submission.studentLikes.length + submission.studentVotes.length + submission.studentComments.length;
+
+    return {
+      index: index + 1,
+      referenceCode: submission.referenceCode,
+      name: submission.name,
+      typeLabel: submissionTypeLabel(submission.type),
+      statusLabel: submissionStatusLabel(submission.status),
+      area: submission.area,
+      course: submission.course ?? null,
+      members: submission.members,
+      leaderPhone: submission.leaderPhone ?? null,
+      description: escapeText(submission.description),
+      createdAtLabel: formatDateLabel(submission.createdAt),
+      paymentConfirmed: isPaymentConfirmedByAdmin(submission.paymentStatus),
+      paymentStatusLabel: financialPaymentStatusLabel(submission.paymentStatus, true),
+      unitAmount,
+      expectedAmount: unitAmount,
+      collectedAmount: isPaymentConfirmedByAdmin(submission.paymentStatus) ? unitAmount : 0,
+      likesCount: submission.studentLikes.length,
+      votesCount: submission.studentVotes.length,
+      commentsCount: submission.studentComments.length,
+      interactingStudents,
+      uniqueReachCount: interactingStudents.length,
+      uorReachCount,
+      isptecReachCount,
+      otherReachCount,
+      coursesReachedCount: reachedCourses.size,
+      yearsReachedCount: reachedYears.size,
+      publicSignalsCount,
+    };
+  });
 }
 
 function buildCategorySummaries(submissions: DetailedSubmission[], unitAmount: number): CategorySummary[] {
@@ -337,9 +418,9 @@ function renderSubmissionInteractionRows(submission: DetailedSubmission) {
 
   return submission.interactingStudents.map((student) => `
     <tr>
-      <td>${escapeHtml(student.name)}</td>
+      <td>${escapeHtml(student.institutionCode)}</td>
       <td>${escapeHtml(student.course ?? "Curso não informado")}</td>
-      <td>${escapeHtml(student.actionsLabel)}</td>
+      <td>${escapeHtml(`${student.yearLabel} · ${student.actionsLabel}`)}</td>
     </tr>
   `).join("");
 }
@@ -553,6 +634,166 @@ function buildSubmissionInteractionPages(params: {
   `).join("");
 }
 
+function chunk<T>(items: T[], size: number) {
+  const pages: T[][] = [];
+  for (let index = 0; index < items.length; index += size) {
+    pages.push(items.slice(index, index + size));
+  }
+  return pages;
+}
+
+function buildReachRows(
+  students: SubmissionInteractionRow[],
+  labelFor: (student: SubmissionInteractionRow) => string,
+): ReachRow[] {
+  const grouped = new Map<string, Set<number>>();
+  for (const student of students) {
+    const label = labelFor(student).trim() || "Por validar";
+    const bucket = grouped.get(label) ?? new Set<number>();
+    bucket.add(student.id);
+    grouped.set(label, bucket);
+  }
+
+  return Array.from(grouped.entries())
+    .map(([label, ids]) => {
+      const matching = students.filter((student) => ids.has(student.id));
+      const uor = matching.filter((student) => student.institutionCode === "UOR").length;
+      const isptec = matching.filter((student) => student.institutionCode === "ISPTEC").length;
+      const total = ids.size;
+      return {
+        label,
+        total,
+        uor,
+        isptec,
+        other: Math.max(0, total - uor - isptec),
+      };
+    })
+    .sort((left, right) => right.total - left.total || left.label.localeCompare(right.label));
+}
+
+function renderReachTable(rows: ReachRow[], labelTitle: string) {
+  const tableRows = rows.length === 0
+    ? `<tr><td colspan="5">Sem dados suficientes para esta dimensão.</td></tr>`
+    : rows.map((row) => `
+      <tr>
+        <td>${escapeHtml(row.label)}</td>
+        <td class="number-cell">${row.total}</td>
+        <td class="number-cell">${row.uor}</td>
+        <td class="number-cell">${row.isptec}</td>
+        <td class="number-cell">${row.other}</td>
+      </tr>
+    `).join("");
+
+  return `
+    <table class="score-table lean">
+      <thead>
+        <tr><th>${escapeHtml(labelTitle)}</th><th>Total</th><th>UOR</th><th>ISPTEC</th><th>Outro</th></tr>
+      </thead>
+      <tbody>${tableRows}</tbody>
+    </table>
+  `;
+}
+
+function buildProjectReachSummaries(submissions: DetailedSubmission[]): ProjectReachSummary[] {
+  return submissions
+    .map((submission) => ({
+      index: submission.index,
+      name: submission.name,
+      typeLabel: submission.typeLabel,
+      statusLabel: submission.statusLabel,
+      course: submission.course,
+      area: submission.area,
+      totalReach: submission.uniqueReachCount,
+      uorReach: submission.uorReachCount,
+      isptecReach: submission.isptecReachCount,
+      otherReach: submission.otherReachCount,
+      coursesReached: submission.coursesReachedCount,
+      yearsReached: submission.yearsReachedCount,
+      publicSignals: submission.publicSignalsCount,
+    }))
+    .sort((left, right) =>
+      right.totalReach - left.totalReach
+      || right.publicSignals - left.publicSignals
+      || left.name.localeCompare(right.name),
+    );
+}
+
+function renderProjectReachTable(rows: ProjectReachSummary[]) {
+  const tableRows = rows.length === 0
+    ? `<tr><td colspan="9">Sem expositores aprovados com alcance público registado.</td></tr>`
+    : rows.map((project, index) => `
+      <tr>
+        <td class="number-cell">${index + 1}</td>
+        <td><strong>${escapeHtml(project.name)}</strong><br /><span>${escapeHtml(project.typeLabel)} · ${escapeHtml(project.area || "Área por validar")}</span></td>
+        <td>${escapeHtml(project.course ?? "Curso por validar")}</td>
+        <td class="number-cell">${project.totalReach}</td>
+        <td class="number-cell">${project.uorReach}</td>
+        <td class="number-cell">${project.isptecReach}</td>
+        <td class="number-cell">${project.coursesReached}</td>
+        <td class="number-cell">${project.yearsReached}</td>
+        <td class="number-cell">${project.publicSignals}</td>
+      </tr>
+    `).join("");
+
+  return `
+    <table class="score-table lean">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Expositor</th>
+          <th>Curso base</th>
+          <th>Alcance</th>
+          <th>UOR</th>
+          <th>ISPTEC</th>
+          <th>Cursos</th>
+          <th>Anos</th>
+          <th>Sinais</th>
+        </tr>
+      </thead>
+      <tbody>${tableRows}</tbody>
+    </table>
+  `;
+}
+
+function renderProjectReachPages(
+  pages: ProjectReachSummary[][],
+  logoMarkup: string,
+  reportNumber: string,
+  totalPages: number,
+  firstPageNumber: number,
+) {
+  if (pages.length === 0) {
+    return `
+      <section class="page">
+        <div class="page-content">
+          ${renderReportHeader(logoMarkup, "Mapa de Alcance por Expositor")}
+          <div class="section-card" style="margin-top: 12mm;">
+            <p class="eyebrow">Mapa consolidado</p>
+            <h2>Sem dados para listar</h2>
+            <p class="lead-copy">Ainda não existem expositores aprovados suficientes para gerar o mapa de alcance.</p>
+          </div>
+          ${renderReportFooter(reportNumber, firstPageNumber, totalPages)}
+        </div>
+      </section>
+    `;
+  }
+
+  return pages.map((rows, pageIndex) => `
+    <section class="page">
+      <div class="page-content">
+        ${renderReportHeader(logoMarkup, "Mapa de Alcance por Expositor")}
+        <div class="section-card" style="margin-top: 10mm;">
+          <p class="eyebrow">Mapa consolidado · página ${pageIndex + 1}</p>
+          <h2>Alcance por expositor</h2>
+          <p class="lead-copy">Dimensões agregadas por expositor: alcance único, universidades alcançadas, cursos, anos curriculares e sinais públicos consolidados.</p>
+          ${renderProjectReachTable(rows)}
+        </div>
+        ${renderReportFooter(reportNumber, firstPageNumber + pageIndex, totalPages)}
+      </div>
+    </section>
+  `).join("");
+}
+
 export function buildReportHtml(params: {
   logoDataUri: string | null;
   generatedAt: Date;
@@ -567,26 +808,13 @@ export function buildReportHtml(params: {
   courseSummaries: CourseSummary[];
   detailedSubmissions: DetailedSubmission[];
 }) {
-  const {
-    logoDataUri,
-    generatedAt,
-    reportNumber,
-    paymentAmountLabel,
-    unitAmount,
-    totalSubmissions,
-    totalPaidSubmissions,
-    totalExpected,
-    totalCollected,
-    categorySummaries,
-    courseSummaries,
-    detailedSubmissions,
-  } = params;
+  const { logoDataUri, generatedAt, reportNumber, paymentAmountLabel, unitAmount, categorySummaries, courseSummaries, detailedSubmissions } = params;
 
   const logoMarkup = logoDataUri
     ? `<img src="${logoDataUri}" alt="UOR Connect" class="brand-logo" />`
     : `<div class="brand-fallback"><strong>UOR Connect</strong></div>`;
-  const activeDetailedSubmissions = detailedSubmissions.filter((submission) => submission.statusLabel !== "Recusado");
-  const rejectedSubmissions = detailedSubmissions.filter((submission) => submission.statusLabel === "Recusado");
+  const activeSubmissions = detailedSubmissions.filter((submission) => submission.statusLabel !== "Recusado");
+  const approvedSubmissions = activeSubmissions.filter((submission) => submission.statusLabel === "Aprovado");
   const metrics = calculateOverviewReportMetrics({
     submissions: detailedSubmissions.map((submission) => ({
       statusLabel: submission.statusLabel,
@@ -604,53 +832,42 @@ export function buildReportHtml(params: {
       totalCollected: course.totalCollected,
     })),
   });
-  const detailPageCount = Math.max(1, activeDetailedSubmissions.length);
-  const coursePageNumber = 3;
-  const detailFirstPageNumber = 4;
-  const rejectedPageNumber = detailFirstPageNumber + detailPageCount;
-  const interactionFirstPageNumber = rejectedPageNumber + 1;
-  const interactionPageCount = Math.max(1, activeDetailedSubmissions.length);
-  const totalPages = interactionFirstPageNumber + interactionPageCount - 1;
-  const growthRows = renderChartRows(buildBarChartRows([
-    { label: "Candidaturas válidas", amount: metrics.activeSubmissions, value: String(metrics.activeSubmissions), color: "#fd8305" },
-    { label: "Candidaturas aprovadas", amount: metrics.approvedSubmissions, value: String(metrics.approvedSubmissions), color: "#4aa391" },
-    { label: "Inscrições em cursos", amount: metrics.totalCourseEnrollments, value: String(metrics.totalCourseEnrollments), color: "#2563eb" },
-    { label: "Interações registadas", amount: metrics.totalInteractions, value: String(metrics.totalInteractions), color: "#7c3aed" },
+
+  const uniqueAudience = new Map<number, SubmissionInteractionRow>();
+  for (const submission of activeSubmissions) {
+    for (const student of submission.interactingStudents) {
+      uniqueAudience.set(student.id, student);
+    }
+  }
+
+  const audienceRows = Array.from(uniqueAudience.values());
+  const totalAudience = audienceRows.length;
+  const uorAudience = audienceRows.filter((student) => student.institutionCode === "UOR").length;
+  const isptecAudience = audienceRows.filter((student) => student.institutionCode === "ISPTEC").length;
+  const otherAudience = Math.max(0, totalAudience - uorAudience - isptecAudience);
+  const reachedCourses = new Set(audienceRows.map((student) => student.course).filter(Boolean));
+  const reachedYears = new Set(audienceRows.map((student) => student.yearLabel).filter((year) => year !== "Ano por validar"));
+  const totalPublicSignals = activeSubmissions.reduce((sum, submission) => sum + submission.publicSignalsCount, 0);
+
+  const institutionRows = renderChartRows(buildBarChartRows([
+    { label: "Universidade Óscar Ribas", amount: uorAudience, value: `${uorAudience} estudante(s)`, color: "#fd8305" },
+    { label: "ISPTEC", amount: isptecAudience, value: `${isptecAudience} estudante(s)`, color: "#223d42" },
+    { label: "Outras origens / por validar", amount: otherAudience, value: `${otherAudience} estudante(s)`, color: "#6b7280" },
   ]));
-  const financeRows = renderChartRows(buildBarChartRows([
-    { label: "Candidaturas previstas", amount: metrics.totalSubmissionExpected, value: formatCurrency(metrics.totalSubmissionExpected), color: "#223d42" },
-    { label: "Candidaturas arrecadadas", amount: metrics.totalSubmissionCollected, value: formatCurrency(metrics.totalSubmissionCollected), color: "#fd8305" },
-    { label: "Cursos previstos", amount: metrics.totalCourseExpected, value: formatCurrency(metrics.totalCourseExpected), color: "#2563eb" },
-    { label: "Cursos arrecadados", amount: metrics.totalCourseCollected, value: formatCurrency(metrics.totalCourseCollected), color: "#4aa391" },
-  ]));
-  const coursePage = buildCourseSummaryPage({
-    courseSummaries,
-    logoMarkup,
-    reportNumber,
-    pageNumber: coursePageNumber,
-    totalPages,
-  });
-  const detailPages = buildSubmissionDetailPages({
-    submissions: activeDetailedSubmissions,
-    logoMarkup,
-    reportNumber,
-    firstPageNumber: detailFirstPageNumber,
-    totalPages,
-  });
-  const rejectedPage = buildRejectedSubmissionSummaryPage({
-    rejectedSubmissions,
-    logoMarkup,
-    reportNumber,
-    pageNumber: rejectedPageNumber,
-    totalPages,
-  });
-  const interactionPages = buildSubmissionInteractionPages({
-    submissions: activeDetailedSubmissions,
-    logoMarkup,
-    reportNumber,
-    firstPageNumber: interactionFirstPageNumber,
-    totalPages,
-  });
+  const typeRows = renderChartRows(buildBarChartRows(categorySummaries.map((summary, index) => ({
+    label: summary.label,
+    amount: summary.totalCount,
+    value: `${summary.totalCount} item(ns)`,
+    color: ["#fd8305", "#4aa391", "#223d42"][index] ?? "#6b7280",
+  }))));
+
+  const courseReachRows = buildReachRows(audienceRows, (student) => student.course ?? "Curso por validar").slice(0, 14);
+  const yearReachRows = buildReachRows(audienceRows, (student) => student.yearLabel).slice(0, 10);
+  const projectRows = buildProjectReachSummaries(approvedSubmissions);
+  const topProjectRows = projectRows.slice(0, 10);
+  const projectPages = chunk(projectRows, 16);
+  const projectPageCount = Math.max(1, projectPages.length);
+  const totalPages = 5 + projectPageCount;
 
   return `<!doctype html>
 <html lang="pt-AO">
@@ -662,7 +879,7 @@ export function buildReportHtml(params: {
   * { box-sizing: border-box; }
   html, body { margin: 0; padding: 0; background: #fff; }
   body { color: #152434; font-family: Inter, "SF Pro Text", "Helvetica Neue", Arial, sans-serif; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  .page { width: 210mm; min-height: 297mm; padding: 14mm 15mm 12mm; position: relative; overflow: hidden; background: linear-gradient(180deg, #fffdfa 0%, #fff 44%, #f8fbfa 100%); page-break-after: always; }
+  .page { width: 210mm; min-height: 297mm; padding: 14mm 14mm 12mm; position: relative; overflow: hidden; background: linear-gradient(180deg, #fffdfa 0%, #fff 44%, #f8fbfa 100%); page-break-after: always; }
   .page:last-child { page-break-after: auto; }
   .page::before { content: ""; position: absolute; inset: 0 0 auto 0; height: 5mm; background: linear-gradient(90deg, #fd8305 0%, #223d42 72%, #4aa391 100%); }
   .page::after { content: ""; position: absolute; left: 15mm; right: 15mm; top: 11mm; height: 1px; background: rgba(34,61,66,.08); }
@@ -690,6 +907,7 @@ export function buildReportHtml(params: {
   .rule-card h3 { margin: 0 0 1.5mm; font-size: 16px; font-weight: 820; color: #152434; }
   .rule-card p { margin: 0; color: #344958; font-size: 10px; line-height: 1.45; }
   .chart-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 4mm; margin-top: 7mm; }
+  .chart-grid.single { grid-template-columns: 1fr; }
   .chart-card { border: 1px solid #dbe5e3; border-radius: 4mm; padding: 4.5mm; background: #fff; break-inside: avoid; }
   .chart-card h2 { margin: 0; color: #152434; font-size: 13px; font-weight: 850; }
   .chart-card p { margin-top: 1.5mm; color: #61707f; font-size: 9.5px; line-height: 1.45; }
@@ -704,6 +922,8 @@ export function buildReportHtml(params: {
   .compact-table th { padding: 2mm 2.2mm; font-size: 7.8px; }
   .compact-table td { padding: 2mm 2.2mm; font-size: 8.6px; line-height: 1.35; }
   .score-table tfoot td { background: #223d42; color: #fff; font-weight: 800; }
+  .score-table.lean th { font-size: 8px; padding: 2mm; }
+  .score-table.lean td { font-size: 8.7px; padding: 2mm; }
   .number-cell { text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
   .highlight-cell { color: #fd8305 !important; font-weight: 850; }
   .status-pill { display: inline-flex; align-items: center; justify-content: center; border-radius: 999px; padding: 2mm 3mm; font-size: 8px; font-weight: 900; letter-spacing: .08em; text-transform: uppercase; white-space: nowrap; }
@@ -720,50 +940,88 @@ export function buildReportHtml(params: {
 </style>
 </head>
 <body>
-  <!-- ══════════ PAGE 1 — Crescimento e Finanças ══════════ -->
+  <!-- ══════════ PAGE 1 — Síntese Geral ══════════ -->
   <section class="page">
     <div class="page-content">
-      ${renderReportHeader(logoMarkup, "Relatório Geral da Administração")}
+      ${renderReportHeader(logoMarkup, "Relatório Geral de Alcance")}
       <div class="hero-section">
-        <p class="eyebrow">Crescimento e finanças</p>
-        <h1>Relatório Geral da Administração</h1>
-        <p class="lead">Resumo visual de operação, candidaturas, cursos, interações e arrecadação. A primeira página prioriza leitura executiva para acompanhar crescimento e saúde financeira sem procurar os dados no fim do documento.</p>
+        <p class="eyebrow">Balanço público e institucional</p>
+        <h1>Relatório geral de alcance dos expositores</h1>
+        <p class="lead">Documento consolidado para administração e coordenação. O relatório mostra estatísticas de alcance, universidades, cursos, anos curriculares, categorias e sinais públicos agregados, sem expor dados brutos de votos, curtidas, comentários ou pontos.</p>
       </div>
       <div class="info-strip">
         <div class="info-box"><span>Relatório</span><strong>${escapeHtml(reportNumber)}</strong></div>
         <div class="info-box"><span>Gerado em</span><strong>${escapeHtml(formatDateLabel(generatedAt))}</strong></div>
-        <div class="info-box"><span>Crescimento</span><strong>${metrics.activeSubmissions + metrics.totalCourseEnrollments} registos</strong></div>
-        <div class="info-box"><span>Total arrecadado</span><strong>${escapeHtml(formatCurrency(metrics.combinedCollected))}</strong></div>
+        <div class="info-box"><span>Expositores ativos</span><strong>${approvedSubmissions.length}</strong></div>
+        <div class="info-box"><span>Alcance único</span><strong>${totalAudience} estudante(s)</strong></div>
       </div>
       <div class="chart-grid">
         <div class="chart-card">
-          <h2>Gráfico de crescimento</h2>
-          <p>Candidaturas, aprovações, cursos e interações em leitura comparativa.</p>
-          ${growthRows}
+          <h2>Alcance por universidade</h2>
+          <p>Estudantes únicos alcançados por alguma interação pública agregada.</p>
+          ${institutionRows}
         </div>
         <div class="chart-card">
-          <h2>Gráfico financeiro</h2>
-          <p>Valores previstos e arrecadados em candidaturas e cursos pagos.</p>
-          ${financeRows}
+          <h2>Composição dos expositores</h2>
+          <p>Projetos, negócios e produtos contabilizados no balanço.</p>
+          ${typeRows}
         </div>
       </div>
       <div class="rules-grid">
-        <div class="rule-card"><span class="rule-label">Candidaturas válidas</span><h3>${metrics.activeSubmissions}</h3><p>Itens ativos no cálculo financeiro; recusados ficam em resumo próprio.</p></div>
-        <div class="rule-card"><span class="rule-label">Cursos</span><h3>${metrics.totalCourseEnrollments}</h3><p>Inscrições recebidas nos cursos.</p></div>
-        <div class="rule-card"><span class="rule-label">Aprovação</span><h3>${metrics.approvalRatePercent}%</h3><p>${metrics.approvedSubmissions} candidatura(s) aprovadas.</p></div>
-        <div class="rule-card"><span class="rule-label">Cobertura financeira</span><h3>${metrics.financialCoveragePercent}%</h3><p>${escapeHtml(formatCurrency(metrics.combinedCollected))} confirmados sobre ${escapeHtml(formatCurrency(metrics.combinedExpected))} previstos.</p></div>
+        <div class="rule-card"><span class="rule-label">Cursos alcançados</span><h3>${reachedCourses.size}</h3><p>Cursos diferentes representados no público alcançado.</p></div>
+        <div class="rule-card"><span class="rule-label">Anos alcançados</span><h3>${reachedYears.size}</h3><p>Anos curriculares diferentes identificados nos perfis validados.</p></div>
+        <div class="rule-card"><span class="rule-label">Sinais públicos</span><h3>${totalPublicSignals}</h3><p>Volume agregado de participação pública, sem listar dados brutos.</p></div>
+        <div class="rule-card"><span class="rule-label">Qualidade do relatório</span><h3>Agregado</h3><p>Sem nomes de votantes, comentários brutos, histórico bruto de pontos ou listas individuais.</p></div>
       </div>
       ${renderReportFooter(reportNumber, 1, totalPages)}
     </div>
   </section>
 
-  <!-- ══════════ PAGE 2 — Financeiro e Categorias ══════════ -->
+  <!-- ══════════ PAGE 2 — Cursos e anos alcançados ══════════ -->
   <section class="page">
     <div class="page-content">
-      ${renderReportHeader(logoMarkup, "Financeiro e Categorias")}
-      <div class="section-card" style="margin-top: 14mm;">
-        <p class="eyebrow">Financeiro</p>
-        <h2>Resumo financeiro por categoria</h2>
+      ${renderReportHeader(logoMarkup, "Cursos e Anos Alcançados")}
+      <div class="chart-grid">
+        <div class="chart-card">
+          <h2>Top cursos alcançados</h2>
+          <p>Distribuição dos estudantes alcançados por curso, com separação por universidade.</p>
+          ${renderReachTable(courseReachRows, "Curso")}
+        </div>
+        <div class="chart-card">
+          <h2>Anos curriculares alcançados</h2>
+          <p>Leitura agregada por ano curricular, sem expor estudantes individualmente.</p>
+          ${renderReachTable(yearReachRows, "Ano")}
+        </div>
+      </div>
+      ${renderReportFooter(reportNumber, 2, totalPages)}
+    </div>
+  </section>
+
+  <!-- ══════════ PAGE 3 — Preferência pública agregada ══════════ -->
+  <section class="page">
+    <div class="page-content">
+      ${renderReportHeader(logoMarkup, "Preferência Pública")}
+      <div class="section-card" style="margin-top: 12mm;">
+        <p class="eyebrow">Ranking agregado</p>
+        <h2>Projetos com maior alcance público</h2>
+        <p class="lead-copy">A tabela usa alcance único e sinais públicos agregados. Não inclui nomes de estudantes, comentários brutos ou pontos brutos.</p>
+        ${renderProjectReachTable(topProjectRows)}
+      </div>
+      <div class="rules-grid">
+        <div class="rule-card"><span class="rule-label">Maior alcance</span><h3>${escapeHtml(topProjectRows[0]?.name ?? "Sem dados")}</h3><p>Projeto com maior número de estudantes únicos alcançados.</p></div>
+        <div class="rule-card"><span class="rule-label">Universidades</span><h3>${[uorAudience > 0, isptecAudience > 0, otherAudience > 0].filter(Boolean).length}</h3><p>Origens universitárias ou institucionais presentes no público alcançado.</p></div>
+      </div>
+      ${renderReportFooter(reportNumber, 3, totalPages)}
+    </div>
+  </section>
+
+  <!-- ══════════ PAGE 4 — Categorias e saúde operacional ══════════ -->
+  <section class="page">
+    <div class="page-content">
+      ${renderReportHeader(logoMarkup, "Categorias e Operação")}
+      <div class="section-card" style="margin-top: 12mm;">
+        <p class="eyebrow">Categorias</p>
+        <h2>Resumo por tipo de expositor</h2>
         <table class="score-table">
           <thead>
             <tr>
@@ -792,14 +1050,30 @@ export function buildReportHtml(params: {
         <div class="rule-card"><span class="rule-label">Fila financeira</span><h3>${metrics.pendingFinancialCount}</h3><p>Candidatura(s) ativa(s) ainda sem pagamento confirmado pela organização.</p></div>
         <div class="rule-card"><span class="rule-label">Valor unitário</span><h3>${escapeHtml(formatCurrency(unitAmount))}</h3><p>Valor configurado atualmente na plataforma: ${escapeHtml(paymentAmountLabel)}.</p></div>
       </div>
-      ${renderReportFooter(reportNumber, 2, totalPages)}
+      ${renderReportFooter(reportNumber, 4, totalPages)}
     </div>
   </section>
 
-  ${coursePage}
-  ${detailPages}
-  ${rejectedPage}
-  ${interactionPages}
+  <!-- ══════════ PAGE 5 — Metodologia ══════════ -->
+  <section class="page">
+    <div class="page-content">
+      ${renderReportHeader(logoMarkup, "Metodologia")}
+      <div class="section-card" style="margin-top: 12mm;">
+        <p class="eyebrow">Como ler este relatório</p>
+        <h2>Relatório geral, justo e sem dados brutos</h2>
+        <p class="lead-copy">O alcance representa estudantes únicos que interagiram com expositores. As estatísticas por universidade, curso e ano são agregadas, para preservar privacidade e evitar interpretações baseadas em registos incompletos. Dados brutos de votos, curtidas, comentários e pontos foram removidos deste documento.</p>
+      </div>
+      <div class="rules-grid">
+        <div class="rule-card"><span class="rule-label">Alcance único</span><h3>1 estudante</h3><p>Conta uma única vez por relatório, mesmo quando participa em mais de um sinal público.</p></div>
+        <div class="rule-card"><span class="rule-label">Sinal público</span><h3>Agregado</h3><p>Indica participação total sem revelar textos, nomes ou histórico individual.</p></div>
+        <div class="rule-card"><span class="rule-label">Curso/ano por validar</span><h3>Separado</h3><p>Quando o perfil não permite validação segura, o dado fica em categoria própria.</p></div>
+        <div class="rule-card"><span class="rule-label">Uso esperado</span><h3>Balanço</h3><p>Documento para leitura institucional, não para auditoria forense de votos.</p></div>
+      </div>
+      ${renderReportFooter(reportNumber, 5, totalPages)}
+    </div>
+  </section>
+
+  ${renderProjectReachPages(projectPages, logoMarkup, reportNumber, totalPages, 6)}
 </body>
 </html>`;
 }
@@ -876,6 +1150,13 @@ export async function reportsRoutes(app: FastifyInstance, opts: { env: Env }) {
             studentNumber: entry.student.studentNumber,
             name: entry.student.name,
             course: entry.student.course,
+            institutionCode: entry.student.institutionCode,
+            email: entry.student.email,
+            classCode: entry.student.classCode,
+            academicYear: entry.student.academicYear,
+            curricularYear: entry.student.curricularYear,
+            university: entry.student.university,
+            registrationSource: entry.student.registrationSource,
           },
         })),
         studentVotes: submission.studentVotes.map((entry) => ({
@@ -884,6 +1165,13 @@ export async function reportsRoutes(app: FastifyInstance, opts: { env: Env }) {
             studentNumber: entry.student.studentNumber,
             name: entry.student.name,
             course: entry.student.course,
+            institutionCode: entry.student.institutionCode,
+            email: entry.student.email,
+            classCode: entry.student.classCode,
+            academicYear: entry.student.academicYear,
+            curricularYear: entry.student.curricularYear,
+            university: entry.student.university,
+            registrationSource: entry.student.registrationSource,
           },
         })),
         studentComments: submission.studentComments.map((entry) => ({
@@ -892,6 +1180,13 @@ export async function reportsRoutes(app: FastifyInstance, opts: { env: Env }) {
             studentNumber: entry.student.studentNumber,
             name: entry.student.name,
             course: entry.student.course,
+            institutionCode: entry.student.institutionCode,
+            email: entry.student.email,
+            classCode: entry.student.classCode,
+            academicYear: entry.student.academicYear,
+            curricularYear: entry.student.curricularYear,
+            university: entry.student.university,
+            registrationSource: entry.student.registrationSource,
           },
         })),
       }));

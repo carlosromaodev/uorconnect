@@ -61,21 +61,22 @@ export default function AdminCertificatesTab() {
   const [notifyStudentByWhatsApp, setNotifyStudentByWhatsApp] = useState(false);
   const [title, setTitle] = useState("Certificado de Participação");
   const [type, setType] = useState("PARTICIPATION");
-  const [organizerName, setOrganizerName] = useState("Faculdade de Ciências e Tecnologia");
-  const [rectorTitle, setRectorTitle] = useState("O Reitor");
-  const [rectorName, setRectorName] = useState("Prof. Doutor André Pedro Neto");
-  const [authorityTitle, setAuthorityTitle] = useState("A Decana");
-  const [authorityName, setAuthorityName] = useState("Prof. Doutora Cristina de Oliveira");
+  const [organizerName, setOrganizerName] = useState("Faculdade de Ciências e Tecnologias");
+  const [rectorTitle, setRectorTitle] = useState("O Decano");
+  const [rectorName, setRectorName] = useState("Prof. Doutor Diosnorides Carbonell Torreblanca");
+  const [authorityTitle, setAuthorityTitle] = useState("Vice-Reitor para os Assuntos Científicos e de Pós-Graduação");
+  const [authorityName, setAuthorityName] = useState("Prof. Doutor Eugénio de Carvalho");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState("todos");
   const [typeFilter, setTypeFilter] = useState("");
-  const [bulkMode, setBulkMode] = useState<"ATTENDANCE" | "STUDENT_LIST" | "STUDENT_COURSE" | "COURSE_ENROLLMENT" | "PROJECT">("ATTENDANCE");
+  const [bulkMode, setBulkMode] = useState<"ATTENDANCE" | "STUDENT_LIST" | "STUDENT_COURSE" | "COURSE_ENROLLMENT" | "PROJECT" | "ALL_PROJECTS">("ATTENDANCE");
   const [bulkStudentNumbers, setBulkStudentNumbers] = useState("");
   const [bulkStudentCourse, setBulkStudentCourse] = useState("");
   const [bulkCourseId, setBulkCourseId] = useState("");
   const [bulkSubmissionId, setBulkSubmissionId] = useState("");
   const [bulkEventKey, setBulkEventKey] = useState("main-event");
+  const [bulkProjectRank, setBulkProjectRank] = useState("");
 
   const load = async (nextPage = page, nextSearch = search, nextStatus = statusFilter, nextType = typeFilter) => {
     setLoading(true);
@@ -193,13 +194,14 @@ export default function AdminCertificatesTab() {
           metadata: buildCertificateMetadata(),
         })
         : await api.certificates.issueBulk({
-          mode: bulkMode,
+          mode: bulkMode as "STUDENT_LIST" | "STUDENT_COURSE" | "COURSE_ENROLLMENT" | "PROJECT" | "ALL_PROJECTS",
           title,
           type,
           studentNumbers: bulkMode === "STUDENT_LIST" ? parseStudentNumbers(bulkStudentNumbers) : undefined,
           studentCourse: bulkMode === "STUDENT_COURSE" ? bulkStudentCourse.trim() : undefined,
           courseId: bulkMode === "COURSE_ENROLLMENT" && bulkCourseId ? Number(bulkCourseId) : undefined,
           submissionId: bulkMode === "PROJECT" && bulkSubmissionId ? Number(bulkSubmissionId) : undefined,
+          projectRank: (bulkMode === "PROJECT" || bulkMode === "ALL_PROJECTS") && bulkProjectRank.trim() ? bulkProjectRank.trim() : undefined,
           metadata: buildCertificateMetadata(),
         });
       toast.success(`${result.issued} certificado(s) emitido(s). ${result.skipped} já existiam.`);
@@ -373,7 +375,7 @@ export default function AdminCertificatesTab() {
           </CardHeader>
           <CardContent className="space-y-3">
             <p className="text-sm leading-6 text-muted-foreground">
-              Gera certificados para presenças, lista de estudantes, curso académico, inscritos num curso do portal ou líder de projeto.
+              Gera certificados para presenças, lista de estudantes, curso académico, inscritos num curso do portal ou todos os membros de um projeto.
             </p>
             <div className="grid gap-3 md:grid-cols-2">
               <select
@@ -385,7 +387,8 @@ export default function AdminCertificatesTab() {
                 <option value="STUDENT_LIST">Lista de estudantes</option>
                 <option value="STUDENT_COURSE">Curso académico</option>
                 <option value="COURSE_ENROLLMENT">Inscritos em curso do portal</option>
-                <option value="PROJECT">Projeto específico</option>
+                <option value="PROJECT">Projeto — membros de um projeto específico</option>
+                <option value="ALL_PROJECTS">Todos os projetos — todos os expositores confirmados</option>
               </select>
               {bulkMode === "ATTENDANCE" ? (
                 <Input value={bulkEventKey} onChange={(event) => setBulkEventKey(event.target.value)} placeholder="Código do evento" />
@@ -402,7 +405,11 @@ export default function AdminCertificatesTab() {
                 </select>
               ) : null}
               {bulkMode === "PROJECT" ? (
-                <Input value={bulkSubmissionId} onChange={(event) => setBulkSubmissionId(event.target.value.replace(/\D/g, ""))} placeholder="ID do projeto" />
+                <Input
+                  value={bulkSubmissionId}
+                  onChange={(event) => setBulkSubmissionId(event.target.value.replace(/\D/g, ""))}
+                  placeholder="ID do projeto (número)"
+                />
               ) : null}
             </div>
             {bulkMode === "STUDENT_LIST" ? (
@@ -412,6 +419,57 @@ export default function AdminCertificatesTab() {
                 placeholder="Cole números separados por linha, espaço ou vírgula"
                 className="min-h-[96px]"
               />
+            ) : null}
+            {bulkMode === "PROJECT" ? (
+              <div className="rounded-[14px] border border-primary/20 bg-primary/5 p-4 space-y-3">
+                <p className="text-sm font-semibold text-primary">Certificados de projeto em lote</p>
+                <p className="text-xs leading-5 text-muted-foreground">
+                  Serão emitidos certificados personalizados para <strong>todos os membros confirmados</strong> do projeto,
+                  incluindo o líder. O texto do certificado incluirá automaticamente:
+                </p>
+                <ul className="text-xs leading-6 text-muted-foreground list-disc pl-4">
+                  <li>O <strong>nome do projeto</strong></li>
+                  <li>A <strong>posição no ranking geral</strong> (calculada automaticamente a partir das pontuações ao vivo)</li>
+                  <li>O <strong>papel de cada membro</strong> — líder ou membro da equipa — com texto diferenciado</li>
+                </ul>
+                <div className="pt-1">
+                  <label className="mb-1.5 block text-xs font-medium text-foreground">
+                    Posição no ranking <span className="text-muted-foreground">(opcional — deixa em branco para calcular automaticamente)</span>
+                  </label>
+                  <Input
+                    value={bulkProjectRank}
+                    onChange={(event) => setBulkProjectRank(event.target.value)}
+                    placeholder="Ex.: 1.º Lugar, 2.º Lugar, 5.º Lugar…"
+                  />
+                  <p className="mt-1.5 text-xs text-muted-foreground">
+                    Se deixares em branco, o sistema consulta o ranking atual de pontuações e calcula a posição automaticamente.
+                  </p>
+                </div>
+              </div>
+            ) : null}
+            {bulkMode === "ALL_PROJECTS" ? (
+              <div className="rounded-[14px] border border-emerald-500/20 bg-emerald-500/5 p-4 space-y-3">
+                <p className="text-sm font-semibold text-emerald-700">Todos os expositores — emissão automática global</p>
+                <p className="text-xs leading-5 text-muted-foreground">
+                  O sistema vai percorrer <strong>todos os projetos com presença confirmada</strong> e emitir certificados
+                  automaticamente para o líder e todos os membros confirmados de cada projeto, sem necessidade de indicar um ID.
+                </p>
+                <ul className="text-xs leading-6 text-muted-foreground list-disc pl-4">
+                  <li>Apenas projetos com <strong>pagamento confirmado</strong> são incluídos</li>
+                  <li>Cada membro só recebe um certificado por projeto (duplicados são ignorados)</li>
+                  <li>A posição no ranking é calculada automaticamente via pontuações ao vivo</li>
+                </ul>
+                <div className="pt-1">
+                  <label className="mb-1.5 block text-xs font-medium text-foreground">
+                    Posição no ranking <span className="text-muted-foreground">(opcional — aplica-se a todos os projetos se preenchido)</span>
+                  </label>
+                  <Input
+                    value={bulkProjectRank}
+                    onChange={(event) => setBulkProjectRank(event.target.value)}
+                    placeholder="Deixa em branco para calcular automaticamente por projeto"
+                  />
+                </div>
+              </div>
             ) : null}
             <Button className="mt-4 rounded-xl" variant="outline" onClick={() => void handleBulkIssue()} disabled={bulkIssuing}>
               {bulkIssuing ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Award className="mr-2 h-4 w-4" />}

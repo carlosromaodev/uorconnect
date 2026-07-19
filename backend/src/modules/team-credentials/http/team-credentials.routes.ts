@@ -18,6 +18,7 @@ import { isProfileFieldVisible } from "../../profile/application/profile-visibil
 import { persistMediaValue } from "../../media/application/media-storage";
 import { isPaymentConfirmedByAdmin } from "../../payments/payment-status";
 import { buildSubmissionSlug } from "../../submission/domain/submission-format";
+import { syncSubmissionTeamMembers } from "../../submission/http/submission-team";
 import { buildValidationUrl } from "../../validation/application/validation-links";
 import {
   credentialStatusLabel,
@@ -403,8 +404,8 @@ export function isStudentEligibleForNucleusPossession<T extends NucleusPossessio
 const credentialPassOptionsQuerySchema = z.object({
   printMode: z.enum(credentialPassPrintModes).optional().default("color"),
   side: z.enum(credentialPassSides).optional().default("both"),
-  layout: z.enum(credentialPassLayouts).optional().default("single"),
-  duplexMode: z.enum(credentialPassDuplexModes).optional().default("long-edge"),
+  layout: z.enum(credentialPassLayouts).optional().default("a4-2up-landscape"),
+  duplexMode: z.enum(credentialPassDuplexModes).optional().default("short-edge"),
   marginMm: z.coerce.number().min(6).max(30).optional().default(18),
   bleedMm: z.coerce.number().min(0).max(10).optional().default(4),
   laminationMarginMm: z.coerce.number().min(0).max(8).optional().default(3),
@@ -2276,24 +2277,176 @@ function nucleusStudentNumberError(category: string, studentNumber?: string | nu
   return null;
 }
 
-async function upsertExpositorCredential(params: {
-  studentNumber: string;
+type ExpositorImportSubmission = {
+  id: number;
+  referenceCode: string;
   name: string;
+  type: string;
+  area: string;
+  course?: string | null;
+  leaderName?: string | null;
+  studentNumberSnapshot?: string | null;
+  student?: {
+    studentNumber?: string | null;
+    name?: string | null;
+    phone?: string | null;
+    course?: string | null;
+  } | null;
+};
+
+type ExpositorImportMember = {
+  id: number;
+  name: string;
+  expectedStudentNumber?: string | null;
+  studentNumber?: string | null;
+  studentName?: string | null;
+  studentCourse?: string | null;
+  studentPhone?: string | null;
+};
+
+type ExpositorCredentialCandidate = {
+  studentNumber: string | null;
+  name: string;
+  phone: string | null;
+  course: string | null;
+  source: "leader" | "member";
+};
+
+export function buildExpositorCredentialImportCandidates(
+  submission: ExpositorImportSubmission,
+  members: ExpositorImportMember[],
+): ExpositorCredentialCandidate[] {
+  const candidates: ExpositorCredentialCandidate[] = [];
+  const seen = new Set<string>();
+  const pushCandidate = (candidate: ExpositorCredentialCandidate) => {
+    const name = normalizeOptional(candidate.name);
+    if (!name) return;
+    const studentNumber = normalizeStudentNumber(candidate.studentNumber);
+    const key = studentNumber ? `student:${studentNumber}` : `name:${normalizeNameForMatch(name)}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    candidates.push({
+      ...candidate,
+      studentNumber,
+      name,
+      phone: normalizeOptional(candidate.phone),
+      course: normalizeOptional(candidate.course),
+    });
+  };
+
+  pushCandidate({
+    source: "leader",
+    studentNumber: submission.student?.studentNumber ?? submission.studentNumberSnapshot ?? null,
+    name: submission.student?.name ?? submission.leaderName ?? "Expositor",
+    phone: submission.student?.phone ?? null,
+    course: submission.student?.course ?? submission.course ?? null,
+  });
+
+  for (const member of members) {
+    pushCandidate({
+      source: "member",
+      studentNumber: member.studentNumber ?? member.expectedStudentNumber ?? null,
+      name: member.studentName ?? member.name,
+      phone: member.studentPhone ?? null,
+      course: member.studentCourse ?? submission.course ?? null,
+    });
+  }
+
+  return candidates;
+}
+
+async function upsertExpositorCredential(params: {
+  studentNumber?: string | null;
+  name: string;
+  phone?: string | null;
+  course?: string | null;
   submission: { id: number; referenceCode: string; name: string; type: string; area: string };
   actorNumber: string | null;
-}): Promise<"created" | "membership_created" | "skipped"> {
-  const { studentNumber, name, submission, actorNumber } = params;
+}): Promise<"created" | "updated" | "membership_created" | "skipped"> {
+  const { name, submission, actorNumber } = params;
+  const studentNumber = normalizeStudentNumber(params.studentNumber);
+  const normalizedName = normalizeOptional(name) ?? "Expositor";
+  const role = submission.type === "PROJECT" ? "Projeto" : submission.type === "BUSINESS" ? "Negócio" : "Produto";
 
-  // Check if credential already exists for this student + submission
   const existingCred = await prisma.eventTeamCredential.findFirst({
     where: {
       category: "EXPOSITOR",
-      teamMembership: { studentNumber },
+      sourceSubmissionId: submission.id,
+      status: { notIn: ["REVOKED", "DISABLED"] },
+      OR: [
+        ...(studentNumber ? [{ teamMembership: { studentNumber } }] : []),
+        { name: normalizedName },
+      ],
     },
+    orderBy: [{ updatedAt: "desc" }, { id: "desc" }],
   });
-  if (existingCred) return "skipped";
+  if (existingCred) {
+    const shouldRefreshInvitation =
+      existingCred.status === "INVITED" &&
+      (!existingCred.invitationExpiresAt || isCredentialInvitationExpired(existingCred));
+    const shouldBackfill = (
+      existingCred.name !== normalizedName ||
+      existingCred.sourceSubmissionRef !== submission.referenceCode ||
+      existingCred.sourceSubmissionName !== submission.name ||
+      existingCred.sourceSubmissionType !== submission.type ||
+      existingCred.sourceSubmissionArea !== submission.area
+    );
 
-  const nameParts = splitFullName(name);
+    if (!shouldRefreshInvitation && !shouldBackfill) return "skipped";
+
+    const updated = await prisma.eventTeamCredential.update({
+      where: { id: existingCred.id },
+      data: {
+        ...(shouldRefreshInvitation
+          ? {
+              status: "INVITED",
+              invitationExpiresAt: buildInvitationExpiresAt(),
+            }
+          : {}),
+        name: normalizedName,
+        phone: normalizeOptional(params.phone) ?? existingCred.phone,
+        course: normalizeOptional(params.course) ?? existingCred.course,
+        sourceSubmissionId: submission.id,
+        sourceSubmissionRef: submission.referenceCode,
+        sourceSubmissionName: submission.name,
+        sourceSubmissionType: submission.type,
+        sourceSubmissionArea: submission.area,
+      },
+    });
+    await persistTeamCredentialIssueSnapshot(updated, "EXPOSITOR_IMPORT_REFRESH", actorNumber);
+    return "updated";
+  }
+
+  if (!studentNumber) {
+    const credential = await prisma.eventTeamCredential.create({
+      data: {
+        token: createToken("cred"),
+        publicSlug: await createUniquePublicSlug(normalizedName),
+        category: "EXPOSITOR",
+        team: "Expositores",
+        role,
+        accessLevel: "Expositor",
+        permissions: "EVENTO",
+        status: "INVITED",
+        invitationExpiresAt: buildInvitationExpiresAt(),
+        name: normalizedName,
+        phone: normalizeOptional(params.phone),
+        course: normalizeOptional(params.course),
+        organization: `${submission.name} (${submission.referenceCode})`,
+        sourceSubmissionId: submission.id,
+        sourceSubmissionRef: submission.referenceCode,
+        sourceSubmissionName: submission.name,
+        sourceSubmissionType: submission.type,
+        sourceSubmissionArea: submission.area,
+        issuedAt: new Date(),
+        issuedByStudentNumber: actorNumber,
+      },
+    });
+    await persistTeamCredentialIssueSnapshot(credential, "EXPOSITOR_MEMBER_INVITATION", actorNumber);
+    return "created";
+  }
+
+  const nameParts = splitFullName(normalizedName);
   let membershipCreated = false;
   let membership = await prisma.teamMembership.findFirst({
     where: { studentNumber, category: "EXPOSITOR" },
@@ -2303,12 +2456,12 @@ async function upsertExpositorCredential(params: {
     membership = await prisma.teamMembership.create({
       data: {
         studentNumber,
-        fullName: name,
+        fullName: normalizedName,
         firstName: nameParts.firstName,
         lastName: nameParts.lastName,
         category: "EXPOSITOR",
         team: "Expositores",
-        role: submission.type === "PROJECT" ? "Projeto" : submission.type === "BUSINESS" ? "Negócio" : "Produto",
+        role,
         accessLevel: "Expositor",
         permissions: "EVENTO",
         status: "ACTIVE",
@@ -2321,7 +2474,12 @@ async function upsertExpositorCredential(params: {
   } else if (!membership.verifiedAt) {
     membership = await prisma.teamMembership.update({
       where: { id: membership.id },
-      data: membershipVerificationData(actorNumber),
+      data: {
+        fullName: normalizedName,
+        firstName: nameParts.firstName,
+        lastName: nameParts.lastName,
+        ...membershipVerificationData(actorNumber),
+      },
     });
   }
 
@@ -2329,15 +2487,18 @@ async function upsertExpositorCredential(params: {
     data: {
       token: createToken("cred"),
       teamMembershipId: membership.id,
-      publicSlug: await createUniquePublicSlug(name),
+      publicSlug: await createUniquePublicSlug(normalizedName),
       category: "EXPOSITOR",
       team: "Expositores",
-      role: submission.type === "PROJECT" ? "Projeto" : submission.type === "BUSINESS" ? "Negócio" : "Produto",
+      role,
       accessLevel: "Expositor",
       permissions: "EVENTO",
       status: "INVITED",
       invitationExpiresAt: buildInvitationExpiresAt(),
-      name,
+      name: normalizedName,
+      phone: normalizeOptional(params.phone),
+      course: normalizeOptional(params.course),
+      organization: `${submission.name} (${submission.referenceCode})`,
       sourceSubmissionId: submission.id,
       sourceSubmissionRef: submission.referenceCode,
       sourceSubmissionName: submission.name,
@@ -2758,31 +2919,46 @@ async function sendCredentialPassPdf(
   options: CredentialPassOptions = {
     printMode: "color",
     side: "both",
-    layout: "single",
-    duplexMode: "long-edge",
+    layout: "a4-2up-landscape",
+    duplexMode: "short-edge",
     marginMm: 18,
     bleedMm: 4,
     laminationMarginMm: 3,
   },
 ) {
   const [qrTargets, logoDataUri] = await Promise.all([
-    resolveCredentialPassQrTargets(env, member, 720),
+    resolveCredentialPassQrTargets(env, member, options.layout === "single" ? 720 : 280),
     loadLogoDataUri(),
   ]);
   const templateRow = await loadCredentialPassTemplateRow(member.category);
   const template = credentialThemeForMember(member, templateRow, options.printMode);
-  const html = buildCredentialPassHtml({
-    member,
-    logoDataUri,
-    frontQrDataUri: qrTargets.frontQrDataUri,
-    backQrDataUri: qrTargets.backQrDataUri,
-    frontQrLabel: qrTargets.frontQrLabel,
-    backQrLabel: qrTargets.backQrLabel,
-    siteUrl: qrTargets.siteUrl,
-    profileUrl: qrTargets.backUrl,
-    options,
-    template,
-  });
+  const html = options.layout === "single"
+    ? buildCredentialPassHtml({
+        member,
+        logoDataUri,
+        frontQrDataUri: qrTargets.frontQrDataUri,
+        backQrDataUri: qrTargets.backQrDataUri,
+        frontQrLabel: qrTargets.frontQrLabel,
+        backQrLabel: qrTargets.backQrLabel,
+        siteUrl: qrTargets.siteUrl,
+        profileUrl: qrTargets.backUrl,
+        options,
+        template,
+      })
+    : buildCredentialPassBatchHtml({
+        items: [{
+          member,
+          siteUrl: qrTargets.siteUrl,
+          profileUrl: qrTargets.backUrl,
+          template,
+          frontQrDataUri: qrTargets.frontQrDataUri,
+          backQrDataUri: qrTargets.backQrDataUri,
+          frontQrLabel: qrTargets.frontQrLabel,
+          backQrLabel: qrTargets.backQrLabel,
+        }],
+        logoDataUri,
+        options,
+      });
   const buffer = await renderPdfFromHtml(html, {
     preferCssPageSize: true,
     displayHeaderFooter: false,
@@ -4473,7 +4649,10 @@ export async function teamCredentialsRoutes(app: FastifyInstance, opts: { env: E
       },
     }, async () => {
       const members = await prisma.eventTeamCredential.findMany({
-        where: { status: { notIn: ["DISABLED", "REVOKED"] } },
+        where: {
+          status: { notIn: ["DISABLED", "REVOKED"] },
+          NOT: { token: { startsWith: "bulk_" } },
+        },
         orderBy: [{ team: "asc" }, { category: "asc" }, { name: "asc" }, { createdAt: "desc" }],
       });
       const linkedMembershipIds = members
@@ -5331,7 +5510,10 @@ export async function teamCredentialsRoutes(app: FastifyInstance, opts: { env: E
       },
     }, async () => {
       const members = await prisma.eventTeamCredential.findMany({
-        where: { status: { notIn: ["DISABLED", "REVOKED"] } },
+        where: {
+          status: { notIn: ["DISABLED", "REVOKED"] },
+          NOT: { token: { startsWith: "bulk_" } },
+        },
         orderBy: [{ team: "asc" }, { name: "asc" }, { createdAt: "desc" }],
       });
       const serializedMembers = members.filter(isCredentialUsable).map((member) => serializeMemberWithCompletion(opts.env, member));
@@ -5467,6 +5649,7 @@ export async function teamCredentialsRoutes(app: FastifyInstance, opts: { env: E
           ...(ids.length > 0 ? { id: { in: ids } } : {}),
           ...(query.category ? { category: query.category } : {}),
           ...(query.team ? { team: { contains: query.team } } : {}),
+          NOT: { token: { startsWith: "bulk_" } },
           status: { notIn: ["DISABLED", "REVOKED"] },
         },
         orderBy: [{ team: "asc" }, { name: "asc" }, { createdAt: "desc" }],
@@ -6294,6 +6477,7 @@ export async function teamCredentialsRoutes(app: FastifyInstance, opts: { env: E
         response: {
           200: z.object({
             created: z.number(),
+            updated: z.number(),
             skipped: z.number(),
             membershipsCreated: z.number(),
           }),
@@ -6303,49 +6487,49 @@ export async function teamCredentialsRoutes(app: FastifyInstance, opts: { env: E
       },
     }, async (request) => {
       const approvedSubmissions = await prisma.submission.findMany({
-        where: { status: "APPROVED" },
+        where: { status: "APPROVED", deletedAt: null },
         include: {
-          student: { select: { id: true, studentNumber: true, name: true, phone: true } },
+          student: { select: { id: true, studentNumber: true, name: true, phone: true, course: true } },
           memberConfirmations: {
-            where: { confirmedAt: { not: null } },
-            select: { studentId: true, studentNumber: true, studentName: true, name: true },
+            select: {
+              id: true,
+              name: true,
+              expectedStudentNumber: true,
+              studentNumber: true,
+              studentName: true,
+              studentCourse: true,
+              studentPhone: true,
+            },
           },
         },
       });
 
       let created = 0;
+      let updated = 0;
       let skipped = 0;
       let membershipsCreated = 0;
       const actorNumber = request.student?.studentNumber ?? request.jury?.phone ?? null;
 
       for (const submission of approvedSubmissions) {
-        // Process submission leader
-        const leader = submission.student;
-        if (leader?.studentNumber) {
+        const syncedMembers = await syncSubmissionTeamMembers(submission);
+        const candidates = buildExpositorCredentialImportCandidates(
+          submission,
+          syncedMembers.length > 0 ? syncedMembers : submission.memberConfirmations,
+        );
+
+        for (const candidate of candidates) {
           const result = await upsertExpositorCredential({
-            studentNumber: leader.studentNumber,
-            name: leader.name ?? "Expositor",
+            studentNumber: candidate.studentNumber,
+            name: candidate.name,
+            phone: candidate.phone,
+            course: candidate.course,
             submission,
             actorNumber,
           });
           if (result === "created") created += 1;
+          else if (result === "updated") updated += 1;
           else if (result === "membership_created") { membershipsCreated += 1; created += 1; }
           else skipped += 1;
-        }
-
-        // Process confirmed members
-        for (const member of submission.memberConfirmations) {
-          if (member.studentNumber) {
-            const result = await upsertExpositorCredential({
-              studentNumber: member.studentNumber,
-              name: member.studentName ?? member.name,
-              submission,
-              actorNumber,
-            });
-            if (result === "created") created += 1;
-            else if (result === "membership_created") { membershipsCreated += 1; created += 1; }
-            else skipped += 1;
-          }
         }
       }
 
@@ -6354,11 +6538,11 @@ export async function teamCredentialsRoutes(app: FastifyInstance, opts: { env: E
         action: "team_credential.import_expositors",
         entityType: "EventTeamCredential",
         entityId: "expositors",
-        summary: `Expositores importados: ${created} credencial(is), ${membershipsCreated} membro(s).`,
-        metadata: { created, skipped, membershipsCreated },
+        summary: `Expositores sincronizados: ${created} nova(s), ${updated} atualizada(s), ${membershipsCreated} membro(s).`,
+        metadata: { created, updated, skipped, membershipsCreated },
       });
 
-      return { created, skipped, membershipsCreated };
+      return { created, updated, skipped, membershipsCreated };
     });
 
     adminApp.post("/admin/sync-site-guests", {
@@ -6517,10 +6701,18 @@ export async function teamCredentialsRoutes(app: FastifyInstance, opts: { env: E
       }
 
       const totalExpositors = await prisma.eventTeamCredential.count({
-        where: { category: "EXPOSITOR", status: { not: "DISABLED" } },
+        where: {
+          category: "EXPOSITOR",
+          status: { notIn: ["DISABLED", "REVOKED"] },
+          NOT: { token: { startsWith: "bulk_expositor_" } },
+        },
       });
       const claimed = await prisma.eventTeamCredential.count({
-        where: { category: "EXPOSITOR", status: "PROFILE_READY" },
+        where: {
+          category: "EXPOSITOR",
+          status: "PROFILE_READY",
+          NOT: { token: { startsWith: "bulk_expositor_" } },
+        },
       });
 
       const publicAppUrl = getPublicAppUrl(opts.env);

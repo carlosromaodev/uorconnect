@@ -7,6 +7,7 @@
     "dev": "npm run db:push && tsx watch src/server.ts",
     "build": "tsc --project tsconfig.build.json",
     "start": "node dist/src/server.js",
+    "pretest": "npm run prisma:generate:moodle-test",
     "test": "vitest",
     "test:admin-security": "vitest run src/modules/auth/use-cases/login.integration.spec.ts src/modules/auth/use-cases/manage-students.spec.ts src/modules/auth/use-cases/manage-admin-security.spec.ts",
     "test:watch": "vitest watch",
@@ -23,7 +24,8 @@
     "scores:backfill": "tsx src/scripts/backfill-exhibitor-score-events.ts",
     "content:sync-telecom-workshop": "tsx src/scripts/sync-telecom-workshop-content.ts",
     "students:backfill-institutions": "tsx src/scripts/backfill-student-institution-code.ts",
-    "prepare": "prisma generate",
+    "prisma:generate:moodle-test": "node scripts/prepare-moodle-test-prisma.mjs && prisma generate --schema prisma/schema.moodle-test.prisma",
+    "prepare": "prisma generate && npm run prisma:generate:moodle-test",
     "seed:demo": "tsx src/scripts/seed-demo-submissions.ts"
   },
   "keywords": [],
@@ -57,7 +59,7 @@
     "@types/node": "^25.5.0",
     "@types/qrcode": "^1.5.6",
     "@vitest/coverage-v8": "^4.1.0",
-    "prisma": "^7.5.0",
+    "prisma": "7.5.0",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3",
     "vitest": "^4.1.0"

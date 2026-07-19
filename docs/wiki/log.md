@@ -1,5 +1,11 @@
 # Log da Wiki
 
+## [2026-05-27] infra | Deploy na VPS antiga
+
+- Identificada a VPS nova como `178.105.109.96` e a VPS antiga como `135.181.47.46`.
+- Criado o guia `docs/DEPLOY_VPS_ANTIGA.md` com diagnostico, backup, deploy seletivo, sincronizacao completa, validacao e rollback.
+- Criada a pagina sintetizada `docs/wiki/pages/deploy-vps-antiga.md` e atualizado o indice da wiki.
+
 ## [2026-05-17] setup | LLM Wiki inicial
 
 - Instalada a skill local `llm-wiki` em `~/.codex/skills/llm-wiki/SKILL.md`.

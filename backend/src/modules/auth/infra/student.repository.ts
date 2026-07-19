@@ -23,6 +23,7 @@ import {
   resolveStudentInstitutionCode,
   type StudentInstitutionCode,
 } from "../domain/student-identity";
+import { softDeleteStudentWithMoodlePurge } from "../../../shared/student-deactivation";
 
 type StudentAccessFilter = "OFFICIAL" | "TEMPORARY" | "all" | "todos" | undefined;
 
@@ -981,31 +982,29 @@ export class StudentRepository {
     });
     if (!student) return;
 
-    await this.prisma.$transaction([
-      this.prisma.adminAuthorizedStudent.updateMany({
+    const deletedAt = new Date();
+    await this.prisma.$transaction(async (tx) => {
+      await tx.adminAuthorizedStudent.updateMany({
         where: { studentNumber: student.studentNumber },
         data: {
           isActive: false,
-          revokedAt: new Date(),
+          revokedAt: deletedAt,
           revocationReason: "Estudante removido/desativado administrativamente.",
         },
-      }),
-      this.prisma.teamMembership.updateMany({
+      });
+      await tx.teamMembership.updateMany({
         where: { studentNumber: student.studentNumber },
         data: {
           status: "REMOVED",
           notes: "Vínculo removido por desativação administrativa do estudante.",
         },
-      }),
-      this.prisma.student.update({
-        where: { id },
-        data: {
-          deletedAt: new Date(),
-          deletionReason: "Removido/desativado administrativamente. Histórico documental preservado.",
-          lastLoginAt: null,
-        },
-      }),
-    ]);
+      });
+      await softDeleteStudentWithMoodlePurge(tx, {
+        studentId: id,
+        deletedAt,
+        deletionReason: "Removido/desativado administrativamente. Histórico documental preservado.",
+      });
+    });
   }
 
   private mapProfile(profile?: StudentProfile) {

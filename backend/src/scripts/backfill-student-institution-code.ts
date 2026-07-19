@@ -1,11 +1,12 @@
 import { prisma } from "../shared/prisma";
 import {
   canonicalStudentUniversityName,
-  hasIsptecInstitutionalEmail,
+  hasVerifiedIsptecStudentEmail,
   hasOfficialStudentNumberShape,
   normalizeStudentNumberForIdentity,
   resolveStudentInstitutionCode,
 } from "../modules/auth/domain/student-identity";
+import { softDeleteStudentWithMoodlePurge } from "../shared/student-deactivation";
 
 const apply = process.argv.includes("--apply");
 
@@ -29,6 +30,16 @@ async function main() {
       deletedAt: true,
       lastLoginAt: true,
       createdAt: true,
+      _count: {
+        select: {
+          votes: true,
+          comments: true,
+          submissionMemberships: true,
+          passportPointLedger: true,
+          exhibitorVoteScoreEvents: true,
+          exhibitorActorScoreEvents: true,
+        },
+      },
     },
     orderBy: [{ id: "asc" }],
   });
@@ -63,12 +74,26 @@ async function main() {
 
   for (const group of groupedByTarget.values()) {
     const sorted = [...group].sort((left, right) => {
+      const leftActivity = left._count.votes
+        + left._count.comments
+        + left._count.submissionMemberships
+        + left._count.passportPointLedger
+        + left._count.exhibitorVoteScoreEvents
+        + left._count.exhibitorActorScoreEvents;
+      const rightActivity = right._count.votes
+        + right._count.comments
+        + right._count.submissionMemberships
+        + right._count.passportPointLedger
+        + right._count.exhibitorVoteScoreEvents
+        + right._count.exhibitorActorScoreEvents;
+      if (leftActivity !== rightActivity) return rightActivity - leftActivity;
+
       const leftAlreadyCanonical = left.studentNumber === left.nextStudentNumber ? 1 : 0;
       const rightAlreadyCanonical = right.studentNumber === right.nextStudentNumber ? 1 : 0;
       if (leftAlreadyCanonical !== rightAlreadyCanonical) return rightAlreadyCanonical - leftAlreadyCanonical;
 
-      const leftInstitutionalEmail = hasIsptecInstitutionalEmail(left.email) ? 1 : 0;
-      const rightInstitutionalEmail = hasIsptecInstitutionalEmail(right.email) ? 1 : 0;
+      const leftInstitutionalEmail = hasVerifiedIsptecStudentEmail(left.studentNumber, left.email) ? 1 : 0;
+      const rightInstitutionalEmail = hasVerifiedIsptecStudentEmail(right.studentNumber, right.email) ? 1 : 0;
       if (leftInstitutionalEmail !== rightInstitutionalEmail) return rightInstitutionalEmail - leftInstitutionalEmail;
 
       const leftOfficial = isOfficialRegistrationSource(left.registrationSource) ? 1 : 0;
@@ -120,14 +145,15 @@ async function main() {
 
   if (apply) {
     for (const student of deactivations) {
-      await prisma.student.update({
-        where: { id: student.id },
-        data: {
-          deletedAt: new Date(),
+      const deletedAt = new Date();
+      await prisma.$transaction(async (tx) => {
+        await softDeleteStudentWithMoodlePurge(tx, {
+          studentId: student.id,
+          deletedAt,
           deletionReason: student.shouldDeactivate
             ? "Removido da lista ativa: login temporário ou número de estudante fora do padrão oficial iniciado por 2."
             : "Removido da lista ativa: duplicado após normalização institucional.",
-        },
+        });
       });
     }
 

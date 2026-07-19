@@ -41,6 +41,7 @@ type ProjectSummary = {
   nome: string;
   tipo: "projeto" | "negocio" | "produto";
   votos: number;
+  pontos: number;
   isWinner: boolean;
 };
 
@@ -281,7 +282,7 @@ export function AdminOverviewTab({
               </div>
               <Button onClick={onExportOverviewReport} disabled={exportingReport} size="sm" className="h-10 rounded-xl bg-slate-950 text-white hover:bg-slate-800">
                 {exportingReport ? <Loader2 className="mr-2 h-3.5 w-3.5 animate-spin" /> : <Download className="mr-2 h-3.5 w-3.5" />}
-                Exportar PDF
+                Baixar relatório geral
               </Button>
             </div>
 
@@ -454,7 +455,9 @@ export function AdminOverviewTab({
                     <Icon className="h-3.5 w-3.5 shrink-0 text-muted-foreground/60" />
                     <span className="flex-1 truncate text-xs font-medium">{project.nome}</span>
                     {project.isWinner && <Crown className="h-3.5 w-3.5 text-amber-500" />}
-                    <span className="text-[11px] tabular-nums text-muted-foreground">{project.votos}v</span>
+                    <span className="text-[11px] tabular-nums text-muted-foreground">
+                      {project.votos}v · {project.pontos}pts
+                    </span>
                   </div>
                 );
               })

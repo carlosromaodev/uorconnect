@@ -14,6 +14,7 @@
 
 - [Estado Atual do UOR Connect](pages/uor-connect-estado-atual.md): visão consolidada do produto, infraestrutura, áreas e pendências.
 - [Deploy na Nova VPS](pages/deploy-nova-vps.md): operação principal de deploy e saúde da VPS.
+- [Deploy na VPS Antiga](pages/deploy-vps-antiga.md): fallback histórico em `135.181.47.46` e cuidados para publicar sem sobrescrever segredos.
 - [Passaporte UOR Connect](pages/passaporte-uor-connect.md): regras do desafio, mapa, QR surpresa, convites e proteções.
 - [Relatórios Gerais da Admin](pages/relatorios-gerais-admin.md): objetivo, cálculos, PDFs e cuidados.
 - [Formadores - Link Genérico](pages/formadores-link-generico.md): especificação do fluxo de cadastro de formadores.
@@ -32,6 +33,7 @@
 - [`DEPLOY_VPS_ONLY.md`](../../DEPLOY_VPS_ONLY.md): deploy na VPS.
 - [`DEPLOY_VERCEL_HETZNER.md`](../../DEPLOY_VERCEL_HETZNER.md): notas de deploy Vercel/Hetzner.
 - [`docs/DEPLOY_NOVA_VPS.md`](../DEPLOY_NOVA_VPS.md): nova VPS.
+- [`docs/DEPLOY_VPS_ANTIGA.md`](../DEPLOY_VPS_ANTIGA.md): VPS antiga.
 - [`NGROK_SETUP.md`](../../NGROK_SETUP.md): configuração de túnel local.
 - [`deploy/TESTE_LOCAL_WAHA.md`](../../deploy/TESTE_LOCAL_WAHA.md): testes locais do WAHA.
 

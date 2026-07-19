@@ -1,6 +1,6 @@
 import { prisma } from "../../../shared/prisma";
 import { normalizeStudentProfile } from "../../auth/domain/student-format";
-import type { AdminProjectVoteSummary, AdminVoteCourseSummary, AdminVoteEntry, AdminVotesRepository } from "../use-cases/admin-votes";
+import { sortProjectVoteSummaries, type AdminProjectVoteSummary, type AdminVoteCourseSummary, type AdminVoteEntry, type AdminVotesRepository } from "../use-cases/admin-votes";
 import { isCompetitionEligible, normalizeSubmissionType } from "../../submission/domain/submission-policy";
 import { buildSubmissionSlug } from "../../submission/domain/submission-format";
 
@@ -165,7 +165,7 @@ export class PrismaAdminVotesRepository implements AdminVotesRepository {
       pageViews: viewsBySubmissionId.get(submission.id)?.pageViews ?? 0,
       uniqueVisitors: viewsBySubmissionId.get(submission.id)?.visitors.size ?? 0,
       authenticatedVisitors: viewsBySubmissionId.get(submission.id)?.authenticated.size ?? 0,
-    }));
+    })).sort(sortProjectVoteSummaries);
 
     this.cachedSummaries = {
       value: summaries,

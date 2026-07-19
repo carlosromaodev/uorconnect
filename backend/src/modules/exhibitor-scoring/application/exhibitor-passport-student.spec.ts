@@ -338,6 +338,42 @@ describe("student exhibitor passport summary", () => {
     }));
   });
 
+  it("lets every linked group member open the exhibitor passport map", async () => {
+    prismaMock.submission.findMany.mockResolvedValueOnce([
+      {
+        ...submission,
+        memberConfirmations: submission.memberConfirmations.map((member) =>
+          member.id === 502 ? { ...member, confirmedAt: null } : member,
+        ),
+      },
+    ]);
+
+    const summary = await getStudentExhibitorPassportSummary({
+      studentId: 13,
+      eventKey: "uor-2026",
+    });
+    const query = prismaMock.submission.findMany.mock.calls[0]?.[0];
+
+    expect(query).toEqual(expect.objectContaining({
+      where: expect.objectContaining({
+        OR: expect.arrayContaining([
+          {
+            memberConfirmations: {
+              some: {
+                studentId: 13,
+              },
+            },
+          },
+        ]),
+      }),
+    }));
+    expect(summary.hasExhibitorPassport).toBe(true);
+    expect(summary.activeProject).toEqual(expect.objectContaining({
+      submissionId: 77,
+      viewerRole: "MEMBRO",
+    }));
+  });
+
   it("keeps the public round flow visible when the student has no eligible exhibitor project", async () => {
     prismaMock.submission.findMany.mockResolvedValue([]);
     prismaMock.exhibitorScoreEvent.findMany.mockReset();

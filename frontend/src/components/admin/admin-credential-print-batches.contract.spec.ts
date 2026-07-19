@@ -65,4 +65,10 @@ describe("admin credential print batches UI contract", () => {
     expect(adminSecurityTab).toContain("laminationMarginMm: passLaminationMarginMm");
     expect(adminSecurityTab).toContain("2porpagina-horizontal");
   });
+
+  it("uses the same 2-up A4 pass model for individual pass downloads", () => {
+    expect(apiSource).toContain("withDefaultTeamCredentialPassOptions");
+    expect(adminSecurityTab).toContain("api.teamCredentials.downloadPass(member.publicSlug, passBatchPrintOptions())");
+    expect(adminSecurityTab).toContain("api.teamCredentials.passPdfUrl(member.publicSlug, passBatchPrintOptions())");
+  });
 });

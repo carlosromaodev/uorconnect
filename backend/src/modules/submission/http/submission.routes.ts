@@ -33,7 +33,7 @@ import { buildBoardingPassHtml, buildSubmissionCommunityUrl, parseStoredProof, p
 import { loadLogoDataUri, renderPdfFromHtml } from "../../reports/http/pdf-report.utils";
 import { OFFICIAL_COURSES } from "../../../shared/official-courses";
 import { prisma } from "../../../shared/prisma";
-import { normalizeAngolaPhone } from "../../auth/domain/student-format";
+import { normalizeAngolaPhone, normalizeStudentProfile } from "../../auth/domain/student-format";
 import {
   buildStudentSubmissionListItem,
   buildStudentSubmissionReceiptResponse,
@@ -565,6 +565,104 @@ const adminSubmissionQuerySchema = z.object({
   ]).default("created_desc"),
 });
 
+const projectMapQuerySchema = z.object({
+  responsibleYear: z.string().trim().max(40).optional(),
+  search: z.string().trim().max(160).optional(),
+  status: z.enum(["PENDING", "APPROVED", "REJECTED"]).optional(),
+  type: z.enum(["PROJECT", "BUSINESS", "PRODUCT"]).optional(),
+});
+
+const projectMapBreakdownSchema = z.object({
+  label: z.string(),
+  total: z.number(),
+  percent: z.number(),
+});
+
+const projectMapPersonSchema = z.object({
+  id: z.number().nullable(),
+  name: z.string(),
+  studentNumber: z.string().nullable(),
+  institutionCode: z.string(),
+  institutionLabel: z.string(),
+  course: z.string(),
+  classCode: z.string(),
+  curricularYear: z.string(),
+  email: z.string().nullable(),
+  phone: z.string().nullable(),
+  avatarUrl: z.string().nullable(),
+});
+
+const projectMapMemberSchema = projectMapPersonSchema.extend({
+  memberId: z.number(),
+  confirmed: z.boolean(),
+  confirmedAt: z.string().nullable(),
+  role: z.enum(["RESPONSAVEL", "MEMBRO"]),
+  isExternal: z.boolean(),
+  externalOrganization: z.string().nullable(),
+});
+
+const projectMapResponseSchema = z.object({
+  generatedAt: z.string(),
+  filters: z.object({
+    responsibleYear: z.string().nullable(),
+    search: z.string().nullable(),
+    status: z.string().nullable(),
+    type: z.string().nullable(),
+  }),
+  yearOptions: z.array(z.string()),
+  summary: z.object({
+    totalProjects: z.number(),
+    approvedProjects: z.number(),
+    totalVotes: z.number(),
+    totalLikes: z.number(),
+    totalComments: z.number(),
+    uniqueVoters: z.number(),
+    universitiesReached: z.number(),
+    coursesReached: z.number(),
+    classesReached: z.number(),
+  }),
+  items: z.array(z.object({
+    id: z.number(),
+    slug: z.string(),
+    detailPath: z.string(),
+    referenceCode: z.string(),
+    name: z.string(),
+    description: z.string(),
+    status: z.string(),
+    type: z.string(),
+    typeLabel: z.string(),
+    area: z.string(),
+    course: z.string(),
+    bannerUrl: z.string().nullable(),
+    primaryColor: z.string(),
+    secondaryColor: z.string(),
+    createdAt: z.string().nullable(),
+    responsible: projectMapPersonSchema,
+    responsibleYear: z.string(),
+    memberStats: z.object({
+      total: z.number(),
+      confirmed: z.number(),
+      pending: z.number(),
+      external: z.number(),
+    }),
+    members: z.array(projectMapMemberSchema),
+    stats: z.object({
+      voteCount: z.number(),
+      uniqueVoters: z.number(),
+      likeCount: z.number(),
+      commentCount: z.number(),
+      reachCount: z.number(),
+      universitiesReached: z.number(),
+      coursesReached: z.number(),
+      classesReached: z.number(),
+    }),
+    voteUniversities: z.array(projectMapBreakdownSchema),
+    voteCourses: z.array(projectMapBreakdownSchema),
+    voteClasses: z.array(projectMapBreakdownSchema),
+    voteYears: z.array(projectMapBreakdownSchema),
+  })),
+});
+
 const paymentReviewStatusSchema = z.enum([
   "SUBMITTED_BY_USER",
   "PENDING_REVIEW",
@@ -712,6 +810,135 @@ function toAdminSubmissionResponse(
     exhibitorChallengeAnswersCount: challenge.answersCount,
     exhibitorChallengeUpdatedAt: challenge.updatedAt,
   };
+}
+
+const projectMapStudentSelect = {
+  id: true,
+  institutionCode: true,
+  studentNumber: true,
+  name: true,
+  email: true,
+  course: true,
+  classCode: true,
+  academicYear: true,
+  curricularYear: true,
+  academicSyncedAt: true,
+  registrationSource: true,
+  university: true,
+  isUorStudent: true,
+  phone: true,
+  alternatePhone: true,
+  avatarUrl: true,
+} satisfies Prisma.StudentSelect;
+
+type ProjectMapStudent = Prisma.StudentGetPayload<{
+  select: typeof projectMapStudentSelect;
+}>;
+
+type ProjectMapBreakdown = z.infer<typeof projectMapBreakdownSchema>;
+type ProjectMapPerson = z.infer<typeof projectMapPersonSchema>;
+
+function extractCurricularYear(value: string | null | undefined) {
+  if (!value) return null;
+  const text = String(value).trim();
+  const explicitYear = text.match(/(?:^|[^\d])([1-6])\s*(?:[.º°o]|º|o)?\s*ano/i);
+  if (explicitYear?.[1]) return explicitYear[1];
+
+  const standalone = text.match(/^\s*([1-6])\s*$/);
+  if (standalone?.[1]) return standalone[1];
+
+  const compactClass = text.match(/[A-Z]{2,}\D*([1-6])(?:[_\s-]|$)/i);
+  if (compactClass?.[1]) return compactClass[1];
+
+  return null;
+}
+
+function formatCurricularYearLabel(student?: ProjectMapStudent | null) {
+  const year =
+    extractCurricularYear(student?.curricularYear) ??
+    extractCurricularYear(student?.classCode) ??
+    extractCurricularYear(student?.academicYear);
+
+  return year ? `${year}.º ano` : "Ano por validar";
+}
+
+function institutionLabel(code: string | null | undefined, university?: string | null) {
+  const normalized = (code ?? "").trim().toUpperCase();
+  if (normalized === "ISPTEC") return "ISPTEC";
+  if (normalized === "UOR") return "UOR";
+  return university?.trim() || normalized || "Outra instituição";
+}
+
+function toProjectMapPerson(
+  student: ProjectMapStudent | null | undefined,
+  fallback: {
+    name?: string | null;
+    studentNumber?: string | null;
+    course?: string | null;
+    phone?: string | null;
+    externalOrganization?: string | null;
+  } = {},
+): ProjectMapPerson {
+  if (!student) {
+    const organization = fallback.externalOrganization?.trim();
+    return {
+      id: null,
+      name: fallback.name?.trim() || "Responsável por validar",
+      studentNumber: fallback.studentNumber?.trim() || null,
+      institutionCode: organization ? "EXTERNO" : "UOR",
+      institutionLabel: organization || "UOR",
+      course: fallback.course?.trim() || organization || "Curso por validar",
+      classCode: "Turma por validar",
+      curricularYear: "Ano por validar",
+      email: null,
+      phone: normalizeAngolaPhone(fallback.phone) ?? fallback.phone ?? null,
+      avatarUrl: null,
+    };
+  }
+
+  const normalized = normalizeStudentProfile(student);
+  const code = normalized.institutionCode ?? student.institutionCode ?? "UOR";
+
+  return {
+    id: student.id,
+    name: normalized.name ?? fallback.name?.trim() ?? "Estudante sem nome",
+    studentNumber: normalized.studentNumber ?? fallback.studentNumber?.trim() ?? null,
+    institutionCode: code,
+    institutionLabel: institutionLabel(code, normalized.university),
+    course: normalized.course ?? fallback.course?.trim() ?? "Curso por validar",
+    classCode: student.classCode?.trim() || "Turma por validar",
+    curricularYear: formatCurricularYearLabel(student),
+    email: normalized.email ?? null,
+    phone: normalized.alternatePhone ?? normalized.phone ?? normalizeAngolaPhone(fallback.phone) ?? fallback.phone ?? null,
+    avatarUrl: student.avatarUrl ?? null,
+  };
+}
+
+function addBreakdownValue(map: Map<string, number>, label: string | null | undefined) {
+  const normalized = label?.trim() || "Por validar";
+  map.set(normalized, (map.get(normalized) ?? 0) + 1);
+}
+
+function toBreakdownRows(map: Map<string, number>, total: number, limit = 6): ProjectMapBreakdown[] {
+  return Array.from(map.entries())
+    .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0], "pt"))
+    .slice(0, limit)
+    .map(([label, count]) => ({
+      label,
+      total: count,
+      percent: total > 0 ? Math.round((count / total) * 1000) / 10 : 0,
+    }));
+}
+
+function uniqueStudents(students: Array<ProjectMapStudent | null>) {
+  const seen = new Set<number>();
+  const unique: ProjectMapStudent[] = [];
+  for (const student of students) {
+    if (!student || seen.has(student.id)) continue;
+    seen.add(student.id);
+    unique.push(student);
+  }
+  return unique;
 }
 
 async function buildAdminSubmissionChallengeState(submissionId: number) {
@@ -1803,6 +2030,12 @@ export async function submissionRoutes(app: FastifyInstance, { env }: { env: Ret
             total: z.number(),
             page: z.number(),
             totalPages: z.number(),
+            stats: z.object({
+              total: z.number(),
+              pending: z.number(),
+              approved: z.number(),
+              rejected: z.number(),
+            }),
           }),
           401: z.object({ message: z.string() }),
           403: z.object({ message: z.string() })
@@ -1846,7 +2079,23 @@ export async function submissionRoutes(app: FastifyInstance, { env }: { env: Ret
                       ? [{ course: "desc" as const }, { createdAt: "desc" as const }]
                       : [{ createdAt: "desc" as const }];
 
-        const [total, items] = await Promise.all([
+        const statusStatsWhere = {
+          deletedAt: null,
+          ...(query.type ? { type: query.type } : {}),
+          ...(search
+            ? {
+              OR: [
+                { name: { contains: search } },
+                { referenceCode: { contains: search } },
+                { course: { contains: search } },
+                { leaderName: { contains: search } },
+                { leaderPhone: { contains: search } },
+              ],
+            }
+            : {}),
+        };
+
+        const [total, items, statusCounts] = await Promise.all([
           prisma.submission.count({ where }),
           prisma.submission.findMany({
             where,
@@ -1854,7 +2103,19 @@ export async function submissionRoutes(app: FastifyInstance, { env }: { env: Ret
             skip: (page - 1) * limit,
             take: limit,
           }),
+          prisma.submission.groupBy({
+            by: ["status"],
+            where: statusStatsWhere,
+            _count: { _all: true },
+          }),
         ]);
+        const countByStatus = new Map(statusCounts.map((item) => [item.status, item._count._all]));
+        const stats = {
+          total: Array.from(countByStatus.values()).reduce((sum, count) => sum + count, 0),
+          pending: countByStatus.get("PENDING") ?? 0,
+          approved: countByStatus.get("APPROVED") ?? 0,
+          rejected: countByStatus.get("REJECTED") ?? 0,
+        };
 
         const responseItems = await Promise.all(items.map(async (item) => {
           const [team, challengeState] = await Promise.all([
@@ -1869,6 +2130,246 @@ export async function submissionRoutes(app: FastifyInstance, { env }: { env: Ret
           total,
           page,
           totalPages: Math.max(1, Math.ceil(total / limit)),
+          stats,
+        });
+      });
+
+      adminApp.get("/project-map", {
+      config: requireAdminPermission(["SUBMISSIONS"]),
+      schema: {
+        querystring: projectMapQuerySchema,
+        response: {
+          200: projectMapResponseSchema,
+          401: z.object({ message: z.string() }),
+          403: z.object({ message: z.string() }),
+        },
+      },
+      }, async (request, reply) => {
+        const query = projectMapQuerySchema.parse(request.query);
+        const search = query.search?.trim();
+        const where: Prisma.SubmissionWhereInput = {
+          deletedAt: null,
+          ...(query.status ? { status: query.status } : {}),
+          ...(query.type ? { type: query.type } : {}),
+          ...(search
+            ? {
+              OR: [
+                { name: { contains: search } },
+                { referenceCode: { contains: search } },
+                { course: { contains: search } },
+                { area: { contains: search } },
+                { leaderName: { contains: search } },
+                { memberConfirmations: { some: { name: { contains: search } } } },
+                { student: { is: { name: { contains: search } } } },
+                { student: { is: { course: { contains: search } } } },
+              ],
+            }
+            : {}),
+        };
+
+        const submissionsWithStats = await prisma.submission.findMany({
+          where,
+          orderBy: [{ name: "asc" }, { createdAt: "desc" }],
+          include: {
+            student: {
+              select: projectMapStudentSelect,
+            },
+            memberConfirmations: {
+              include: {
+                student: {
+                  select: projectMapStudentSelect,
+                },
+              },
+              orderBy: [{ confirmedAt: "desc" }, { name: "asc" }],
+            },
+            studentVotes: {
+              include: {
+                student: {
+                  select: projectMapStudentSelect,
+                },
+              },
+              orderBy: { createdAt: "desc" },
+            },
+            studentLikes: {
+              include: {
+                student: {
+                  select: projectMapStudentSelect,
+                },
+              },
+            },
+            studentComments: {
+              include: {
+                student: {
+                  select: projectMapStudentSelect,
+                },
+              },
+              orderBy: { createdAt: "desc" },
+            },
+          },
+        });
+
+        const allItems = await Promise.all(submissionsWithStats.map(async (submission) => {
+          const slug = buildSubmissionSlug(submission.name, submission.id);
+          const team = await buildSubmissionTeamPayload(env, submission);
+          const memberById = new Map(
+            submission.memberConfirmations.map((member) => [member.id, member]),
+          );
+          const responsible = toProjectMapPerson(submission.student, {
+            name: submission.leaderName,
+            studentNumber: submission.studentNumberSnapshot,
+            course: submission.course,
+            phone: submission.leaderPhone,
+          });
+          const responsibleYear = responsible.curricularYear;
+          const voteStudents = uniqueStudents(submission.studentVotes.map((vote) => vote.student));
+          const likeStudents = uniqueStudents(submission.studentLikes.map((like) => like.student));
+          const commentStudents = uniqueStudents(submission.studentComments.map((comment) => comment.student));
+          const reachedStudentIds = new Set<number>();
+          for (const student of [...voteStudents, ...likeStudents, ...commentStudents]) {
+            reachedStudentIds.add(student.id);
+          }
+
+          const voteUniversityCounts = new Map<string, number>();
+          const voteCourseCounts = new Map<string, number>();
+          const voteClassCounts = new Map<string, number>();
+          const voteYearCounts = new Map<string, number>();
+
+          for (const student of voteStudents) {
+            const person = toProjectMapPerson(student);
+            addBreakdownValue(voteUniversityCounts, person.institutionLabel);
+            addBreakdownValue(voteCourseCounts, person.course);
+            addBreakdownValue(voteClassCounts, `${person.course} · ${person.classCode}`);
+            addBreakdownValue(voteYearCounts, `${person.institutionLabel} · ${person.curricularYear}`);
+          }
+
+          const members = team.members.map((member) => {
+            const storedMember = member.id > 0 ? memberById.get(member.id) ?? null : null;
+            const memberStudent =
+              storedMember?.student ??
+              (member.studentNumber && member.studentNumber === responsible.studentNumber
+                ? submission.student
+                : null);
+            const person = toProjectMapPerson(memberStudent, {
+              name: member.studentName ?? member.name,
+              studentNumber: member.studentNumber ?? member.expectedStudentNumber,
+              course: member.studentCourse,
+              phone: storedMember?.studentPhone,
+              externalOrganization: member.externalOrganization,
+            });
+
+            return {
+              ...person,
+              memberId: member.id,
+              confirmed: member.confirmed,
+              confirmedAt: member.confirmedAt,
+              role: member.role,
+              isExternal: member.isExternal,
+              externalOrganization: member.externalOrganization ?? null,
+            };
+          });
+
+          const confirmedMembers = members.filter((member) => member.confirmed).length;
+          const externalMembers = members.filter((member) => member.isExternal).length;
+          const voteCount = submission.studentVotes.length;
+          const voteUniversities = toBreakdownRows(voteUniversityCounts, voteStudents.length);
+          const voteCourses = toBreakdownRows(voteCourseCounts, voteStudents.length);
+          const voteClasses = toBreakdownRows(voteClassCounts, voteStudents.length);
+          const voteYears = toBreakdownRows(voteYearCounts, voteStudents.length);
+
+          return {
+            id: submission.id,
+            slug,
+            detailPath: `/projeto/${slug}`,
+            referenceCode: submission.referenceCode,
+            name: submission.name,
+            description: submission.description,
+            status: submission.status,
+            type: normalizeSubmissionType(submission.type, submission.area),
+            typeLabel: getSubmissionTypeLabel(normalizeSubmissionType(submission.type, submission.area)),
+            area: submission.area ?? "Geral",
+            course: submission.course ?? "Curso por validar",
+            bannerUrl: submission.bannerUrl ?? null,
+            primaryColor: submission.primaryColor,
+            secondaryColor: submission.secondaryColor,
+            createdAt: submission.createdAt?.toISOString() ?? null,
+            responsible,
+            responsibleYear,
+            memberStats: {
+              total: members.length,
+              confirmed: confirmedMembers,
+              pending: Math.max(0, members.length - confirmedMembers),
+              external: externalMembers,
+            },
+            members,
+            stats: {
+              voteCount,
+              uniqueVoters: voteStudents.length,
+              likeCount: submission.studentLikes.length,
+              commentCount: submission.studentComments.length,
+              reachCount: reachedStudentIds.size,
+              universitiesReached: voteUniversities.length,
+              coursesReached: voteCourses.length,
+              classesReached: voteClasses.length,
+            },
+            voteUniversities,
+            voteCourses,
+            voteClasses,
+            voteYears,
+          };
+        }));
+
+        const yearOptions = Array.from(new Set(
+          allItems.map((item) => item.responsibleYear).filter((year) => year !== "Ano por validar"),
+        )).sort((left, right) => left.localeCompare(right, "pt", { numeric: true }));
+        const filteredItems = query.responsibleYear && query.responsibleYear !== "todos"
+          ? allItems.filter((item) => item.responsibleYear === query.responsibleYear)
+          : allItems;
+
+        const uniqueVoters = new Set<number>();
+        const universitiesReached = new Set<string>();
+        const coursesReached = new Set<string>();
+        const classesReached = new Set<string>();
+        for (const item of filteredItems) {
+          for (const university of item.voteUniversities) universitiesReached.add(university.label);
+          for (const course of item.voteCourses) coursesReached.add(course.label);
+          for (const classRow of item.voteClasses) classesReached.add(classRow.label);
+        }
+        for (const submission of submissionsWithStats) {
+          if (query.responsibleYear && query.responsibleYear !== "todos") {
+            const responsibleYear = toProjectMapPerson(submission.student, {
+              name: submission.leaderName,
+              studentNumber: submission.studentNumberSnapshot,
+              course: submission.course,
+              phone: submission.leaderPhone,
+            }).curricularYear;
+            if (responsibleYear !== query.responsibleYear) continue;
+          }
+          for (const vote of submission.studentVotes) {
+            if (vote.student?.id) uniqueVoters.add(vote.student.id);
+          }
+        }
+
+        return reply.send({
+          generatedAt: new Date().toISOString(),
+          filters: {
+            responsibleYear: query.responsibleYear ?? null,
+            search: search ?? null,
+            status: query.status ?? null,
+            type: query.type ?? null,
+          },
+          yearOptions,
+          summary: {
+            totalProjects: filteredItems.length,
+            approvedProjects: filteredItems.filter((item) => item.status === "APPROVED").length,
+            totalVotes: filteredItems.reduce((sum, item) => sum + item.stats.voteCount, 0),
+            totalLikes: filteredItems.reduce((sum, item) => sum + item.stats.likeCount, 0),
+            totalComments: filteredItems.reduce((sum, item) => sum + item.stats.commentCount, 0),
+            uniqueVoters: uniqueVoters.size,
+            universitiesReached: universitiesReached.size,
+            coursesReached: coursesReached.size,
+            classesReached: classesReached.size,
+          },
+          items: filteredItems,
         });
       });
 

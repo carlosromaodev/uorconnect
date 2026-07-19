@@ -1175,7 +1175,6 @@ export async function getStudentExhibitorPassportSummary(
           memberConfirmations: {
             some: {
               studentId: input.studentId,
-              confirmedAt: { not: null },
             },
           },
         },

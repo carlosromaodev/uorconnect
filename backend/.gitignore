@@ -3,4 +3,5 @@ node_modules
 dist
 coverage
 .prisma
+prisma/schema.moodle-test.prisma
 npm-debug.log*

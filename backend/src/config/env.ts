@@ -14,6 +14,35 @@ function normalizeBoolean(value: unknown) {
   return value;
 }
 
+function validMoodleKeyring(value: string, activeKeyId: string) {
+  const entries = value
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+
+  if (entries.length === 0) return false;
+
+  const parsed = entries.map((entry) => {
+    const separator = entry.indexOf(":");
+    if (separator <= 0) return null;
+    const keyId = entry.slice(0, separator).trim();
+    const encoded = entry.slice(separator + 1).trim();
+    if (!/^[A-Za-z0-9_-]{1,32}$/.test(keyId) || !encoded) return null;
+    try {
+      const decoded = Buffer.from(encoded, "base64");
+      const canonical = decoded.toString("base64").replace(/=+$/, "");
+      if (decoded.length !== 32 || canonical !== encoded.replace(/=+$/, "")) return null;
+      return keyId;
+    } catch {
+      return null;
+    }
+  });
+
+  return parsed.every((keyId): keyId is string => Boolean(keyId))
+    && new Set(parsed).size === parsed.length
+    && parsed.includes(activeKeyId);
+}
+
 const envSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   PORT: z.coerce.number().int().min(0).max(65535).default(3333),
@@ -28,9 +57,9 @@ const envSchema = z.object({
   UORCONNECT_EVENT_DATE: z.string().min(2).max(120).default("Data a confirmar"),
   UORCONNECT_EVENT_LOCATION: z.string().min(2).max(160).default("Universidade Óscar Ribas"),
   UORCONNECT_INSTITUTION_NAME: z.string().min(2).max(160).default("Universidade Óscar Ribas"),
-  UORCONNECT_CERTIFICATE_AUTHORITY_TITLE: z.string().min(2).max(180).default("A Vice Reitora para os Assuntos Científicos e Pós-Graduação"),
-  UORCONNECT_CERTIFICATE_AUTHORITY_NAME: z.string().min(2).max(180).default("Prof. Doutora. Maria de Fátima"),
-  UORCONNECT_CERTIFICATE_ORGANIZER_NAME: z.string().min(2).max(180).default("Faculdade de Ciências e Tecnologia"),
+  UORCONNECT_CERTIFICATE_AUTHORITY_TITLE: z.string().min(2).max(180).default("Vice-Reitor para os Assuntos Científicos e de Pós-Graduação"),
+  UORCONNECT_CERTIFICATE_AUTHORITY_NAME: z.string().min(2).max(180).default("Prof. Doutor Eugénio de Carvalho"),
+  UORCONNECT_CERTIFICATE_ORGANIZER_NAME: z.string().min(2).max(180).default("Faculdade de Ciências e Tecnologias"),
   MEDIA_STORAGE_DIR: z.string().min(1).default("storage/media"),
   MEDIA_ORPHAN_RETENTION_DAYS: z.coerce.number().int().min(1).max(365).default(30),
   PDF_JOB_STORAGE_DIR: z.string().min(1).default("storage/pdf-jobs"),
@@ -52,12 +81,41 @@ const envSchema = z.object({
   GEMINI_MODEL: z.string().min(2).default("gemini-2.5-flash"),
   GEMINI_API_BASE_URL: z.string().url().default("https://generativelanguage.googleapis.com/v1beta"),
   ODIN_AI_ENABLED: z.preprocess(normalizeBoolean, z.boolean()).default(true),
+  MOODLE_INTEGRATION_ENABLED: z.preprocess(normalizeBoolean, z.boolean()).default(false),
+  MOODLE_BASE_URL: z.string().url().default("https://moodle.uor.edu.ao"),
+  MOODLE_FETCH_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(60_000).default(25_000),
+  MOODLE_ACTIVE_ENCRYPTION_KEY_ID: z.string().regex(/^[A-Za-z0-9_-]{1,32}$/).default("v1"),
+  MOODLE_ENCRYPTION_KEYS: z.string().default(""),
+  MOODLE_SESSION_IDLE_TTL_MINUTES: z.coerce.number().int().min(5).max(1_440).default(30),
+  MOODLE_L1_TTL_SECONDS: z.coerce.number().int().min(30).max(300).default(300),
+  MOODLE_SYNC_CONCURRENCY: z.coerce.number().int().min(1).max(4).default(2),
+  MOODLE_SYNC_WORKER_ENABLED: z.preprocess(normalizeBoolean, z.boolean()).default(true),
+  MOODLE_DOWNLOAD_MAX_BYTES: z.coerce.number().int().min(1_048_576).max(524_288_000).default(104_857_600),
+  MOODLE_DOWNLOAD_STREAM_TIMEOUT_MS: z.coerce.number().int().min(30_000).max(1_800_000).default(60_000),
   GAME_NOTIFICATIONS_START_AT: z.string().min(1).default("2026-05-18T00:00:00+01:00"),
   RATE_LIMIT_MAX: z.coerce.number().int().min(20).max(5000).default(400),
   RATE_LIMIT_WINDOW_MS: z.coerce.number().int().min(10_000).max(3_600_000).default(60_000),
   VALIDATION_RATE_LIMIT_MAX: z.coerce.number().int().min(20).max(5000).default(120),
   VALIDATION_RATE_LIMIT_WINDOW_MS: z.coerce.number().int().min(10_000).max(3_600_000).default(60_000),
 }).superRefine((value, ctx) => {
+  if (value.MOODLE_INTEGRATION_ENABLED) {
+    if (!validMoodleKeyring(value.MOODLE_ENCRYPTION_KEYS, value.MOODLE_ACTIVE_ENCRYPTION_KEY_ID)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["MOODLE_ENCRYPTION_KEYS"],
+        message: "Moodle integration requires a valid 32-byte keyring containing the active key",
+      });
+    }
+
+    if (value.NODE_ENV === "production" && new URL(value.MOODLE_BASE_URL).protocol !== "https:") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["MOODLE_BASE_URL"],
+        message: "Production Moodle integration requires HTTPS",
+      });
+    }
+  }
+
   if (value.NODE_ENV !== "production") {
     return;
   }

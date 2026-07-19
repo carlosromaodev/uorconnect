@@ -16,25 +16,125 @@ function formatDate(value: string) {
   }).format(new Date(value));
 }
 
-function actionLabel(action: string) {
+function fallbackActionLabel(action: string) {
   const labels: Record<string, string> = {
     "attendance.check_in": "Check-in registado",
-    "certificate.issue": "Certificado emitido",
-    "certificate.issue_attendees": "Certificados por presença",
-    "certificate.issue_bulk": "Certificados em lote",
-    "certificate.bulk_missing_students": "Estudantes não encontrados",
+    "certificate.issue": "Certificado individual emitido",
+    "certificate.issue_attendees": "Certificados emitidos por presença",
+    "certificate.issue_bulk": "Certificados emitidos em lote",
+    "certificate.bulk_missing_students": "Estudantes não encontrados para certificados",
+    "certificate.reissue": "Certificado reemitido",
     "certificate.revoke": "Certificado revogado",
-    "security.authorize_admin": "Admin autorizado",
-    "security.revoke_admin": "Admin revogado",
+    "data_export.analytics_events_csv": "Eventos de analytics exportados em CSV",
+    "data_export.audit_logs_csv": "Auditoria exportada em CSV",
+    "data_retention.cleanup_run": "Política de retenção executada",
+    "odin.ai_analysis": "Análise ODIN IA executada",
+    "odin.ai_feedback": "Feedback ODIN IA registado",
+    "odin.security_report_pdf_job": "Relatório de segurança ODIN gerado",
+    "odin.student_exclusion": "Estudante excluído pelo ODIN",
+    "passport.challenge_create": "Desafio do passaporte criado",
+    "passport.challenge_reset": "Desafio do passaporte reiniciado",
+    "passport.challenge_update": "Desafio do passaporte atualizado",
+    "passport.ledger_revoke": "Pontos do passaporte revogados",
+    "passport.mission_create": "Missão do passaporte criada",
+    "passport.mission_qr_create": "QR de missão do passaporte criado",
+    "passport.mission_update": "Missão do passaporte atualizada",
+    "passport.ranking_freeze": "Ranking do passaporte congelado",
+    "passport.ranking_recalculate": "Ranking do passaporte recalculado",
+    "passport.reset_confirmation_requested": "Confirmação de reset do passaporte solicitada",
+    "passport.scan_review": "Scan do passaporte revisto",
+    "passport.surprise_qr_batch_create": "Lote de QR surpresa criado",
+    "passport.surprise_qr_create": "QR surpresa criado",
+    "passport.surprise_qr_update": "QR surpresa atualizado",
+    "passport.winners_export": "Vencedores do passaporte exportados",
+    "projects.automatic_missions_awarded": "Missões automáticas dos projetos atribuídas",
+    "projects.empty_stand_penalty_checked": "Penalização por stand vazio verificada",
+    "projects.member_duty_recorded": "Presença de membro no stand registada",
+    "projects.member_levels_awarded": "Níveis dos membros atribuídos",
+    "projects.qualified_feedback_reviewed": "Feedback qualificado revisto",
+    "projects.score_config_updated": "Configuração da pontuação dos projetos atualizada",
+    "projects.score_event_created": "Evento de pontuação criado",
+    "projects.score_events_recalculated": "Eventos de pontuação recalculados",
+    "projects.score_ranking_csv_exported": "Ranking de pontuação exportado em CSV",
+    "projects.score_ranking_exported": "Ranking de pontuação exportado em JSON",
+    "projects.score_ranking_frozen": "Ranking de pontuação congelado",
+    "projects.score_ranking_pdf_exported": "Ranking de pontuação exportado em PDF",
+    "projects.team_bonuses_awarded": "Bónus de equipa atribuídos",
+    "projects.votes_control_updated": "Controlo de votação atualizado",
+    "projects.votes_reset": "Votos dos projetos reiniciados",
+    "security.admin_permission_conflict": "Conflito de permissões administrativas detetado",
+    "security.admin_permission_denied": "Permissão administrativa recusada",
+    "security.authorize_admin": "Administrador autorizado",
+    "security.revoke_admin": "Administrador revogado",
     "student.delete": "Estudante removido",
+    "student_profile.consent_update": "Consentimentos do perfil atualizados",
+    "student_profile.update": "Perfil do estudante atualizado",
     "submission.update_status": "Estado da candidatura",
     "submission.select_winner": "Vencedor definido",
     "submission.update_presentation": "Apresentação atualizada",
     "submission.clear_winner": "Vencedor removido",
     "submission.delete": "Candidatura removida",
+    "submission.payment_review": "Pagamento da candidatura revisto",
+    "submission.regenerate_exhibitor_pdf": "PDF do expositor regenerado",
+    "submission.team_member_confirm_admin": "Membro da equipa confirmado pela admin",
+    "submission.team_member_confirm_external": "Membro externo confirmado",
+    "submission.team_member_external_exception": "Exceção para membro externo aprovada",
+    "submission.team_member_remove_responsible": "Responsável removido da equipa",
+    "submission.team_members_update": "Equipa da candidatura atualizada",
+    "submission.update_type": "Tipo da candidatura atualizado",
+    "team_credential.auto_create": "Credencial criada automaticamente",
+    "team_credential.bulk_invitation": "Convite coletivo de credenciais gerado",
+    "team_credential.claim_rejected": "Pedido de credencial recusado",
+    "team_credential.create": "Credencial criada",
+    "team_credential.disable": "Credencial desativada",
+    "team_credential.expositor_claim": "Credencial de expositor reivindicada",
+    "team_credential.import_expositors": "Expositores importados para credenciais",
+    "team_credential.pass_batch_calibration_pdf": "PDF de calibração dos passes gerado",
+    "team_credential.pass_batch_pdf": "PDF de passes em lote gerado",
+    "team_credential.pass_template_update": "Template de passe atualizado",
+    "team_credential.print_batch_create": "Lote de impressão de credenciais criado",
+    "team_credential.print_batch_pdf": "PDF do lote de credenciais gerado",
+    "team_credential.reissue": "Credencial reemitida",
+    "team_credential.revoke": "Credencial revogada",
+    "team_credential.sync_site_guests": "Convidados do site sincronizados",
+    "team_credential.update": "Credencial atualizada",
+    "team_membership.import_nucleus.deprecated": "Importação antiga do núcleo recusada",
+    "team_membership.link_credential": "Credencial ligada a membro da equipa",
+    "team_membership.remove": "Membro da equipa removido",
+    "team_membership.update": "Membro da equipa atualizado",
+    "team_membership_claim.approve": "Solicitação de tomada de posse aprovada",
+    "team_membership_claim.reject": "Solicitação de tomada de posse recusada",
+    "team_membership_claim.submit": "Solicitação de tomada de posse enviada",
+    "team_membership_claim.update": "Solicitação de tomada de posse atualizada",
   };
 
-  return labels[action] ?? action;
+  const mapped = labels[action];
+  if (mapped) return mapped;
+  const readable = action.replace(/[._-]+/g, " ").trim();
+  return readable
+    ? readable.charAt(0).toUpperCase() + readable.slice(1)
+    : "Ação registada";
+}
+
+function formatReadableAuditAction(log: AdminAuditLog) {
+  return log.actionLabel?.trim() || fallbackActionLabel(log.action);
+}
+
+function roleLabel(role: string) {
+  const labels: Record<string, string> = {
+    admin: "Administrador",
+    jury: "Júri",
+    jury_admin: "Júri/Admin",
+    student: "Estudante",
+    public: "Público",
+  };
+  return labels[role] ?? role;
+}
+
+function formatAuditActorName(log: AdminAuditLog) {
+  if (log.actorName?.trim()) return log.actorName.trim();
+  if (log.actorStudentNumber === "unknown") return "Sistema";
+  return log.actorStudentNumber;
 }
 
 function entityLabel(entityType: string | null) {
@@ -149,6 +249,10 @@ export default function AdminAuditTab() {
               <option value="security.authorize_admin">Admin autorizado</option>
               <option value="security.revoke_admin">Admin revogado</option>
               <option value="student.delete">Estudante removido</option>
+              <option value="passport.ranking_recalculate">Ranking recalculado</option>
+              <option value="passport.ranking_freeze">Ranking congelado</option>
+              <option value="projects.score_ranking_pdf_exported">Ranking PDF exportado</option>
+              <option value="team_credential.print_batch_pdf">PDF de lote de credenciais</option>
               <option value="submission.update_status">Estado da candidatura</option>
               <option value="submission.select_winner">Vencedor definido</option>
               <option value="submission.delete">Candidatura removida</option>
@@ -219,12 +323,16 @@ export default function AdminAuditTab() {
                   <TableRow key={log.id}>
                     <TableCell className="whitespace-nowrap">{formatDate(log.createdAt)}</TableCell>
                     <TableCell>
-                      <p className="font-semibold">{log.actorStudentNumber}</p>
-                      <p className="text-xs text-muted-foreground">{log.actorRole}</p>
+                      <p className="font-semibold">{formatAuditActorName(log)}</p>
+                      <p className="text-xs text-muted-foreground">
+                        {log.actorStudentNumber === "unknown" ? "Sem identificador" : log.actorStudentNumber}
+                        {" · "}
+                        {roleLabel(log.actorRole)}
+                      </p>
                     </TableCell>
                     <TableCell>
-                      <p className="font-semibold">{actionLabel(log.action)}</p>
-                      <p className="font-mono text-xs text-muted-foreground">{log.action}</p>
+                      <p className="font-semibold">{formatReadableAuditAction(log)}</p>
+                      <p className="font-mono text-xs text-muted-foreground">Identificador técnico: {log.action}</p>
                     </TableCell>
                     <TableCell>
                       <p className="font-semibold">{entityLabel(log.entityType)}</p>

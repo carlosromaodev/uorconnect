@@ -26,6 +26,8 @@ import { mediaRoutes } from "../../modules/media/http/media.routes";
 import { passportRoutes } from "../../modules/passport/http/passport.routes";
 import { trainersRoutes } from "../../modules/trainers/http/trainers.routes";
 import { odinRoutes } from "../../modules/security/http/odin.routes";
+import { moodleRoutes } from "../../modules/moodle/http/moodle.routes";
+import { createMoodleApplication } from "../../modules/moodle/application/create-moodle-application";
 
 const DEFAULT_PUBLIC_APP_URL = "http://localhost:8082";
 
@@ -88,4 +90,10 @@ export function registerRoutes(app: FastifyInstance, env: Env, deps?: AppDepende
   app.register(trainersRoutes, { prefix: "/trainers", env });
   app.register(teamCredentialsRoutes, { prefix: "/team-credentials", env });
   app.register(adminTasksRoutes, { prefix: "/admin-tasks", env });
+  app.register(moodleRoutes, {
+    prefix: "/integrations/moodle",
+    env,
+    application: createMoodleApplication(env, { application: deps?.moodle?.application }),
+    findEligibleStudent: deps?.moodle?.findEligibleStudent,
+  });
 }

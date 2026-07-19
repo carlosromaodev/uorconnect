@@ -2,8 +2,10 @@ export type StudentInstitutionCode = "UOR" | "ISPTEC";
 
 export type StudentInstitutionInput = {
   studentNumber?: string | null;
+  institutionCode?: string | null;
   email?: string | null;
   course?: string | null;
+  classCode?: string | null;
   phone?: string | null;
   university?: string | null;
   registrationSource?: string | null;
@@ -32,6 +34,8 @@ const UOR_EXCLUSIVE_COURSES = new Set([
   "ENGENHARIA ELECTROMECANICA",
   "ENGENHARIA ELETROMECANICA",
   "ENGENHARIA INFORMATICA E COMUNICACOES",
+  "GESTAO DE ADMINISTRACAO E MARKETING",
+  "GESTAO ADMINISTRACAO E MARKETING",
   "GESTAO E MARKETING",
   "GESTAO INDUSTRIAL",
   "PSICOLOGIA",
@@ -61,6 +65,18 @@ export function normalizeStudentNumberForIdentity(studentNumber?: string | null)
   return legacyIsptecMatch?.[1] ?? normalized;
 }
 
+export function hasVerifiedIsptecStudentEmail(studentNumber?: string | null, email?: string | null) {
+  const normalizedStudentNumber = normalizeStudentNumberForIdentity(studentNumber).toLowerCase();
+  const normalizedEmail = (email ?? "").trim().toLowerCase();
+  const [localPart, domain] = normalizedEmail.split("@");
+
+  return Boolean(
+    normalizedStudentNumber
+      && domain === "isptec.co.ao"
+      && localPart === normalizedStudentNumber,
+  );
+}
+
 export function hasOfficialStudentNumberShape(studentNumber?: string | null) {
   return normalizeStudentNumberForIdentity(studentNumber).startsWith("2");
 }
@@ -70,15 +86,33 @@ export function resolveStudentInstitutionCodeFromCourse(course?: string | null):
   if (!normalizedCourse || normalizedCourse === "ENGENHARIA CIVIL") return null;
   if (UOR_EXCLUSIVE_COURSES.has(normalizedCourse)) return "UOR";
   if (ISPTEC_EXCLUSIVE_COURSES.has(normalizedCourse)) return "ISPTEC";
-  if (normalizedCourse.startsWith("GESTAO")) return "ISPTEC";
+  return null;
+}
+
+export function resolveStudentInstitutionCodeFromClass(classCode?: string | null): StudentInstitutionCode | null {
+  const normalizedClass = (classCode ?? "").trim().toUpperCase();
+  if (!normalizedClass) return null;
+
+  if (/^T[A-Z]+/.test(normalizedClass)) return "UOR";
+  if (/^(CBT|CTB|ECN|ECV|EELT|EIN|EMC|EPI|EPT|EQM|GEO|GES)/.test(normalizedClass)) return "ISPTEC";
+
+  return null;
+}
+
+function normalizeExplicitInstitution(value?: string | null): StudentInstitutionCode | null {
+  const normalized = (value ?? "").trim().toUpperCase();
+  if (normalized === "UOR" || normalized.includes("OSCAR RIBAS") || normalized.includes("ÓSCAR RIBAS")) return "UOR";
+  if (normalized === "ISPTEC" || normalized.includes("INSTITUTO SUPERIOR POLITECNICO")) return "ISPTEC";
   return null;
 }
 
 export function resolveStudentInstitutionCode(input: StudentInstitutionInput): StudentInstitutionCode {
-  const institutionFromCourse = resolveStudentInstitutionCodeFromCourse(input.course);
-  if (institutionFromCourse) return institutionFromCourse;
+  const source = (input.registrationSource ?? "").trim().toUpperCase();
 
-  return hasIsptecInstitutionalEmail(input.email) ? "ISPTEC" : "UOR";
+  if (source === "SECRETARIA") return "UOR";
+  if (hasVerifiedIsptecStudentEmail(input.studentNumber, input.email)) return "ISPTEC";
+
+  return "UOR";
 }
 
 export function canonicalStudentUniversityName(institutionCode: StudentInstitutionCode) {

@@ -1,0 +1,20 @@
+{
+  "name": "uor-connect-moodle-integration",
+  "version": "0.2.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "inspect": "node scripts/inspect-moodle.mjs",
+    "inspect:check": "node scripts/check-inspector-security.mjs",
+    "docs": "node scripts/serve-swagger.mjs",
+    "docs:lint": "redocly lint openapi.yaml",
+    "docs:check": "node scripts/check-contract.mjs",
+    "docs:validate": "npm run docs:lint && npm run docs:check",
+    "validate": "npm run docs:validate && npm run inspect:check"
+  },
+  "devDependencies": {
+    "@redocly/cli": "2.39.0",
+    "playwright-core": "1.55.0",
+    "swagger-ui-dist": "5.32.9"
+  }
+}

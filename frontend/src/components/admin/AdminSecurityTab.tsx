@@ -1197,7 +1197,9 @@ export default function AdminSecurityTab({
     setCredentialBusyKey("credentials-import-expositors");
     try {
       const result = await api.teamCredentials.importExpositors();
-      toast.success(`Expositores importados: ${result.created} credencial(is), ${result.membershipsCreated} membro(s).`);
+      toast.success(
+        `Expositores sincronizados: ${result.created} nova(s), ${result.updated} atualizada(s), ${result.membershipsCreated} membro(s).`,
+      );
       await loadTeamCredentials();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Falha ao importar expositores.");
@@ -1247,7 +1249,7 @@ export default function AdminSecurityTab({
   const handleDownloadCredentialPass = async (member: TeamCredentialMember) => {
     setCredentialBusyKey(`credentials-pass-${member.id}`);
     try {
-      const blob = await api.teamCredentials.downloadPass(member.publicSlug, { printMode: passPrintMode, side: "both" });
+      const blob = await api.teamCredentials.downloadPass(member.publicSlug, passBatchPrintOptions());
       downloadBlobFile(blob, credentialPdfFileName(member));
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Falha ao baixar passe.");
@@ -1322,8 +1324,10 @@ export default function AdminSecurityTab({
     try {
       if (shouldSyncExpositors) {
         const result = await api.teamCredentials.importExpositors();
-        if (result.created > 0 || result.membershipsCreated > 0) {
-          toast.success(`Expositores sincronizados: ${result.created} credencial(is), ${result.membershipsCreated} membro(s).`);
+        if (result.created > 0 || result.updated > 0 || result.membershipsCreated > 0) {
+          toast.success(
+            `Expositores sincronizados: ${result.created} nova(s), ${result.updated} atualizada(s), ${result.membershipsCreated} membro(s).`,
+          );
         }
       }
 
@@ -3949,7 +3953,7 @@ export default function AdminSecurityTab({
                                       asChild={member.status === "PROFILE_READY"}
                                     >
                                       {member.status === "PROFILE_READY" ? (
-                                        <a href={api.teamCredentials.passPdfUrl(member.publicSlug, { printMode: passPrintMode, side: "both" })} target="_blank" rel="noreferrer">
+                                        <a href={api.teamCredentials.passPdfUrl(member.publicSlug, passBatchPrintOptions())} target="_blank" rel="noreferrer">
                                           <Eye className="mr-1 h-3.5 w-3.5" />
                                           Preview
                                         </a>

@@ -70,6 +70,23 @@ export interface AdminVotesRepository {
   listCourseSummaries(): Promise<AdminVoteCourseSummary[]>;
 }
 
+export function sortProjectVoteSummaries(
+  left: AdminProjectVoteSummary,
+  right: AdminProjectVoteSummary,
+) {
+  if (right.score !== left.score) return right.score - left.score;
+  if (right.votes !== left.votes) return right.votes - left.votes;
+  if (right.authenticatedVisitors !== left.authenticatedVisitors) {
+    return right.authenticatedVisitors - left.authenticatedVisitors;
+  }
+  if (right.uniqueVisitors !== left.uniqueVisitors) {
+    return right.uniqueVisitors - left.uniqueVisitors;
+  }
+  if (right.comments !== left.comments) return right.comments - left.comments;
+  if (right.averageRating !== left.averageRating) return right.averageRating - left.averageRating;
+  return left.name.localeCompare(right.name);
+}
+
 export class GetAdminVotesOverview {
   constructor(private readonly adminVotesRepository: AdminVotesRepository) {}
 
@@ -107,13 +124,7 @@ export class GetPublicLiveVotesOverview {
 
     const rankedProjects = projects
       .slice()
-      .sort((left, right) => {
-        if (right.score !== left.score) return right.score - left.score;
-        if (right.votes !== left.votes) return right.votes - left.votes;
-        if (right.authenticatedVisitors !== left.authenticatedVisitors) return right.authenticatedVisitors - left.authenticatedVisitors;
-        if (right.uniqueVisitors !== left.uniqueVisitors) return right.uniqueVisitors - left.uniqueVisitors;
-        return left.name.localeCompare(right.name);
-      })
+      .sort(sortProjectVoteSummaries)
       .map<PublicLiveVoteProject>((project, index) => ({
         ...project,
         rank: index + 1,

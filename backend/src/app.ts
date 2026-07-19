@@ -6,8 +6,14 @@ import { serializerCompiler, validatorCompiler, type ZodTypeProvider } from "fas
 import { registerRoutes } from "./core/routes";
 import { type Env } from "./config/env";
 import { registerPortugueseErrorHandler } from "./shared/http-errors";
+import type { MoodleApplication, MoodleStudentIdentity } from "./modules/moodle/application/ports";
 
-export type AppDependencies = Record<string, unknown>;
+export type AppDependencies = Record<string, unknown> & {
+  moodle?: {
+    application?: MoodleApplication;
+    findEligibleStudent?: (studentId: number) => Promise<MoodleStudentIdentity | null>;
+  };
+};
 
 const requestBodyLimitBytes = 10 * 1024 * 1024;
 const officialUorConnectOrigins = new Set([
@@ -46,7 +52,25 @@ function isAllowedVercelPreview(origin: string) {
 
 export function buildApp(env: Env, deps?: AppDependencies) {
   const app = fastify({
-    logger: true,
+    logger: {
+      redact: {
+        paths: [
+          "req.headers.authorization",
+          "req.headers.cookie",
+          "res.headers['set-cookie']",
+          "req.body.username",
+          "req.body.password",
+          "username",
+          "password",
+          "cookieJar",
+          "sesskey",
+          "wstoken",
+          "credentialsEnvelope",
+          "sessionEnvelope",
+        ],
+        censor: "[REDACTED]",
+      },
+    },
     bodyLimit: requestBodyLimitBytes,
   }).withTypeProvider<ZodTypeProvider>();
 

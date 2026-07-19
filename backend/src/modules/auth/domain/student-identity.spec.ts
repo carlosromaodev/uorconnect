@@ -4,6 +4,7 @@ import {
   canonicalStudentUniversityName,
   hasIsptecInstitutionalEmail,
   hasOfficialStudentNumberShape,
+  hasVerifiedIsptecStudentEmail,
   normalizeStudentNumberForIdentity,
   resolveStudentInstitutionCode,
   type StudentInstitutionCode,
@@ -12,10 +13,15 @@ import {
 describe("student identity", () => {
   it("classifies only exact @isptec.co.ao email endings as ISPTEC", () => {
     expect(hasIsptecInstitutionalEmail("20230096@isptec.co.ao")).toBe(true);
-    expect(resolveStudentInstitutionCode({ email: "20230096@isptec.co.ao" })).toBe("ISPTEC");
+    expect(hasVerifiedIsptecStudentEmail("20230096", "20230096@isptec.co.ao")).toBe(true);
+    expect(hasVerifiedIsptecStudentEmail("20230096", "outro@isptec.co.ao")).toBe(false);
+    expect(resolveStudentInstitutionCode({
+      studentNumber: "20230096",
+      email: "20230096@isptec.co.ao",
+    })).toBe("ISPTEC");
   });
 
-  it("classifies Gmail and non exact ISPTEC domains as UOR even when legacy flags say ISPTEC", () => {
+  it("does not classify ISPTEC logins as ISPTEC without the institutional email tied to the student number", () => {
     expect(resolveStudentInstitutionCode({
       studentNumber: "20200477",
       email: "estudante.isptec@gmail.com",
@@ -30,6 +36,16 @@ describe("student identity", () => {
     })).toBe("UOR");
   });
 
+  it("keeps official secretaria logins under UOR even when contact email looks external", () => {
+    expect(resolveStudentInstitutionCode({
+      studentNumber: "20230096",
+      email: "20230096@isptec.co.ao",
+      registrationSource: "SECRETARIA",
+      university: "UOR",
+      course: "Engenharia Informática e Comunicações",
+    })).toBe("UOR");
+  });
+
   it("classifies UOR contact profiles without changing the visible student number", () => {
     expect(resolveStudentInstitutionCode({
       studentNumber: "20200477",
@@ -40,21 +56,38 @@ describe("student identity", () => {
 
   it("uses exclusive course names to repair mixed institution data", () => {
     expect(resolveStudentInstitutionCode({
+      studentNumber: "20230096",
       email: "estudante@gmail.com",
       course: "Engenharia Química",
-    })).toBe("ISPTEC");
+    })).toBe("UOR");
     expect(resolveStudentInstitutionCode({
+      studentNumber: "20230096",
       email: "20230096@isptec.co.ao",
       course: "Engenharia Informática e Comunicações",
-    })).toBe("UOR");
+    })).toBe("ISPTEC");
     expect(resolveStudentInstitutionCode({
       email: "estudante@gmail.com",
       course: "Contabilidade e Finanças",
     })).toBe("UOR");
+    expect(resolveStudentInstitutionCode({
+      email: "estudante@gmail.com",
+      course: "Gestão de Administração e Marketing",
+    })).toBe("UOR");
+    expect(resolveStudentInstitutionCode({
+      email: "estudante@gmail.com",
+      course: "Gestão Administração e Marketing",
+    })).toBe("UOR");
+  });
+
+  it("keeps class codes as secondary data and does not override the ISPTEC email rule", () => {
+    expect(resolveStudentInstitutionCode({ classCode: "TINFM" })).toBe("UOR");
+    expect(resolveStudentInstitutionCode({ classCode: "EPT2_M1" })).toBe("UOR");
+    expect(resolveStudentInstitutionCode({ classCode: "EPT2_M1", email: "aluno@gmail.com" })).toBe("UOR");
   });
 
   it("keeps shared or unknown courses decided by the institutional email fallback", () => {
     expect(resolveStudentInstitutionCode({
+      studentNumber: "20230096",
       email: "20230096@isptec.co.ao",
       course: "Engenharia Civil",
     })).toBe("ISPTEC");
@@ -63,6 +96,7 @@ describe("student identity", () => {
       course: "Engenharia Civil",
     })).toBe("UOR");
     expect(resolveStudentInstitutionCode({
+      studentNumber: "20230096",
       email: "20230096@isptec.co.ao",
       course: "UNIMESTRE - Sistema de gestão educacional",
     })).toBe("ISPTEC");

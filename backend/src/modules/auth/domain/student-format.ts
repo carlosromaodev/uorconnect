@@ -1,5 +1,5 @@
 import { normalizeOfficialCourse } from "../../../shared/official-courses";
-import { resolveStudentInstitutionCode } from "./student-identity";
+import { normalizeStudentNumberForIdentity, resolveStudentInstitutionCode } from "./student-identity";
 
 type StudentLike = {
   studentNumber?: string | null;
@@ -72,6 +72,7 @@ export function resolveStudentAccessType(student: Pick<StudentLike, "academicSyn
 export function normalizeStudentProfile<T extends StudentLike>(student: T): T & { accessType: StudentAccessType } {
   return {
     ...student,
+    studentNumber: normalizeStudentNumberForIdentity(student.studentNumber) as T["studentNumber"],
     institutionCode: resolveStudentInstitutionCode(student),
     name: normalizeStudentName(student.name) ?? null,
     course: normalizeCourse(student.course) ?? null,

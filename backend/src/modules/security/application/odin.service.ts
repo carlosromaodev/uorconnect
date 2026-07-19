@@ -2,6 +2,7 @@ import type { FastifyRequest } from "fastify";
 import { randomUUID } from "node:crypto";
 import { prisma } from "../../../shared/prisma";
 import { getCookie } from "../../../shared/cookies";
+import { softDeleteStudentWithMoodlePurge } from "../../../shared/student-deactivation";
 
 const ODIN_DEVICE_COOKIE = "uor_device";
 const TEN_MINUTES_MS = 10 * 60 * 1000;
@@ -598,13 +599,10 @@ export async function recordOdinStudentExclusion(input: OdinStudentExclusionInpu
     ]);
 
     if (input.deleteProfile) {
-      await tx.student.update({
-        where: { id: input.studentId },
-        data: {
-          deletedAt: now,
-          deletionReason: `ODIN: ${reason}`,
-          lastLoginAt: null,
-        },
+      await softDeleteStudentWithMoodlePurge(tx, {
+        studentId: input.studentId,
+        deletedAt: now,
+        deletionReason: `ODIN: ${reason}`,
       });
 
       await tx.adminAuthorizedStudent.updateMany({

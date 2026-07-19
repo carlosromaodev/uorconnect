@@ -13,4 +13,12 @@ describe("admin submissions paged contract", () => {
     expect(routesSource).toContain("limit: z.coerce.number().int().min(10).max(500).default(50)");
     expect(routesSource).toContain('adminApp.get("/paged"');
   });
+
+  it("returns database status stats so approval counters do not depend on the loaded page", () => {
+    expect(routesSource).toContain("statusCounts");
+    expect(routesSource).toContain("stats: z.object");
+    expect(routesSource).toContain("pending: z.number()");
+    expect(routesSource).toContain("approved: z.number()");
+    expect(routesSource).toContain("rejected: z.number()");
+  });
 });

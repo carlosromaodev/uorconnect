@@ -468,6 +468,13 @@ export interface PagedResult<T> {
   totalPages: number;
 }
 
+export interface SubmissionPagedStats {
+  total: number;
+  pending: number;
+  approved: number;
+  rejected: number;
+}
+
 export interface StudentsPagedResult extends PagedResult<StudentWithStats> {
   stats: StudentPagedStats;
   facets: StudentPagedFacets;
@@ -682,6 +689,99 @@ export interface SubmissionPresentationUpdateResult {
   secondaryColor: string;
   bannerUrl: string | null;
   status?: string;
+}
+
+export interface ProjectMapBreakdown {
+  label: string;
+  total: number;
+  percent: number;
+}
+
+export interface AdminProjectMapPerson {
+  id: number | null;
+  name: string;
+  studentNumber: string | null;
+  institutionCode: string;
+  institutionLabel: string;
+  course: string;
+  classCode: string;
+  curricularYear: string;
+  email: string | null;
+  phone: string | null;
+  avatarUrl: string | null;
+}
+
+export interface AdminProjectMapMember extends AdminProjectMapPerson {
+  memberId: number;
+  confirmed: boolean;
+  confirmedAt: string | null;
+  role: "RESPONSAVEL" | "MEMBRO";
+  isExternal: boolean;
+  externalOrganization: string | null;
+}
+
+export interface AdminProjectMapItem {
+  id: number;
+  slug: string;
+  detailPath: string;
+  referenceCode: string;
+  name: string;
+  description: string;
+  status: SubmissionStatus;
+  type: SubmissionType;
+  typeLabel: string;
+  area: string;
+  course: string;
+  bannerUrl: string | null;
+  primaryColor: string;
+  secondaryColor: string;
+  createdAt: string | null;
+  responsible: AdminProjectMapPerson;
+  responsibleYear: string;
+  memberStats: {
+    total: number;
+    confirmed: number;
+    pending: number;
+    external: number;
+  };
+  members: AdminProjectMapMember[];
+  stats: {
+    voteCount: number;
+    uniqueVoters: number;
+    likeCount: number;
+    commentCount: number;
+    reachCount: number;
+    universitiesReached: number;
+    coursesReached: number;
+    classesReached: number;
+  };
+  voteUniversities: ProjectMapBreakdown[];
+  voteCourses: ProjectMapBreakdown[];
+  voteClasses: ProjectMapBreakdown[];
+  voteYears: ProjectMapBreakdown[];
+}
+
+export interface AdminProjectMapPayload {
+  generatedAt: string;
+  filters: {
+    responsibleYear: string | null;
+    search: string | null;
+    status: string | null;
+    type: string | null;
+  };
+  yearOptions: string[];
+  summary: {
+    totalProjects: number;
+    approvedProjects: number;
+    totalVotes: number;
+    totalLikes: number;
+    totalComments: number;
+    uniqueVoters: number;
+    universitiesReached: number;
+    coursesReached: number;
+    classesReached: number;
+  };
+  items: AdminProjectMapItem[];
 }
 
 export interface StudentSubmissionReceipt {
@@ -2944,8 +3044,10 @@ export interface OperationalValidationPayload extends Omit<
 export interface AdminAuditLog {
   id: number;
   actorStudentNumber: string;
+  actorName: string | null;
   actorRole: string;
   action: string;
+  actionLabel: string;
   entityType: string;
   entityId: string | null;
   summary: string;
@@ -3674,6 +3776,19 @@ function toQueryString(
   return query ? `?${query}` : "";
 }
 
+function withDefaultTeamCredentialPassOptions(
+  options?: TeamCredentialPassOptions,
+): TeamCredentialPassOptions {
+  return {
+    printMode: "color",
+    side: "both",
+    layout: "a4-2up-landscape",
+    duplexMode: "short-edge",
+    laminationMarginMm: 3,
+    ...options,
+  };
+}
+
 export const api = {
   health: () => request<{ status: string }>("/health"),
 
@@ -4157,7 +4272,7 @@ export const api = {
         },
       ),
     importExpositors: () =>
-      request<{ created: number; skipped: number; membershipsCreated: number }>(
+      request<{ created: number; updated: number; skipped: number; membershipsCreated: number }>(
         "/team-credentials/admin/import-expositors",
         {
           method: "POST",
@@ -4241,12 +4356,12 @@ export const api = {
       ),
     downloadPass: (slug: string, options?: TeamCredentialPassOptions) =>
       requestBlob(
-        `/team-credentials/members/${encodeURIComponent(slug)}/pass.pdf${toQueryString(options)}`,
+        `/team-credentials/members/${encodeURIComponent(slug)}/pass.pdf${toQueryString(withDefaultTeamCredentialPassOptions(options))}`,
         { timeoutMs: 60_000 } as RequestInit & { timeoutMs: number },
       ),
     passPdfUrl: (slug: string, options?: TeamCredentialPassOptions) =>
       resolveAbsoluteApiUrl(
-        `/team-credentials/members/${encodeURIComponent(slug)}/pass.pdf${toQueryString(options)}`,
+        `/team-credentials/members/${encodeURIComponent(slug)}/pass.pdf${toQueryString(withDefaultTeamCredentialPassOptions(options))}`,
       ),
     downloadPassBatch: (
       options?: TeamCredentialPassOptions & {
@@ -4483,8 +4598,17 @@ export const api = {
             exhibitorChallengeAnswersCount: number;
             exhibitorChallengeUpdatedAt: string | null;
           } & SubmissionTeamState
-        >
+        > & { stats: SubmissionPagedStats }
       >(`/submissions/paged${toQueryString(params)}`),
+    projectMap: (params?: {
+      responsibleYear?: string;
+      search?: string;
+      status?: "PENDING" | "APPROVED" | "REJECTED";
+      type?: "PROJECT" | "BUSINESS" | "PRODUCT";
+    }) =>
+      request<AdminProjectMapPayload>(
+        `/submissions/project-map${toQueryString(params)}`,
+      ),
     remove: (id: number) =>
       request<{ success: boolean }>(`/submissions/${id}`, {
         method: "DELETE",
@@ -5231,13 +5355,14 @@ export const api = {
         body: JSON.stringify(data ?? {}),
       }),
     issueBulk: (data: {
-      mode: "STUDENT_LIST" | "STUDENT_COURSE" | "COURSE_ENROLLMENT" | "PROJECT";
+      mode: "STUDENT_LIST" | "STUDENT_COURSE" | "COURSE_ENROLLMENT" | "PROJECT" | "ALL_PROJECTS";
       type?: string;
       title?: string;
       studentNumbers?: string[];
       studentCourse?: string;
       courseId?: number;
       submissionId?: number;
+      projectRank?: string;
       metadata?: Record<string, unknown>;
     }) =>
       request<{

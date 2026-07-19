@@ -13,6 +13,8 @@ describe("team credential print helpers", () => {
     expect(url.pathname).toContain("/team-credentials/members/membro-demo/pass.pdf");
     expect(url.searchParams.get("printMode")).toBe("black-white");
     expect(url.searchParams.get("side")).toBe("both");
+    expect(url.searchParams.get("layout")).toBe("a4-2up-landscape");
+    expect(url.searchParams.get("duplexMode")).toBe("short-edge");
     expect(url.searchParams.get("marginMm")).toBe("14");
     expect(url.searchParams.get("bleedMm")).toBe("4");
   });

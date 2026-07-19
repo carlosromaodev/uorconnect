@@ -1,5 +1,10 @@
 import { describe, expect, it, vi } from "vitest";
-import { GetAdminVotesOverview, GetPublicLiveVotesOverview, type AdminVotesRepository } from "./admin-votes";
+import {
+  GetAdminVotesOverview,
+  GetPublicLiveVotesOverview,
+  sortProjectVoteSummaries,
+  type AdminVotesRepository,
+} from "./admin-votes";
 
 const baseProject = {
   detailPath: "/projeto/projeto-a-1",
@@ -26,6 +31,22 @@ describe("GetAdminVotesOverview", () => {
 
     expect(result.projects).toHaveLength(1);
     expect(result.votes).toHaveLength(1);
+  });
+});
+
+describe("sortProjectVoteSummaries", () => {
+  it("orders project results by audited points before vote count", () => {
+    const result = [
+      { id: 1, name: "Mais votos", type: "PROJECT", votes: 30, score: 30, comments: 0, averageRating: 0, ...baseProject },
+      { id: 2, name: "Mais pontos", type: "PROJECT", votes: 8, score: 120, comments: 0, averageRating: 0, ...baseProject },
+      { id: 3, name: "Empate", type: "PROJECT", votes: 20, score: 30, comments: 0, averageRating: 0, ...baseProject },
+    ].sort(sortProjectVoteSummaries);
+
+    expect(result.map((project) => project.name)).toEqual([
+      "Mais pontos",
+      "Mais votos",
+      "Empate",
+    ]);
   });
 });
 

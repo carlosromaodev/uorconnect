@@ -62,6 +62,44 @@ export async function loadCertificateTemplateDataUri() {
   return null;
 }
 
+export async function loadSignatureDecanoDataUri() {
+  const candidates = [
+    { filePath: path.resolve(process.cwd(), "backend/public/handwritten-sig-decano.png"), mimeType: "image/png" },
+    { filePath: path.resolve(process.cwd(), "public/handwritten-sig-decano.png"), mimeType: "image/png" },
+    { filePath: path.resolve(process.cwd(), "../backend/public/handwritten-sig-decano.png"), mimeType: "image/png" },
+  ];
+
+  for (const candidate of candidates) {
+    try {
+      const img = await readFile(candidate.filePath);
+      return `data:${candidate.mimeType};base64,${img.toString("base64")}`;
+    } catch {
+      continue;
+    }
+  }
+
+  return null;
+}
+
+export async function loadSignatureViceReitorDataUri() {
+  const candidates = [
+    { filePath: path.resolve(process.cwd(), "backend/public/handwritten-sig-vice-reitor.png"), mimeType: "image/png" },
+    { filePath: path.resolve(process.cwd(), "public/handwritten-sig-vice-reitor.png"), mimeType: "image/png" },
+    { filePath: path.resolve(process.cwd(), "../backend/public/handwritten-sig-vice-reitor.png"), mimeType: "image/png" },
+  ];
+
+  for (const candidate of candidates) {
+    try {
+      const img = await readFile(candidate.filePath);
+      return `data:${candidate.mimeType};base64,${img.toString("base64")}`;
+    } catch {
+      continue;
+    }
+  }
+
+  return null;
+}
+
 async function getPdfBrowser() {
   if (!browserPromise) {
     browserPromise = chromium.launch({ headless: true });

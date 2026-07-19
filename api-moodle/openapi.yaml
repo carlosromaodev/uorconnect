@@ -1,0 +1,2132 @@
+openapi: 3.0.3
+info:
+  title: API Moodle — UOR Connect
+  version: 0.2.0
+  description: |
+    Contrato interno da camada de integração Moodle → UOR Connect.
+
+    A API expõe somente dados pedagógicos normalizados. O cliente nunca recebe
+    cookies, `sesskey`, credenciais, HTML, URLs ou identificadores internos do
+    Moodle. Notas oficiais, matrículas e dados financeiros continuam a pertencer
+    ao Sistema da Secretaria.
+
+    Todas as operações desta versão pertencem ao MVP. Enquanto o handler real,
+    o gateway Moodle, a validação de ownership e os testes de contrato não
+    estiverem ligados em conjunto, a operação permanece marcada como `planned`.
+  contact:
+    name: Equipa UOR Connect
+servers:
+  - url: http://127.0.0.1:3333
+    description: Backend local direto
+  - url: http://127.0.0.1:8082/api
+    description: Gateway do frontend local
+  - url: https://api.uorconnect.ao
+    description: API de produção direta
+tags:
+  - name: Sessão Moodle
+    description: Ligação cifrada e renovação automática da sessão Moodle.
+  - name: Visão geral
+    description: Perfil, totais, cobertura e estado pedagógico útil.
+  - name: Disciplinas
+    description: Disciplinas, secções e materiais normalizados.
+  - name: Materiais
+    description: Índice agregado e download controlado de materiais.
+  - name: Sincronização
+    description: Execução durável e acompanhamento da sincronização.
+security:
+  - bearerAuth: []
+  - cookieAuth: []
+paths:
+  /integrations/moodle/session:
+    post:
+      tags: [Sessão Moodle]
+      summary: Ligar ou atualizar a conta Moodle
+      description: |
+        Confirma a identidade Moodle, cifra credenciais e sessão separadamente e
+        agenda a sincronização inicial. `rememberCredentials` deve ser `true`.
+
+        Com autenticação UOR Connect por cookie, envie também `X-CSRF-Token`. O
+        Swagger recomenda Bearer porque não tenta obter o cookie CSRF da aplicação.
+      operationId: createMoodleSession
+      x-implementation-status: implemented
+      x-source-status: observed
+      x-phase: mvp
+      x-cache-ttl: 0
+      x-read-only: false
+      x-requires-moodle-admin: false
+      parameters:
+        - $ref: '#/components/parameters/CsrfToken'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateSessionRequest'
+      responses:
+        '200':
+          description: Credenciais de uma ligação existente atualizadas.
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/PrivateNoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionEnvelope'
+              example:
+                data:
+                  connection:
+                    status: CONNECTED
+                    connected: true
+                    credentialsStored: true
+                    actionRequired: none
+                    retryable: false
+                    lastAuthenticatedAt: '2026-07-19T12:00:00.000Z'
+                    lastSuccessfulSyncAt: '2026-07-19T11:45:00.000Z'
+                  initialSyncRunId: 550e8400-e29b-41d4-a716-446655440010
+                meta:
+                  requestId: req_01J2Q6W7A8B9C0D1E2F3G4H5J6
+                  syncedAt: '2026-07-19T11:45:00.000Z'
+                  stale: false
+        '201':
+          description: Nova ligação Moodle criada.
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/PrivateNoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionEnvelope'
+              example:
+                data:
+                  connection:
+                    status: CONNECTED
+                    connected: true
+                    credentialsStored: true
+                    actionRequired: none
+                    retryable: false
+                    lastAuthenticatedAt: '2026-07-19T12:00:00.000Z'
+                    lastSuccessfulSyncAt: null
+                  initialSyncRunId: 550e8400-e29b-41d4-a716-446655440010
+                meta:
+                  requestId: req_01J2Q6W7A8B9C0D1E2F3G4H5J6
+                  syncedAt: null
+                  stale: false
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '415':
+          $ref: '#/components/responses/UnsupportedJsonMediaType'
+        '422':
+          $ref: '#/components/responses/SessionUnprocessable'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '502':
+          $ref: '#/components/responses/UpstreamInvalid'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '500':
+          $ref: '#/components/responses/InternalError'
+    delete:
+      tags: [Sessão Moodle]
+      summary: Desligar a conta Moodle
+      description: |
+        Operação idempotente. Invalida a geração da ligação e elimina localmente
+        credenciais, sessão, snapshots e sincronizações, mesmo se o logout Moodle
+        em best effort falhar.
+      operationId: deleteMoodleSession
+      x-implementation-status: implemented
+      x-source-status: observed
+      x-phase: mvp
+      x-cache-ttl: 0
+      x-read-only: false
+      x-requires-moodle-admin: false
+      parameters:
+        - $ref: '#/components/parameters/CsrfToken'
+      responses:
+        '200':
+          description: Conta desligada ou já desligada.
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/PrivateNoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SessionEnvelope'
+              example:
+                data:
+                  connection:
+                    status: DISCONNECTED
+                    connected: false
+                    credentialsStored: false
+                    actionRequired: connect
+                    retryable: false
+                    lastAuthenticatedAt: null
+                    lastSuccessfulSyncAt: null
+                  initialSyncRunId: null
+                meta:
+                  requestId: req_01J2Q75Z0A1B2C3D4E5F6G7H8J
+                  syncedAt: null
+                  stale: false
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /integrations/moodle/me:
+    get:
+      tags: [Visão geral]
+      summary: Obter a identidade Moodle normalizada
+      operationId: getMoodleProfile
+      x-implementation-status: implemented
+      x-source-status: observed
+      x-phase: mvp
+      x-cache-ttl: 600
+      x-read-only: true
+      x-requires-moodle-admin: false
+      responses:
+        '200':
+          description: Identidade mínima da conta ligada.
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/PrivateNoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ProfileEnvelope'
+              example:
+                data:
+                  id: 550e8400-e29b-41d4-a716-446655440001
+                  studentNumber: '20260001'
+                  displayName: Estudante UOR
+                  email: estudante@example.test
+                  timezone: Africa/Luanda
+                  lastSyncedAt: '2026-07-19T12:05:00.000Z'
+                meta:
+                  requestId: req_01J2Q7E5K6M7N8P9Q0R1S2T3V4
+                  syncedAt: '2026-07-19T12:05:00.000Z'
+                  stale: false
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/ConnectionRequired'
+        '502':
+          $ref: '#/components/responses/UpstreamInvalid'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /integrations/moodle/overview:
+    get:
+      tags: [Visão geral]
+      summary: Obter o resumo pedagógico Moodle
+      description: |
+        Retorna totais com qualidade explícita, cobertura do snapshot e média
+        calculada apenas sobre disciplinas cujo acompanhamento está configurado.
+      operationId: getMoodleOverview
+      x-implementation-status: implemented
+      x-source-status: derived
+      x-phase: mvp
+      x-cache-ttl: 600
+      x-read-only: true
+      x-requires-moodle-admin: false
+      responses:
+        '200':
+          description: Resumo útil do snapshot atual.
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/PrivateNoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/OverviewEnvelope'
+              examples:
+                complete:
+                  summary: Disciplinas completas e materiais ainda parciais
+                  value:
+                    data:
+                      connection:
+                        status: CONNECTED
+                        connected: true
+                        credentialsStored: true
+                        actionRequired: none
+                        retryable: false
+                        lastAuthenticatedAt: '2026-07-19T12:00:00.000Z'
+                        lastSuccessfulSyncAt: '2026-07-19T12:05:00.000Z'
+                      counts:
+                        courses:
+                          value: 29
+                          status: exact
+                        coursesVisible:
+                          value: 29
+                          status: exact
+                        coursesWithProgress:
+                          value: 5
+                          status: exact
+                        materials:
+                          value: 32
+                          status: partial
+                        activities:
+                          value: null
+                          status: unsupported
+                        assignmentsOpen:
+                          value: null
+                          status: unsupported
+                        quizzesOpen:
+                          value: null
+                          status: unsupported
+                        notificationsUnread:
+                          value: null
+                          status: unsupported
+                      coverage:
+                        processedCourses: 5
+                        totalCourses: 29
+                        failedCourses: 0
+                      progress:
+                        status: partial
+                        trackedCourses: 5
+                        untrackedCourses: 24
+                        averagePercent: 36.4
+                      nextDeadlines:
+                        status: unsupported
+                        items: []
+                    meta:
+                      requestId: req_01J2Q7J5K6M7N8P9Q0R1S2T3V4
+                      syncedAt: '2026-07-19T12:05:00.000Z'
+                      stale: false
+                      snapshotVersion: 7
+                notSynced:
+                  summary: Ligação criada, mas o primeiro snapshot ainda não terminou
+                  value:
+                    data:
+                      connection:
+                        status: CONNECTED
+                        connected: true
+                        credentialsStored: true
+                        actionRequired: none
+                        retryable: false
+                        lastAuthenticatedAt: '2026-07-19T12:00:00.000Z'
+                        lastSuccessfulSyncAt: null
+                      counts:
+                        courses:
+                          value: null
+                          status: not_synced
+                        coursesVisible:
+                          value: null
+                          status: not_synced
+                        coursesWithProgress:
+                          value: null
+                          status: not_synced
+                        materials:
+                          value: null
+                          status: not_synced
+                        activities:
+                          value: null
+                          status: unsupported
+                        assignmentsOpen:
+                          value: null
+                          status: unsupported
+                        quizzesOpen:
+                          value: null
+                          status: unsupported
+                        notificationsUnread:
+                          value: null
+                          status: unsupported
+                      coverage:
+                        processedCourses: 0
+                        totalCourses: null
+                        failedCourses: 0
+                      progress:
+                        status: not_synced
+                        trackedCourses: null
+                        untrackedCourses: null
+                        averagePercent: null
+                      nextDeadlines:
+                        status: unsupported
+                        items: []
+                    meta:
+                      requestId: req_01J2Q7K5K6M7N8P9Q0R1S2T3V4
+                      syncedAt: null
+                      stale: false
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/ConnectionRequired'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /integrations/moodle/courses:
+    get:
+      tags: [Disciplinas]
+      summary: Listar disciplinas sincronizadas
+      operationId: listMoodleCourses
+      x-implementation-status: implemented
+      x-source-status: observed
+      x-phase: mvp
+      x-cache-ttl: 600
+      x-read-only: true
+      x-requires-moodle-admin: false
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Página estável de disciplinas do snapshot atual.
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/PrivateNoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CourseListEnvelope'
+              example:
+                data:
+                  - id: 550e8400-e29b-41d4-a716-446655440002
+                    name: Engenharia de Software
+                    shortName: INF-301
+                    category: Engenharia Informática
+                    description: Conteúdos e atividades da disciplina.
+                    startDate: '2026-02-02T00:00:00.000Z'
+                    endDate: null
+                    visible: true
+                    favourite: true
+                    progressAvailable: true
+                    progressPercent: 42.5
+                    stale: false
+                    lastSyncedAt: '2026-07-19T12:05:00.000Z'
+                  - id: 550e8400-e29b-41d4-a716-446655440003
+                    name: Matemática Discreta
+                    shortName: MAT-201
+                    category: Ciências Exatas
+                    description: null
+                    startDate: '2026-02-02T00:00:00.000Z'
+                    endDate: null
+                    visible: true
+                    favourite: false
+                    progressAvailable: false
+                    progressPercent: null
+                    stale: false
+                    lastSyncedAt: '2026-07-19T12:05:00.000Z'
+                meta:
+                  requestId: req_01J2Q84K6M7N8P9Q0R1S2T3V4W
+                  syncedAt: '2026-07-19T12:05:00.000Z'
+                  stale: false
+                  snapshotVersion: 7
+                  pagination:
+                    returned: 2
+                    limit: 20
+                    hasMore: true
+                    nextCursor: cur_v1_7M9K2N4P6R8T
+                    total: 29
+                    totalStatus: exact
+                  coverage:
+                    processedCourses: 29
+                    totalCourses: 29
+                    failedCourses: 0
+        '400':
+          $ref: '#/components/responses/InvalidCursor'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/SnapshotChanged'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /integrations/moodle/courses/{courseId}:
+    get:
+      tags: [Disciplinas]
+      summary: Obter uma disciplina sincronizada
+      operationId: getMoodleCourse
+      x-implementation-status: implemented
+      x-source-status: observed
+      x-phase: mvp
+      x-cache-ttl: 600
+      x-read-only: true
+      x-requires-moodle-admin: false
+      parameters:
+        - $ref: '#/components/parameters/CourseId'
+      responses:
+        '200':
+          description: Detalhes normalizados da disciplina.
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/PrivateNoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CourseDetailEnvelope'
+              example:
+                data:
+                  id: 550e8400-e29b-41d4-a716-446655440002
+                  name: Engenharia de Software
+                  shortName: INF-301
+                  category: Engenharia Informática
+                  description: Conteúdos e atividades da disciplina.
+                  startDate: '2026-02-02T00:00:00.000Z'
+                  endDate: null
+                  visible: true
+                  favourite: true
+                  progressAvailable: true
+                  progressPercent: 42.5
+                  stale: false
+                  lastSyncedAt: '2026-07-19T12:05:00.000Z'
+                meta:
+                  requestId: req_01J2Q87K6M7N8P9Q0R1S2T3V4W
+                  syncedAt: '2026-07-19T12:05:00.000Z'
+                  stale: false
+                  snapshotVersion: 7
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/ConnectionRequired'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /integrations/moodle/courses/{courseId}/sections:
+    get:
+      tags: [Disciplinas]
+      summary: Listar secções e materiais resumidos
+      description: |
+        No MVP, `modules` contém apenas materiais persistidos da secção. Fóruns,
+        trabalhos, quizzes e outros módulos ainda não são prometidos por esta rota.
+      operationId: listMoodleCourseSections
+      x-implementation-status: implemented
+      x-source-status: observed
+      x-phase: mvp
+      x-cache-ttl: 1800
+      x-read-only: true
+      x-requires-moodle-admin: false
+      parameters:
+        - $ref: '#/components/parameters/CourseId'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Página de secções na ordem da disciplina.
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/PrivateNoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SectionListEnvelope'
+              examples:
+                withModules:
+                  summary: Secção com módulos úteis
+                  value:
+                    data:
+                      - id: 550e8400-e29b-41d4-a716-446655440004
+                        courseId: 550e8400-e29b-41d4-a716-446655440002
+                        position: 1
+                        name: Unidade 1 — Introdução
+                        summary: Conceitos fundamentais e materiais iniciais.
+                        visible: true
+                        available: true
+                        modules:
+                          - id: 550e8400-e29b-41d4-a716-446655440005
+                            type: file
+                            title: Guia da unidade
+                            available: true
+                            kind: material
+                        stale: false
+                        lastSyncedAt: '2026-07-19T12:05:00.000Z'
+                    meta:
+                      requestId: req_01J2Q8EK6M7N8P9Q0R1S2T3V4W
+                      syncedAt: '2026-07-19T12:05:00.000Z'
+                      stale: false
+                      snapshotVersion: 7
+                      pagination:
+                        returned: 1
+                        limit: 20
+                        hasMore: false
+                        nextCursor: null
+                        total: 1
+                        totalStatus: exact
+                      coverage:
+                        processedCourses: 1
+                        totalCourses: 1
+                        failedCourses: 0
+                empty:
+                  summary: Disciplina válida sem secções publicadas
+                  value:
+                    data: []
+                    meta:
+                      requestId: req_01J2Q8FK6M7N8P9Q0R1S2T3V4W
+                      syncedAt: '2026-07-19T12:05:00.000Z'
+                      stale: false
+                      snapshotVersion: 7
+                      pagination:
+                        returned: 0
+                        limit: 20
+                        hasMore: false
+                        nextCursor: null
+                        total: 0
+                        totalStatus: exact
+                      coverage:
+                        processedCourses: 1
+                        totalCourses: 1
+                        failedCourses: 0
+        '400':
+          $ref: '#/components/responses/InvalidCursor'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/SnapshotChanged'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /integrations/moodle/courses/{courseId}/materials:
+    get:
+      tags: [Disciplinas, Materiais]
+      summary: Listar materiais de uma disciplina
+      operationId: listMoodleCourseMaterials
+      x-implementation-status: implemented
+      x-source-status: partially-observed
+      x-phase: mvp
+      x-cache-ttl: 1800
+      x-read-only: true
+      x-requires-moodle-admin: false
+      parameters:
+        - $ref: '#/components/parameters/CourseId'
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Página de materiais normalizados da disciplina.
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/PrivateNoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MaterialListEnvelope'
+              example:
+                data:
+                  - id: 550e8400-e29b-41d4-a716-446655440007
+                    courseId: 550e8400-e29b-41d4-a716-446655440002
+                    sectionId: 550e8400-e29b-41d4-a716-446655440004
+                    type: file
+                    title: Guia da unidade
+                    description: Documento introdutório da unidade.
+                    available: true
+                    openAvailable: true
+                    downloadAvailable: true
+                    mimeType: application/pdf
+                    fileName: guia-unidade.pdf
+                    sizeBytes: 483210
+                    stale: false
+                    lastSyncedAt: '2026-07-19T12:05:00.000Z'
+                meta:
+                  requestId: req_01J2Q8MK6M7N8P9Q0R1S2T3V4W
+                  syncedAt: '2026-07-19T12:05:00.000Z'
+                  stale: false
+                  snapshotVersion: 7
+                  pagination:
+                    returned: 1
+                    limit: 20
+                    hasMore: false
+                    nextCursor: null
+                    total: 11
+                    totalStatus: exact
+                  coverage:
+                    processedCourses: 1
+                    totalCourses: 1
+                    failedCourses: 0
+        '400':
+          $ref: '#/components/responses/InvalidCursor'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/SnapshotChanged'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /integrations/moodle/materials:
+    get:
+      tags: [Materiais]
+      summary: Listar materiais de todas as disciplinas
+      operationId: listMoodleMaterials
+      x-implementation-status: implemented
+      x-source-status: derived
+      x-phase: mvp
+      x-cache-ttl: 1800
+      x-read-only: true
+      x-requires-moodle-admin: false
+      parameters:
+        - $ref: '#/components/parameters/Limit'
+        - $ref: '#/components/parameters/Cursor'
+      responses:
+        '200':
+          description: Página agregada de materiais do snapshot atual.
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/PrivateNoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MaterialListEnvelope'
+              example:
+                data:
+                  - id: 550e8400-e29b-41d4-a716-446655440007
+                    courseId: 550e8400-e29b-41d4-a716-446655440002
+                    sectionId: 550e8400-e29b-41d4-a716-446655440004
+                    type: file
+                    title: Guia da unidade
+                    description: Documento introdutório da unidade.
+                    available: true
+                    openAvailable: true
+                    downloadAvailable: true
+                    mimeType: application/pdf
+                    fileName: guia-unidade.pdf
+                    sizeBytes: 483210
+                    stale: false
+                    lastSyncedAt: '2026-07-19T12:05:00.000Z'
+                  - id: 550e8400-e29b-41d4-a716-446655440008
+                    courseId: 550e8400-e29b-41d4-a716-446655440003
+                    sectionId: null
+                    type: page
+                    title: Introdução da disciplina
+                    description: Texto de orientação publicado na disciplina.
+                    available: true
+                    openAvailable: false
+                    downloadAvailable: false
+                    mimeType: null
+                    fileName: null
+                    sizeBytes: null
+                    stale: false
+                    lastSyncedAt: '2026-07-19T12:05:00.000Z'
+                meta:
+                  requestId: req_01J2Q8PK6M7N8P9Q0R1S2T3V4W
+                  syncedAt: '2026-07-19T12:05:00.000Z'
+                  stale: false
+                  snapshotVersion: 7
+                  pagination:
+                    returned: 2
+                    limit: 20
+                    hasMore: true
+                    nextCursor: cur_v1_8P0R2T4V6W8Y
+                    total: 32
+                    totalStatus: partial
+                  coverage:
+                    processedCourses: 5
+                    totalCourses: 29
+                    failedCourses: 0
+        '400':
+          $ref: '#/components/responses/InvalidCursor'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/SnapshotChanged'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /integrations/moodle/materials/{materialId}/open:
+    get:
+      tags: [Materiais]
+      summary: Descarregar um material através do proxy seguro
+      description: |
+        Resolve internamente um locator já sincronizado, valida propriedade,
+        origem, redirects, MIME, extensão e tamanho, e transmite sempre como
+        attachment. O cliente nunca fornece nem recebe uma URL Moodle.
+      operationId: openMoodleMaterial
+      x-implementation-status: implemented
+      x-source-status: derived
+      x-phase: mvp
+      x-cache-ttl: 0
+      x-read-only: true
+      x-requires-moodle-admin: false
+      parameters:
+        - $ref: '#/components/parameters/MaterialId'
+        - $ref: '#/components/parameters/Range'
+      responses:
+        '200':
+          description: Ficheiro completo transmitido como attachment.
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/PrivateNoStore'
+            Content-Disposition:
+              $ref: '#/components/headers/AttachmentDisposition'
+            Content-Length:
+              schema:
+                type: integer
+                format: int64
+                minimum: 0
+              description: Tamanho transmitido em bytes, quando conhecido.
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+            Content-Security-Policy:
+              $ref: '#/components/headers/SandboxPolicy'
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '206':
+          description: Intervalo do ficheiro transmitido quando suportado upstream.
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/PrivateNoStore'
+            Content-Disposition:
+              $ref: '#/components/headers/AttachmentDisposition'
+            Content-Range:
+              schema:
+                type: string
+                example: bytes 0-1023/483210
+            X-Content-Type-Options:
+              $ref: '#/components/headers/NoSniff'
+            Content-Security-Policy:
+              $ref: '#/components/headers/SandboxPolicy'
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/ConnectionRequired'
+        '415':
+          $ref: '#/components/responses/UnsafeMaterialType'
+        '502':
+          $ref: '#/components/responses/UpstreamInvalid'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /integrations/moodle/sync:
+    post:
+      tags: [Sincronização]
+      summary: Criar ou reutilizar uma sincronização
+      description: |
+        Cria uma execução durável. Se já existir uma execução compatível ativa,
+        retorna o mesmo `id` com `reused: true`; isso não é erro.
+      operationId: createMoodleSync
+      x-implementation-status: implemented
+      x-source-status: derived
+      x-phase: mvp
+      x-cache-ttl: 0
+      x-read-only: false
+      x-requires-moodle-admin: false
+      parameters:
+        - $ref: '#/components/parameters/CsrfToken'
+      responses:
+        '202':
+          description: Sincronização criada ou execução ativa reutilizada.
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/PrivateNoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncRunEnvelope'
+              examples:
+                created:
+                  summary: Nova execução criada
+                  value:
+                    data:
+                      id: 550e8400-e29b-41d4-a716-446655440010
+                      status: QUEUED
+                      reused: false
+                      reason: manual
+                      discoveredCourses: 0
+                      processedCourses: 0
+                      failedCourses: 0
+                      materialCount: 0
+                      startedAt: null
+                      completedAt: null
+                      errorCode: null
+                    meta:
+                      requestId: req_01J2Q92K6M7N8P9Q0R1S2T3V4W
+                      syncedAt: null
+                      stale: false
+                reused:
+                  summary: Execução compatível já ativa
+                  value:
+                    data:
+                      id: 550e8400-e29b-41d4-a716-446655440010
+                      status: RUNNING
+                      reused: true
+                      reason: manual
+                      discoveredCourses: 29
+                      processedCourses: 5
+                      failedCourses: 0
+                      materialCount: 32
+                      startedAt: '2026-07-19T12:09:02.000Z'
+                      completedAt: null
+                      errorCode: null
+                    meta:
+                      requestId: req_01J2Q93K6M7N8P9Q0R1S2T3V4W
+                      syncedAt: '2026-07-19T12:09:40.000Z'
+                      stale: false
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/ConnectionRequired'
+        '429':
+          $ref: '#/components/responses/RateLimited'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /integrations/moodle/sync/status:
+    get:
+      tags: [Sincronização]
+      summary: Obter o estado da sincronização
+      operationId: getMoodleSyncStatus
+      x-implementation-status: implemented
+      x-source-status: derived
+      x-phase: mvp
+      x-cache-ttl: 0
+      x-read-only: true
+      x-requires-moodle-admin: false
+      responses:
+        '200':
+          description: Execução ativa, última execução e cobertura publicada.
+          headers:
+            Cache-Control:
+              $ref: '#/components/headers/PrivateNoStore'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SyncStatusEnvelope'
+              example:
+                data:
+                  id: 550e8400-e29b-41d4-a716-446655440010
+                  status: RUNNING
+                  reused: false
+                  reason: stale-read
+                  discoveredCourses: 29
+                  processedCourses: 5
+                  failedCourses: 0
+                  materialCount: 32
+                  startedAt: '2026-07-19T12:09:02.000Z'
+                  completedAt: null
+                  errorCode: null
+                meta:
+                  requestId: req_01J2Q95K6M7N8P9Q0R1S2T3V4W
+                  syncedAt: null
+                  stale: false
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          $ref: '#/components/responses/ConnectionRequired'
+        '503':
+          $ref: '#/components/responses/Unavailable'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: JWT UOR Connect. Recomendado para o Swagger Try it out.
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: uor_auth
+      description: |
+        Cookie de sessão UOR Connect. Mutações também exigem o header CSRF da
+        aplicação; a Swagger UI não obtém esse valor automaticamente.
+
+  headers:
+    PrivateNoStore:
+      description: Respostas pessoais não podem ser guardadas por caches partilhados.
+      schema:
+        type: string
+        example: private, no-store
+    AttachmentDisposition:
+      description: Nome sanitizado; o conteúdo nunca é apresentado inline.
+      schema:
+        type: string
+        example: attachment; filename="guia-unidade.pdf"
+    NoSniff:
+      description: Impede MIME sniffing no browser.
+      schema:
+        type: string
+        enum: [nosniff]
+    SandboxPolicy:
+      description: Política defensiva aplicada ao download.
+      schema:
+        type: string
+        example: "sandbox; default-src 'none'"
+
+  parameters:
+    CsrfToken:
+      name: X-CSRF-Token
+      in: header
+      required: false
+      description: Obrigatório apenas quando a autenticação UOR usa cookie.
+      schema:
+        type: string
+        minLength: 16
+    Limit:
+      name: limit
+      in: query
+      description: Máximo de registos devolvidos.
+      schema:
+        type: integer
+        minimum: 1
+        maximum: 100
+        default: 20
+    Cursor:
+      name: cursor
+      in: query
+      description: Cursor opaco, assinado e preso à versão do snapshot.
+      schema:
+        type: string
+        minLength: 16
+        maxLength: 2048
+    CourseId:
+      name: courseId
+      in: path
+      required: true
+      description: ID público opaco de uma disciplina do estudante autenticado.
+      schema:
+        $ref: '#/components/schemas/CourseId'
+    MaterialId:
+      name: materialId
+      in: path
+      required: true
+      description: ID público opaco de um material do estudante autenticado.
+      schema:
+        $ref: '#/components/schemas/MaterialId'
+    Range:
+      name: Range
+      in: header
+      required: false
+      description: Intervalo RFC 9110, quando o upstream o suporta.
+      schema:
+        type: string
+        pattern: '^bytes=(?:[0-9]+-[0-9]*|-[0-9]+)$'
+        example: bytes=0-1023
+
+  responses:
+    Unauthorized:
+      description: JWT ou cookie UOR Connect ausente ou inválido.
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/PrivateNoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          example:
+            error:
+              code: UOR_AUTH_REQUIRED
+              message: Autenticação UOR Connect necessária.
+              retryable: false
+              actionRequired: none
+            meta:
+              requestId: req_01J2Q9AK6M7N8P9Q0R1S2T3V4W
+    Forbidden:
+      description: Conta não elegível ou identidade Moodle divergente.
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/PrivateNoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          examples:
+            ineligible:
+              summary: Utilizador não é estudante UOR ativo
+              value:
+                error:
+                  code: MOODLE_STUDENT_NOT_ELIGIBLE
+                  message: Esta integração está disponível apenas para estudantes UOR ativos.
+                  retryable: false
+                  actionRequired: none
+                meta:
+                  requestId: req_01J2Q9BK6M7N8P9Q0R1S2T3V4W
+            identityMismatch:
+              summary: Identidade Moodle não corresponde à conta autenticada
+              value:
+                error:
+                  code: MOODLE_IDENTITY_MISMATCH
+                  message: A conta Moodle não corresponde ao estudante autenticado.
+                  retryable: false
+                  actionRequired: none
+                meta:
+                  requestId: req_01J2Q9CK6M7N8P9Q0R1S2T3V4W
+    NotFound:
+      description: Recurso inexistente ou não pertencente ao estudante.
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/PrivateNoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          example:
+            error:
+              code: MOODLE_RESOURCE_NOT_FOUND
+              message: Recurso não encontrado.
+              retryable: false
+              actionRequired: none
+            meta:
+              requestId: req_01J2Q9DK6M7N8P9Q0R1S2T3V4W
+    Conflict:
+      description: A ligação está noutro estado incompatível com a operação.
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/PrivateNoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          example:
+            error:
+              code: MOODLE_CONNECTION_IN_PROGRESS
+              message: A ligação Moodle já está a ser atualizada.
+              retryable: true
+              actionRequired: none
+            meta:
+              requestId: req_01J2Q9EK6M7N8P9Q0R1S2T3V4W
+    ConnectionRequired:
+      description: Ligação ausente ou reautenticação manual necessária.
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/PrivateNoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          examples:
+            disconnected:
+              value:
+                error:
+                  code: MOODLE_CONNECTION_REQUIRED
+                  message: Ligue a sua conta Moodle para continuar.
+                  retryable: false
+                  actionRequired: connect
+                meta:
+                  requestId: req_01J2Q9FK6M7N8P9Q0R1S2T3V4W
+            reauthRequired:
+              value:
+                error:
+                  code: MOODLE_REAUTH_REQUIRED
+                  message: Atualize as credenciais Moodle para continuar.
+                  retryable: false
+                  actionRequired: reauthenticate
+                meta:
+                  requestId: req_01J2Q9GK6M7N8P9Q0R1S2T3V4W
+    SnapshotChanged:
+      description: O snapshot associado ao cursor já expirou.
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/PrivateNoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          example:
+            error:
+              code: MOODLE_SNAPSHOT_CHANGED
+              message: Os dados foram atualizados; reinicie a paginação.
+              retryable: true
+              actionRequired: none
+            meta:
+              requestId: req_01J2Q9HK6M7N8P9Q0R1S2T3V4W
+    InvalidCursor:
+      description: Cursor ausente de integridade, adulterado ou malformado.
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/PrivateNoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          example:
+            error:
+              code: MOODLE_CURSOR_INVALID
+              message: Cursor de paginação inválido.
+              retryable: false
+              actionRequired: none
+            meta:
+              requestId: req_01J2Q9JK6M7N8P9Q0R1S2T3V4W
+    UnsupportedJsonMediaType:
+      description: A operação aceita apenas um body JSON.
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/PrivateNoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          example:
+            error:
+              code: MOODLE_MEDIA_TYPE_UNSUPPORTED
+              message: Envie o pedido como application/json.
+              retryable: false
+              actionRequired: none
+            meta:
+              requestId: req_01J2Q9KK6M7N8P9Q0R1S2T3V4W
+    UnsafeMaterialType:
+      description: Tipo, MIME ou extensão não permitido pelo proxy seguro.
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/PrivateNoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          example:
+            error:
+              code: MOODLE_MATERIAL_TYPE_UNSUPPORTED
+              message: Este material não pode ser aberto com segurança pela UOR Connect.
+              retryable: false
+              actionRequired: none
+            meta:
+              requestId: req_01J2Q9MK6M7N8P9Q0R1S2T3V4W
+    SessionUnprocessable:
+      description: Credenciais rejeitadas ou consentimento de persistência ausente.
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/PrivateNoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          examples:
+            rejected:
+              value:
+                error:
+                  code: MOODLE_CREDENTIALS_INVALID
+                  message: O Moodle não aceitou as credenciais fornecidas.
+                  retryable: false
+                  actionRequired: reauthenticate
+                meta:
+                  requestId: req_01J2Q9NK6M7N8P9Q0R1S2T3V4W
+            consentRequired:
+              value:
+                error:
+                  code: MOODLE_REQUEST_INVALID
+                  message: Confirme a renovação automática da ligação Moodle.
+                  retryable: false
+                  actionRequired: none
+                meta:
+                  requestId: req_01J2Q9PK6M7N8P9Q0R1S2T3V4W
+    RateLimited:
+      description: Limite de tentativas atingido.
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/PrivateNoStore'
+        Retry-After:
+          description: Segundos antes de uma nova tentativa.
+          schema:
+            type: integer
+            minimum: 1
+            example: 60
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          example:
+            error:
+              code: MOODLE_RATE_LIMITED
+              message: Aguarde antes de tentar novamente.
+              retryable: true
+              actionRequired: none
+            meta:
+              requestId: req_01J2Q9RK6M7N8P9Q0R1S2T3V4W
+    InternalError:
+      description: Falha interna inesperada, convertida num envelope seguro.
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/PrivateNoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          example:
+            error:
+              code: MOODLE_UNAVAILABLE
+              message: Não foi possível concluir o pedido Moodle agora.
+              retryable: true
+              actionRequired: none
+            meta:
+              requestId: req-1
+    UpstreamInvalid:
+      description: Resposta Moodle incompatível ou impossível de normalizar.
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/PrivateNoStore'
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          example:
+            error:
+              code: MOODLE_UPSTREAM_CHANGED
+              message: Não foi possível interpretar a resposta do Moodle.
+              retryable: true
+              actionRequired: none
+            meta:
+              requestId: req_01J2Q9SK6M7N8P9Q0R1S2T3V4W
+    Unavailable:
+      description: Moodle indisponível, timeout ou integração mal configurada.
+      headers:
+        Cache-Control:
+          $ref: '#/components/headers/PrivateNoStore'
+        Retry-After:
+          description: Segundos sugeridos antes de repetir, quando aplicável.
+          schema:
+            type: integer
+            minimum: 1
+            example: 30
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorEnvelope'
+          examples:
+            upstreamUnavailable:
+              value:
+                error:
+                  code: MOODLE_UNAVAILABLE
+                  message: O Moodle está temporariamente indisponível.
+                  retryable: true
+                  actionRequired: none
+                meta:
+                  requestId: req_01J2Q9TK6M7N8P9Q0R1S2T3V4W
+            configuration:
+              value:
+                error:
+                  code: MOODLE_MISCONFIGURED
+                  message: A integração Moodle está temporariamente indisponível.
+                  retryable: false
+                  actionRequired: contact_support
+                meta:
+                  requestId: req_01J2Q9VK6M7N8P9Q0R1S2T3V4W
+
+  schemas:
+    CreateSessionRequest:
+      type: object
+      additionalProperties: false
+      required: [username, password, rememberCredentials]
+      properties:
+        username:
+          type: string
+          minLength: 1
+          maxLength: 128
+          writeOnly: true
+          description: Deve ser o próprio studentNumber UOR autenticado. Divergências são rejeitadas localmente antes de contactar o Moodle; o valor nunca é devolvido nem registado.
+        password:
+          type: string
+          minLength: 1
+          maxLength: 512
+          format: password
+          writeOnly: true
+          description: Palavra-passe Moodle; nunca é devolvida nem registada.
+        rememberCredentials:
+          type: boolean
+          enum: [true]
+          description: Consentimento obrigatório para renovação automática cifrada.
+
+    BasicMeta:
+      type: object
+      additionalProperties: false
+      required: [requestId, syncedAt, stale]
+      properties:
+        requestId:
+          type: string
+        syncedAt:
+          type: string
+          format: date-time
+          nullable: true
+        stale:
+          type: boolean
+        snapshotVersion:
+          type: integer
+          minimum: 0
+          nullable: true
+
+    CountStatus:
+      type: string
+      enum: [exact, partial, not_synced, unsupported]
+
+    CountMetric:
+      type: object
+      additionalProperties: false
+      required: [value, status]
+      properties:
+        value:
+          type: integer
+          minimum: 0
+          nullable: true
+          description: Nunca use zero para representar um valor desconhecido.
+        status:
+          $ref: '#/components/schemas/CountStatus'
+
+    Coverage:
+      type: object
+      additionalProperties: false
+      required: [processedCourses, totalCourses, failedCourses]
+      properties:
+        processedCourses:
+          type: integer
+          minimum: 0
+        totalCourses:
+          type: integer
+          minimum: 0
+          nullable: true
+          description: Nulo enquanto a lista completa de disciplinas não for conhecida.
+        failedCourses:
+          type: integer
+          minimum: 0
+
+    Pagination:
+      type: object
+      additionalProperties: false
+      required: [returned, limit, hasMore, nextCursor, total, totalStatus]
+      properties:
+        returned:
+          type: integer
+          minimum: 0
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 100
+        hasMore:
+          type: boolean
+        nextCursor:
+          type: string
+          nullable: true
+          description: Cursor opaco e assinado; nulo quando não existe próxima página.
+        total:
+          type: integer
+          minimum: 0
+          nullable: true
+          description: Nulo quando a contagem não é conhecida.
+        totalStatus:
+          $ref: '#/components/schemas/CountStatus'
+
+    ListMeta:
+      type: object
+      additionalProperties: false
+      required: [requestId, syncedAt, stale, pagination]
+      properties:
+        requestId:
+          type: string
+        syncedAt:
+          type: string
+          format: date-time
+          nullable: true
+        stale:
+          type: boolean
+        snapshotVersion:
+          type: integer
+          minimum: 0
+          nullable: true
+        pagination:
+          $ref: '#/components/schemas/Pagination'
+        coverage:
+          $ref: '#/components/schemas/Coverage'
+
+    ConnectionStatus:
+      type: string
+      enum:
+        - DISCONNECTED
+        - CONNECTING
+        - CONNECTED
+        - REFRESHING
+        - REAUTH_REQUIRED
+        - DEGRADED
+        - UNAVAILABLE
+
+    ActionRequired:
+      type: string
+      enum:
+        - none
+        - connect
+        - reauthenticate
+        - contact_support
+
+    ConnectionSummary:
+      type: object
+      additionalProperties: false
+      required:
+        - status
+        - connected
+        - credentialsStored
+        - actionRequired
+        - retryable
+        - lastAuthenticatedAt
+        - lastSuccessfulSyncAt
+      properties:
+        status:
+          $ref: '#/components/schemas/ConnectionStatus'
+        connected:
+          type: boolean
+        credentialsStored:
+          type: boolean
+        actionRequired:
+          $ref: '#/components/schemas/ActionRequired'
+        retryable:
+          type: boolean
+        lastAuthenticatedAt:
+          type: string
+          format: date-time
+          nullable: true
+        lastSuccessfulSyncAt:
+          type: string
+          format: date-time
+          nullable: true
+
+    SessionData:
+      type: object
+      additionalProperties: false
+      required: [connection, initialSyncRunId]
+      properties:
+        connection:
+          $ref: '#/components/schemas/ConnectionSummary'
+        initialSyncRunId:
+          $ref: '#/components/schemas/NullableSyncRunId'
+
+    Profile:
+      type: object
+      additionalProperties: false
+      required: [id, studentNumber, displayName, email, timezone, lastSyncedAt]
+      properties:
+        id:
+          $ref: '#/components/schemas/ProfileId'
+        studentNumber:
+          type: string
+          minLength: 1
+          maxLength: 64
+        displayName:
+          type: string
+          minLength: 1
+          maxLength: 255
+        email:
+          type: string
+          format: email
+          nullable: true
+        timezone:
+          type: string
+          nullable: true
+          minLength: 1
+          maxLength: 64
+        lastSyncedAt:
+          type: string
+          format: date-time
+
+    OverviewCounts:
+      type: object
+      additionalProperties: false
+      required:
+        - courses
+        - coursesVisible
+        - coursesWithProgress
+        - materials
+        - activities
+        - assignmentsOpen
+        - quizzesOpen
+        - notificationsUnread
+      properties:
+        courses:
+          $ref: '#/components/schemas/CountMetric'
+        coursesVisible:
+          $ref: '#/components/schemas/CountMetric'
+        coursesWithProgress:
+          $ref: '#/components/schemas/CountMetric'
+        materials:
+          $ref: '#/components/schemas/CountMetric'
+        activities:
+          $ref: '#/components/schemas/CountMetric'
+        assignmentsOpen:
+          $ref: '#/components/schemas/CountMetric'
+        quizzesOpen:
+          $ref: '#/components/schemas/CountMetric'
+        notificationsUnread:
+          $ref: '#/components/schemas/CountMetric'
+
+    TrackedProgress:
+      type: object
+      additionalProperties: false
+      required: [status, trackedCourses, untrackedCourses, averagePercent]
+      properties:
+        status:
+          $ref: '#/components/schemas/CountStatus'
+        trackedCourses:
+          type: integer
+          minimum: 0
+          nullable: true
+        untrackedCourses:
+          type: integer
+          minimum: 0
+          nullable: true
+        averagePercent:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 100
+          nullable: true
+          description: Média apenas das disciplinas com progresso configurado.
+
+    UnsupportedDeadlineList:
+      type: object
+      additionalProperties: false
+      required: [status, items]
+      properties:
+        status:
+          type: string
+          enum: [unsupported]
+        items:
+          type: array
+          maxItems: 0
+          items:
+            not: {}
+
+    Overview:
+      type: object
+      additionalProperties: false
+      required: [connection, counts, progress, coverage, nextDeadlines]
+      properties:
+        connection:
+          $ref: '#/components/schemas/ConnectionSummary'
+        counts:
+          $ref: '#/components/schemas/OverviewCounts'
+        progress:
+          $ref: '#/components/schemas/TrackedProgress'
+        coverage:
+          $ref: '#/components/schemas/Coverage'
+        nextDeadlines:
+          $ref: '#/components/schemas/UnsupportedDeadlineList'
+
+    CourseSummary:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - name
+        - shortName
+        - category
+        - description
+        - startDate
+        - endDate
+        - visible
+        - favourite
+        - progressAvailable
+        - progressPercent
+        - stale
+        - lastSyncedAt
+      properties:
+        id:
+          $ref: '#/components/schemas/CourseId'
+        name:
+          type: string
+          minLength: 1
+          maxLength: 500
+        shortName:
+          type: string
+          nullable: true
+          maxLength: 128
+        category:
+          type: string
+          nullable: true
+          maxLength: 255
+        description:
+          type: string
+          nullable: true
+          maxLength: 10000
+          description: Texto limpo; nunca HTML Moodle.
+        startDate:
+          type: string
+          format: date-time
+          nullable: true
+        endDate:
+          type: string
+          format: date-time
+          nullable: true
+        visible:
+          type: boolean
+        favourite:
+          type: boolean
+        progressAvailable:
+          type: boolean
+        progressPercent:
+          type: number
+          format: double
+          minimum: 0
+          maximum: 100
+          nullable: true
+          description: Obrigatoriamente nulo quando `progressAvailable` é falso.
+        stale:
+          type: boolean
+        lastSyncedAt:
+          type: string
+          format: date-time
+
+    CourseDetail:
+      $ref: '#/components/schemas/CourseSummary'
+
+    ModuleType:
+      $ref: '#/components/schemas/MaterialType'
+
+    ModuleKind:
+      type: string
+      enum: [material]
+      description: O MVP publica apenas materiais persistidos da secção.
+
+    ModuleSummary:
+      type: object
+      additionalProperties: false
+      required: [id, type, title, available, kind]
+      properties:
+        id:
+          $ref: '#/components/schemas/ModuleId'
+        type:
+          $ref: '#/components/schemas/ModuleType'
+        title:
+          type: string
+          minLength: 1
+          maxLength: 500
+        available:
+          type: boolean
+        kind:
+          $ref: '#/components/schemas/ModuleKind'
+
+    Section:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - courseId
+        - name
+        - position
+        - summary
+        - visible
+        - available
+        - modules
+        - stale
+        - lastSyncedAt
+      properties:
+        id:
+          $ref: '#/components/schemas/SectionId'
+        courseId:
+          $ref: '#/components/schemas/CourseId'
+        position:
+          type: integer
+          minimum: 0
+        name:
+          type: string
+          minLength: 1
+          maxLength: 500
+        summary:
+          type: string
+          nullable: true
+          maxLength: 10000
+          description: Texto limpo; nunca HTML Moodle.
+        visible:
+          type: boolean
+        available:
+          type: boolean
+        modules:
+          type: array
+          description: Materiais resumidos da secção; não representa todos os módulos Moodle.
+          items:
+            $ref: '#/components/schemas/ModuleSummary'
+        stale:
+          type: boolean
+        lastSyncedAt:
+          type: string
+          format: date-time
+
+    MaterialType:
+      type: string
+      enum: [file, folder, page, book, url, video, audio, image, scorm, h5p, lti, other]
+
+    Material:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - courseId
+        - sectionId
+        - type
+        - title
+        - description
+        - available
+        - openAvailable
+        - downloadAvailable
+        - mimeType
+        - fileName
+        - sizeBytes
+        - stale
+        - lastSyncedAt
+      properties:
+        id:
+          $ref: '#/components/schemas/MaterialId'
+        courseId:
+          $ref: '#/components/schemas/CourseId'
+        sectionId:
+          type: string
+          format: uuid
+          nullable: true
+        type:
+          $ref: '#/components/schemas/MaterialType'
+        title:
+          type: string
+          minLength: 1
+          maxLength: 500
+        description:
+          type: string
+          nullable: true
+          maxLength: 10000
+          description: Texto limpo; nunca HTML Moodle.
+        available:
+          type: boolean
+        openAvailable:
+          type: boolean
+        downloadAvailable:
+          type: boolean
+        mimeType:
+          type: string
+          nullable: true
+          maxLength: 255
+        fileName:
+          type: string
+          nullable: true
+          maxLength: 255
+        sizeBytes:
+          type: integer
+          format: int64
+          minimum: 0
+          nullable: true
+        stale:
+          type: boolean
+        lastSyncedAt:
+          type: string
+          format: date-time
+
+    SyncStatus:
+      type: string
+      enum: [QUEUED, RUNNING, COMPLETED, PARTIAL, FAILED, CANCELLED]
+
+    SyncReason:
+      type: string
+      minLength: 1
+      maxLength: 128
+
+    SyncRun:
+      type: object
+      additionalProperties: false
+      required:
+        - id
+        - status
+        - reused
+        - reason
+        - discoveredCourses
+        - processedCourses
+        - failedCourses
+        - materialCount
+        - startedAt
+        - completedAt
+        - errorCode
+      properties:
+        id:
+          $ref: '#/components/schemas/SyncRunId'
+        status:
+          $ref: '#/components/schemas/SyncStatus'
+        reused:
+          type: boolean
+        reason:
+          $ref: '#/components/schemas/SyncReason'
+        discoveredCourses:
+          type: integer
+          minimum: 0
+        processedCourses:
+          type: integer
+          minimum: 0
+        failedCourses:
+          type: integer
+          minimum: 0
+        materialCount:
+          type: integer
+          minimum: 0
+        startedAt:
+          type: string
+          format: date-time
+          nullable: true
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+        errorCode:
+          type: string
+          nullable: true
+          maxLength: 128
+
+    Error:
+      type: object
+      additionalProperties: false
+      required: [code, message, retryable, actionRequired]
+      properties:
+        code:
+          $ref: '#/components/schemas/MoodleErrorCode'
+        message:
+          type: string
+          minLength: 1
+          maxLength: 500
+        retryable:
+          type: boolean
+        actionRequired:
+          $ref: '#/components/schemas/ActionRequired'
+
+    ErrorMeta:
+      type: object
+      additionalProperties: false
+      required: [requestId]
+      properties:
+        requestId:
+          type: string
+
+    ErrorEnvelope:
+      type: object
+      additionalProperties: false
+      required: [error, meta]
+      properties:
+        error:
+          $ref: '#/components/schemas/Error'
+        meta:
+          $ref: '#/components/schemas/ErrorMeta'
+
+    MoodleErrorCode:
+      type: string
+      enum:
+        - UOR_AUTH_REQUIRED
+        - UOR_CSRF_INVALID
+        - MOODLE_INTEGRATION_DISABLED
+        - MOODLE_UNAVAILABLE
+        - MOODLE_UPSTREAM_CHANGED
+        - MOODLE_CONNECTION_REQUIRED
+        - MOODLE_CONNECTION_IN_PROGRESS
+        - MOODLE_CONNECTION_CANCELLED
+        - MOODLE_REAUTH_REQUIRED
+        - MOODLE_CREDENTIALS_INVALID
+        - MOODLE_IDENTITY_MISMATCH
+        - MOODLE_STUDENT_NOT_ELIGIBLE
+        - MOODLE_REQUEST_INVALID
+        - MOODLE_MEDIA_TYPE_UNSUPPORTED
+        - MOODLE_RESOURCE_NOT_FOUND
+        - MOODLE_SNAPSHOT_CHANGED
+        - MOODLE_CURSOR_INVALID
+        - MOODLE_SYNC_CONFLICT
+        - MOODLE_RATE_LIMITED
+        - MOODLE_MATERIAL_TYPE_UNSUPPORTED
+        - MOODLE_MISCONFIGURED
+
+    SessionEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/SessionData'
+        meta:
+          $ref: '#/components/schemas/BasicMeta'
+    ProfileEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/Profile'
+        meta:
+          $ref: '#/components/schemas/BasicMeta'
+    OverviewEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/Overview'
+        meta:
+          $ref: '#/components/schemas/BasicMeta'
+    CourseListEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/CourseSummary'
+        meta:
+          $ref: '#/components/schemas/ListMeta'
+    CourseDetailEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/CourseDetail'
+        meta:
+          $ref: '#/components/schemas/BasicMeta'
+    SectionListEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Section'
+        meta:
+          $ref: '#/components/schemas/ListMeta'
+    MaterialListEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/Material'
+        meta:
+          $ref: '#/components/schemas/ListMeta'
+    SyncRunEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/SyncRun'
+        meta:
+          $ref: '#/components/schemas/BasicMeta'
+    SyncStatusEnvelope:
+      type: object
+      additionalProperties: false
+      required: [data, meta]
+      properties:
+        data:
+          $ref: '#/components/schemas/NullableSyncRun'
+        meta:
+          $ref: '#/components/schemas/BasicMeta'
+
+    ProfileId:
+      type: string
+      format: uuid
+      example: 550e8400-e29b-41d4-a716-446655440001
+    CourseId:
+      type: string
+      format: uuid
+      example: 550e8400-e29b-41d4-a716-446655440002
+    SectionId:
+      type: string
+      format: uuid
+      example: 550e8400-e29b-41d4-a716-446655440004
+    ModuleId:
+      type: string
+      format: uuid
+      example: 550e8400-e29b-41d4-a716-446655440005
+    MaterialId:
+      type: string
+      format: uuid
+      example: 550e8400-e29b-41d4-a716-446655440007
+    SyncRunId:
+      type: string
+      format: uuid
+      example: 550e8400-e29b-41d4-a716-446655440010
+    NullableSyncRunId:
+      type: string
+      format: uuid
+      nullable: true
+    NullableSyncRun:
+      type: object
+      nullable: true
+      additionalProperties: false
+      required:
+        - id
+        - status
+        - reused
+        - reason
+        - discoveredCourses
+        - processedCourses
+        - failedCourses
+        - materialCount
+        - startedAt
+        - completedAt
+        - errorCode
+      properties:
+        id:
+          $ref: '#/components/schemas/SyncRunId'
+        status:
+          $ref: '#/components/schemas/SyncStatus'
+        reused:
+          type: boolean
+        reason:
+          $ref: '#/components/schemas/SyncReason'
+        discoveredCourses:
+          type: integer
+          minimum: 0
+        processedCourses:
+          type: integer
+          minimum: 0
+        failedCourses:
+          type: integer
+          minimum: 0
+        materialCount:
+          type: integer
+          minimum: 0
+        startedAt:
+          type: string
+          format: date-time
+          nullable: true
+        completedAt:
+          type: string
+          format: date-time
+          nullable: true
+        errorCode:
+          type: string
+          nullable: true
+          maxLength: 128

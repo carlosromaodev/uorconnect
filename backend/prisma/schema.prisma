@@ -31,6 +31,30 @@ enum AgendaType {
   BREAK
 }
 
+enum MoodleConnectionStatus {
+  DISCONNECTED
+  CONNECTING
+  CONNECTED
+  REFRESHING
+  REAUTH_REQUIRED
+  DEGRADED
+}
+
+enum MoodleEntityKind {
+  COURSE
+  SECTION
+  MATERIAL
+}
+
+enum MoodleSyncRunStatus {
+  QUEUED
+  RUNNING
+  COMPLETED
+  PARTIAL
+  FAILED
+  CANCELLED
+}
+
 model User {
   id          Int          @id @default(autoincrement())
   email       String       @unique
@@ -105,6 +129,12 @@ model Student {
   exhibitorActorScoreEvents ExhibitorScoreEvent[] @relation("ExhibitorScoreActor")
   teamMemberships       TeamMembership[]
   teamMembershipClaims  TeamMembershipClaim[]
+  moodleConnection      MoodleConnection?
+  moodleEntityRefs      MoodleEntityRef[]
+  moodleCourseSnapshots MoodleCourseSnapshot[]
+  moodleSectionSnapshots MoodleSectionSnapshot[]
+  moodleMaterialSnapshots MoodleMaterialSnapshot[]
+  moodleSyncRuns        MoodleSyncRun[]
 
   @@unique([institutionCode, studentNumber])
   @@index([studentNumber])
@@ -1858,3 +1888,205 @@ model PassportStudentBadge {
   @@index([studentId, awardedAt])
   @@index([badgeId, awardedAt])
 }
+
+/// Control plane for one student's Moodle integration. Secret fields contain
+/// authenticated-encryption envelopes only; plaintext credentials/cookies are
+/// never stored in this model.
+model MoodleConnection {
+  id                          Int                    @id @default(autoincrement())
+  student                     Student                @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  studentId                   Int                    @unique
+  status                      MoodleConnectionStatus @default(DISCONNECTED)
+  moodleUserId                String?
+  profilePublicId             String                 @default(uuid())
+  moodleStudentNumber         String?
+  displayName                 String?
+  email                       String?
+  timezone                    String?
+  profileSyncedAt             DateTime?
+  credentialsEnvelope         String?
+  sessionEnvelope             String?
+  connectionGeneration        Int                    @default(0)
+  sessionVersion              Int                    @default(0)
+  activeSnapshotVersion       Int?
+  activeSyncRunId             String?
+  connectionAttemptId         String?
+  connectionAttemptLeaseUntil DateTime?
+  sessionExpiresAt            DateTime?
+  reauthLeaseOwner            String?
+  reauthLeaseUntil            DateTime?
+  failedReauthCount           Int                    @default(0)
+  nextReauthAt                DateTime?
+  lastAuthenticatedAt         DateTime?
+  lastSuccessfulSyncAt        DateTime?
+  lastUsedAt                  DateTime?
+  lastErrorCode               String?
+  createdAt                   DateTime               @default(now())
+  updatedAt                   DateTime               @updatedAt
+
+  @@unique([studentId, profilePublicId])
+  @@index([status, nextReauthAt])
+  @@index([activeSyncRunId])
+  @@index([connectionAttemptId, connectionAttemptLeaseUntil])
+  @@index([reauthLeaseOwner, reauthLeaseUntil])
+}
+
+/// Stable mapping between an upstream Moodle key and an opaque public UUID.
+/// Public lookups always include studentId; publicId alone is never trusted.
+model MoodleEntityRef {
+  id                       Int                      @id @default(autoincrement())
+  student                  Student                  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  studentId                Int
+  kind                     MoodleEntityKind
+  moodleExternalKey        String
+  publicId                 String                   @default(uuid())
+  createdAt                DateTime                 @default(now())
+  updatedAt                DateTime                 @updatedAt
+  courseSnapshots          MoodleCourseSnapshot[]   @relation("MoodleCourseIdentity")
+  sectionSnapshots         MoodleSectionSnapshot[]  @relation("MoodleSectionIdentity")
+  sectionCourseSnapshots   MoodleSectionSnapshot[]  @relation("MoodleSectionCourseIdentity")
+  materialSnapshots        MoodleMaterialSnapshot[] @relation("MoodleMaterialIdentity")
+  materialCourseSnapshots  MoodleMaterialSnapshot[] @relation("MoodleMaterialCourseIdentity")
+  materialSectionSnapshots MoodleMaterialSnapshot[] @relation("MoodleMaterialSectionIdentity")
+
+  @@unique([studentId, kind, moodleExternalKey])
+  @@unique([studentId, publicId])
+  @@index([studentId, kind])
+}
+
+/// Immutable course row belonging to one staging/published snapshot version.
+model MoodleCourseSnapshot {
+  id                Int             @id @default(autoincrement())
+  student           Student         @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  studentId         Int
+  entityRef         MoodleEntityRef @relation("MoodleCourseIdentity", fields: [entityRefId], references: [id], onDelete: Cascade)
+  entityRefId       Int
+  moodleExternalKey String
+  snapshotVersion   Int
+  syncRunId         String
+  name              String
+  normalizedName    String
+  shortName         String
+  category          String?
+  descriptionText   String?
+  visible           Boolean         @default(true)
+  hiddenByStudent   Boolean         @default(false)
+  favourite         Boolean         @default(false)
+  startAt           DateTime?
+  endAt             DateTime?
+  progressAvailable Boolean         @default(false)
+  progressPercent   Float?
+  stale             Boolean         @default(false)
+  sourceSyncedAt    DateTime?
+  syncedAt          DateTime
+  normalizedHash    String
+  createdAt         DateTime        @default(now())
+
+  @@unique([studentId, moodleExternalKey, snapshotVersion])
+  @@unique([studentId, entityRefId, snapshotVersion])
+  @@index([studentId, snapshotVersion, normalizedName])
+  @@index([studentId, snapshotVersion, syncRunId])
+}
+
+/// Immutable section row. courseEntityRefId links sections to the stable course
+/// identity without coupling different snapshot rows together.
+model MoodleSectionSnapshot {
+  id                Int             @id @default(autoincrement())
+  student           Student         @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  studentId         Int
+  entityRef         MoodleEntityRef @relation("MoodleSectionIdentity", fields: [entityRefId], references: [id], onDelete: Cascade)
+  entityRefId       Int
+  courseEntityRef   MoodleEntityRef @relation("MoodleSectionCourseIdentity", fields: [courseEntityRefId], references: [id], onDelete: Cascade)
+  courseEntityRefId Int
+  moodleExternalKey String
+  snapshotVersion   Int
+  syncRunId         String
+  position          Int
+  title             String
+  normalizedTitle   String
+  summaryText       String?
+  visible           Boolean         @default(true)
+  available         Boolean         @default(true)
+  stale             Boolean         @default(false)
+  sourceSyncedAt    DateTime?
+  syncedAt          DateTime
+  normalizedHash    String
+  createdAt         DateTime        @default(now())
+
+  @@unique([studentId, moodleExternalKey, snapshotVersion])
+  @@unique([studentId, entityRefId, snapshotVersion])
+  @@index([studentId, snapshotVersion, courseEntityRefId, position])
+  @@index([studentId, snapshotVersion, syncRunId])
+}
+
+/// Immutable material row. locatorEnvelope is encrypted and must only be
+/// decrypted by the controlled material proxy after an ownership check.
+model MoodleMaterialSnapshot {
+  id                 Int              @id @default(autoincrement())
+  student            Student          @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  studentId          Int
+  entityRef          MoodleEntityRef  @relation("MoodleMaterialIdentity", fields: [entityRefId], references: [id], onDelete: Cascade)
+  entityRefId        Int
+  courseEntityRef    MoodleEntityRef  @relation("MoodleMaterialCourseIdentity", fields: [courseEntityRefId], references: [id], onDelete: Cascade)
+  courseEntityRefId  Int
+  sectionEntityRef   MoodleEntityRef? @relation("MoodleMaterialSectionIdentity", fields: [sectionEntityRefId], references: [id], onDelete: Cascade)
+  sectionEntityRefId Int?
+  moodleExternalKey  String
+  snapshotVersion    Int
+  syncRunId          String
+  type               String
+  title              String
+  normalizedTitle    String
+  descriptionText    String?
+  available          Boolean          @default(true)
+  openAvailable      Boolean          @default(false)
+  downloadAvailable  Boolean          @default(false)
+  fileName           String?
+  mimeType           String?
+  sizeBytes          BigInt?
+  sourceUpdatedAt    DateTime?
+  metadataJson       String?
+  locatorEnvelope    String?
+  stale              Boolean          @default(false)
+  sourceSyncedAt     DateTime?
+  syncedAt           DateTime
+  normalizedHash     String
+  createdAt          DateTime         @default(now())
+
+  @@unique([studentId, moodleExternalKey, snapshotVersion])
+  @@unique([studentId, entityRefId, snapshotVersion])
+  @@index([studentId, snapshotVersion, normalizedTitle])
+  @@index([studentId, snapshotVersion, courseEntityRefId, normalizedTitle])
+  @@index([studentId, snapshotVersion, sectionEntityRefId])
+  @@index([studentId, snapshotVersion, syncRunId])
+}
+
+/// Durable work item and lease for the embedded synchronisation worker.
+model MoodleSyncRun {
+  id                   String              @id @default(uuid())
+  student              Student             @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  studentId            Int
+  status               MoodleSyncRunStatus @default(QUEUED)
+  reason               String?
+  connectionGeneration Int
+  snapshotVersion      Int
+  attempts             Int                 @default(0)
+  leaseOwner           String?
+  leaseUntil           DateTime?
+  heartbeatAt          DateTime?
+  startedAt            DateTime?
+  finishedAt           DateTime?
+  discoveredCourses    Int                 @default(0)
+  processedCourses     Int                 @default(0)
+  failedCourses        Int                 @default(0)
+  totalMaterials       Int                 @default(0)
+  checkpointJson       String?
+  lastErrorCode        String?
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
+
+  @@index([studentId, status, createdAt])
+  @@index([status, leaseUntil, createdAt])
+  @@index([studentId, connectionGeneration, snapshotVersion])
+}
+

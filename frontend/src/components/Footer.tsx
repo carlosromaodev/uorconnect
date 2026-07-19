@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import { Instagram, Linkedin, Facebook, Heart, Mail, MapPin } from "lucide-react";
+import { Instagram, Linkedin, Facebook, Mail, MapPin } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import {
@@ -109,10 +109,10 @@ export default function Footer() {
         {/* Bottom bar */}
         <div className="mt-10 flex flex-col items-center justify-between gap-3 border-t border-border pt-6 sm:flex-row">
           <p className="text-xs text-muted-foreground">
-            © {new Date().getFullYear()} UOR Connect — NEIC
+            © {new Date().getFullYear()} UOR Connect
           </p>
           <p className="flex items-center gap-1 text-xs text-muted-foreground">
-            Feito com <Heart size={12} className="text-primary" /> pelo NEIC
+            Feito pelo grupo CAVINOVA
           </p>
         </div>
       </div>

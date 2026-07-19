@@ -11,6 +11,7 @@ type ProjectSummary = {
   nome: string;
   tipo: "projeto" | "negocio" | "produto";
   votos: number;
+  pontos: number;
   rating: number;
   pageViews?: number;
   uniqueVisitors?: number;
@@ -61,10 +62,10 @@ export default function AdminWinnersTab({
   }, []);
 
   const sortedProjects = useMemo(
-    () => approvedProjects.slice().sort((a, b) => b.votos - a.votos || b.rating - a.rating),
+    () => approvedProjects.slice().sort((a, b) => b.pontos - a.pontos || b.votos - a.votos || b.rating - a.rating),
     [approvedProjects],
   );
-  const maxVotes = Math.max(...sortedProjects.map((project) => project.votos), 1);
+  const maxPoints = Math.max(...sortedProjects.map((project) => project.pontos), 1);
 
   return (
     <div className="space-y-5">
@@ -115,7 +116,7 @@ export default function AdminWinnersTab({
           {sortedProjects.map((project, index) => {
             const Icon = tipoIcons[project.tipo];
             const isSelected = selectedProjectWinnerId === project.id;
-            const pct = Math.round((project.votos / maxVotes) * 100);
+            const pct = Math.round((project.pontos / maxPoints) * 100);
             return (
               <motion.div
                 key={project.id}
@@ -130,7 +131,9 @@ export default function AdminWinnersTab({
                   <Icon className="h-4 w-4 text-muted-foreground" />
                   <div className="min-w-0 flex-1">
                     <p className="truncate text-sm font-semibold">{project.nome}</p>
-                    <p className="text-xs text-muted-foreground">{project.votos} votos · score {project.rating}</p>
+                    <p className="text-xs text-muted-foreground">
+                      {project.votos} votos · {project.pontos} ponto(s) · nota {project.rating}
+                    </p>
                   </div>
                   <Badge variant="outline" className={tipoBadgeColors[project.tipo]}>{project.tipo}</Badge>
                 </div>

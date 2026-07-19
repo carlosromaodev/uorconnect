@@ -24,6 +24,7 @@ declare module "fastify" {
 
 interface AuthPluginOpts {
   env: Env;
+  formatError?: (input: { request: import("fastify").FastifyRequest; statusCode: 401 | 403; message: string }) => unknown;
 }
 
 export const authGuard = fp<AuthPluginOpts>(async (app, opts) => {
@@ -38,7 +39,8 @@ export const authGuard = fp<AuthPluginOpts>(async (app, opts) => {
     const authSource = bearerToken ? "bearer" : cookieToken ? "cookie" : null;
 
     if (!token || !authSource) {
-      return reply.status(401).send({ message: "Missing or invalid token" });
+      const message = "Missing or invalid token";
+      return reply.status(401).send(opts.formatError?.({ request, statusCode: 401, message }) ?? { message });
     }
 
     try {
@@ -60,12 +62,14 @@ export const authGuard = fp<AuthPluginOpts>(async (app, opts) => {
         const csrfHeader = String(request.headers["x-csrf-token"] ?? "").trim();
 
         if (!csrfCookie || !csrfHeader || csrfCookie !== csrfHeader) {
-          return reply.status(403).send({ message: "CSRF token inválido ou ausente." });
+          const message = "CSRF token inválido ou ausente.";
+          return reply.status(403).send(opts.formatError?.({ request, statusCode: 403, message }) ?? { message });
         }
       }
     } catch (err) {
       request.log.warn({ err }, "invalid jwt");
-      return reply.status(401).send({ message: "Invalid token" });
+      const message = "Invalid token";
+      return reply.status(401).send(opts.formatError?.({ request, statusCode: 401, message }) ?? { message });
     }
   });
 });

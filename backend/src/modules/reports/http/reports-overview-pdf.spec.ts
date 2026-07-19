@@ -6,14 +6,14 @@ const source = readFileSync(path.join(__dirname, "reports.routes.ts"), "utf8");
 
 describe("admin overview PDF report", () => {
   it("uses the same paged visual system as the challenge manual and exhibitor PDFs", () => {
-    expect(source).toContain("Relatório Geral da Administração");
-    expect(source).toContain("PAGE 1 — Crescimento e Finanças");
-    expect(source).toContain("PAGE 2 — Financeiro e Categorias");
-    expect(source).toContain("buildCourseSummaryPage");
-    expect(source).toContain("buildSubmissionDetailPages");
-    expect(source).toContain("buildRejectedSubmissionSummaryPage");
-    expect(source).toContain("buildSubmissionInteractionPages");
-    expect(source).toContain("rejectedSubmissions");
+    expect(source).toContain("Relatório Geral de Alcance");
+    expect(source).toContain("PAGE 1 — Síntese Geral");
+    expect(source).toContain("PAGE 2 — Cursos e anos alcançados");
+    expect(source).toContain("PAGE 3 — Preferência pública agregada");
+    expect(source).toContain("renderProjectReachPages");
+    expect(source).toContain("renderProjectReachTable");
+    expect(source).toContain("buildReachRows");
+    expect(source).toContain("Dados brutos de votos, curtidas, comentários e pontos foram removidos");
     expect(source).toContain("courseSummaries");
 
     expect(source).toContain("@page { size: A4; margin: 0; }");

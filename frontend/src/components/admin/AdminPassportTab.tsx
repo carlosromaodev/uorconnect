@@ -200,6 +200,7 @@ const defaultMissionQrDraft: MissionQrDraft = {
 
 const resetChallengePhrase = "REINICIAR DESAFIO";
 const adminDangerPhone = "+244937624785";
+export type AdminPassportSubpage = "operations" | "ranking";
 
 function adminChallengeStatusLabel(challenge: DigitalPassportAdminChallenge) {
   if (challenge.status === "REJECTED") return "Recusado";
@@ -274,7 +275,20 @@ function StatTile({
   );
 }
 
-export default function AdminPassportTab() {
+export default function AdminPassportTab({
+  activeSubpage,
+  onSubpageChange,
+}: {
+  activeSubpage?: AdminPassportSubpage;
+  onSubpageChange?: (subpage: AdminPassportSubpage) => void;
+}) {
+  const [localPassportSubpage, setLocalPassportSubpage] =
+    useState<AdminPassportSubpage>("operations");
+  const activePassportSubpage = activeSubpage ?? localPassportSubpage;
+  const setActivePassportSubpage = (subpage: AdminPassportSubpage) => {
+    setLocalPassportSubpage(subpage);
+    onSubpageChange?.(subpage);
+  };
   const [overview, setOverview] = useState<DigitalPassportAdminOverview | null>(null);
   const [reports, setReports] = useState<DigitalPassportAdminReports | null>(null);
   const [missions, setMissions] = useState<DigitalPassportAdminMission[]>([]);
@@ -1003,6 +1017,100 @@ export default function AdminPassportTab() {
         </div>
       </section>
 
+      <section className="flex flex-wrap gap-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-sm">
+        <Button
+          type="button"
+          variant={activePassportSubpage === "operations" ? "default" : "ghost"}
+          className={`h-10 rounded-xl ${activePassportSubpage === "operations" ? "bg-slate-950 text-white hover:bg-slate-800" : "text-slate-600"}`}
+          onClick={() => setActivePassportSubpage("operations")}
+        >
+          <Gauge className="mr-2 h-4 w-4" />
+          Operação
+        </Button>
+        <Button
+          type="button"
+          variant={activePassportSubpage === "ranking" ? "default" : "ghost"}
+          className={`h-10 rounded-xl ${activePassportSubpage === "ranking" ? "bg-slate-950 text-white hover:bg-slate-800" : "text-slate-600"}`}
+          onClick={() => setActivePassportSubpage("ranking")}
+        >
+          <Trophy className="mr-2 h-4 w-4" />
+          Ranking
+        </Button>
+      </section>
+
+      {activePassportSubpage === "ranking" ? (
+        <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+          <div className="flex flex-col gap-3 border-b border-slate-100 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+            <div>
+              <h3 className="flex items-center gap-2 text-base font-bold text-slate-950">
+                <Trophy className="h-4 w-4 text-amber-600" />
+                Ranking oficial
+              </h3>
+              <p className="mt-1 text-xs text-slate-500">Classificação dedicada do Passaporte por pontos válidos e critérios de diversidade.</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" variant="outline" className="h-10 rounded-xl" disabled={loading || operationalSaving !== null} onClick={() => void load()}>
+                <RefreshCw className={`mr-2 h-4 w-4 ${loading ? "animate-spin" : ""}`} />
+                Atualizar
+              </Button>
+              <Button type="button" variant="outline" className="h-10 rounded-xl" disabled={operationalSaving !== null} onClick={() => void handleFreezeRanking()}>
+                {operationalSaving === "freeze" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <ShieldCheck className="mr-2 h-4 w-4" />}
+                Congelar
+              </Button>
+              <Button type="button" className="h-10 rounded-xl bg-slate-950 text-white hover:bg-slate-800" disabled={operationalSaving !== null} onClick={() => void handleExportWinners()}>
+                {operationalSaving === "export" ? <Loader2 className="mr-2 h-4 w-4 animate-spin" /> : <Download className="mr-2 h-4 w-4" />}
+                Exportar vencedores
+              </Button>
+            </div>
+          </div>
+          <div className="overflow-x-auto">
+            {rankingRows.length ? (
+              <table className="w-full text-left text-sm">
+                <thead className="border-b border-slate-100 bg-slate-50 text-[10px] font-black uppercase tracking-[0.14em] text-slate-500">
+                  <tr>
+                    <th className="px-4 py-3">Posição</th>
+                    <th className="px-4 py-3">Estudante</th>
+                    <th className="px-4 py-3">Curso</th>
+                    <th className="px-4 py-3 text-right">Pontos</th>
+                    <th className="px-4 py-3 text-right">Diversidade</th>
+                    <th className="px-4 py-3 text-right">Workshops</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {rankingRows.map((item) => {
+                    const detail = item as Partial<DigitalPassportAdminReports["ranking"][number]>;
+                    return (
+                      <tr key={item.studentNumber} className="transition-colors hover:bg-slate-50">
+                        <td className="px-4 py-3">
+                          <span className={`inline-flex h-9 min-w-9 items-center justify-center rounded-xl px-2 text-sm font-black ${
+                            item.position === 1 ? "bg-amber-100 text-amber-800" : item.position === 2 ? "bg-slate-200 text-slate-800" : item.position === 3 ? "bg-orange-100 text-orange-800" : "bg-slate-50 text-slate-600"
+                          }`}>
+                            #{item.position}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <p className="font-bold text-slate-950">{item.studentName || `Estudante ${item.studentNumber}`}</p>
+                          <p className="mt-0.5 font-mono text-xs text-slate-500">{item.studentNumber}</p>
+                        </td>
+                        <td className="px-4 py-3 text-slate-600">{item.studentCourse || "Curso por confirmar"}</td>
+                        <td className="px-4 py-3 text-right font-mono text-sm font-black text-emerald-700">{item.points}</td>
+                        <td className="px-4 py-3 text-right font-mono text-xs text-slate-700">{detail.diversityScore ?? 0}</td>
+                        <td className="px-4 py-3 text-right font-mono text-xs text-slate-700">{detail.workshops ?? 0}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            ) : (
+              <div className="rounded-2xl border border-dashed border-slate-200 bg-slate-50 px-4 py-12 text-center">
+                <Award className="mx-auto h-9 w-9 text-slate-300" />
+                <p className="mt-3 text-sm font-semibold text-slate-700">Ranking ainda vazio</p>
+                <p className="mt-1 text-xs text-slate-500">Os pontos aparecem quando os estudantes começarem a escanear QR.</p>
+              </div>
+            )}
+          </div>
+        </section>
+      ) : (
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1.25fr)_minmax(320px,0.75fr)]">
         <section className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
           <div className="flex flex-col gap-3 border-b border-slate-100 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
@@ -1867,6 +1975,7 @@ export default function AdminPassportTab() {
           </section>
         </aside>
       </div>
+      )}
     </div>
   );
 }

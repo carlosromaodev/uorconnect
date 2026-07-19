@@ -27,6 +27,7 @@ const COURSE_ALIASES = new Map<string, string>([
   ["relacoes internacionais", "Relações Internacionais"],
   ["psicologia", "Psicologia"],
   ["gestao de administracao e marketing", "Gestão de Administração e Marketing"],
+  ["gestao administracao e marketing", "Gestão de Administração e Marketing"],
   ["gestao de empresas", "Gestão de Administração e Marketing"],
   ["contabilidade e financas", "Contabilidade e Finanças"],
   ["contabilidade e auditoria", "Contabilidade e Finanças"],

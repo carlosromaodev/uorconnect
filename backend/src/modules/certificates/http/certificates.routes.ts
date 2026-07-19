@@ -7,11 +7,12 @@ import { authGuard } from "../../auth/http/auth.middleware";
 import { adminGuard, isAdminStudentNumber, requireAdminPermission, setDefaultAdminPermission } from "../../auth/http/admin.middleware";
 import { normalizeStudentProfile } from "../../auth/domain/student-format";
 import { recordAdminAudit } from "../../audit/application/audit.service";
-import { escapeHtml, formatDateLabel, loadLogoDataUri, loadCertificateTemplateDataUri, renderPdfFromHtml } from "../../reports/http/pdf-report.utils";
+import { escapeHtml, formatDateLabel, loadLogoDataUri, loadCertificateTemplateDataUri, loadSignatureDecanoDataUri, loadSignatureViceReitorDataUri, renderPdfFromHtml } from "../../reports/http/pdf-report.utils";
 import { renderQrDataUri } from "../../../shared/qr";
 import { buildValidationQrUrl, buildValidationUrl } from "../../validation/application/validation-links";
 import { sendWhatsAppAutomationEvent } from "../../whatsapp/http/whatsapp.routes";
 import { isPaymentConfirmedByAdmin } from "../../payments/payment-status";
+import { exportExhibitorScoreRanking } from "../../exhibitor-scoring/application/exhibitor-scoring.admin";
 
 const certificateIssueBodySchema = z.object({
   studentNumber: z.string().trim().min(4).max(40),
@@ -30,13 +31,14 @@ const certificateIssueAttendeesBodySchema = z.object({
 });
 
 const certificateIssueBulkBodySchema = z.object({
-  mode: z.enum(["STUDENT_LIST", "STUDENT_COURSE", "COURSE_ENROLLMENT", "PROJECT"]),
+  mode: z.enum(["STUDENT_LIST", "STUDENT_COURSE", "COURSE_ENROLLMENT", "PROJECT", "ALL_PROJECTS"]),
   type: z.string().trim().min(2).max(80).default("PARTICIPATION"),
   title: z.string().trim().min(4).max(160).optional(),
   studentNumbers: z.array(z.string().trim().min(4).max(40)).max(500).optional(),
   studentCourse: z.string().trim().min(2).max(120).optional(),
   courseId: z.coerce.number().int().positive().optional(),
   submissionId: z.coerce.number().int().positive().optional(),
+  projectRank: z.string().trim().max(60).optional(),
   metadata: z.record(z.string(), z.unknown()).optional(),
 }).superRefine((value, ctx) => {
   if (value.mode === "STUDENT_LIST" && !value.studentNumbers?.length) {
@@ -51,6 +53,7 @@ const certificateIssueBulkBodySchema = z.object({
   if (value.mode === "PROJECT" && !value.submissionId) {
     ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["submissionId"], message: "Informe o projeto." });
   }
+  // ALL_PROJECTS needs no extra fields
 });
 
 const certificatesQuerySchema = z.object({
@@ -99,7 +102,10 @@ function createCertificateCode(type: string) {
   return `UOR-${new Date().getFullYear()}-${compactType}-${suffix}`;
 }
 
-const certificateTemplates = [
+const TELECOM_WORKSHOP_EDITION = "3.ª Edição do Workshop Alusivo ao Dia das Telecomunicações e da Sociedade da Informação";
+const TELECOM_WORKSHOP_THEME = "Da Sala de Aulas ao Mercado de Trabalho";
+
+export const certificateTemplates = [
   {
     key: "PARTICIPATION",
     type: "PARTICIPATION",
@@ -139,14 +145,44 @@ const certificateTemplates = [
   {
     key: "STUDENT_VOTED_BEST_PROJECT",
     type: "STUDENT_VOTED_BEST_PROJECT",
-    title: "Melhor Projeto Votado pelos Estudantes",
+    title: "Melhor Projeto do Workshop por Voto dos Estudantes",
     description: "Certificado para projeto vencedor pelo voto dos estudantes.",
   },
   {
     key: "JURY_SELECTED_BEST_PROJECT",
     type: "JURY_SELECTED_BEST_PROJECT",
-    title: "Melhor Projeto Eleito pelos Júris",
+    title: "Melhor Projeto do Workshop por Avaliação dos Júris",
     description: "Certificado para projeto escolhido pela avaliação dos júris.",
+  },
+  {
+    key: "PROJECT_WINNER_1ST_PLACE",
+    type: "PROJECT_WINNER_1ST_PLACE",
+    title: "Projeto Vencedor do Workshop 1.º Lugar",
+    description: "Certificado para o projeto classificado em primeiro lugar.",
+  },
+  {
+    key: "PROJECT_WINNER_2ND_PLACE",
+    type: "PROJECT_WINNER_2ND_PLACE",
+    title: "Projeto Vencedor do Workshop 2.º Lugar",
+    description: "Certificado para o projeto classificado em segundo lugar.",
+  },
+  {
+    key: "PROJECT_WINNER_3RD_PLACE",
+    type: "PROJECT_WINNER_3RD_PLACE",
+    title: "Projeto Vencedor do Workshop 3.º Lugar",
+    description: "Certificado para o projeto classificado em terceiro lugar.",
+  },
+  {
+    key: "WORKSHOP_REVELATION_PROJECT",
+    type: "WORKSHOP_REVELATION_PROJECT",
+    title: "Projeto Revelação do Workshop",
+    description: "Certificado para projeto revelação da feira académica.",
+  },
+  {
+    key: "WORKSHOP_BEST_IDEA",
+    type: "WORKSHOP_BEST_IDEA",
+    title: "Melhor Ideia do Workshop",
+    description: "Certificado para projeto distinguido pela melhor ideia.",
   },
   {
     key: "FAIR_OUTSTANDING_PARTICIPATION",
@@ -378,6 +414,8 @@ async function canReadCertificate(request: FastifyRequest, studentId: number | n
 export function buildCertificateHtml(params: {
   logoDataUri: string | null;
   templateBackgroundDataUri: string | null;
+  signatureDecanoDataUri?: string | null;
+  signatureViceReitorDataUri?: string | null;
   type: string;
   title: string;
   recipientName: string;
@@ -392,6 +430,9 @@ export function buildCertificateHtml(params: {
   authorityTitle: string;
   authorityName: string;
   validationUrl: string;
+  projectName?: string | null;
+  memberRole?: string | null;
+  projectRank?: string | null;
 }) {
   const formattedDate = new Intl.DateTimeFormat("pt-PT", {
     day: "2-digit",
@@ -405,8 +446,8 @@ export function buildCertificateHtml(params: {
 
   // Smart signature logic: if organizer is the Social Sciences and Humanities faculty
   // and the authority is the default Vice-Reitora, show the specific Decana from the photo
-  const rectorTitle = params.rectorTitle?.trim() || "O Reitor";
-  const rectorName = params.rectorName?.trim() || "Prof. Doutor André Pedro Neto";
+  const rectorTitle = params.rectorTitle?.trim() || "O Decano";
+  const rectorName = params.rectorName?.trim() || "Prof. Doutor Diosnorides Carbonell Torreblanca";
   let rightTitle = params.authorityTitle;
   let rightName = params.authorityName;
 
@@ -418,24 +459,50 @@ export function buildCertificateHtml(params: {
     rightName = "Prof. Doutora Cristina de Oliveira";
   }
 
-  // Phrasing based on certificate type
   let bodyTextHtml = "";
   const titleHtml = `<span class="highlight">“${escapeHtml(params.title)}”</span>`;
   const courseHtml = params.recipientCourse ? `, do curso de ${escapeHtml(params.recipientCourse)}` : "";
   const numberHtml = params.recipientNumber ? ` (N.º ${escapeHtml(params.recipientNumber)})` : "";
+  const workshopHtml = `<span class="highlight">${TELECOM_WORKSHOP_EDITION}</span>`;
+  const themeHtml = `<span class="highlight">“${TELECOM_WORKSHOP_THEME}”</span>`;
+  const projectAwardIntro = `no âmbito da ${workshopHtml}, sob o lema ${themeHtml}`;
+
+  // Custom project/group specific fields
+  const rawProjectName = params.projectName?.trim();
+  const projectHtml = rawProjectName ? `<span class="highlight">“${escapeHtml(rawProjectName)}”</span>` : titleHtml;
+  
+  const isMember = params.memberRole === "member";
+  const memberRoleLabel = isMember ? "membro da equipa" : "líder do projeto";
+
+  const rawProjectRank = params.projectRank?.trim() || null;
+  const rankHtml = rawProjectRank ? ` classificado em <span class="highlight">${escapeHtml(rawProjectRank)}</span>` : "";
 
   if (params.type === "COURSE_COMPLETION") {
     bodyTextHtml = `concluiu com aproveitamento a formação de ${titleHtml}${courseHtml}, que decorreu nas instalações da ${escapeHtml(params.institutionName)}${numberHtml}.`;
   } else if (params.type === "PROJECT_EXHIBITION") {
-    bodyTextHtml = `participou como expositor com o projeto ${titleHtml}${courseHtml}, no evento ${escapeHtml(params.organizerName)}, realizado nas instalações da ${escapeHtml(params.institutionName)}${numberHtml}.`;
-  } else if (params.type === "PHYSICS_CONTEST_WINNER" || params.type === "PROGRAMMING_CONTEST_WINNER") {
-    bodyTextHtml = `destacou-se como vencedor de ${titleHtml}${courseHtml}, no âmbito das atividades académicas realizadas nas instalações da ${escapeHtml(params.institutionName)}${numberHtml}.`;
+    bodyTextHtml = `participou na ${workshopHtml}, sob o lema ${themeHtml}, na qualidade de ${memberRoleLabel} do projeto ${projectHtml}${courseHtml},${rankHtml} apresentado na feira de projetos tecnológicos do evento${numberHtml}.`;
+  } else if (params.type === "PHYSICS_CONTEST_WINNER") {
+    bodyTextHtml = `foi distinguido como ${titleHtml}${courseHtml}, ${projectAwardIntro}, pelo rigor científico, domínio conceptual, raciocínio analítico e desempenho demonstrado durante a avaliação${numberHtml}.`;
+  } else if (params.type === "PROGRAMMING_CONTEST_WINNER") {
+    bodyTextHtml = `foi distinguido como ${titleHtml}${courseHtml}, ${projectAwardIntro}, pelo desempenho técnico, raciocínio lógico, domínio prático e resolução eficiente dos desafios propostos${numberHtml}.`;
   } else if (params.type === "STUDENT_VOTED_BEST_PROJECT") {
-    bodyTextHtml = `integrou o projeto reconhecido como ${titleHtml}${courseHtml}, eleito pelo voto dos estudantes durante a feira académica${numberHtml}.`;
+    bodyTextHtml = `participou na ${workshopHtml}, sob o lema ${themeHtml}, na qualidade de ${memberRoleLabel} do projeto ${projectHtml}${courseHtml}, consagrado como ${titleHtml} por votação direta dos estudantes do evento${numberHtml}.`;
   } else if (params.type === "JURY_SELECTED_BEST_PROJECT") {
-    bodyTextHtml = `integrou o projeto reconhecido como ${titleHtml}${courseHtml}, eleito pela avaliação dos júris durante a feira académica${numberHtml}.`;
+    bodyTextHtml = `participou na ${workshopHtml}, sob o lema ${themeHtml}, na qualidade de ${memberRoleLabel} do projeto ${projectHtml}${courseHtml}, consagrado como ${titleHtml} por avaliação dos júris do evento${numberHtml}.`;
+  } else if (params.type === "PROJECT_WINNER_1ST_PLACE") {
+    bodyTextHtml = `participou na ${workshopHtml}, sob o lema ${themeHtml}, na qualidade de ${memberRoleLabel} do projeto ${projectHtml}${courseHtml}, classificado em 1.º Lugar na avaliação académica e tecnológica do evento, destacando-se pelo rigor conceptual, desempenho prático e potencial de impacto da solução desenvolvida${numberHtml}.`;
+  } else if (params.type === "PROJECT_WINNER_2ND_PLACE") {
+    bodyTextHtml = `participou na ${workshopHtml}, sob o lema ${themeHtml}, na qualidade de ${memberRoleLabel} do projeto ${projectHtml}${courseHtml}, classificado em 2.º Lugar na avaliação académica e tecnológica do evento, demonstrando excelente capacidade técnica, criatividade e relevância prática perante a comunidade académica${numberHtml}.`;
+  } else if (params.type === "PROJECT_WINNER_3RD_PLACE") {
+    bodyTextHtml = `participou na ${workshopHtml}, sob o lema ${themeHtml}, na qualidade de ${memberRoleLabel} do projeto ${projectHtml}${courseHtml}, classificado em 3.º Lugar na avaliação académica e tecnológica do evento, demonstrando mérito científico, aplicabilidade real e dedicação no desenvolvimento da proposta${numberHtml}.`;
+  } else if (params.type === "WORKSHOP_REVELATION_PROJECT") {
+    bodyTextHtml = `participou na ${workshopHtml}, sob o lema ${themeHtml}, na qualidade de ${memberRoleLabel} do projeto ${projectHtml}${courseHtml}, distinguido como Projeto Revelação, evidenciando originalidade, evolução conceptual e capacidade de despertar interesse tecnológico${numberHtml}.`;
+  } else if (params.type === "WORKSHOP_BEST_IDEA") {
+    bodyTextHtml = `participou na ${workshopHtml}, sob o lema ${themeHtml}, na qualidade de ${memberRoleLabel} do projeto ${projectHtml}${courseHtml}, distinguido como Melhor Ideia do Workshop, devido à pertinência da solução, inovação e potencial de impacto prático no contexto social e académico${numberHtml}.`;
   } else if (params.type === "FAIR_OUTSTANDING_PARTICIPATION") {
-    bodyTextHtml = `foi distinguido com ${titleHtml}${courseHtml}, pelo empenho, responsabilidade e destaque demonstrados durante a feira académica${numberHtml}.`;
+    bodyTextHtml = `foi distinguido com ${titleHtml}${courseHtml}, ${projectAwardIntro}, pelo envolvimento ativo, dedicação, espírito colaborativo e contributo significativo para a dinâmica do evento${numberHtml}.`;
+  } else if (params.type === "EVENT_PARTICIPATION") {
+    bodyTextHtml = `participou na ${workshopHtml}, sob o lema ${themeHtml}, contribuindo para a partilha de conhecimento, integração académica e valorização das competências técnicas e profissionais promovidas durante a atividade${numberHtml}.`;
   } else {
     // Default / PARTICIPATION / EVENT_PARTICIPATION
     bodyTextHtml = `participou na atividade ${titleHtml}${courseHtml}, organizada por ${escapeHtml(params.organizerName)}, nas instalações da ${escapeHtml(params.institutionName)}${numberHtml}.`;
@@ -509,6 +576,23 @@ export function buildCertificateHtml(params: {
     z-index: 1;
   }
 
+  .bottom-detail-gold {
+    position: absolute;
+    left: 22mm;
+    right: 22mm;
+    bottom: 16mm;
+    height: 19mm;
+    z-index: 2;
+    pointer-events: none;
+    opacity: 0.52;
+    background:
+      linear-gradient(135deg, transparent 0 11px, rgba(205, 164, 73, 0.32) 11px 13px, transparent 13px 26px),
+      linear-gradient(45deg, transparent 0 12px, rgba(226, 197, 117, 0.26) 12px 14px, transparent 14px 28px);
+    background-size: 26px 26px, 28px 28px;
+    mix-blend-mode: multiply;
+    mask-image: linear-gradient(90deg, transparent 0%, #000 7%, #000 93%, transparent 100%);
+  }
+
   /* Fallback border in case template background fails */
   .fallback-border {
     position: absolute;
@@ -521,7 +605,7 @@ export function buildCertificateHtml(params: {
 
   .certificate-content {
     position: relative;
-    z-index: 2;
+    z-index: 3;
     width: 100%;
     height: 100%;
     display: flex;
@@ -625,6 +709,7 @@ export function buildCertificateHtml(params: {
 <body>
   <main class="certificate">
     <div class="certificate-bg"></div>
+    <div class="bottom-detail-gold"></div>
     <div class="fallback-border"></div>
     <div class="certificate-content">
       <div class="certificate-body">
@@ -642,13 +727,21 @@ export function buildCertificateHtml(params: {
       </div>
 
       <div class="signatures-container">
-        <div class="signature-block">
+        <div class="signature-block" style="position: relative;">
           <div class="sig-title">${escapeHtml(rectorTitle)}</div>
+          ${params.signatureDecanoDataUri ? `
+          <div style="position: absolute; bottom: 8mm; left: 50%; transform: translateX(-50%); width: 45mm; height: 25mm; pointer-events: none; z-index: 10;">
+            <img src="${params.signatureDecanoDataUri}" style="width: 100%; height: 100%; object-fit: contain;" />
+          </div>` : ""}
           <div class="sig-line"></div>
           <div class="sig-name">${escapeHtml(rectorName)}</div>
         </div>
-        <div class="signature-block">
+        <div class="signature-block" style="position: relative;">
           <div class="sig-title">${escapeHtml(rightTitle)}</div>
+          ${params.signatureViceReitorDataUri ? `
+          <div style="position: absolute; bottom: 8mm; left: 50%; transform: translateX(-50%); width: 45mm; height: 25mm; pointer-events: none; z-index: 10;">
+            <img src="${params.signatureViceReitorDataUri}" style="width: 100%; height: 100%; object-fit: contain;" />
+          </div>` : ""}
           <div class="sig-line"></div>
           <div class="sig-name">${escapeHtml(rightName)}</div>
         </div>
@@ -737,14 +830,20 @@ async function sendCertificatePdf(reply: FastifyReply, env: Env, certificate: {
   const metadata = parseCertificateMetadata(certificate.metadataJson);
   const institutionName = metadataString(metadata, "institutionName") ?? env.UORCONNECT_INSTITUTION_NAME;
   const organizerName = metadataString(metadata, "organizerName") ?? env.UORCONNECT_CERTIFICATE_ORGANIZER_NAME;
-  const rectorTitle = metadataString(metadata, "rectorTitle") ?? "O Reitor";
-  const rectorName = metadataString(metadata, "rectorName") ?? "Prof. Doutor André Pedro Neto";
+  const rectorTitle = metadataString(metadata, "rectorTitle") ?? "O Decano";
+  const rectorName = metadataString(metadata, "rectorName") ?? "Prof. Doutor Diosnorides Carbonell Torreblanca";
   const authorityTitle = metadataString(metadata, "authorityTitle") ?? env.UORCONNECT_CERTIFICATE_AUTHORITY_TITLE;
   const authorityName = metadataString(metadata, "authorityName") ?? env.UORCONNECT_CERTIFICATE_AUTHORITY_NAME;
+
+  const projectName = metadataString(metadata, "submissionName") || metadataString(metadata, "projectName") || null;
+  const memberRole = metadataString(metadata, "role") || null;
+  const projectRank = metadataString(metadata, "projectRank") || null;
 
   const html = buildCertificateHtml({
     logoDataUri: await loadLogoDataUri(),
     templateBackgroundDataUri: await loadCertificateTemplateDataUri(),
+    signatureDecanoDataUri: await loadSignatureDecanoDataUri(),
+    signatureViceReitorDataUri: await loadSignatureViceReitorDataUri(),
     type: certificate.type,
     title: certificate.title,
     recipientName: certificate.recipientName,
@@ -759,6 +858,9 @@ async function sendCertificatePdf(reply: FastifyReply, env: Env, certificate: {
     authorityTitle,
     authorityName,
     validationUrl: buildValidationUrl(env, certificate.validationToken),
+    projectName,
+    memberRole,
+    projectRank,
   });
   const pdf = await renderPdfFromHtml(html, {
     landscape: true,
@@ -1204,6 +1306,29 @@ export async function certificatesRoutes(app: FastifyInstance, opts: { env: Env 
             return reply.code(400).send({ message: "Este projeto não tem estudante associado para emissão automática." });
           }
 
+          // Resolve project ranking: use manual override if provided, otherwise look up live scores
+          let resolvedProjectRank: string | null = body.projectRank?.trim() || null;
+          if (!resolvedProjectRank) {
+            try {
+              const rankingData = await exportExhibitorScoreRanking({ eventKey: "main-event" });
+              const projectEntry = rankingData.projects.find((p) => p.submissionId === submission.id);
+              if (projectEntry) {
+                const ordinals: Record<number, string> = { 1: "1.º Lugar", 2: "2.º Lugar", 3: "3.º Lugar" };
+                resolvedProjectRank = ordinals[projectEntry.rank] ?? `${projectEntry.rank}.º Lugar`;
+              }
+            } catch {
+              // ranking not available yet – proceed without it
+            }
+          }
+
+          const sharedMeta = {
+            submissionName: submission.name,
+            referenceCode: submission.referenceCode,
+            projectName: submission.name,
+            ...(resolvedProjectRank ? { projectRank: resolvedProjectRank } : {}),
+          };
+
+          // Leader recipient
           recipients.push({
             studentId: submission.studentId,
             studentNumber,
@@ -1211,7 +1336,7 @@ export async function certificatesRoutes(app: FastifyInstance, opts: { env: Env 
             course: submission.course ?? submission.student?.course ?? null,
             sourceType: "PROJECT",
             sourceId: submission.id,
-            metadata: mergeCertificateMetadata(body.metadata, { submissionName: submission.name, referenceCode: submission.referenceCode }),
+            metadata: mergeCertificateMetadata(body.metadata, { ...sharedMeta, role: "leader" }),
           });
 
           const includedNumbers = new Set<string>([studentNumber]);
@@ -1228,12 +1353,106 @@ export async function certificatesRoutes(app: FastifyInstance, opts: { env: Env 
               sourceType: "PROJECT",
               sourceId: submission.id,
               metadata: mergeCertificateMetadata(body.metadata, {
-                submissionName: submission.name,
-                referenceCode: submission.referenceCode,
+                ...sharedMeta,
                 memberName: member.name,
                 role: "member",
               }),
             });
+          }
+        }
+
+        if (body.mode === "ALL_PROJECTS") {
+          // Fetch all submissions with confirmed payment, including leader student and confirmed members
+          const submissions = await prisma.submission.findMany({
+            where: {
+              paymentStatus: {
+                in: [
+                  "CONFIRMED_BY_ADMIN",
+                  "PAYMENT_CONFIRMED",
+                  "CONFIRMED",
+                  "APPROVED",
+                ],
+              },
+            },
+            include: {
+              student: true,
+              memberConfirmations: {
+                where: { confirmedAt: { not: null } },
+                include: { student: true },
+                orderBy: [{ confirmedAt: "asc" }, { name: "asc" }],
+              },
+            },
+            orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+          });
+
+          if (!submissions.length) {
+            return reply.code(404).send({ message: "Nenhum projeto com presença confirmada encontrado." });
+          }
+
+          // Resolve ranking once for all projects
+          let rankingData: Awaited<ReturnType<typeof exportExhibitorScoreRanking>> | null = null;
+          try {
+            rankingData = await exportExhibitorScoreRanking({ eventKey: "main-event" });
+          } catch {
+            // ranking unavailable – proceed without it
+          }
+
+          const globalIncluded = new Map<number, Set<string>>(); // submissionId → added student numbers
+
+          for (const submission of submissions) {
+            const leaderNumber = submission.student?.studentNumber ?? submission.studentNumberSnapshot ?? null;
+            if (!leaderNumber) continue;
+
+            let resolvedProjectRank: string | null = body.projectRank?.trim() || null;
+            if (!resolvedProjectRank && rankingData) {
+              const projectEntry = rankingData.projects.find((p) => p.submissionId === submission.id);
+              if (projectEntry) {
+                const ordinals: Record<number, string> = { 1: "1.º Lugar", 2: "2.º Lugar", 3: "3.º Lugar" };
+                resolvedProjectRank = ordinals[projectEntry.rank] ?? `${projectEntry.rank}.º Lugar`;
+              }
+            }
+
+            const sharedMeta = {
+              submissionName: submission.name,
+              referenceCode: submission.referenceCode,
+              projectName: submission.name,
+              ...(resolvedProjectRank ? { projectRank: resolvedProjectRank } : {}),
+            };
+
+            const includedForThis = new Set<string>();
+            globalIncluded.set(submission.id, includedForThis);
+
+            // Leader
+            includedForThis.add(leaderNumber);
+            recipients.push({
+              studentId: submission.studentId,
+              studentNumber: leaderNumber,
+              name: submission.leaderName ?? submission.student?.name ?? `Estudante ${leaderNumber}`,
+              course: submission.course ?? submission.student?.course ?? null,
+              sourceType: "PROJECT",
+              sourceId: submission.id,
+              metadata: mergeCertificateMetadata(body.metadata, { ...sharedMeta, role: "leader" }),
+            });
+
+            // Confirmed members
+            for (const member of submission.memberConfirmations) {
+              const memberNumber = member.student?.studentNumber ?? member.studentNumber ?? null;
+              if (!memberNumber || includedForThis.has(memberNumber)) continue;
+              includedForThis.add(memberNumber);
+              recipients.push({
+                studentId: member.studentId,
+                studentNumber: memberNumber,
+                name: member.student?.name ?? member.studentName ?? member.name,
+                course: member.student?.course ?? member.studentCourse ?? submission.course ?? null,
+                sourceType: "PROJECT",
+                sourceId: submission.id,
+                metadata: mergeCertificateMetadata(body.metadata, { ...sharedMeta, memberName: member.name, role: "member" }),
+              });
+            }
+          }
+
+          if (!recipients.length) {
+            return reply.code(404).send({ message: "Nenhum expositor com presença confirmada para emitir certificados." });
           }
         }
 
