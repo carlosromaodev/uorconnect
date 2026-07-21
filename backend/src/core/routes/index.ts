@@ -28,6 +28,9 @@ import { trainersRoutes } from "../../modules/trainers/http/trainers.routes";
 import { odinRoutes } from "../../modules/security/http/odin.routes";
 import { moodleRoutes } from "../../modules/moodle/http/moodle.routes";
 import { createMoodleApplication } from "../../modules/moodle/application/create-moodle-application";
+import { platformContextRoutes } from "../../modules/platform-context/http/platform-context.routes";
+import { secretariaRoutes } from "../../modules/secretaria/http/secretaria.routes";
+import { createSecretariaApplication } from "../../modules/secretaria/application/create-secretaria-application";
 
 const DEFAULT_PUBLIC_APP_URL = "http://localhost:8082";
 
@@ -90,6 +93,18 @@ export function registerRoutes(app: FastifyInstance, env: Env, deps?: AppDepende
   app.register(trainersRoutes, { prefix: "/trainers", env });
   app.register(teamCredentialsRoutes, { prefix: "/team-credentials", env });
   app.register(adminTasksRoutes, { prefix: "/admin-tasks", env });
+  app.register(platformContextRoutes, { prefix: "/student", context: "student" });
+  app.register(platformContextRoutes, { prefix: "/events", context: "events" });
+  app.register(platformContextRoutes, { prefix: "/direction", context: "direction" });
+  app.register(platformContextRoutes, { prefix: "/api/v1/student", context: "student" });
+  app.register(platformContextRoutes, { prefix: "/api/v1/events", context: "events" });
+  app.register(platformContextRoutes, { prefix: "/api/v1/direction", context: "direction" });
+  app.register(secretariaRoutes, {
+    prefix: "/api/v1/integrations/secretaria",
+    env,
+    application: createSecretariaApplication(env, deps?.secretaria?.application),
+    findEligibleStudent: deps?.secretaria?.findEligibleStudent,
+  });
   app.register(moodleRoutes, {
     prefix: "/integrations/moodle",
     env,

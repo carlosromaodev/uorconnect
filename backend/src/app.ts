@@ -7,11 +7,16 @@ import { registerRoutes } from "./core/routes";
 import { type Env } from "./config/env";
 import { registerPortugueseErrorHandler } from "./shared/http-errors";
 import type { MoodleApplication, MoodleStudentIdentity } from "./modules/moodle/application/ports";
+import type { SecretariaApplication } from "./modules/secretaria/application/secretaria.application";
 
 export type AppDependencies = Record<string, unknown> & {
   moodle?: {
     application?: MoodleApplication;
     findEligibleStudent?: (studentId: number) => Promise<MoodleStudentIdentity | null>;
+  };
+  secretaria?: {
+    application?: SecretariaApplication;
+    findEligibleStudent?: (studentId: number) => Promise<{ id: number; studentNumber: string } | null>;
   };
 };
 
@@ -67,6 +72,8 @@ export function buildApp(env: Env, deps?: AppDependencies) {
           "wstoken",
           "credentialsEnvelope",
           "sessionEnvelope",
+          "credentialEnvelope",
+          "encryptedCookieJar",
         ],
         censor: "[REDACTED]",
       },

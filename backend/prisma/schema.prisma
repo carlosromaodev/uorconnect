@@ -55,6 +55,23 @@ enum MoodleSyncRunStatus {
   CANCELLED
 }
 
+enum SecretariaConnectionStatus {
+  DISCONNECTED
+  CONNECTING
+  CONNECTED
+  REFRESHING
+  REAUTH_REQUIRED
+  DEGRADED
+}
+
+enum SecretariaSyncRunStatus {
+  RUNNING
+  COMPLETED
+  PARTIAL
+  FAILED
+  CANCELLED
+}
+
 model User {
   id          Int          @id @default(autoincrement())
   email       String       @unique
@@ -135,10 +152,74 @@ model Student {
   moodleSectionSnapshots MoodleSectionSnapshot[]
   moodleMaterialSnapshots MoodleMaterialSnapshot[]
   moodleSyncRuns        MoodleSyncRun[]
+  secretariaConnection SecretariaConnection?
+  secretariaSnapshots  SecretariaSnapshot[]
+  secretariaSyncRuns   SecretariaSyncRun[]
 
   @@unique([institutionCode, studentNumber])
   @@index([studentNumber])
   @@index([institutionCode])
+}
+
+/// Control plane for the student's official Secretaria connection. Secret
+/// columns contain authenticated-encryption envelopes only.
+model SecretariaConnection {
+  id                    Int                         @id @default(autoincrement())
+  student               Student                     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  studentId             Int                         @unique
+  status                SecretariaConnectionStatus @default(DISCONNECTED)
+  upstreamStudentNumber String?
+  displayName           String?
+  credentialsEnvelope   String?
+  sessionEnvelope       String?
+  connectionGeneration  Int                         @default(0)
+  sessionVersion        Int                         @default(0)
+  activeSnapshotVersion Int?
+  lastAuthenticatedAt   DateTime?
+  lastSuccessfulSyncAt  DateTime?
+  lastUsedAt            DateTime?
+  lastErrorCode         String?
+  failedReauthCount     Int                         @default(0)
+  createdAt             DateTime                    @default(now())
+  updatedAt             DateTime                    @updatedAt
+
+  @@index([status, updatedAt])
+}
+
+/// Immutable normalized payload for one Secretaria domain and snapshot version.
+model SecretariaSnapshot {
+  id              String   @id @default(uuid())
+  student         Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  studentId       Int
+  domain          String
+  snapshotVersion Int
+  payloadJson     String
+  itemCount       Int      @default(0)
+  coverage        String   @default("live")
+  sourceHash      String
+  observedAt      DateTime
+  createdAt       DateTime @default(now())
+
+  @@unique([studentId, domain, snapshotVersion])
+  @@index([studentId, snapshotVersion, domain])
+}
+
+model SecretariaSyncRun {
+  id              String                   @id @default(uuid())
+  student         Student                  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  studentId       Int
+  status          SecretariaSyncRunStatus  @default(RUNNING)
+  snapshotVersion Int?
+  domainsJson     String
+  resultJson      String?
+  errorCode       String?
+  startedAt       DateTime                 @default(now())
+  finishedAt      DateTime?
+  createdAt       DateTime                 @default(now())
+  updatedAt       DateTime                 @updatedAt
+
+  @@index([studentId, createdAt])
+  @@index([status, updatedAt])
 }
 
 model StudentProfileExtra {
@@ -2089,4 +2170,3 @@ model MoodleSyncRun {
   @@index([status, leaseUntil, createdAt])
   @@index([studentId, connectionGeneration, snapshotVersion])
 }
-

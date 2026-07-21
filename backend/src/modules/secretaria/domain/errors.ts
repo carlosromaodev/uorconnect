@@ -1,0 +1,37 @@
+export type SecretariaErrorCode =
+  | "UOR_AUTH_REQUIRED"
+  | "SECRETARIA_INTEGRATION_DISABLED"
+  | "SECRETARIA_SESSION_REQUIRED"
+  | "SECRETARIA_AUTH_FAILED"
+  | "SECRETARIA_REAUTH_REQUIRED"
+  | "SECRETARIA_IDENTITY_MISMATCH"
+  | "SECRETARIA_STUDENT_NOT_ELIGIBLE"
+  | "SECRETARIA_UPSTREAM_CHANGED"
+  | "SECRETARIA_UNAVAILABLE"
+  | "SECRETARIA_REQUEST_INVALID"
+  | "SECRETARIA_CAPABILITY_DISABLED"
+  | "SECRETARIA_RESOURCE_NOT_FOUND"
+  | "SECRETARIA_RESPONSE_TOO_LARGE"
+  | "SECRETARIA_UNSAFE_REDIRECT"
+  | "SECRETARIA_ENVELOPE_INVALID"
+  | "SECRETARIA_KEY_UNAVAILABLE"
+  | "SECRETARIA_CONFIGURATION_INVALID";
+
+export class SecretariaError extends Error {
+  readonly name = "SecretariaError";
+
+  constructor(
+    readonly code: SecretariaErrorCode,
+    message: string,
+    readonly statusCode: number,
+    readonly retryable = false,
+    readonly actionRequired: "none" | "connect" | "reauthenticate" | "contact_support" = "none",
+    options?: { cause?: unknown },
+  ) {
+    super(message, options);
+  }
+}
+
+export function isSecretariaError(error: unknown): error is SecretariaError {
+  return error instanceof SecretariaError;
+}

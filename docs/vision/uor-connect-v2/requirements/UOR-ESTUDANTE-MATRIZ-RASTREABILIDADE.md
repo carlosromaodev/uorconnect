@@ -5,7 +5,7 @@ document_id: UOR-EST-TRACE-001
 status: approved
 owner: Engenharia UOR Estudante
 authority: informative
-version: 1.0
+version: 1.1
 last_reviewed: 2026-07-21
 approved_by: Product Owner
 approved_at: 2026-07-21
@@ -25,6 +25,7 @@ depends_on:
 - `implemented` significa código identificado sem verificação suficiente.
 - Verificação executada em 2026-07-21 no ambiente `local-test`, por `Codex`, sobre o commit de base `669aed0`.
 - Suite backend verificada: 7 ficheiros/45 testes. Suite frontend: 3 ficheiros/6 testes. Nenhuma escrita externa.
+- API Secretaria verificada adicionalmente: 2 ficheiros/5 testes, build de produção e smoke autorizado de login, identidade, sessão, exames, faltas e finanças. Nenhuma escrita upstream.
 
 ## Requisitos funcionais
 
@@ -45,16 +46,16 @@ depends_on:
 | [x] | RF-EST-013 | verified | integration_test | materials/open com ownership; routes tests aprovados |
 | [x] | RF-EST-014 | verified | integration_test | `/sync`, leases/idempotência; worker/session tests aprovados |
 | [x] | RF-EST-015 | verified | integration_test | `/sync/status`; routes tests aprovados |
-| [ ] | RF-EST-016 | partial | automated_test | login netPA cria sessão transitória em auth; integração própria ausente |
-| [ ] | RF-EST-017 | partial | automated_test | parser de perfil usado no login; endpoint Estudante ausente |
-| [ ] | RF-EST-018 | partial | automated_test | inscrições consultadas para contexto; persistência completa ausente |
-| [ ] | RF-EST-019 | partial | static | Moodle possui estados; Secretaria retorna `planned/not_synced` |
-| [ ] | RF-EST-020 | partial | static | Moodle manual possui lock; Secretaria não possui API de sync |
-| [ ] | RF-EST-021 | partial | integration_test | snapshots Moodle preservados; Secretaria sem histórico normalizado |
-| [ ] | RF-EST-022 | partial | integration_test | Moodle valida contratos; Secretaria não possui monitor de contrato |
-| [ ] | RF-EST-023 | planned | — | domínio académico oficial ausente |
-| [ ] | RF-EST-024 | planned | — | consulta oficial de notas não exposta |
-| [ ] | RF-EST-025 | planned | — | resumo académico ausente |
+| [ ] | RF-EST-016 | implemented | integration_test | Secretaria `/session`, envelopes separados e renovação; rota testada e login observado |
+| [ ] | RF-EST-017 | implemented | runtime_observed | `/me` ligado ao gateway; identity match observado, cobertura de campos varia por perfil |
+| [ ] | RF-EST-018 | implemented | integration_test | inscrições/contexto expostos; snapshots Prisma implementados, sem E2E de persistência |
+| [ ] | RF-EST-019 | implemented | integration_test | `/health`, `/session` e `/capabilities` substituem estado `planned` |
+| [ ] | RF-EST-020 | implemented | static | `/sync` e reutilização de execução ativa implementados; worker assíncrono ainda ausente |
+| [ ] | RF-EST-021 | implemented | static | snapshots versionados e fallback `stale`; cenário de falha ainda sem teste automatizado |
+| [ ] | RF-EST-022 | partial | static | JSON/HTML incompatível falha fechado por capability; alerta operacional ainda ausente |
+| [ ] | RF-EST-023 | implemented | runtime_observed | histórico, inscrições, créditos e progressão expostos por contrato interno |
+| [ ] | RF-EST-024 | implemented | integration_test | `/academic/grades` protegido e normalizado; conteúdo real pode ser vazio por conta/período |
+| [ ] | RF-EST-025 | implemented | static | `/academic/overview` ligado a totais curriculares oficiais |
 | [ ] | RF-EST-026 | planned | — | motor de média académica ausente |
 | [ ] | RF-EST-027 | planned | — | motor de média geral ausente |
 | [ ] | RF-EST-028 | planned | — | simulador ausente |
@@ -77,8 +78,8 @@ depends_on:
 | [ ] | RF-EST-045 | planned | — | deteção de conflitos ausente |
 | [ ] | RF-EST-046 | planned | — | sobrecarga ausente |
 | [ ] | RF-EST-047 | planned | — | horário oficial não exposto |
-| [ ] | RF-EST-048 | planned | — | exames oficiais não expostos |
-| [ ] | RF-EST-049 | partial | static | attendance atual pertence a Eventos/QR, não assiduidade académica |
+| [ ] | RF-EST-048 | implemented | runtime_observed | `/academic/exams`; 13 itens observados no smoke autorizado |
+| [ ] | RF-EST-049 | implemented | runtime_observed | faltas/presenças académicas isoladas do attendance de Eventos |
 | [ ] | RF-EST-050 | planned | — | reporte comunitário ausente |
 | [ ] | RF-EST-051 | planned | — | confirmação comunitária ausente |
 | [ ] | RF-EST-052 | planned | — | docentes por cadeira/período ausentes |
@@ -96,10 +97,10 @@ depends_on:
 | [ ] | RF-EST-064 | planned | — | pedido coletivo académico ausente |
 | [ ] | RF-EST-065 | partial | static | convites/equipas de Eventos não cumprem pedido académico coletivo |
 | [ ] | RF-EST-066 | planned | — | retirada de pedido coletivo ausente |
-| [ ] | RF-EST-067 | planned | — | resumo financeiro académico ausente |
-| [ ] | RF-EST-068 | planned | — | propinas/dívidas ausentes |
-| [ ] | RF-EST-069 | planned | — | referências académicas ausentes |
-| [ ] | RF-EST-070 | planned | — | pagamentos académicos ausentes |
+| [ ] | RF-EST-067 | implemented | runtime_observed | `/finance/overview`; dados oficiais observados |
+| [ ] | RF-EST-068 | implemented | runtime_observed | `/finance/charges`; normalização inicial usa contrato financeiro confirmado |
+| [ ] | RF-EST-069 | implemented | runtime_observed | referências existentes entregues em leitura; geração permanece `disabled` |
+| [ ] | RF-EST-070 | implemented | runtime_observed | `/finance/payments`; um registo observado, sem processamento de dinheiro |
 | [ ] | RF-EST-071 | planned | — | partilha de referência ausente |
 | [ ] | RF-EST-072 | planned | — | responsável financeiro ausente |
 | [ ] | RF-EST-073 | planned | — | autorização contextual genérica ausente |
@@ -121,8 +122,8 @@ depends_on:
 | --- | --- | --- | --- | --- |
 | [ ] | RNF-EST-001 | partial | static | middlewares existem; fronteiras de produto não estão impostas |
 | [ ] | RNF-EST-002 | partial | static | ownership Moodle testado; cobertura global incompleta |
-| [ ] | RNF-EST-003 | implemented | static | envelopes/redaction presentes; scanner global não executado |
-| [ ] | RNF-EST-004 | implemented | static | `crypto-envelope.ts`; teste específico não executado nesta auditoria |
+| [ ] | RNF-EST-003 | implemented | automated_test | redaction e ausência de senha na resposta testadas; scanner global não executado |
+| [ ] | RNF-EST-004 | implemented | automated_test | AES-256-GCM, AAD e adulteração testados; persistência E2E pendente |
 | [ ] | RNF-EST-005 | blocked | runtime_observed | Secretaria conhecida usa HTTP; depende da instituição/fornecedor |
 | [ ] | RNF-EST-006 | partial | static | controlos admin existem; MFA transversal não confirmado |
 | [ ] | RNF-EST-007 | implemented | static | Fastify rate limit existe; contexto/provedor incompleto |
@@ -141,7 +142,7 @@ depends_on:
 | [ ] | RNF-EST-020 | planned | — | CLS Estudante não medido |
 | [ ] | RNF-EST-021 | partial | static | várias listas paginam; garantia global ausente |
 | [x] | RNF-EST-022 | verified | integration_test | Moodle worker/session tests aprovados; Codex/local-test/669aed0/2026-07-21 |
-| [ ] | RNF-EST-023 | partial | integration_test | cache/snapshots Moodle; demais domínios ausentes |
+| [ ] | RNF-EST-023 | implemented | static | snapshots/fallback Secretaria implementados; teste de indisponibilidade pendente |
 | [x] | RNF-EST-024 | verified | integration_test | schemas/rotas Moodle aprovados; Codex/local-test/669aed0/2026-07-21 |
 | [ ] | RNF-EST-025 | partial | static | logs gerais; dimensão produto incompleta |
 | [ ] | RNF-EST-026 | partial | integration_test | falhas Moodle modeladas; alerting operacional não provado |
@@ -149,11 +150,11 @@ depends_on:
 | [ ] | RNF-EST-028 | in_analysis | static | princípio documentado; execução por produto ausente |
 | [ ] | RNF-EST-029 | partial | static | módulos existem, mas imports/Prisma atravessam fronteiras |
 | [ ] | RNF-EST-030 | partial | automated_test | 184 specs totais; regras académicas novas ausentes |
-| [ ] | RNF-EST-031 | partial | automated_test | contratos Moodle cobertos; Secretaria incompleta |
+| [ ] | RNF-EST-031 | partial | integration_test | contrato HTTP Secretaria coberto; fixtures de alteração upstream ainda incompletas |
 | [ ] | RNF-EST-032 | partial | static | `/api/v1` iniciou; Moodle ainda em `/integrations/moodle` |
 | [ ] | RNF-EST-033 | partial | static | Moodle usa UUIDs; vários contratos legados expõem IDs/números |
 | [x] | RNF-EST-034 | verified | automated_test | unique composto e identidade; Codex/local-test/669aed0/2026-07-21 |
-| [ ] | RNF-EST-035 | partial | integration_test | Moodle normaliza meta; Secretaria/status ainda incompleto |
+| [ ] | RNF-EST-035 | implemented | integration_test | Secretaria devolve source, coverage, observedAt e stale no envelope |
 | [ ] | RNF-EST-036 | partial | static | formatação existe; política transversal não verificada |
 | [ ] | RNF-EST-037 | implemented | static | runtime atual é monólito; fronteiras ainda parciais |
 | [ ] | RNF-EST-038 | partial | automated_test | testes/build existem; validação v2 ainda não é gate CI |
@@ -167,13 +168,13 @@ depends_on:
 | [x] | RN-EST-001 | verified | automated_test | schema + `student-identity.spec.ts`; Codex/local-test/669aed0/2026-07-21 |
 | [ ] | RN-EST-002 | partial | static | várias consultas/JWT ainda usam número sem instituição |
 | [ ] | RN-EST-003 | partial | automated_test | fontes de perfil existem; cobertura de todos os dados ausente |
-| [ ] | RN-EST-004 | planned | — | notas oficiais ainda não modeladas |
-| [ ] | RN-EST-005 | planned | — | finanças oficiais ainda não modeladas |
+| [ ] | RN-EST-004 | implemented | integration_test | notas vêm exclusivamente do gateway Secretaria |
+| [ ] | RN-EST-005 | implemented | runtime_observed | finanças vêm exclusivamente do gateway Secretaria |
 | [ ] | RN-EST-006 | partial | integration_test | Moodle evita falsos vazios; domínio completo ausente |
 | [x] | RN-EST-007 | verified | integration_test | publicação por snapshot Moodle testada; Codex/local-test/669aed0/2026-07-21 |
 | [x] | RN-EST-008 | verified | integration_test | sync por comando/job, não render; Codex/local-test/669aed0/2026-07-21 |
 | [x] | RN-EST-009 | verified | integration_test | ownership nas rotas Moodle testado; Codex/local-test/669aed0/2026-07-21 |
-| [ ] | RN-EST-010 | partial | static | API Secretaria não escreve; guardrail transversal ainda documental |
+| [ ] | RN-EST-010 | implemented | integration_test | mutações não verificadas retornam `SECRETARIA_CAPABILITY_DISABLED` |
 | [ ] | RN-EST-011 | planned | — | motor académico ausente |
 | [ ] | RN-EST-012 | planned | — | regra de bolsa ausente |
 | [ ] | RN-EST-013 | planned | — | simulador ausente |
@@ -194,7 +195,7 @@ depends_on:
 | [ ] | RN-EST-028 | planned | — | pedidos coletivos ausentes |
 | [ ] | RN-EST-029 | planned | — | pedidos coletivos ausentes |
 | [ ] | RN-EST-030 | planned | — | recursos ausentes |
-| [ ] | RN-EST-031 | planned | — | finanças Estudante ausentes |
+| [ ] | RN-EST-031 | implemented | integration_test | somente consulta/referência; payment intents e processamento não existem |
 | [ ] | RN-EST-032 | planned | — | partilha de referência ausente |
 | [ ] | RN-EST-033 | planned | — | responsáveis ausentes |
 | [ ] | RN-EST-034 | planned | — | autorização genérica ausente |
@@ -212,7 +213,7 @@ depends_on:
 | [ ] | RN-EST-046 | partial | static | consent records existem; finalidade por produto incompleta |
 | [ ] | RN-EST-047 | partial | static | audit log existe; ownership semântico ainda não formalizado no código |
 | [x] | RN-EST-048 | verified | integration_test | idempotência Moodle testada; Codex/local-test/669aed0/2026-07-21 |
-| [ ] | RN-EST-049 | partial | integration_test | Moodle suporta stale; cobertura Secretaria ausente |
+| [ ] | RN-EST-049 | implemented | static | snapshot Secretaria preserva origem/data e muda coverage para `stale` |
 | [ ] | RN-EST-050 | partial | automated_test | identidade isolada; agregações legadas precisam inventário |
 | [ ] | RN-EST-051 | in_analysis | static | ID interno existe; fluxo de correção não verificado |
 | [ ] | RN-EST-052 | partial | static | vários fluxos públicos ainda usam número/slug/token heterogéneo |

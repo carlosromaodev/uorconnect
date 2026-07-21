@@ -14,7 +14,7 @@ function normalizeBoolean(value: unknown) {
   return value;
 }
 
-function validMoodleKeyring(value: string, activeKeyId: string) {
+function validEncryptionKeyring(value: string, activeKeyId: string) {
   const entries = value
     .split(",")
     .map((entry) => entry.trim())
@@ -92,6 +92,13 @@ const envSchema = z.object({
   MOODLE_SYNC_WORKER_ENABLED: z.preprocess(normalizeBoolean, z.boolean()).default(true),
   MOODLE_DOWNLOAD_MAX_BYTES: z.coerce.number().int().min(1_048_576).max(524_288_000).default(104_857_600),
   MOODLE_DOWNLOAD_STREAM_TIMEOUT_MS: z.coerce.number().int().min(30_000).max(1_800_000).default(60_000),
+  SECRETARIA_INTEGRATION_ENABLED: z.preprocess(normalizeBoolean, z.boolean()).default(false),
+  SECRETARIA_BASE_URL: z.string().url().default("http://secretaria.uor.edu.ao"),
+  SECRETARIA_ALLOW_INSECURE_UPSTREAM: z.preprocess(normalizeBoolean, z.boolean()).default(false),
+  SECRETARIA_FETCH_TIMEOUT_MS: z.coerce.number().int().min(1_000).max(60_000).default(25_000),
+  SECRETARIA_MAX_RESPONSE_BYTES: z.coerce.number().int().min(65_536).max(20_971_520).default(5_242_880),
+  SECRETARIA_ACTIVE_ENCRYPTION_KEY_ID: z.string().regex(/^[A-Za-z0-9_-]{1,32}$/).default("v1"),
+  SECRETARIA_ENCRYPTION_KEYS: z.string().default(""),
   GAME_NOTIFICATIONS_START_AT: z.string().min(1).default("2026-05-18T00:00:00+01:00"),
   RATE_LIMIT_MAX: z.coerce.number().int().min(20).max(5000).default(400),
   RATE_LIMIT_WINDOW_MS: z.coerce.number().int().min(10_000).max(3_600_000).default(60_000),
@@ -99,7 +106,7 @@ const envSchema = z.object({
   VALIDATION_RATE_LIMIT_WINDOW_MS: z.coerce.number().int().min(10_000).max(3_600_000).default(60_000),
 }).superRefine((value, ctx) => {
   if (value.MOODLE_INTEGRATION_ENABLED) {
-    if (!validMoodleKeyring(value.MOODLE_ENCRYPTION_KEYS, value.MOODLE_ACTIVE_ENCRYPTION_KEY_ID)) {
+    if (!validEncryptionKeyring(value.MOODLE_ENCRYPTION_KEYS, value.MOODLE_ACTIVE_ENCRYPTION_KEY_ID)) {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: ["MOODLE_ENCRYPTION_KEYS"],
@@ -112,6 +119,32 @@ const envSchema = z.object({
         code: z.ZodIssueCode.custom,
         path: ["MOODLE_BASE_URL"],
         message: "Production Moodle integration requires HTTPS",
+      });
+    }
+  }
+
+  if (value.SECRETARIA_INTEGRATION_ENABLED) {
+    if (!validEncryptionKeyring(value.SECRETARIA_ENCRYPTION_KEYS, value.SECRETARIA_ACTIVE_ENCRYPTION_KEY_ID)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["SECRETARIA_ENCRYPTION_KEYS"],
+        message: "Secretaria integration requires a valid 32-byte keyring containing the active key",
+      });
+    }
+
+    const secretariaProtocol = new URL(value.SECRETARIA_BASE_URL).protocol;
+    if (value.NODE_ENV === "production" && secretariaProtocol !== "https:") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["SECRETARIA_BASE_URL"],
+        message: "Production Secretaria integration requires HTTPS or an approved TLS tunnel",
+      });
+    }
+    if (value.NODE_ENV !== "production" && secretariaProtocol !== "https:" && !value.SECRETARIA_ALLOW_INSECURE_UPSTREAM) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["SECRETARIA_ALLOW_INSECURE_UPSTREAM"],
+        message: "HTTP Secretaria access requires explicit non-production acknowledgement",
       });
     }
   }
