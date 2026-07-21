@@ -55,6 +55,7 @@ O SDD transversal e o SDD de produto possuem autoridade equivalente nos seus âm
 - [ADR-003 — Identidade institucional](adrs/ADR-003-IDENTIDADE-INSTITUCIONAL.md)
 - [ADR-004 — Propriedade dos dados](adrs/ADR-004-PROPRIEDADE-DOS-DADOS.md)
 - [ADR-005 — Integrações externas](adrs/ADR-005-INTEGRACOES-EXTERNAS.md)
+- [ADR-006 — Arquitetura técnica da integração Secretaria](adrs/ADR-006-ARQUITETURA-TECNICA-INTEGRACAO-SECRETARIA.md) — `proposed`
 
 ## Inventário dos documentos anteriores
 
