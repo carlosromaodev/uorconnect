@@ -109,23 +109,49 @@ Campos de aprovação podem ficar vazios em documentos `draft` ou `proposed`. Do
 
 A precedência normativa é:
 
-1. `SDD-000`: visão, fronteiras e vocabulário do ecossistema.
-2. `SDD-005`: regras transversais dentro do seu âmbito.
-3. SDD do produto: arquitetura, dados e capacidades do domínio.
-4. RF/RNF/RN: comportamento verificável e regras detalhadas.
+1. `SDD-000`: visão, vocabulário, produtos e fronteiras do ecossistema.
+2. `SDD-005`: autoridade exclusiva sobre mecanismos transversais.
+3. SDD do produto: autoridade exclusiva sobre arquitetura, capacidades e dados do produto.
+4. RF/RNF/RN: refinamento verificável dos respetivos SDDs.
 5. ADRs: decisões técnicas subordinadas aos documentos anteriores.
 6. Matriz de rastreabilidade: estado factual da implementação, sem autoridade comportamental.
 
 Regras de conflito:
 
 - o documento mais específico prevalece dentro do seu âmbito;
-- o `SDD-005` não redefine funções próprias de um produto;
+- o `SDD-005` e o SDD do produto possuem autoridade equivalente nos respetivos âmbitos;
+- quando uma capacidade de produto utiliza um mecanismo transversal, ambos os SDDs devem ser satisfeitos;
+- o `SDD-005` não redefine funções, finalidades ou dados próprios de um produto;
 - nenhum ADR pode contrariar um requisito aprovado;
 - a matriz nunca define o comportamento esperado;
-- o código não pode contrariar a documentação aprovada sem uma alteração documental explícita;
+- divergências existentes entre o código e a visão v2 devem ser registadas na matriz e no plano de transição;
+- novas alterações não podem aumentar essas divergências nem introduzir comportamento contrário à documentação aprovada sem uma alteração documental explícita;
 - conflitos encontrados devem ser registados e resolvidos, nunca interpretados implicitamente pelo agente de implementação.
 
 Exemplo: o `SDD-002` determina se um explicador pode aceder aos dados de uma cadeira; o `SDD-005` determina como sessão, autorização, OTP e auditoria desse acesso funcionam.
+
+### 5.1 Identidade institucional obrigatória
+
+O `SDD-000` e o `ADR-003` deverão formalizar a identidade institucional com as seguintes regras:
+
+- o número de estudante é o identificador académico visível;
+- a combinação `institution_id + student_number` é única;
+- o sistema utiliza um identificador interno opaco nas relações técnicas;
+- uma conta poderá possuir mais de um perfil institucional no futuro;
+- o número de estudante não é uma chave global isolada;
+- correções do número académico não podem quebrar o histórico;
+- URLs, permissões e decisões de acesso não podem depender apenas do número de estudante.
+
+Modelo conceptual:
+
+```text
+Conta
+└── Perfil institucional
+    ├── Instituição
+    ├── Número de estudante
+    ├── Curso
+    └── Estado académico
+```
 
 ## 6. Fronteiras dos produtos
 
@@ -183,7 +209,7 @@ Pertencem ao ecossistema UOR Connect:
 - autenticação e sessões;
 - autorização;
 - instituições e multi-tenancy;
-- consentimento transversal;
+- mecanismo técnico de consentimento;
 - notificações;
 - auditoria;
 - ficheiros;
@@ -192,6 +218,8 @@ Pertencem ao ecossistema UOR Connect:
 - design system e convenções técnicas.
 
 Uma sessão ou identidade partilhada não concede automaticamente acesso aos três produtos.
+
+A capacidade transversal gere o ciclo técnico do consentimento: registo, OTP, expiração, revogação, auditoria, evidência e notificação. O produto de origem define a finalidade, os dados, os atores, a duração, o recurso, a base funcional e as consequências da revogação.
 
 ## 7. Propriedade dos dados
 
@@ -207,8 +235,14 @@ O `SDD-000` deverá conter uma matriz normativa. A base aprovada é:
 | Avaliações de docentes | UOR Estudante | Direção por dados agregados |
 | Inscrições em eventos | UOR Eventos | Titular; Direção por indicador autorizado |
 | Projetos, votos e passaportes | UOR Eventos | Participantes autorizados; Direção por indicador |
-| Configuração institucional | UOR Direção | Produtos através de contratos explícitos |
-| Auditoria | UOR Connect | Produto de origem e segurança autorizada |
+| Configuração académica institucional | UOR Direção | Produtos através de contratos explícitos |
+| Configuração de eventos | UOR Eventos | Participantes e operadores autorizados |
+| Configuração própria de produto | Produto respetivo | Consumidores definidos pelo produto |
+| Configuração transversal de identidade e segurança | UOR Connect | Produtos através de contratos explícitos |
+| Infraestrutura e armazenamento da auditoria | UOR Connect | Produtos e segurança autorizados |
+| Significado funcional do evento auditado | Produto de origem | Produto de origem e segurança autorizada |
+| Política de consulta da auditoria | UOR Connect + produto de origem | Atores com finalidade e permissão explícitas |
+| Investigação de segurança | Equipa autorizada | Evidência estritamente necessária à investigação |
 
 `Partilhado` nunca significa que qualquer módulo pode ler ou alterar qualquer dado.
 
@@ -312,9 +346,24 @@ Cada linha ou bloco da matriz deverá conter:
 - estado controlado;
 - evidência no código;
 - teste associado;
-- versão ou commit verificado;
-- data da última verificação;
+- nível da evidência;
+- responsável pela verificação (`verified_by`);
+- ambiente da verificação (`verification_environment`);
+- versão ou commit verificado (`verified_commit`);
+- data e hora da última verificação (`last_verified_at`);
 - observações e lacunas.
+
+Níveis controlados de evidência:
+
+```text
+static
+automated_test
+integration_test
+runtime_observed
+production_observed
+```
+
+Toda conclusão da auditoria deverá indicar o nível de evidência. A existência de código inspecionado corresponde no máximo a `static`; não prova, por si só, comportamento operacional.
 
 Comentários, mocks, páginas estáticas, contratos sem runtime ou endpoints que apenas declaram estado não contam como funcionalidade concluída.
 
@@ -377,6 +426,14 @@ Antes de qualquer refatoração, a auditoria deverá:
 - preencher a matriz de rastreabilidade conservadoramente;
 - não considerar comentários, mocks ou endpoints de estado como implementação concluída;
 - não refatorar antes da conclusão do diagnóstico inicial.
+
+Regras de segurança da auditoria:
+
+- começa em modo de leitura;
+- não altera dados de produção;
+- não executa operações de escrita contra Secretaria ou Moodle;
+- testes com efeitos colaterais só podem ocorrer num ambiente explicitamente autorizado;
+- toda conclusão indica o nível da evidência utilizada.
 
 O diagnóstico deverá separar:
 
@@ -459,6 +516,15 @@ A revisão deve incluir:
 9. Atualização das páginas vivas e índices.
 10. Relatório de validação documental.
 
-## 20. Decisão final
+## 20. Ciclo de vida deste documento
+
+Este documento regula a criação inicial da visão documental v2. Depois da aprovação do `README.md`, `SDD-000`, `SDD-005`, SDDs de produto e catálogo de requisitos, deverá:
+
+- passar para `status: superseded`;
+- apontar em `superseded_by` para o `README.md` da visão v2 e para o `SDD-000`;
+- permanecer preservado como registo histórico da reorganização;
+- deixar de competir com os documentos v2 como autoridade normativa operacional.
+
+## 21. Decisão final
 
 A UOR Connect será governada como ecossistema. UOR Estudante, UOR Eventos e UOR Direção serão produtos com responsabilidades e propriedade dos dados distintas. A implementação poderá permanecer fisicamente próxima durante a transição, mas a documentação e os contratos passam a impedir que proximidade técnica seja confundida com ausência de fronteiras.
