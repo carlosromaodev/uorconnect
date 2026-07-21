@@ -5,7 +5,7 @@ document_id: UOR-EST-REQ-001
 status: approved
 owner: Produto UOR Estudante
 authority: normative
-version: 1.0
+version: 1.1
 last_reviewed: 2026-07-21
 approved_by: Product Owner
 approved_at: 2026-07-21
@@ -150,6 +150,22 @@ O estado de implementação não vive neste catálogo; consultar a [matriz de ra
 | RF-EST-083 | Denunciar e moderar anúncio. | Must | F6 | Denúncia possui estado, decisão e auditoria. |
 | RF-EST-084 | Administrar configurações exclusivas da UOR Estudante. | Must | F1 | Permissões não concedem acesso automático a Eventos/Direção. |
 
+### Integração Secretaria — escritas controladas
+
+| ID | Requisito | Prioridade | Fase | Critério de aceitação |
+| --- | --- | --- | --- | --- |
+| RF-EST-085 | Atualizar contactos explicitamente editáveis na Secretaria. | Should | F7 | Só campos confirmados pelo contrato são submetidos e relidos. |
+| RF-EST-086 | Atualizar ou remover fotografia quando suportado. | Should | F7 | Formato/tamanho são validados e a versão oficial muda. |
+| RF-EST-088 | Atualizar consentimentos editáveis do portal. | Must | F7 | Finalidade, versão, decisão e pós-condição oficial ficam registadas. |
+| RF-EST-089 | Criar ou cancelar inscrição em época quando permitido. | Must | F7 | Elegibilidade é validada e a inscrição oficial é relida. |
+| RF-EST-090 | Preparar e submeter revisão oficial de nota sem anexos. | Should | F7 | Rascunho e submissão são distintos; pedido oficial recebe estado verificável. |
+| RF-EST-091 | Gerir candidatura enquanto oficialmente editável. | Should | F7 | Transições fora do estado permitido são rejeitadas. |
+| RF-EST-092 | Gerir formações, estágios, atividades e competências aprovadas. | Could | F7 | Cada capacidade possui contrato, flag e pós-condição próprios. |
+| RF-EST-093 | Gerar ou extrair referência oficial de pagamento. | Must | F7 | Comando idempotente exige confirmação e devolve somente referência oficial; não processa pagamento. |
+| RF-EST-095 | Consultar recibos permitidos. | Should | F2 | Conteúdo é entregue por proxy seguro quando o contrato upstream suportar. |
+
+`RF-EST-087` e `RF-EST-094` permanecem reservados e não são reutilizados: troca de senha, payment intent, checkout e processamento de pagamento não pertencem à v1.
+
 ## Requisitos não funcionais
 
 | ID | Requisito | Prioridade | Critério de aceitação |
@@ -194,6 +210,10 @@ O estado de implementação não vive neste catálogo; consultar a [matriz de ra
 | RNF-EST-038 | CI bloqueia regressões críticas. | Must | Typecheck, testes focados e validação documental são gates. |
 | RNF-EST-039 | RPO/RTO definidos antes do piloto. | Must | Valores aprovados e ensaio documentado. |
 | RNF-EST-040 | Resposta segura a incidentes. | Must | Runbook inclui contenção, rotação, comunicação e evidência. |
+| RNF-EST-041 | Escrita externa como comando idempotente, auditável e reconciliável. | Must | Payload igual devolve o mesmo comando; resultado ambíguo não é reenviado automaticamente. |
+| RNF-EST-042 | Autenticação reforçada proporcional ao risco. | Must | Confirmação recente e OTP são exigidos quando a classificação da operação determinar. |
+| RNF-EST-043 | Isolamento por feature flag, contrato e circuit breaker. | Must | Drift ou falha de uma escrita não ativa nem derruba capacidades independentes. |
+| RNF-EST-044 | Credencial reversível protegida por gestão externa de chaves. | Must | Envelope autenticado usa finalidade/AAD e permite rotação sem expor plaintext. |
 
 ## Regras de negócio
 
@@ -254,3 +274,8 @@ O estado de implementação não vive neste catálogo; consultar a [matriz de ra
 | RN-EST-053 | Configuração académica tem versão e vigência. | Must | Cálculo histórico usa regra do período correto. |
 | RN-EST-054 | Toda conclusão factual da auditoria indica nível de evidência. | Must | Matriz usa vocabulário controlado. |
 | RN-EST-055 | `[x]` significa exclusivamente estado `verified`. | Must | Validador rejeita combinação diferente. |
+| RN-EST-056 | Resposta upstream não prova efeito sem pós-condição. | Must | Comando só termina em sucesso após resultado oficial inequívoco ou reconciliação. |
+| RN-EST-057 | Falha ambígua proíbe repetição automática. | Must | Estado fica `UNKNOWN`/`VERIFYING`; apenas leitura reconciliadora é permitida. |
+| RN-EST-058 | Pagamento só aparece como pago após confirmação oficial. | Must | Referência gerada ou cobrança ausente não implica pagamento. |
+| RN-EST-059 | UOR Estudante não inicia, cancela ou processa pagamentos. | Must | API limita-se a referências, cobranças, estados e recibos oficiais. |
+| RN-EST-060 | Terminar sessão, desligar integração e eliminar dados são intenções distintas. | Must | Cada ação possui rota, confirmação e efeito próprios. |

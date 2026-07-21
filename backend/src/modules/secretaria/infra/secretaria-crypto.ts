@@ -1,4 +1,4 @@
-import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
+import { createCipheriv, createDecipheriv, createHmac, randomBytes } from "node:crypto";
 import { SecretariaError } from "../domain/errors";
 
 const VERSION = "v1";
@@ -7,7 +7,7 @@ const IV_BYTES = 12;
 const TAG_BYTES = 16;
 const KEY_ID = /^[A-Za-z0-9_-]{1,32}$/;
 
-export type SecretariaEnvelopePurpose = "credentials" | "session";
+export type SecretariaEnvelopePurpose = "credentials" | "session" | "command" | "command_result";
 export type SecretariaEnvelopeContext = {
   studentId: number;
   institutionCode: string;
@@ -119,6 +119,20 @@ export class SecretariaCryptoKeyring {
       tag.fill(0);
       ciphertext.fill(0);
       associated.fill(0);
+    }
+  }
+
+  opaqueReferenceCandidates(value: unknown): string[] {
+    const payload = Buffer.from(JSON.stringify(["uor-estudante", "secretaria", VERSION, "payment-charge-ref", value]));
+    try {
+      const ordered = [this.activeKeyId, ...[...this.#keys.keys()].filter((keyId) => keyId !== this.activeKeyId)];
+      return ordered.map((keyId) => {
+        const key = this.#keys.get(keyId);
+        if (!key) throw configurationError();
+        return `scr_${createHmac("sha256", key).update(payload).digest("base64url")}`;
+      });
+    } finally {
+      payload.fill(0);
     }
   }
 

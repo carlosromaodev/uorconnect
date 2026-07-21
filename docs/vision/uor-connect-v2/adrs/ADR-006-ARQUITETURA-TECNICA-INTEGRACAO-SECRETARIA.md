@@ -2,15 +2,15 @@
 
 ```yaml
 document_id: ADR-006
-status: proposed
+status: accepted
 owner: Arquitetura UOR Estudante
 authority: informative_until_approved
-version: 0.1
+version: 1.0
 last_reviewed: 2026-07-21
-approved_by:
-approved_at:
+approved_by: Product Owner
+approved_at: 2026-07-21
 review_cycle: por alteração de arquitetura/provedor
-next_review: antes do plano de implementação da Fase A
+next_review: piloto da escrita Secretaria sobre TLS
 supersedes:
 superseded_by:
 depends_on:
@@ -25,11 +25,11 @@ depends_on:
 
 ## Contexto
 
-O repositório atual usa backend Fastify, schemas Zod, Prisma e persistência SQLite/PostgreSQL conforme o ambiente. A integração Moodle já estabeleceu padrões para gateway web, cookie jar, envelopes cifrados, sessão, snapshots, leases, workers, schemas HTTP e testes. A integração legada da Secretaria ainda está acoplada ao módulo de autenticação e o novo prefixo HTTP contém apenas um status planeado.
+O repositório atual usa backend Fastify, schemas Zod, Prisma e persistência SQLite/PostgreSQL conforme o ambiente. A integração Moodle estabeleceu padrões para gateway web, envelopes cifrados, sessão, snapshots, leases, workers, schemas HTTP e testes. A nova integração Secretaria está isolada em módulo próprio, com fundação de sessão/leitura/snapshot e primeiro comando financeiro implementado; a migração do acoplamento legado de autenticação continua separada.
 
 A especificação da API Secretaria → UOR Estudante define comportamentos obrigatórios, mas não deve eternizar tecnologias ou caminhos físicos. Este ADR registra as escolhas técnicas propostas após a auditoria inicial do repositório.
 
-## Decisão proposta
+## Decisão
 
 ### 1. Implantação e fronteira
 
@@ -55,8 +55,9 @@ A especificação da API Secretaria → UOR Estudante define comportamentos obri
 ### 4. Cifragem e chaves
 
 - Generalizar a primitiva AES-256-GCM validada no módulo Moodle para uma biblioteca interna de envelopes, sem tornar o módulo Secretaria dependente do Moodle.
-- Usar envelopes distintos para credencial, sessão e payloads/locators sensíveis.
+- Usar envelopes distintos para credencial, sessão, payloads/locators sensíveis e resultados financeiros.
 - Incluir AAD com versão, finalidade, instituição, estudante e geração.
+- Derivar `chargeRef` por HMAC com domínio próprio e aceitar candidatos de chaves ainda vigentes durante rotação; IDs upstream nunca entram no contrato público.
 - Configurar keyring por segredo externo à base de dados, com rotação na leitura, revogação e inventário por `keyId`.
 - Nunca armazenar a senha descifrada no cache de aplicação.
 

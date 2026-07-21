@@ -1,12 +1,12 @@
 ---
 document_id: SPEC-EST-SECRETARIA-001
 title: API Secretaria → UOR Estudante
-version: 1.1.0
-status: draft
+version: 1.2.0
+status: approved
 authority: normative_product_contract
 owner: UOR Estudante
-approved_by:
-approved_at:
+approved_by: Product Owner
+approved_at: 2026-07-21
 review_cycle: quarterly
 next_review: 2026-10-21
 created_at: 2026-07-21
@@ -20,6 +20,8 @@ updated_at: 2026-07-21
 O backend da UOR Estudante disponibilizará uma API interna e estável para consumo pelas suas interfaces e pelos módulos explicitamente autorizados. A API integrará as capacidades da Secretaria Académica necessárias às funcionalidades aprovadas do produto, sem transformar automaticamente cada página do netPA numa funcionalidade UOR.
 
 O adaptador da Secretaria esconderá URLs, stages, cookies, campos de formulário, HTML e identificadores internos. Os consumidores receberão contratos normalizados, IDs opacos, proveniência, cobertura, frescura e estados verificáveis.
+
+Itens financeiros usam `chargeRef` opaco autenticado por HMAC e rotacionável; o contrato público nunca transporta os três identificadores exigidos pelo wizard netPA.
 
 A primeira entrega aprova a fundação, a persistência controlada da credencial, a sessão, o catálogo de capacidades, a leitura normalizada, os snapshots e a sincronização. Um motor genérico de comandos também faz parte da fundação, mas cada mutação permanecerá desativada até satisfazer autorização, contrato upstream, feature flag, testes e pós-condição próprios.
 
@@ -372,7 +374,7 @@ Não existe rota de troca de senha na primeira versão.
 | GET | `/finance/overview` | approved_read | Resumo oficial. |
 | GET | `/finance/charges` | approved_read | Cobranças, vencimentos, moeda e estado. |
 | GET | `/finance/payment-references` | approved_read | Referências existentes. |
-| POST | `/finance/payment-references` | approved_write_pending_contract | Gerar/extrair referência oficial. |
+| POST | `/finance/payment-references` | approved_write_feature_flagged | Preparar comando para gerar/extrair referência oficial; exige `Idempotency-Key`. |
 | POST | `/finance/payment-references/:id/share-requests` | approved_write_pending_contract | Partilhar somente referência autorizada. |
 | GET | `/finance/payments` | approved_read | Histórico/estado oficial após pagamento externo. |
 | GET | `/finance/receipts` | approved_read | Recibos disponíveis quando suportados. |
@@ -389,7 +391,11 @@ A referência normalizada inclui entidade, referência, montante, moeda, validad
 | GET | `/commands/:commandId` | Estado durável de escrita/eliminação. |
 | POST | `/commands/:commandId/confirm` | Confirmar comando preparado. |
 | POST | `/commands/:commandId/cancel` | Cancelar antes da submissão quando permitido. |
+| POST | `/commands/:commandId/reconcile` | Reconciliar resultado ambíguo somente por leitura. |
+| GET | `/commands/:commandId/attempts` | Tentativas e classificações sem payload sensível. |
 | GET | `/commands/:commandId/events` | Linha temporal segura. |
+
+Na implementação atual, `attempts` fornece a linha temporal técnica mínima. O endpoint agregado `events` permanece planeado.
 
 ## 11. Motor genérico de comandos
 
@@ -441,7 +447,7 @@ Chave repetida com payload diferente retorna conflito. Chave e payload iguais de
 - `SecretariaEntityRef`: chave externa privada para UUID público estável;
 - snapshots imutáveis por domínio e versão;
 - `SecretariaSyncRun`: execução, lease, cobertura e publicação;
-- `SecretariaCommand`: estado, idempotência, risco, geração, payload protegido e resultado seguro;
+- `SecretariaCommand`: estado, idempotência, risco, geração, payload e resultado financeiro em envelopes separados;
 - `SecretariaCommandAttempt`: tentativa, lease, hashes, classificação e reconciliação;
 - `SecretariaCommandEvidence`: evidência minimizada, sem resposta pessoal bruta;
 - `SecretariaDataDeletionRequest`: escopo, confirmação, retenções legais e resultado.
@@ -616,6 +622,22 @@ Antes da implementação funcional de cada escrita, os RF/RNF/RN devem incorpora
 - RN-EST-060: terminar sessão, desligar integração e eliminar dados são intenções distintas.
 
 RF-EST-087 e RF-EST-094 ficam reservados/retirados no histórico desta especificação e não são reutilizados: não se propõe requisito de troca de senha nem de payment intent.
+
+## 21.1 Contrato financeiro verificado em 2026-07-21
+
+O fluxo autorizado do netPA foi observado com navegador real e uma conta controlada, sem guardar HTML, credenciais ou valores financeiros. O contrato vigente é:
+
+1. carregar `stepseleccionaritemsconta` e consultar `pagamentos`;
+2. selecionar item por `addItem` com três identificadores internos, mantidos exclusivamente no gateway;
+3. avançar o wizard para `stepseleccionartipopagamento`;
+4. selecionar somente `REFERENCIAS_MB`;
+5. validar o resumo em `stepconfirmarpagamento/pagamentos`;
+6. exigir confirmação explícita do comando UOR;
+7. submeter `stepconfirmarpagamento` uma única vez;
+8. aceitar sucesso apenas quando a resposta oficial chega a `stepresultadopagamento` e indica sucesso;
+9. em resposta ambígua, manter `UNKNOWN` e reconciliar por consulta sem repetir a submissão.
+
+A prova controlada chegou ao estado oficial de sucesso e gerou somente referência. Não abriu checkout, não recebeu cartão e não processou dinheiro. A escrita permanece desligada por padrão através de `SECRETARIA_WRITE_PAYMENT_REFERENCE_ENABLED=false`; produção exige upstream HTTPS ou túnel TLS aprovado.
 
 ## 22. Migração e sequência de entrega
 

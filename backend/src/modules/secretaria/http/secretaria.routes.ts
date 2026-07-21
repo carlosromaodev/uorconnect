@@ -34,6 +34,12 @@ const syncBodySchema = z.object({ domains: z.array(z.string().min(1).max(80)).ma
 const dataDeletionBodySchema = z.object({ confirmation: z.literal("DELETE_IMPORTED_SECRETARIA_DATA") });
 const runParamsSchema = z.object({ runId: z.string().uuid() });
 const academicParamsSchema = z.object({ resource: z.enum(["overview", "history", "enrollments", "grades", "credits", "progression", "classes", "exams", "absences", "attendance"]) });
+const paymentReferenceBodySchema = z.object({
+  chargeRefs: z.array(z.string().regex(/^scr_[A-Za-z0-9_-]{43}$/)).min(1).max(20),
+});
+const idempotencyHeadersSchema = z.object({ "idempotency-key": z.string().trim().min(8).max(128) });
+const commandParamsSchema = z.object({ commandId: z.string().uuid() });
+const commandConfirmationBodySchema = z.object({ confirmation: z.literal("GENERATE_PAYMENT_REFERENCE") });
 
 export type SecretariaRoutesOptions = {
   env: Env;
@@ -223,7 +229,59 @@ export async function secretariaRoutes(app: FastifyInstance, opts: SecretariaRou
       });
     }
 
-    protectedApp.post("/finance/payment-references", { schema: { tags: ["Secretaria - Finanças"], response: { ...errorResponses } } }, async (request, reply) => sendError(request, reply, new SecretariaError("SECRETARIA_CAPABILITY_DISABLED", "A geração de referência aguarda validação do contrato upstream.", 409)));
+    protectedApp.post("/finance/payment-references", {
+      config: {
+        rateLimit: {
+          max: 10,
+          timeWindow: 15 * 60_000,
+          keyGenerator: (request: FastifyRequest) => `${request.ip}:${request.student?.id ?? "anonymous"}:payment-reference`,
+        },
+      },
+      schema: {
+        tags: ["Secretaria - Finanças"],
+        headers: idempotencyHeadersSchema,
+        body: paymentReferenceBodySchema,
+        response: { 202: envelopeSchema, ...errorResponses },
+      },
+    }, async (request, reply) => {
+      try {
+        const body = request.body as z.infer<typeof paymentReferenceBodySchema>;
+        const idempotencyKey = String(request.headers["idempotency-key"]);
+        const command = await opts.application.preparePaymentReference(request.student!, body.chargeRefs, idempotencyKey);
+        return reply.status(202).send({ data: command, meta: meta(request, { coverage: "live" }) });
+      } catch (error) { return sendError(request, reply, error); }
+    });
+
+    protectedApp.get("/commands/:commandId", {
+      schema: { tags: ["Secretaria - Comandos"], params: commandParamsSchema, response: { 200: envelopeSchema, ...errorResponses } },
+    }, async (request, reply) => {
+      try { return { data: await opts.application.getCommand(request.student!, (request.params as z.infer<typeof commandParamsSchema>).commandId), meta: meta(request) }; }
+      catch (error) { return sendError(request, reply, error); }
+    });
+    protectedApp.get("/commands/:commandId/attempts", {
+      schema: { tags: ["Secretaria - Comandos"], params: commandParamsSchema, response: { 200: envelopeSchema, ...errorResponses } },
+    }, async (request, reply) => {
+      try { return { data: await opts.application.getCommandAttempts(request.student!, (request.params as z.infer<typeof commandParamsSchema>).commandId), meta: meta(request) }; }
+      catch (error) { return sendError(request, reply, error); }
+    });
+    protectedApp.post("/commands/:commandId/confirm", {
+      schema: { tags: ["Secretaria - Comandos"], params: commandParamsSchema, body: commandConfirmationBodySchema, response: { 200: envelopeSchema, ...errorResponses } },
+    }, async (request, reply) => {
+      try { return { data: await opts.application.confirmCommand(request.student!, (request.params as z.infer<typeof commandParamsSchema>).commandId), meta: meta(request, { coverage: "live" }) }; }
+      catch (error) { return sendError(request, reply, error); }
+    });
+    protectedApp.post("/commands/:commandId/reconcile", {
+      schema: { tags: ["Secretaria - Comandos"], params: commandParamsSchema, response: { 200: envelopeSchema, ...errorResponses } },
+    }, async (request, reply) => {
+      try { return { data: await opts.application.reconcileCommand(request.student!, (request.params as z.infer<typeof commandParamsSchema>).commandId), meta: meta(request, { coverage: "live" }) }; }
+      catch (error) { return sendError(request, reply, error); }
+    });
+    protectedApp.post("/commands/:commandId/cancel", {
+      schema: { tags: ["Secretaria - Comandos"], params: commandParamsSchema, response: { 200: envelopeSchema, ...errorResponses } },
+    }, async (request, reply) => {
+      try { return { data: await opts.application.cancelCommand(request.student!, (request.params as z.infer<typeof commandParamsSchema>).commandId), meta: meta(request) }; }
+      catch (error) { return sendError(request, reply, error); }
+    });
 
     protectedApp.post("/sync", { schema: { tags: ["Secretaria - Sincronização"], body: syncBodySchema, response: { 200: envelopeSchema, ...errorResponses } } }, async (request, reply) => {
       try { return { data: await opts.application.startSync(request.student!, (request.body as z.infer<typeof syncBodySchema>).domains), meta: meta(request) }; }

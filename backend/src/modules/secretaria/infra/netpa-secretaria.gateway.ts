@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import type { SecretariaAuthenticatedSession, SecretariaCredentials, SecretariaGateway } from "../domain/gateway";
 import { SecretariaError } from "../domain/errors";
-import type { SecretariaDataset, SecretariaProfile, SecretariaSession } from "../domain/models";
+import type { SecretariaDataset, SecretariaPaymentReferenceResult, SecretariaPaymentSelection, SecretariaProfile, SecretariaSession } from "../domain/models";
 
 type DatasetContract = { stage: string; path: string; description: string; params?: Record<string, string> };
 
@@ -52,6 +52,12 @@ function decodeHtml(value: string): string {
     .trim();
 }
 
+function visibleText(html: string) {
+  return decodeHtml(html
+    .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, " ")
+    .replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, " "));
+}
+
 function inputValue(html: string, id: string): string | null {
   const escaped = id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const input = html.match(new RegExp(`<input[^>]+id=["']${escaped}["'][^>]*>`, "i"))?.[0];
@@ -63,6 +69,13 @@ function textById(html: string, id: string): string | null {
   const escaped = id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   const match = html.match(new RegExp(`<[^>]+id=["']${escaped}["'][^>]*>([\\s\\S]*?)<\/[^>]+>`, "i"));
   return match ? decodeHtml(match[1]) || null : null;
+}
+
+function inputValueByName(html: string, name: string): string | null {
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const input = html.match(new RegExp(`<input[^>]+name=["']${escaped}["'][^>]*>`, "i"))?.[0];
+  if (!input) return null;
+  return decodeHtml(input.match(/\bvalue=["']([^"']*)["']/i)?.[1] ?? "");
 }
 
 function profileFromHtml(html: string): SecretariaProfile {
@@ -130,22 +143,61 @@ function normalizeValue(value: unknown): unknown {
   return result;
 }
 
-function unwrapPayload(payload: unknown): { items: Array<Record<string, unknown>>; total: number } {
+function rawPayload(payload: unknown): { items: Array<Record<string, unknown>>; total: number } {
   const object = payload && typeof payload === "object" ? payload as Record<string, unknown> : {};
   const rawItems = Array.isArray(payload)
     ? payload
     : ["result", "data", "rows", "items"].map((key) => object[key]).find(Array.isArray) ?? [];
-  const items = rawItems
+  const items = rawItems.filter((value): value is Record<string, unknown> => Boolean(value && typeof value === "object" && !Array.isArray(value)));
+  return { items, total: typeof object.total === "number" ? object.total : items.length };
+}
+
+function unwrapPayload(payload: unknown): { items: Array<Record<string, unknown>>; total: number } {
+  const raw = rawPayload(payload);
+  const items = raw.items
     .map((value) => normalizeValue(value))
     .filter((value): value is Record<string, unknown> => Boolean(value && typeof value === "object" && !Array.isArray(value)));
-  const total = typeof object.total === "number" ? object.total : items.length;
-  return { items, total };
+  return { items, total: raw.total };
+}
+
+function paymentSelection(record: Record<string, unknown>): SecretariaPaymentSelection | null {
+  const markup = String(record.seleccaoPagamentoCalc ?? record.SELECCAO_PAGAMENTO_CALC ?? "");
+  const match = markup.match(/toogleItem\s*\(\s*this\s*,\s*(['"])(.*?)\1\s*,\s*(['"])(.*?)\3\s*,\s*(['"])(.*?)\5\s*\)/i);
+  if (!match) return null;
+  const values = [match[2], match[4], match[6]].map((value) => decodeHtml(value).trim());
+  if (values.some((value) => !value || value.length > 256 || /[\u0000-\u001f\u007f]/.test(value))) return null;
+  return { id: values[0], idFinanceira: values[1], inputId: values[2] };
+}
+
+type PaymentReferenceCandidates = (selection: SecretariaPaymentSelection) => string[];
+
+function normalizePaymentRecord(record: Record<string, unknown>, paymentReferenceCandidates: PaymentReferenceCandidates): Record<string, unknown> {
+  const normalized = normalizeValue(record) as Record<string, unknown>;
+  delete normalized.id;
+  delete normalized.idNumberConta;
+  delete normalized.idItemConta;
+  delete normalized.idFinanceira;
+  delete normalized.inputId;
+  delete normalized.seleccaoPagamentoCalc;
+  for (const [key, value] of Object.entries(normalized)) {
+    if (typeof value === "string") normalized[key] = decodeHtml(value);
+  }
+  const selection = paymentSelection(record);
+  if (selection) normalized.chargeRef = paymentReferenceCandidates(selection)[0];
+  return normalized;
+}
+
+function normalizePaymentPayload(payload: unknown, paymentReferenceCandidates: PaymentReferenceCandidates) {
+  const raw = rawPayload(payload);
+  const items = raw.items
+    .map((value) => normalizePaymentRecord(value, paymentReferenceCandidates));
+  return { items, total: raw.total };
 }
 
 export class NetpaSecretariaGateway implements SecretariaGateway {
   readonly #baseUrl: URL;
 
-  constructor(private readonly options: { baseUrl: string; timeoutMs: number; maxResponseBytes: number }) {
+  constructor(private readonly options: { baseUrl: string; timeoutMs: number; maxResponseBytes: number; paymentReferenceCandidates: PaymentReferenceCandidates }) {
     this.#baseUrl = new URL(options.baseUrl);
   }
 
@@ -180,6 +232,71 @@ export class NetpaSecretariaGateway implements SecretariaGateway {
       ...(json ? { "X-Requested-With": "XMLHttpRequest" } : {}),
       ...(session ? { Cookie: cookieHeader(session.cookies) } : {}),
     };
+  }
+
+  async #jsonRequest(session: SecretariaSession, path: string, referer: string, init: RequestInit = {}) {
+    const result = await this.#request(path, {
+      ...init,
+      headers: { ...this.#headers(session, true), Referer: new URL(referer, this.#baseUrl).toString(), ...(init.headers ?? {}) },
+    });
+    mergeSetCookies(session.cookies, result.response.headers);
+    if (authFailure(result.text)) throw new SecretariaError("SECRETARIA_REAUTH_REQUIRED", "A sessão da Secretaria expirou.", 409, true, "reauthenticate");
+    if (result.response.status >= 400) throw new SecretariaError("SECRETARIA_UNAVAILABLE", "A Secretaria rejeitou uma etapa do pedido.", 503, true);
+    try {
+      return JSON.parse(result.text) as unknown;
+    } catch (error) {
+      throw new SecretariaError("SECRETARIA_UPSTREAM_CHANGED", "A Secretaria devolveu uma resposta incompatível.", 502, false, "contact_support", { cause: error });
+    }
+  }
+
+  async #wizardPost(session: SecretariaSession, stage: string, fields: Record<string, string>) {
+    const path = `/netpa/page?stage=${encodeURIComponent(stage)}`;
+    let result = await this.#request(path, {
+      method: "POST",
+      headers: { ...this.#headers(session), "Content-Type": "application/x-www-form-urlencoded", Referer: new URL(path, this.#baseUrl).toString() },
+      body: new URLSearchParams(fields).toString(),
+    });
+    mergeSetCookies(session.cookies, result.response.headers);
+    const location = result.response.headers.get("location");
+    if (location && result.response.status >= 300 && result.response.status < 400) {
+      const target = new URL(location, this.#baseUrl);
+      if (target.origin !== this.#baseUrl.origin) throw new SecretariaError("SECRETARIA_UNSAFE_REDIRECT", "A Secretaria devolveu um destino não permitido.", 502);
+      result = await this.#request(`${target.pathname}${target.search}`, { headers: this.#headers(session) });
+      mergeSetCookies(session.cookies, result.response.headers);
+    }
+    if (authFailure(result.text)) throw new SecretariaError("SECRETARIA_REAUTH_REQUIRED", "A sessão da Secretaria expirou.", 409, true, "reauthenticate");
+    if (result.response.status >= 400) throw new SecretariaError("SECRETARIA_UNAVAILABLE", "A Secretaria rejeitou uma etapa do pedido.", 503, true);
+    return result.text;
+  }
+
+  async #paymentPayload(session: SecretariaSession, stage: string, endpoint: string) {
+    const stagePath = `/netpa/page?stage=${encodeURIComponent(stage)}&submitaction=null`;
+    const page = await this.#request(stagePath, { headers: this.#headers(session) });
+    mergeSetCookies(session.cookies, page.response.headers);
+    if (authFailure(page.text)) throw new SecretariaError("SECRETARIA_REAUTH_REQUIRED", "A sessão da Secretaria expirou.", 409, true, "reauthenticate");
+    if (page.response.status >= 400) throw new SecretariaError("SECRETARIA_UNAVAILABLE", "Não foi possível abrir o fluxo financeiro.", 503, true);
+    const url = new URL(endpoint, this.#baseUrl);
+    url.searchParams.set("_dc", String(Date.now()));
+    url.searchParams.set("page", "1");
+    url.searchParams.set("start", "0");
+    url.searchParams.set("limit", "500");
+    const payload = await this.#jsonRequest(session, `${url.pathname}${url.search}`, stagePath);
+    return rawPayload(payload);
+  }
+
+  #resolvePaymentSelections(rows: Array<Record<string, unknown>>, chargeRefs: string[]) {
+    const available = new Map<string, SecretariaPaymentSelection>();
+    for (const row of rows) {
+      const selection = paymentSelection(row);
+      if (selection) {
+        for (const reference of this.options.paymentReferenceCandidates(selection)) available.set(reference, selection);
+      }
+    }
+    const selections = chargeRefs.map((chargeRef) => available.get(chargeRef));
+    if (selections.some((selection) => !selection)) {
+      throw new SecretariaError("SECRETARIA_RESOURCE_NOT_FOUND", "Um item financeiro já não está disponível para gerar referência.", 404);
+    }
+    return selections as SecretariaPaymentSelection[];
   }
 
   async authenticate(credentials: SecretariaCredentials): Promise<SecretariaAuthenticatedSession> {
@@ -261,6 +378,7 @@ export class NetpaSecretariaGateway implements SecretariaGateway {
     if (!contract) throw new SecretariaError("SECRETARIA_RESOURCE_NOT_FOUND", "O conjunto de dados solicitado não existe.", 404);
     const stagePath = `/netpa/page?stage=${encodeURIComponent(contract.stage)}&submitaction=null`;
     const stage = await this.#request(stagePath, { headers: this.#headers(session) });
+    mergeSetCookies(session.cookies, stage.response.headers);
     if (authFailure(stage.text)) throw new SecretariaError("SECRETARIA_REAUTH_REQUIRED", "A sessão da Secretaria expirou.", 409, true, "reauthenticate");
 
     const url = new URL(contract.path, this.#baseUrl);
@@ -272,6 +390,7 @@ export class NetpaSecretariaGateway implements SecretariaGateway {
     const result = await this.#request(`${url.pathname}${url.search}`, {
       headers: { ...this.#headers(session, true), Referer: new URL(stagePath, this.#baseUrl).toString() },
     });
+    mergeSetCookies(session.cookies, result.response.headers);
     if (authFailure(result.text)) throw new SecretariaError("SECRETARIA_REAUTH_REQUIRED", "A sessão da Secretaria expirou.", 409, true, "reauthenticate");
     if (result.response.status >= 400) throw new SecretariaError("SECRETARIA_UNAVAILABLE", `Não foi possível consultar ${contract.description}.`, 503, true);
     let payload: unknown;
@@ -280,8 +399,121 @@ export class NetpaSecretariaGateway implements SecretariaGateway {
     } catch (error) {
       throw new SecretariaError("SECRETARIA_UPSTREAM_CHANGED", `A resposta de ${contract.description} não é compatível.`, 502, false, "contact_support", { cause: error });
     }
-    const normalized = unwrapPayload(payload);
+    const normalized = domain.startsWith("finance.") ? normalizePaymentPayload(payload, this.options.paymentReferenceCandidates) : unwrapPayload(payload);
     return { domain, ...normalized, observedAt: new Date().toISOString(), coverage: "live" };
+  }
+
+  async preparePaymentReference(session: SecretariaSession, chargeRefs: string[]) {
+    const unique = [...new Set(chargeRefs)];
+    if (unique.length !== chargeRefs.length) throw new SecretariaError("SECRETARIA_REQUEST_INVALID", "Os itens financeiros não podem estar repetidos.", 422);
+    const payload = await this.#paymentPayload(session, "stepseleccionaritemsconta", "/netpa/ajax/stepseleccionaritemsconta/pagamentos");
+    this.#resolvePaymentSelections(payload.items, unique);
+    return { chargeRefs: unique };
+  }
+
+  async generatePaymentReference(session: SecretariaSession, chargeRefs: string[]): Promise<SecretariaPaymentReferenceResult> {
+    const payload = await this.#paymentPayload(session, "stepseleccionaritemsconta", "/netpa/ajax/stepseleccionaritemsconta/pagamentos");
+    const selections = this.#resolvePaymentSelections(payload.items, chargeRefs);
+    const initialStage = "/netpa/page?stage=stepseleccionaritemsconta&submitaction=null";
+    for (const selection of selections) {
+      const added = await this.#request("/netpa/ajax/stepseleccionaritemsconta/addItem", {
+        method: "POST",
+        headers: {
+          ...this.#headers(session, true),
+          "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+          Referer: new URL(initialStage, this.#baseUrl).toString(),
+        },
+        body: new URLSearchParams(selection).toString(),
+      });
+      mergeSetCookies(session.cookies, added.response.headers);
+      if (authFailure(added.text)) throw new SecretariaError("SECRETARIA_REAUTH_REQUIRED", "A sessão da Secretaria expirou.", 409, true, "reauthenticate");
+      if (added.response.status >= 400 || /(?:success|sucesso)\s*["']?\s*:\s*false/i.test(added.text)) {
+        throw new SecretariaError("SECRETARIA_UPSTREAM_CHANGED", "A Secretaria não aceitou a seleção do item financeiro.", 502, false, "contact_support");
+      }
+    }
+
+    const typePage = await this.#wizardPost(session, "stepseleccionaritemsconta", {
+      _formsubmitstage: "stepseleccionaritemsconta",
+      _formsubmitname: "wizPagamentos",
+      _formfieldnames: "",
+      _wiz_step: "1",
+      customSubmit: "",
+      submitAction: "Item(s) a Pagar",
+    });
+    if (inputValueByName(typePage, "_formsubmitstage") !== "stepseleccionartipopagamento") {
+      throw new SecretariaError("SECRETARIA_UPSTREAM_CHANGED", "O fluxo financeiro da Secretaria mudou antes da escolha do método.", 502, false, "contact_support");
+    }
+
+    const confirmationPage = await this.#wizardPost(session, "stepseleccionartipopagamento", {
+      _formsubmitstage: "stepseleccionartipopagamento",
+      _formsubmitname: "wizPagamentos",
+      _formfieldnames: "tipoPagamento,nrTelefoneMBWay",
+      _wiz_step: "2",
+      customSubmit: "",
+      tipoPagamento: "REFERENCIAS_MB",
+      nrTelefoneMBWay: "",
+      submitAction: "Seguinte",
+    });
+    if (inputValueByName(confirmationPage, "_formsubmitstage") !== "stepconfirmarpagamento") {
+      throw new SecretariaError("SECRETARIA_UPSTREAM_CHANGED", "O fluxo financeiro da Secretaria mudou antes da confirmação.", 502, false, "contact_support");
+    }
+
+    const summaryUrl = new URL("/netpa/ajax/stepconfirmarpagamento/pagamentos", this.#baseUrl);
+    summaryUrl.searchParams.set("_dc", String(Date.now()));
+    summaryUrl.searchParams.set("page", "1");
+    summaryUrl.searchParams.set("start", "0");
+    summaryUrl.searchParams.set("limit", "500");
+    const summaryPayload = await this.#jsonRequest(
+      session,
+      `${summaryUrl.pathname}${summaryUrl.search}`,
+      "/netpa/page?stage=stepconfirmarpagamento",
+    );
+    const summary = rawPayload(summaryPayload);
+    if (summary.items.length !== chargeRefs.length) {
+      throw new SecretariaError("SECRETARIA_UPSTREAM_CHANGED", "A Secretaria devolveu uma confirmação financeira inconsistente.", 502, false, "contact_support");
+    }
+
+    const finalPage = await this.#wizardPost(session, "stepconfirmarpagamento", {
+      _formsubmitstage: "stepconfirmarpagamento",
+      _formsubmitname: "wizPagamentos",
+      _formfieldnames: "",
+      _wiz_step: "3",
+      customSubmit: "",
+      submitAction: "Confirmar",
+    });
+    const outcomeText = visibleText(finalPage);
+    if (inputValueByName(finalPage, "_formsubmitstage") !== "stepresultadopagamento" || !/\bsucesso\b/i.test(outcomeText) || /\berro\b/i.test(outcomeText)) {
+      throw new SecretariaError("SECRETARIA_COMMAND_OUTCOME_UNKNOWN", "A Secretaria não confirmou de forma inequívoca a geração da referência.", 502, true);
+    }
+
+    return {
+      items: summary.items.map((row, index) => ({ ...normalizePaymentRecord(row, this.options.paymentReferenceCandidates), chargeRef: chargeRefs[index] })),
+      observedAt: new Date().toISOString(),
+    };
+  }
+
+  async verifyPaymentReference(session: SecretariaSession, chargeRefs: string[]): Promise<SecretariaPaymentReferenceResult | null> {
+    const payload = await this.#paymentPayload(session, "stepseleccionaritemsconta", "/netpa/ajax/stepseleccionaritemsconta/pagamentos");
+    const byRef = new Map<string, Record<string, unknown>>();
+    for (const row of payload.items) {
+      const selection = paymentSelection(row);
+      if (selection) {
+        for (const reference of this.options.paymentReferenceCandidates(selection)) byRef.set(reference, row);
+      }
+    }
+    const matched = chargeRefs.map((chargeRef) => byRef.get(chargeRef));
+    if (matched.some((row) => !row)) return null;
+    const normalized = (matched as Array<Record<string, unknown>>).map((row, index) => ({
+      ...normalizePaymentRecord(row, this.options.paymentReferenceCandidates),
+      chargeRef: chargeRefs[index],
+    }));
+    const referencePresent = normalized.every((row) => {
+      const referenceEntry = Object.entries(row).find(([key]) => /referencia.*mb/i.test(key));
+      const value = String(referenceEntry?.[1] ?? "").replace(/\s+/g, "").trim();
+      return value.length > 3 && value !== "-";
+    });
+    if (!referencePresent) return null;
+    return { items: normalized, observedAt: new Date().toISOString() };
   }
 
   async logout(session: SecretariaSession): Promise<void> {

@@ -99,6 +99,9 @@ const envSchema = z.object({
   SECRETARIA_MAX_RESPONSE_BYTES: z.coerce.number().int().min(65_536).max(20_971_520).default(5_242_880),
   SECRETARIA_ACTIVE_ENCRYPTION_KEY_ID: z.string().regex(/^[A-Za-z0-9_-]{1,32}$/).default("v1"),
   SECRETARIA_ENCRYPTION_KEYS: z.string().default(""),
+  SECRETARIA_WRITE_PAYMENT_REFERENCE_ENABLED: z.preprocess(normalizeBoolean, z.boolean()).default(false),
+  SECRETARIA_COMMAND_CONFIRMATION_TTL_SECONDS: z.coerce.number().int().min(60).max(900).default(300),
+  SECRETARIA_COMMAND_LEASE_SECONDS: z.coerce.number().int().min(60).max(900).default(300),
   GAME_NOTIFICATIONS_START_AT: z.string().min(1).default("2026-05-18T00:00:00+01:00"),
   RATE_LIMIT_MAX: z.coerce.number().int().min(20).max(5000).default(400),
   RATE_LIMIT_WINDOW_MS: z.coerce.number().int().min(10_000).max(3_600_000).default(60_000),
@@ -145,6 +148,13 @@ const envSchema = z.object({
         code: z.ZodIssueCode.custom,
         path: ["SECRETARIA_ALLOW_INSECURE_UPSTREAM"],
         message: "HTTP Secretaria access requires explicit non-production acknowledgement",
+      });
+    }
+    if (value.NODE_ENV === "production" && value.SECRETARIA_WRITE_PAYMENT_REFERENCE_ENABLED && secretariaProtocol !== "https:") {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["SECRETARIA_WRITE_PAYMENT_REFERENCE_ENABLED"],
+        message: "Secretaria writes require an HTTPS upstream or approved TLS tunnel",
       });
     }
   }

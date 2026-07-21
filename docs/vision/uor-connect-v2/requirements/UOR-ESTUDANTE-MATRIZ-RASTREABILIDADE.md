@@ -5,12 +5,12 @@ document_id: UOR-EST-TRACE-001
 status: approved
 owner: Engenharia UOR Estudante
 authority: informative
-version: 1.1
+version: 1.2
 last_reviewed: 2026-07-21
 approved_by: Product Owner
 approved_at: 2026-07-21
 review_cycle: por entrega verificada
-next_review: primeira fatia vertical UOR Estudante
+next_review: piloto da escrita Secretaria sobre TLS
 supersedes:
 superseded_by:
 depends_on:
@@ -25,7 +25,8 @@ depends_on:
 - `implemented` significa código identificado sem verificação suficiente.
 - Verificação executada em 2026-07-21 no ambiente `local-test`, por `Codex`, sobre o commit de base `669aed0`.
 - Suite backend verificada: 7 ficheiros/45 testes. Suite frontend: 3 ficheiros/6 testes. Nenhuma escrita externa.
-- API Secretaria verificada adicionalmente: 2 ficheiros/5 testes, build de produção e smoke autorizado de login, identidade, sessão, exames, faltas e finanças. Nenhuma escrita upstream.
+- API Secretaria verificada adicionalmente nesta entrega: 5 ficheiros/9 testes focados, incluindo persistência SQLite isolada do comando, build de produção, contrato browser autorizado e smoke de login, identidade, sessão, exames, faltas e finanças.
+- Uma prova controlada gerou referência oficial na conta de teste e observou `stepresultadopagamento`/sucesso; não houve checkout, cartão ou processamento de pagamento. A chamada não passou ainda pelo motor persistente implantado, portanto RF-EST-093 permanece `implemented`, não `verified`.
 
 ## Requisitos funcionais
 
@@ -99,7 +100,7 @@ depends_on:
 | [ ] | RF-EST-066 | planned | — | retirada de pedido coletivo ausente |
 | [ ] | RF-EST-067 | implemented | runtime_observed | `/finance/overview`; dados oficiais observados |
 | [ ] | RF-EST-068 | implemented | runtime_observed | `/finance/charges`; normalização inicial usa contrato financeiro confirmado |
-| [ ] | RF-EST-069 | implemented | runtime_observed | referências existentes entregues em leitura; geração permanece `disabled` |
+| [ ] | RF-EST-069 | implemented | runtime_observed | referências existentes e `chargeRef` opaco entregues em leitura |
 | [ ] | RF-EST-070 | implemented | runtime_observed | `/finance/payments`; um registo observado, sem processamento de dinheiro |
 | [ ] | RF-EST-071 | planned | — | partilha de referência ausente |
 | [ ] | RF-EST-072 | planned | — | responsável financeiro ausente |
@@ -115,6 +116,17 @@ depends_on:
 | [ ] | RF-EST-082 | planned | — | reserva/venda ausentes |
 | [ ] | RF-EST-083 | planned | — | moderação do mercado ausente |
 | [ ] | RF-EST-084 | partial | static | admin atual é transversal/Eventos e não Estudante isolado |
+| [ ] | RF-EST-085 | planned | — | contactos permanecem com flag/contrato desativados |
+| [ ] | RF-EST-086 | planned | — | fotografia permanece com flag/contrato desativados |
+| [ ] | RF-EST-087 | deprecated | static | reservado: troca de senha não pertence à API v1 |
+| [ ] | RF-EST-088 | planned | — | consentimentos permanecem com flag/contrato desativados |
+| [ ] | RF-EST-089 | planned | — | inscrição em época permanece com flag/contrato desativados |
+| [ ] | RF-EST-090 | planned | — | revisão oficial permanece com flag/contrato desativados |
+| [ ] | RF-EST-091 | planned | — | candidatura permanece com flag/contrato desativados |
+| [ ] | RF-EST-092 | planned | — | escritas de processos permanecem com flags/contratos desativados |
+| [ ] | RF-EST-093 | implemented | runtime_observed | wizard `REFERENCIAS_MB` confirmado ao sucesso; comando persistente testado em SQLite, concorrência PostgreSQL/piloto TLS pendentes |
+| [ ] | RF-EST-094 | deprecated | static | reservado: payment intent/checkout não pertence à API v1 |
+| [ ] | RF-EST-095 | planned | — | contrato de recibos não confirmado |
 
 ## Requisitos não funcionais
 
@@ -160,6 +172,10 @@ depends_on:
 | [ ] | RNF-EST-038 | partial | automated_test | testes/build existem; validação v2 ainda não é gate CI |
 | [ ] | RNF-EST-039 | planned | — | RPO/RTO não aprovados |
 | [ ] | RNF-EST-040 | partial | static | ODIN/auditoria existem; runbook Estudante não confirmado |
+| [ ] | RNF-EST-041 | implemented | integration_test | persistência, idempotência, tentativa, confirmação e resultado cifrado testados; reconciliação concorrente PostgreSQL pendente |
+| [ ] | RNF-EST-042 | partial | integration_test | confirmação literal/prazo implementados; OTP por risco ainda ausente |
+| [ ] | RNF-EST-043 | partial | integration_test | flag individual e drift fail-closed testados; circuit breaker operacional pendente |
+| [ ] | RNF-EST-044 | implemented | automated_test | AES-256-GCM/AAD separado para credencial, sessão, payload e resultado financeiro; KMS externo pendente |
 
 ## Regras de negócio
 
@@ -174,7 +190,7 @@ depends_on:
 | [x] | RN-EST-007 | verified | integration_test | publicação por snapshot Moodle testada; Codex/local-test/669aed0/2026-07-21 |
 | [x] | RN-EST-008 | verified | integration_test | sync por comando/job, não render; Codex/local-test/669aed0/2026-07-21 |
 | [x] | RN-EST-009 | verified | integration_test | ownership nas rotas Moodle testado; Codex/local-test/669aed0/2026-07-21 |
-| [ ] | RN-EST-010 | implemented | integration_test | mutações não verificadas retornam `SECRETARIA_CAPABILITY_DISABLED` |
+| [x] | RN-EST-010 | verified | automated_test | escrita de referência falha fechada por flag; restantes mutações retornam `SECRETARIA_CAPABILITY_DISABLED` |
 | [ ] | RN-EST-011 | planned | — | motor académico ausente |
 | [ ] | RN-EST-012 | planned | — | regra de bolsa ausente |
 | [ ] | RN-EST-013 | planned | — | simulador ausente |
@@ -202,7 +218,7 @@ depends_on:
 | [ ] | RN-EST-035 | planned | — | delegação contextual ausente |
 | [ ] | RN-EST-036 | planned | — | OTP contextual ausente |
 | [ ] | RN-EST-037 | partial | static | limites em códigos legados; mecanismo v2 ausente |
-| [ ] | RN-EST-038 | partial | static | estados pendentes existem em módulos legados, não contrato Estudante |
+| [ ] | RN-EST-038 | implemented | integration_test | referência só termina após etapa oficial de resultado/sucesso; ambiguidades ficam `UNKNOWN` |
 | [ ] | RN-EST-039 | partial | static | SMS possui controlos; templates Estudante não definidos |
 | [ ] | RN-EST-040 | planned | — | mercado ausente |
 | [ ] | RN-EST-041 | planned | — | mercado ausente |
@@ -220,12 +236,17 @@ depends_on:
 | [ ] | RN-EST-053 | planned | — | catálogo académico versionado ausente |
 | [x] | RN-EST-054 | verified | static | esta matriz declara nível por conclusão; revisão Codex/local-test/669aed0/2026-07-21 |
 | [x] | RN-EST-055 | verified | static | validador documental da entrega confirma checkbox/estado |
+| [ ] | RN-EST-056 | implemented | integration_test | gateway exige resumo consistente e `stepresultadopagamento` com sucesso |
+| [ ] | RN-EST-057 | implemented | static | erro ambíguo produz `UNKNOWN`; reconciliação apenas lê e nunca reenvia escrita |
+| [ ] | RN-EST-058 | implemented | integration_test | estado financeiro vem da leitura oficial; referência não é tratada como pagamento |
+| [ ] | RN-EST-059 | implemented | integration_test | não existem payment intents/checkout/captura; prova controlada gerou somente referência |
+| [ ] | RN-EST-060 | implemented | integration_test | `/session`, `/connection` e `/data-deletion-requests` possuem efeitos distintos |
 
 ## Resumo factual
 
 - RF: 9 `verified`; a maioria das capacidades académicas/financeiras/comunitárias permanece planeada.
 - RNF: 3 `verified`; há fundação técnica relevante, mas sem produto Estudante independente.
-- RN: 7 `verified`; concentram-se em identidade e sincronização Moodle.
+- RN: 8 `verified`; concentram-se em identidade, sincronização e bloqueio de escritas não ativadas.
 - Bloqueador externo explícito: TLS/API da Secretaria.
 
 Este resumo deve ser recalculado por validação automática; não possui precedência sobre as linhas individuais.

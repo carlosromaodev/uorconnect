@@ -5,12 +5,12 @@ document_id: UOR-V2-VALIDATION-001
 status: approved
 owner: Arquitetura UOR Connect
 authority: informative
-version: 1.0
+version: 1.1
 last_reviewed: 2026-07-21
 approved_by: Codex verification
 approved_at: 2026-07-21
 review_cycle: por alteração normativa material
-next_review: primeira atualização da matriz
+next_review: piloto da escrita Secretaria sobre TLS
 supersedes:
 superseded_by:
 depends_on:
@@ -20,12 +20,12 @@ depends_on:
 
 ## Escopo validado
 
-- 97 ficheiros Markdown do projeto, excluindo dependências geradas.
+- 101 ficheiros Markdown do projeto, excluindo dependências geradas.
 - 15 documentos iniciais na visão v2 antes deste relatório.
 - 7 documentos do pacote SDD v1.0 marcados como `superseded` e preservados.
-- 179 requisitos/regras da UOR Estudante: 84 RF, 40 RNF e 55 RN.
-- 179 entradas correspondentes na matriz, sem omissões ou extras.
-- 19 entradas `verified`: 9 RF, 3 RNF e 7 RN.
+- 199 identificadores normativos/retidos da UOR Estudante: 95 RF (incluindo 2 reservados), 44 RNF e 60 RN.
+- 199 entradas correspondentes na matriz, sem omissões ou extras.
+- 20 entradas `verified`: 9 RF, 3 RNF e 8 RN.
 
 ## Verificações aprovadas
 
@@ -46,14 +46,15 @@ Em `local-test`, sobre código base `669aed0`:
 
 - backend: 7 ficheiros e 45 testes aprovados para identidade, login e Moodle;
 - frontend: 3 ficheiros e 6 testes aprovados para login e apresentação de perfil;
+- Secretaria nesta entrega: 5 ficheiros e 9 testes focados aprovados, incluindo persistência SQLite isolada, build e schema Prisma válidos;
 - nível máximo atribuído conforme cada teste: `automated_test` ou `integration_test`;
-- nenhuma operação de escrita contra Secretaria, Moodle ou produção.
+- uma prova controlada autorizada gerou somente referência oficial e confirmou sucesso do portal; nenhum checkout ou pagamento foi processado.
 
 ## Incompatibilidades conhecidas
 
 - `/estudante`, `/eventos` e `/direcao` são gateways temporários.
 - O código ainda usa nomes de produto substituídos.
-- Secretaria Integration API ainda declara `planned/not_synced`.
+- Escrita de referência Secretaria está implementada, mas desligada por padrão; produção continua bloqueada até HTTPS/túnel TLS e ensaio persistente.
 - JWT e consultas legadas nem sempre incluem contexto institucional completo.
 - Rotas e administração de Eventos ainda ocupam a aplicação geral.
 - Ownership lógico não é imposto no acesso à base partilhada.

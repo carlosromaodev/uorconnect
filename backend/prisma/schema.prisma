@@ -72,6 +72,23 @@ enum SecretariaSyncRunStatus {
   CANCELLED
 }
 
+enum SecretariaCommandStatus {
+  AWAITING_CONFIRMATION
+  SUBMITTING
+  VERIFYING
+  SUCCEEDED
+  FAILED
+  UNKNOWN
+  CANCELLED
+  EXPIRED
+}
+
+enum SecretariaCommandRisk {
+  LOW
+  MEDIUM
+  HIGH
+}
+
 model User {
   id          Int          @id @default(autoincrement())
   email       String       @unique
@@ -155,6 +172,7 @@ model Student {
   secretariaConnection SecretariaConnection?
   secretariaSnapshots  SecretariaSnapshot[]
   secretariaSyncRuns   SecretariaSyncRun[]
+  secretariaCommands   SecretariaCommand[]
 
   @@unique([institutionCode, studentNumber])
   @@index([studentNumber])
@@ -220,6 +238,50 @@ model SecretariaSyncRun {
 
   @@index([studentId, createdAt])
   @@index([status, updatedAt])
+}
+
+/// Durable state machine for Secretaria writes. Payloads are authenticated-
+/// encryption envelopes and results contain only the normalized official data.
+model SecretariaCommand {
+  id                    String                   @id @default(uuid())
+  student               Student                  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  studentId             Int
+  type                  String
+  risk                  SecretariaCommandRisk    @default(MEDIUM)
+  status                SecretariaCommandStatus  @default(AWAITING_CONFIRMATION)
+  idempotencyKey        String
+  requestHash           String
+  payloadEnvelope       String
+  connectionGeneration  Int
+  resultEnvelope        String?
+  errorCode             String?
+  confirmationExpiresAt DateTime?
+  submittedAt           DateTime?
+  leaseUntil            DateTime?
+  completedAt           DateTime?
+  createdAt             DateTime                 @default(now())
+  updatedAt             DateTime                 @updatedAt
+  attempts              SecretariaCommandAttempt[]
+
+  @@unique([studentId, type, idempotencyKey])
+  @@index([studentId, createdAt])
+  @@index([status, updatedAt])
+}
+
+model SecretariaCommandAttempt {
+  id           String             @id @default(uuid())
+  command      SecretariaCommand  @relation(fields: [commandId], references: [id], onDelete: Cascade)
+  commandId    String
+  attempt      Int
+  status       String
+  requestHash  String
+  responseHash String?
+  errorCode    String?
+  startedAt    DateTime           @default(now())
+  finishedAt   DateTime?
+
+  @@unique([commandId, attempt])
+  @@index([commandId, startedAt])
 }
 
 model StudentProfileExtra {

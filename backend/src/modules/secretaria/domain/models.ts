@@ -60,3 +60,47 @@ export type SecretariaCapability = {
   status: "available" | "disabled" | "unsupported";
   description: string;
 };
+
+export type SecretariaCommandStatus =
+  | "AWAITING_CONFIRMATION"
+  | "SUBMITTING"
+  | "VERIFYING"
+  | "SUCCEEDED"
+  | "FAILED"
+  | "UNKNOWN"
+  | "CANCELLED"
+  | "EXPIRED";
+
+export type SecretariaCommandView = {
+  id: string;
+  type: "GENERATE_PAYMENT_REFERENCE";
+  risk: "MEDIUM";
+  status: SecretariaCommandStatus;
+  requiresConfirmation: boolean;
+  confirmationExpiresAt: string | null;
+  result: { items: Array<Record<string, unknown>>; observedAt: string } | null;
+  errorCode: string | null;
+  createdAt: string;
+  updatedAt: string;
+  completedAt: string | null;
+};
+
+export type SecretariaCommandAttemptView = {
+  id: string;
+  attempt: number;
+  status: string;
+  errorCode: string | null;
+  startedAt: string;
+  finishedAt: string | null;
+};
+
+export type SecretariaPaymentSelection = {
+  id: string;
+  idFinanceira: string;
+  inputId: string;
+};
+
+export type SecretariaPaymentReferenceResult = {
+  items: Array<Record<string, unknown>>;
+  observedAt: string;
+};
