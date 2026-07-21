@@ -1,54 +1,34 @@
 # Estado Atual do UOR Connect
 
 Status: ativo
-Última atualização: 2026-05-17
-Fontes principais: `raw/obsidian-cofre/UOR Connect - Estado atual do projeto.md`, `docs/wiki/index.md`
+Última atualização: 2026-07-21
+Fontes: código atual e [MIG-001](../../vision/uor-connect-v2/MIG-001-TRANSICAO-PLATAFORMA-ATUAL.md)
 
-## Visão Geral
+## Visão factual
 
-O UOR Connect é a plataforma principal da atividade, reunindo site público, Minha Área do estudante, área administrativa, submissão de projetos, credenciais, passaportes, votação, SMS/WhatsApp, relatórios, PDFs e deploy em VPS.
+O sistema implantado continua orientado sobretudo à UOR Eventos: portal, projetos, votação, passaportes, certificados, comunicação e administração partilham frontend, backend e base.
 
-## Produção
+## Separação iniciada
 
-- VPS principal: `178.105.109.96`
-- Caminho em produção: `/opt/uorconnect`
-- API: `https://api.uorconnect.space`
-- Site: `https://uorconnect.space`
-- Admin: `https://admin.uorconnect.space`
-- Health check: `https://api.uorconnect.space/health`
+- `/estudante`, `/eventos` e `/direcao` existem como gateways, não produtos completos.
+- `/api/v1/student`, `/events` e `/direction` são endpoints de contexto.
+- Moodle possui integração robusta e testada, ainda consumida fora de um shell Estudante completo.
+- Secretaria possui parsing no login; a API própria ainda está `planned/not_synced`.
+- UOR Direção funcional ainda não existe; admin/relatórios atuais são operacionais de Eventos.
 
-Serviços esperados:
+## Fundação disponível
 
-- `postgres`
-- `backend`
-- `frontend`
-- `caddy`
-- `evolution-api`
-- `redis`
+- identidade composta `institutionCode + studentNumber` no schema;
+- autenticação institucional, perfis, consentimentos e auditoria parcial;
+- snapshots, sessão cifrada e sincronização Moodle;
+- PostgreSQL, Redis, Caddy, Evolution API e observabilidade operacional existente.
 
-## Áreas Principais
+## Divergências
 
-- Frontend público: home, projetos, cursos, palestrantes, agenda, conteúdo ao vivo e divulgação do Passaporte UOR Connect.
-- Minha Área: perfil, projetos, credenciais, passes, certificados, desafios, QR e submissões.
-- Admin: estudantes, cursos, projetos, SMS/WhatsApp, relatórios, ODIN, credenciais, passaportes e conteúdos.
-- Backend: autenticação, perfis, projetos, cursos, votos, pontuação, PDFs, SMS, relatórios, segurança e integrações.
+- nomes antigos dos produtos ainda no código;
+- JWT/consultas legadas nem sempre carregam contexto institucional completo;
+- rotas de Eventos permanecem na raiz;
+- módulos partilham Prisma sem enforcement de ownership;
+- deploy não é independente por produto.
 
-## Regras Importantes Atuais
-
-- O design aprovado deve ser preservado; alterações devem reaproveitar componentes existentes.
-- Passaporte Digital e Passaporte do Expositor devem ser ligados sem misturar regras obrigatórias de cada um.
-- Pontos e bônus são tratados como pontos no desafio.
-- O fluxo de projeto precisa respeitar identidade real do membro autenticado.
-- A admin precisa manter ações críticas com confirmação e auditoria.
-- O ODIN acompanha comportamento suspeito por dispositivo, conta e voto.
-
-## Pendências Que Continuam Relevantes
-
-- Manter a wiki atualizada sempre que houver decisão de regra.
-- Validar PDFs gerados com dados reais, além dos testes automatizados.
-- Consolidar as regras de identidade UOR/ISPTEC e temporários.
-- Continuar organizando documentos antigos em páginas vivas.
-
-## Fonte Bruta
-
-Ver nota original preservada em [`raw/obsidian-cofre/UOR Connect - Estado atual do projeto.md`](../raw/obsidian-cofre/UOR%20Connect%20-%20Estado%20atual%20do%20projeto.md).
+A visão normativa está em [UOR Connect v2](../../vision/uor-connect-v2/README.md).

@@ -1,7 +1,18 @@
-# API Moodle — UOR Connect
+# API Moodle — Integração da UOR Estudante
+
+```yaml
+document_id: UOR-MOODLE-API-README
+status: approved
+owner: Integrações UOR Estudante
+authority: informative
+version: 0.2.0
+last_reviewed: 2026-07-21
+depends_on:
+  - ../docs/vision/uor-connect-v2/SDD-002-UOR-ESTUDANTE.md
+```
 
 Esta pasta contém o contrato público normalizado e as ferramentas de análise da
-integração Moodle → UOR Connect. O Moodle continua a ser a fonte pedagógica; o
+integração Moodle → UOR Estudante. O Moodle continua a ser a fonte pedagógica; o
 Sistema da Secretaria continua a ser a fonte oficial académica e financeira.
 
 O frontend consome apenas a API UOR Connect. Cookies, `sesskey`, credenciais,

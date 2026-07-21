@@ -1,4 +1,6 @@
-# RF, RNF e regras de negocio - Passaporte do Expositor e Pontuacao de Projetos UOR Connect
+# RF, RNF e regras de negócio — Passaporte do Expositor e Pontuação da UOR Eventos
+
+> **Classificação v2:** requisito normativo legado do produto UOR Eventos. Não define a visão do ecossistema UOR Connect. A autoridade de fronteira é [`SDD-003-UOR-EVENTOS.md`](docs/vision/uor-connect-v2/SDD-003-UOR-EVENTOS.md).
 
 ## Objetivo
 

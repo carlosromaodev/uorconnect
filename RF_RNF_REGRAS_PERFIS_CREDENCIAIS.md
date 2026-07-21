@@ -1,4 +1,6 @@
-# RF, RNF e regras de negocio - perfis, credenciais e admin
+# RF, RNF e regras de negócio — perfis, credenciais e administração da UOR Eventos
+
+> **Classificação v2:** requisito normativo legado predominantemente da UOR Eventos, com capacidades transversais ainda por extrair. Não define a visão geral da UOR Connect. Ver [`SDD-003`](docs/vision/uor-connect-v2/SDD-003-UOR-EVENTOS.md) e [`SDD-005`](docs/vision/uor-connect-v2/SDD-005-CAPACIDADES-TRANSVERSAIS.md).
 
 Data: 2026-05-05
 Base: `ANALISE_PERFIS_CREDENCIAIS_ESTUDANTES.md`

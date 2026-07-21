@@ -1,5 +1,17 @@
 # Análise Técnica do Moodle UÓR para API
 
+```yaml
+document_id: UOR-MOODLE-ANALYSIS
+status: approved
+owner: Integrações UOR Estudante
+authority: informative
+version: 1.0
+last_reviewed: 2026-07-21
+depends_on:
+  - vision/uor-connect-v2/SDD-002-UOR-ESTUDANTE.md
+  - vision/uor-connect-v2/adrs/ADR-005-INTEGRACOES-EXTERNAS.md
+```
+
 **Data da observação:** 18 de julho de 2026
 
 **Origem:** `https://moodle.uor.edu.ao/`
@@ -26,7 +38,7 @@ O Moodle UÓR expõe três superfícies úteis:
    trabalhos, testes, fóruns, progresso e resultados pedagógicos.
 
 A integração é viável em modo de leitura. A arquitetura recomendada é: serviço
-Web Service oficial UOR Connect com escopos mínimos; AJAX como fallback temporário;
+Web Service oficial para a UOR Estudante com escopos mínimos; AJAX como fallback temporário;
 HTML apenas onde não houver fonte estruturada. Na modalidade A+B aprovada, a
 palavra-passe só existe em envelope AES-256-GCM no backend enquanto a ligação
 estiver ativa; nunca aparece em texto simples, logs, frontend ou documentação.
@@ -278,7 +290,7 @@ corresponde necessariamente à nota oficial da Secretaria.”**
 ## 23. Arquitetura implementada no MVP
 
 ```text
-UOR Connect Estudante
+UOR Estudante
   -> API UOR Connect (auth, autorização, rate limit)
      -> cache normalizada + estado stale
      -> fila de sincronização

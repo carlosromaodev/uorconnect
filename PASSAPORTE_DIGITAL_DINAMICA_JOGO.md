@@ -1,4 +1,6 @@
-# Passaporte Digital UOR Connect - Dinamica do jogo
+# Passaporte Digital da UOR Eventos — Dinâmica do jogo
+
+> **Classificação v2:** desenho funcional legado da UOR Eventos. Ver [`SDD-003-UOR-EVENTOS.md`](docs/vision/uor-connect-v2/SDD-003-UOR-EVENTOS.md).
 
 ## Visao geral
 

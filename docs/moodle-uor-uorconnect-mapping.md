@@ -1,5 +1,16 @@
 # Mapeamento Moodle → UOR Connect
 
+```yaml
+document_id: UOR-MOODLE-MAPPING
+status: approved
+owner: Integrações UOR Estudante
+authority: informative
+version: 1.0
+last_reviewed: 2026-07-21
+depends_on:
+  - vision/uor-connect-v2/SDD-002-UOR-ESTUDANTE.md
+```
+
 ## Separação de responsabilidades
 
 ```text
@@ -9,16 +20,16 @@ Secretaria
 Moodle
   conteúdos, atividades, materiais, progresso e comunicação pedagógica
 
-API UOR Connect
+API de Integração Moodle
   autenticação segura, transformação, cache, sincronização e auditoria
 
-UOR Connect Estudante
+UOR Estudante
   experiência integrada, organização, alertas, análise e orientação
 ```
 
 ## Informação e produto
 
-| Informação | Fonte Moodle observada | Uso UOR Connect | Prioridade | Oficial? |
+| Informação | Fonte Moodle observada | Uso na UOR Estudante | Prioridade | Oficial? |
 |---|---|---|---|---:|
 | Perfil mínimo | Perfil HTML/Web Service | validar ligação e personalização | Alta | Identidade Moodle, não cadastro oficial |
 | Disciplinas | AJAX de cursos + páginas | Aprendizagem | Alta | Não substitui matrícula oficial |

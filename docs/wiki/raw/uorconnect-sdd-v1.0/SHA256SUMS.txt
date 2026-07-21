@@ -1,0 +1,7 @@
+5f31e4a4feb9436b2f48c04b7e279ebdc05ff42fbe79636e59dec9aac4e8a6bf  ANEXO-Separacao-UOR-Connect-Estudante-Eventos-Direcao.md
+2d1436f5478dbff573df1b22b9cd41e4a37f3bfada40da77ad2326d90bb8d4f5  README.md
+492ddac736e8c2b42984dbef6addd57af3103177f718a525146806305aa79191  SDD-001-UOR-Connect-Platform-Migration.md
+9a797550409fc4a3e15dc90e2ef8f22db42fa78b5eefbff68e35140fdccbb469  SDD-002-UOR-Connect-Student-and-Integrations.md
+84f9e0d2af5c772b44dee195f4905c289e630c21a023e9dd5eca41885e6b9991  SDD-003-UOR-Connect-Events.md
+69760e7d265b538deda2796a8341250f84d7b51a971a1cbd5391704321b3cbda  SDD-004-UOR-Connect-Direction.md
+443a1886c25c95ea45182b4eb7ab6fe6015e4e7ca4e4855d2ab1265551dca884  SDD-005-UOR-Connect-Identity-Security-Infrastructure.md

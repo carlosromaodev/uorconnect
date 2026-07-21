@@ -1,6 +1,8 @@
 # Especificação Técnica Completa - UOR Connect
 ## Dia das Telecomunicações - Universidade Óscar Ribas
 
+> **Classificação v2:** especificação histórica da aplicação que dá origem à UOR Eventos. Não é a visão normativa do ecossistema. Ver [`SDD-003-UOR-EVENTOS.md`](../docs/vision/uor-connect-v2/SDD-003-UOR-EVENTOS.md).
+
 **Versão:** 1.0  
 **Data:** 18 de Março de 2026  
 **Organização:** Universidade Óscar Ribas (UOR) - NEIC  
@@ -1959,4 +1961,3 @@ A plataforma **UOR Connect** é uma solução completa para gestão e interaçã
 **Versão:** 1.0  
 **Última atualização:** 18 de Março de 2026  
 **Status:** Documento completo pronto para desenvolvimento
-
