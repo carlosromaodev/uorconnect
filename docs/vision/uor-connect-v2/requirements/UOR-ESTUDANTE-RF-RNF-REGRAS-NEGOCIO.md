@@ -5,7 +5,7 @@ document_id: UOR-EST-REQ-001
 status: approved
 owner: Produto UOR Estudante
 authority: normative
-version: 1.1
+version: 1.2
 last_reviewed: 2026-07-21
 approved_by: Product Owner
 approved_at: 2026-07-21
@@ -154,7 +154,7 @@ O estado de implementação não vive neste catálogo; consultar a [matriz de ra
 
 | ID | Requisito | Prioridade | Fase | Critério de aceitação |
 | --- | --- | --- | --- | --- |
-| RF-EST-085 | Atualizar contactos explicitamente editáveis na Secretaria. | Should | F7 | Só campos confirmados pelo contrato são submetidos e relidos. |
+| RF-EST-085 | Atualizar contactos explicitamente editáveis na Secretaria. | Should | F7 | Só campos confirmados entram no patch; o formulário restante é preservado e a aceitação oficial do pedido é registada sem assumir aplicação imediata. |
 | RF-EST-086 | Atualizar ou remover fotografia quando suportado. | Should | F7 | Formato/tamanho são validados e a versão oficial muda. |
 | RF-EST-088 | Atualizar consentimentos editáveis do portal. | Must | F7 | Finalidade, versão, decisão e pós-condição oficial ficam registadas. |
 | RF-EST-089 | Criar ou cancelar inscrição em época quando permitido. | Must | F7 | Elegibilidade é validada e a inscrição oficial é relida. |

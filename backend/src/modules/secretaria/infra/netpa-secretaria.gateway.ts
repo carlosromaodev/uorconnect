@@ -1,7 +1,16 @@
 import { createHash } from "node:crypto";
 import type { SecretariaAuthenticatedSession, SecretariaCredentials, SecretariaGateway } from "../domain/gateway";
 import { SecretariaError } from "../domain/errors";
-import type { SecretariaDataset, SecretariaPaymentReferenceResult, SecretariaPaymentSelection, SecretariaProfile, SecretariaSession } from "../domain/models";
+import type {
+  SecretariaAddress,
+  SecretariaContactDetails,
+  SecretariaContactDetailsPatch,
+  SecretariaDataset,
+  SecretariaPaymentReferenceResult,
+  SecretariaPaymentSelection,
+  SecretariaProfile,
+  SecretariaSession,
+} from "../domain/models";
 
 type DatasetContract = { stage: string; path: string; description: string; params?: Record<string, string> };
 
@@ -39,17 +48,112 @@ export const SECRETARIA_DATASETS: Record<string, DatasetContract> = {
   "process.languages": { stage: "CompetenciasLinguisticasAluno", path: "/netpa/ajax/competenciaslinguisticasaluno/competenciaLinguistica", description: "Competências linguísticas" },
 };
 
-const USER_AGENT = "UOR-Estudante-Secretaria-Integration/1.0";
+// netPA rejects non-browser user agents before rendering protected forms.
+// Keep this value versioned and covered by live contract checks.
+const USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
 
 function decodeHtml(value: string): string {
   return value
+    .replace(/&#x([0-9a-f]+);/gi, (_match, code: string) => String.fromCodePoint(Number.parseInt(code, 16)))
+    .replace(/&#(\d+);/g, (_match, code: string) => String.fromCodePoint(Number.parseInt(code, 10)))
     .replace(/&nbsp;/gi, " ")
     .replace(/&amp;/gi, "&")
     .replace(/&quot;/gi, '"')
+    .replace(/&apos;/gi, "'")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
     .replace(/&#39;/gi, "'")
     .replace(/<[^>]+>/g, " ")
     .replace(/\s+/g, " ")
     .trim();
+}
+
+function attributes(markup: string) {
+  const result: Record<string, string> = {};
+  const pattern = /([^\s=<>]+)(?:\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s>]+)))?/g;
+  for (const match of markup.matchAll(pattern)) {
+    const key = match[1].toLowerCase();
+    if (key === "input" || key === "select" || key === "textarea" || key === "option" || key.startsWith("/")) continue;
+    result[key] = decodeHtml(match[2] ?? match[3] ?? match[4] ?? "");
+  }
+  return result;
+}
+
+function formMarkup(html: string, id: string) {
+  const escaped = id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  return html.match(new RegExp(`<form[^>]+(?:id|name)=["']${escaped}["'][^>]*>([\\s\\S]*?)<\\/form>`, "i"))?.[1] ?? null;
+}
+
+function formPayload(html: string, id: string) {
+  const markup = formMarkup(html, id);
+  if (!markup) throw new SecretariaError("SECRETARIA_UPSTREAM_CHANGED", "O formulário de dados pessoais deixou de estar disponível.", 502, false, "contact_support");
+  const payload = new URLSearchParams();
+  for (const match of markup.matchAll(/<input\b[^>]*>/gi)) {
+    const attrs = attributes(match[0]);
+    const name = attrs.name;
+    const type = (attrs.type ?? "text").toLowerCase();
+    if (!name || "disabled" in attrs || ["file", "button", "submit", "reset", "image"].includes(type)) continue;
+    if (["checkbox", "radio"].includes(type) && !("checked" in attrs)) continue;
+    payload.append(name, attrs.value ?? (type === "checkbox" ? "on" : ""));
+  }
+  for (const match of markup.matchAll(/<textarea\b([^>]*)>([\s\S]*?)<\/textarea>/gi)) {
+    const attrs = attributes(match[1]);
+    if (attrs.name && !("disabled" in attrs)) payload.append(attrs.name, decodeHtml(match[2]));
+  }
+  for (const match of markup.matchAll(/<select\b([^>]*)>([\s\S]*?)<\/select>/gi)) {
+    const selectAttrs = attributes(match[1]);
+    if (!selectAttrs.name || "disabled" in selectAttrs) continue;
+    const options = [...match[2].matchAll(/<option\b([^>]*)>([\s\S]*?)<\/option>/gi)]
+      .map((option) => ({ attrs: attributes(option[1]), text: decodeHtml(option[2]) }));
+    const selected = options.filter((option) => "selected" in option.attrs);
+    for (const option of selected.length ? selected : options.slice(0, 1)) payload.append(selectAttrs.name, option.attrs.value ?? option.text);
+  }
+  return payload;
+}
+
+function checkedInputValue(html: string, name: string): string | null {
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  for (const match of html.matchAll(new RegExp(`<input[^>]+name=["']${escaped}["'][^>]*>`, "gi"))) {
+    const attrs = attributes(match[0]);
+    if ("checked" in attrs) return attrs.value ?? null;
+  }
+  return null;
+}
+
+function addressFromHtml(html: string, prefix: "Principal" | "Secundaria"): SecretariaAddress {
+  const field = (name: string) => inputValueByName(html, name);
+  return {
+    line1: field(`morada${prefix}`),
+    country: field(`paisMorada${prefix}Desc`),
+    postalCode: field(`codPostMorada${prefix}`),
+    postalSuffix: field(`subPostMorada${prefix}`),
+    district: field(`fregMorada${prefix}distDesc`),
+    municipality: field(`fregMorada${prefix}conDesc`),
+    parish: field(`fregMorada${prefix}fregDesc`),
+    foreignCountry: field(`fregMorada${prefix}estrangeiraDesc`),
+  };
+}
+
+function contactDetailsFromHtml(html: string): SecretariaContactDetails {
+  if (!formMarkup(html, "boletimForm")) {
+    throw new SecretariaError("SECRETARIA_UPSTREAM_CHANGED", "O contrato de dados pessoais da Secretaria mudou.", 502, false, "contact_support");
+  }
+  const mailing = checkedInputValue(html, "moradaCorreio");
+  return {
+    email: inputValueByName(html, "email"),
+    phone: inputValueByName(html, "telefonePrincipal"),
+    mobile: inputValueByName(html, "telemovel"),
+    primaryAddress: addressFromHtml(html, "Principal"),
+    secondaryAddress: addressFromHtml(html, "Secundaria"),
+    mailingAddress: mailing === "P" ? "PRIMARY" : mailing === "S" ? "SECONDARY" : null,
+    editableFields: ["email", "phone", "mobile", "primaryAddressLine", "secondaryAddressLine", "mailingAddress"],
+    observedAt: new Date().toISOString(),
+  };
+}
+
+function normalizedContactHash(details: SecretariaContactDetails) {
+  const { observedAt: _observedAt, editableFields: _editableFields, ...stable } = details;
+  return createHash("sha256").update(JSON.stringify(stable)).digest("hex");
 }
 
 function visibleText(html: string) {
@@ -371,6 +475,100 @@ export class NetpaSecretariaGateway implements SecretariaGateway {
     if (authFailure(page.text)) throw new SecretariaError("SECRETARIA_REAUTH_REQUIRED", "A sessão da Secretaria expirou.", 409, true, "reauthenticate");
     if (page.response.status >= 400) throw new SecretariaError("SECRETARIA_UNAVAILABLE", "Não foi possível consultar o perfil da Secretaria.", 503, true);
     return profileFromHtml(page.text);
+  }
+
+  async #personalDataPage(session: SecretariaSession) {
+    const path = "/netpa/page?stage=BoletimMatricula";
+    const page = await this.#request(path, { headers: this.#headers(session) });
+    mergeSetCookies(session.cookies, page.response.headers);
+    if (authFailure(page.text)) throw new SecretariaError("SECRETARIA_REAUTH_REQUIRED", "A sessão da Secretaria expirou.", 409, true, "reauthenticate");
+    if (page.response.status >= 400) throw new SecretariaError("SECRETARIA_UNAVAILABLE", "Não foi possível consultar os dados pessoais da Secretaria.", 503, true);
+    return page.text;
+  }
+
+  async getContactDetails(session: SecretariaSession): Promise<SecretariaContactDetails> {
+    return contactDetailsFromHtml(await this.#personalDataPage(session));
+  }
+
+  async getConsents(session: SecretariaSession): Promise<SecretariaDataset> {
+    const path = "/netpa/page?stage=myconsents";
+    const page = await this.#request(path, { headers: this.#headers(session) });
+    mergeSetCookies(session.cookies, page.response.headers);
+    if (authFailure(page.text)) throw new SecretariaError("SECRETARIA_REAUTH_REQUIRED", "A sessão da Secretaria expirou.", 409, true, "reauthenticate");
+    if (page.response.status >= 400) throw new SecretariaError("SECRETARIA_UNAVAILABLE", "Não foi possível consultar os consentimentos da Secretaria.", 503, true);
+    const text = visibleText(page.text);
+    if (!/sem consentimentos/i.test(text) || !/não existem consentimentos disponíveis/i.test(text)) {
+      throw new SecretariaError("SECRETARIA_UPSTREAM_CHANGED", "A Secretaria apresentou um contrato de consentimento ainda não reconhecido.", 502, false, "contact_support");
+    }
+    return { domain: "privacy.consents", items: [], total: 0, observedAt: new Date().toISOString(), coverage: "live" };
+  }
+
+  async prepareContactDetails(session: SecretariaSession, patch: SecretariaContactDetailsPatch) {
+    const current = contactDetailsFromHtml(await this.#personalDataPage(session));
+    const currentValues: Record<keyof SecretariaContactDetailsPatch, string | null> = {
+      email: current.email,
+      phone: current.phone,
+      mobile: current.mobile,
+      primaryAddressLine: current.primaryAddress.line1,
+      secondaryAddressLine: current.secondaryAddress.line1,
+      mailingAddress: current.mailingAddress,
+    };
+    const changed = Object.entries(patch).some(([key, value]) => (currentValues[key as keyof SecretariaContactDetailsPatch] ?? "") !== (value ?? ""));
+    if (!changed) throw new SecretariaError("SECRETARIA_REQUEST_INVALID", "O pedido não altera nenhum dado de contacto.", 422);
+    return { patch, preconditionHash: normalizedContactHash(current) };
+  }
+
+  async updateContactDetails(session: SecretariaSession, patch: SecretariaContactDetailsPatch, preconditionHash: string) {
+    const html = await this.#personalDataPage(session);
+    const current = contactDetailsFromHtml(html);
+    if (normalizedContactHash(current) !== preconditionHash) {
+      throw new SecretariaError("SECRETARIA_PRECONDITION_FAILED", "Os dados de contacto mudaram depois da preparação; revê e prepara novamente.", 409);
+    }
+    const payload = formPayload(html, "boletimForm");
+    const mapping: Array<[keyof SecretariaContactDetailsPatch, string]> = [
+      ["email", "email"],
+      ["phone", "telefonePrincipal"],
+      ["mobile", "telemovel"],
+      ["primaryAddressLine", "moradaPrincipal"],
+      ["secondaryAddressLine", "moradaSecundaria"],
+    ];
+    for (const [key, field] of mapping) {
+      if (key in patch) payload.set(field, String(patch[key] ?? ""));
+    }
+    if (patch.mailingAddress) payload.set("moradaCorreio", patch.mailingAddress === "PRIMARY" ? "P" : "S");
+    payload.set("_formsubmitstage", "boletimmatricula");
+    payload.set("_formsubmitname", "boletimForm");
+    payload.set("submitAction", "");
+
+    const path = "/netpa/ajax?stage=boletimmatricula";
+    const result = await this.#request(path, {
+      method: "POST",
+      headers: {
+        ...this.#headers(session, true),
+        "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+        Referer: new URL("/netpa/page?stage=BoletimMatricula", this.#baseUrl).toString(),
+      },
+      body: payload.toString(),
+    });
+    mergeSetCookies(session.cookies, result.response.headers);
+    if (authFailure(result.text)) throw new SecretariaError("SECRETARIA_REAUTH_REQUIRED", "A sessão da Secretaria expirou.", 409, true, "reauthenticate");
+    if (result.response.status >= 400) throw new SecretariaError("SECRETARIA_UNAVAILABLE", "A Secretaria rejeitou o pedido de alteração de contactos.", 503, true);
+    let response: { success?: unknown; parameterErrors?: unknown };
+    try {
+      response = JSON.parse(result.text) as { success?: unknown; parameterErrors?: unknown };
+    } catch (error) {
+      throw new SecretariaError("SECRETARIA_UPSTREAM_CHANGED", "A resposta da alteração de contactos não é compatível.", 502, false, "contact_support", { cause: error });
+    }
+    if (response.success !== true) {
+      if (response.parameterErrors && typeof response.parameterErrors === "object") {
+        throw new SecretariaError("SECRETARIA_VALIDATION_FAILED", "A Secretaria recusou o pedido porque existem campos obrigatórios em falta ou inválidos.", 422);
+      }
+      throw new SecretariaError("SECRETARIA_COMMAND_OUTCOME_UNKNOWN", "A Secretaria não confirmou a submissão da alteração de contactos.", 502, true);
+    }
+    return {
+      items: [{ outcome: "CHANGE_REQUEST_SUBMITTED", changedFields: Object.keys(patch).sort() }],
+      observedAt: new Date().toISOString(),
+    };
   }
 
   async getDataset(session: SecretariaSession, domain: string): Promise<SecretariaDataset> {

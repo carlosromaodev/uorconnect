@@ -1,7 +1,7 @@
 ---
 document_id: SPEC-EST-SECRETARIA-001
 title: API Secretaria → UOR Estudante
-version: 1.2.0
+version: 1.3.0
 status: approved
 authority: normative_product_contract
 owner: UOR Estudante
@@ -313,7 +313,8 @@ As tabelas usam `approved_foundation`, `approved_read`, `approved_write_pending_
 | Método | Rota | Decisão de escopo | Finalidade |
 |---|---|---|---|
 | GET | `/me` | approved_read | Perfil institucional e mutabilidade por campo. |
-| PATCH | `/me/contact-details` | conditional_write | Alterar campos validados como editáveis. |
+| GET | `/me/contact-details` | approved_read | Consultar contactos, moradas e mutabilidade confirmada. |
+| PATCH | `/me/contact-details` | approved_write_feature_flagged | Preparar comando de submissão de pedido de alteração; exige `Idempotency-Key`. |
 | PUT | `/me/photo` | conditional_write | Atualizar fotografia validada. |
 | DELETE | `/me/photo` | conditional_write | Remover fotografia quando suportado. |
 | GET | `/consents` | approved_read | Consultar consentimentos. |
@@ -425,7 +426,7 @@ Somente `SUCCEEDED` significa efeito confirmado. Falha depois de possível submi
 7. Carregar preparação upstream, tokens e campos vigentes.
 8. Submeter uma vez por tentativa confirmada.
 9. Classificar a resposta sem confiar apenas no HTTP 200.
-10. Ler novamente a fonte e verificar a pós-condição.
+10. Ler novamente a fonte e verificar a pós-condição quando o upstream a expuser; caso contrário, aceitar apenas a confirmação inequívoca do pedido e proibir reenvio automático.
 11. Persistir resultado/evidência redigida e auditoria.
 12. Reconciliar ambiguidades por leitura e backoff.
 
@@ -433,7 +434,7 @@ Chave repetida com payload diferente retorna conflito. Chave e payload iguais de
 
 ### 11.3 Pós-condições
 
-- contacto: os campos oficiais mostram os novos valores;
+- contacto: `success=true` confirma apenas que o pedido de alteração foi submetido; o portal não expõe consulta do pedido nem garante aplicação imediata;
 - fotografia: versão/hash oficial mudou;
 - consentimento: estado oficial corresponde ao solicitado;
 - inscrição: época e unidade aparecem na lista oficial;
@@ -639,6 +640,14 @@ O fluxo autorizado do netPA foi observado com navegador real e uma conta control
 
 A prova controlada chegou ao estado oficial de sucesso e gerou somente referência. Não abriu checkout, não recebeu cartão e não processou dinheiro. A escrita permanece desligada por padrão através de `SECRETARIA_WRITE_PAYMENT_REFERENCE_ENABLED=false`; produção exige upstream HTTPS ou túnel TLS aprovado.
 
+## 21.2 Contratos de contactos e consentimentos verificados em 2026-07-21
+
+O formulário `BoletimMatricula` confirmou como editáveis `email`, `telefonePrincipal`, `telemovel`, linhas de morada principal/secundária e a seleção da morada de correio. A submissão usa `POST /netpa/ajax?stage=boletimmatricula` e envia o formulário vigente completo. Por isso, o gateway relê o formulário no momento da confirmação, preserva os campos fora do patch e aplica uma precondição hash para impedir sobrescrita concorrente.
+
+O portal descreve a operação como pedido de alteração. `success=true` significa `CHANGE_REQUEST_SUBMITTED`, não aplicação imediata. `parameterErrors` é convertido em `SECRETARIA_VALIDATION_FAILED`; as duas contas de teste possuem campos legados obrigatórios incompletos e o portal rejeitou submissões no-op sem criar pedido. Como não existe endpoint observado para consultar o pedido, resultados ambíguos permanecem `UNKNOWN` e não podem ser reconciliados ou reenviados automaticamente.
+
+A escrita fica desligada por padrão em `SECRETARIA_WRITE_CONTACT_DETAILS_ENABLED=false`. O estado atual de `myconsents` foi confirmado como “Sem consentimentos”, sem formulário ou callback de escrita. `GET /consents` devolve conjunto vazio; qualquer novo layout falha fechado como mudança de contrato, e `PATCH /consents/:consentId` permanece desativado até existir consentimento editável autorizado.
+
 ## 22. Migração e sequência de entrega
 
 ### Fase A — fundação e segurança
@@ -705,7 +714,7 @@ A leitura pode avançar enquanto as questões de escrita permanecem abertas. Cad
 | ID | Questão | Responsável | Impacto/condição | Estado | Atualiza |
 |---|---|---|---|---|---|
 | OQ-SEC-001 | Quando haverá HTTPS ou túnel privado até ao netPA? | Infraestrutura UOR | Bloqueia produção. | open | SDD-002, ADR-005, runbook |
-| OQ-SEC-002 | Quais campos pessoais são editáveis? | Secretaria/Produto | Ativação de contacto. | open | capabilities, RF |
+| OQ-SEC-002 | Quais campos pessoais são editáveis? | Secretaria/Produto | Confirmados contactos, linhas de morada e morada de correio; restantes campos ficam fora do patch. | resolved | capabilities, RF |
 | OQ-SEC-003 | Quais inscrições/cancelamentos são permitidos e reversíveis? | Secretaria/Académica | Ativação por operação. | open | capabilities, RF |
 | OQ-SEC-004 | Quais processos exigem anexos? | Secretaria/Produto | Anexos continuam excluídos; processo pode ficar no netPA. | open | SDD-002 |
 | OQ-SEC-005 | Qual autorização institucional existe para cada escrita? | Reitoria/Secretaria | Feature flag permanece desligada. | open | capabilities, ADR-005 |

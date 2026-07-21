@@ -90,7 +90,11 @@ describe("Secretaria command persistence", () => {
       })),
       validateSession: vi.fn(async () => true),
       getProfile: vi.fn(),
+      getContactDetails: vi.fn(),
+      getConsents: vi.fn(),
       getDataset: vi.fn(),
+      prepareContactDetails: vi.fn(async (_session, patch) => ({ patch, preconditionHash: "contact-precondition-hash" })),
+      updateContactDetails: vi.fn(async () => ({ items: [{ outcome: "CHANGE_REQUEST_SUBMITTED", changedFields: ["mobile"] }], observedAt: "2026-07-21T20:02:00.000Z" })),
       preparePaymentReference: vi.fn(async (_session, chargeRefs) => ({ chargeRefs })),
       generatePaymentReference: vi.fn(async () => ({ items: [{ reference: "REFERENCE-SECRET" }], observedAt: "2026-07-21T20:01:00.000Z" })),
       verifyPaymentReference: vi.fn(),
@@ -99,6 +103,7 @@ describe("Secretaria command persistence", () => {
     const keyring = SecretariaCryptoKeyring.fromConfig("v1", `v1:${randomBytes(32).toString("base64")}`);
     const application = new LiveSecretariaApplication(gateway, keyring, {
       paymentReferenceEnabled: true,
+      contactDetailsEnabled: true,
       confirmationTtlSeconds: 300,
       commandLeaseSeconds: 300,
     }, database as never);
@@ -129,6 +134,18 @@ describe("Secretaria command persistence", () => {
     expect(storedAfter.resultEnvelope).not.toContain("REFERENCE-SECRET");
     expect(await application.getCommandAttempts(student, prepared.id)).toHaveLength(1);
     expect((await application.getCommand(student, prepared.id)).result?.items[0]).toEqual({ reference: "REFERENCE-SECRET" });
+
+    const contact = await application.prepareContactDetails(student, { mobile: "+244 900 000 000" }, "contact-details-001");
+    expect(contact).toMatchObject({ type: "UPDATE_CONTACT_DETAILS", status: "AWAITING_CONFIRMATION" });
+    await expect(application.confirmCommand(student, contact.id, "GENERATE_PAYMENT_REFERENCE"))
+      .rejects.toMatchObject({ code: "SECRETARIA_COMMAND_STATE_INVALID" });
+    const contactSucceeded = await application.confirmCommand(student, contact.id, "UPDATE_CONTACT_DETAILS");
+    expect(contactSucceeded).toMatchObject({
+      type: "UPDATE_CONTACT_DETAILS",
+      status: "SUCCEEDED",
+      result: { items: [{ outcome: "CHANGE_REQUEST_SUBMITTED", changedFields: ["mobile"] }] },
+    });
+    expect(gateway.updateContactDetails).toHaveBeenCalledTimes(1);
     application.stop();
   });
 });

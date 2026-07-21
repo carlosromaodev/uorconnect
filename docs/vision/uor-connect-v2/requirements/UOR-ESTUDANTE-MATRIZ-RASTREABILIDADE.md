@@ -5,7 +5,7 @@ document_id: UOR-EST-TRACE-001
 status: approved
 owner: Engenharia UOR Estudante
 authority: informative
-version: 1.2
+version: 1.3
 last_reviewed: 2026-07-21
 approved_by: Product Owner
 approved_at: 2026-07-21
@@ -24,8 +24,9 @@ depends_on:
 - Evidência: `static`, `automated_test`, `integration_test`, `runtime_observed`, `production_observed`.
 - `implemented` significa código identificado sem verificação suficiente.
 - Verificação executada em 2026-07-21 no ambiente `local-test`, por `Codex`, sobre o commit de base `669aed0`.
-- Suite backend verificada: 7 ficheiros/45 testes. Suite frontend: 3 ficheiros/6 testes. Nenhuma escrita externa.
-- API Secretaria verificada adicionalmente nesta entrega: 5 ficheiros/9 testes focados, incluindo persistência SQLite isolada do comando, build de produção, contrato browser autorizado e smoke de login, identidade, sessão, exames, faltas e finanças.
+- Suite backend completa nesta árvore: 109 ficheiros/442 testes passaram; 3 testes preexistentes de referrals em `passport-game-rules.spec.ts` falharam porque o mock não expõe `prisma.student.findFirst`. Suite frontend anteriormente verificada: 3 ficheiros/6 testes.
+- API Secretaria verificada adicionalmente nesta entrega: 5 ficheiros/11 testes focados, incluindo persistência SQLite isolada dos comandos, build de produção, contrato browser autorizado e smoke de login, identidade, sessão, contactos, consentimentos vazios, exames, faltas e finanças.
+- O contrato de contactos foi observado no navegador e repetido pelo gateway HTTP com submissão no-op: o portal devolveu `parameterErrors`/`success=false` por campos legados obrigatórios incompletos, sem criar pedido ou alterar valores.
 - Uma prova controlada gerou referência oficial na conta de teste e observou `stepresultadopagamento`/sucesso; não houve checkout, cartão ou processamento de pagamento. A chamada não passou ainda pelo motor persistente implantado, portanto RF-EST-093 permanece `implemented`, não `verified`.
 
 ## Requisitos funcionais
@@ -116,10 +117,10 @@ depends_on:
 | [ ] | RF-EST-082 | planned | — | reserva/venda ausentes |
 | [ ] | RF-EST-083 | planned | — | moderação do mercado ausente |
 | [ ] | RF-EST-084 | partial | static | admin atual é transversal/Eventos e não Estudante isolado |
-| [ ] | RF-EST-085 | planned | — | contactos permanecem com flag/contrato desativados |
+| [ ] | RF-EST-085 | implemented | integration_test | leitura, patch permitido, precondição, idempotência e comando implementados; flag desativada e sucesso real bloqueado por dados obrigatórios incompletos nas contas de teste |
 | [ ] | RF-EST-086 | planned | — | fotografia permanece com flag/contrato desativados |
 | [ ] | RF-EST-087 | deprecated | static | reservado: troca de senha não pertence à API v1 |
-| [ ] | RF-EST-088 | planned | — | consentimentos permanecem com flag/contrato desativados |
+| [ ] | RF-EST-088 | partial | runtime_observed | leitura oficial “Sem consentimentos” implementada; escrita permanece desativada porque não existe finalidade editável nas contas autorizadas |
 | [ ] | RF-EST-089 | planned | — | inscrição em época permanece com flag/contrato desativados |
 | [ ] | RF-EST-090 | planned | — | revisão oficial permanece com flag/contrato desativados |
 | [ ] | RF-EST-091 | planned | — | candidatura permanece com flag/contrato desativados |

@@ -104,3 +104,63 @@ describe("NetpaSecretariaGateway finance contract", () => {
     await expect(gateway.verifyPaymentReference(session, [chargeRef])).resolves.toMatchObject({ items: [{ chargeRef }] });
   });
 });
+
+describe("NetpaSecretariaGateway personal data contracts", () => {
+  it("lê contactos e submete somente o patch preservando o formulário completo", async () => {
+    const personalData = `<html><body><form id="boletimForm" name="boletimForm">
+      <input type="hidden" name="_formsubmitstage" value="boletimmatricula">
+      <input type="hidden" name="_formsubmitname" value="boletimForm">
+      <input type="hidden" name="_formfieldnames" value="email,telefonePrincipal,telemovel,moradaPrincipal,moradaSecundaria,moradaCorreio,identificacaoNumero">
+      <input type="text" name="email" value="old@example.test">
+      <input type="text" name="telefonePrincipal" value="222000000">
+      <input type="text" name="telemovel" value="923000000">
+      <input type="text" name="moradaPrincipal" value="Rua Antiga">
+      <input type="text" name="paisMoradaPrincipalDesc" value="Angola">
+      <input type="text" name="moradaSecundaria" value="">
+      <input type="radio" name="moradaCorreio" value="P" checked>
+      <input type="radio" name="moradaCorreio" value="S">
+      <input type="text" name="identificacaoNumero" value="PRESERVE-ME">
+      <input type="hidden" name="submitAction" value="">
+    </form></body></html>`;
+    let submitted: URLSearchParams | null = null;
+    vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request, init: RequestInit = {}) => {
+      const url = new URL(typeof input === "string" || input instanceof URL ? input.toString() : input.url);
+      if ((init.method ?? "GET") === "POST" && url.pathname === "/netpa/ajax") {
+        submitted = new URLSearchParams(String(init.body ?? ""));
+        return new Response(JSON.stringify({ success: true, parameterErrors: {} }), { status: 200 });
+      }
+      if (url.searchParams.get("stage") === "BoletimMatricula") return new Response(personalData, { status: 200 });
+      return new Response("not found", { status: 404 });
+    }));
+
+    const gateway = testGateway();
+    const contacts = await gateway.getContactDetails(session);
+    expect(contacts).toMatchObject({
+      email: "old@example.test",
+      phone: "222000000",
+      mobile: "923000000",
+      primaryAddress: { line1: "Rua Antiga", country: "Angola" },
+      mailingAddress: "PRIMARY",
+    });
+    const prepared = await gateway.prepareContactDetails(session, { email: "new@example.test", mobile: null });
+    const result = await gateway.updateContactDetails(session, prepared.patch, prepared.preconditionHash);
+    expect(result.items[0]).toEqual({ outcome: "CHANGE_REQUEST_SUBMITTED", changedFields: ["email", "mobile"] });
+    expect(submitted?.get("email")).toBe("new@example.test");
+    expect(submitted?.get("telemovel")).toBe("");
+    expect(submitted?.get("identificacaoNumero")).toBe("PRESERVE-ME");
+    expect(submitted?.get("moradaCorreio")).toBe("P");
+  });
+
+  it("devolve conjunto vazio apenas para o estado de consentimentos confirmado", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(
+      "<html><h2>Consentimentos do utilizador</h2><h4>Sem consentimentos</h4><p>Não existem consentimentos disponíveis no momento para rever.</p></html>",
+      { status: 200 },
+    )));
+    await expect(testGateway().getConsents(session)).resolves.toMatchObject({
+      domain: "privacy.consents",
+      items: [],
+      total: 0,
+      coverage: "live",
+    });
+  });
+});

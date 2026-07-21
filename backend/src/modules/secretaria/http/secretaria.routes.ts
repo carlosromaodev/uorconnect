@@ -37,9 +37,17 @@ const academicParamsSchema = z.object({ resource: z.enum(["overview", "history",
 const paymentReferenceBodySchema = z.object({
   chargeRefs: z.array(z.string().regex(/^scr_[A-Za-z0-9_-]{43}$/)).min(1).max(20),
 });
+const contactDetailsBodySchema = z.object({
+  email: z.string().trim().email().max(254).optional(),
+  phone: z.string().trim().max(40).regex(/^[+0-9() .-]*$/).nullable().optional(),
+  mobile: z.string().trim().max(40).regex(/^[+0-9() .-]*$/).nullable().optional(),
+  primaryAddressLine: z.string().trim().min(1).max(300).optional(),
+  secondaryAddressLine: z.string().trim().max(300).nullable().optional(),
+  mailingAddress: z.enum(["PRIMARY", "SECONDARY"]).optional(),
+}).strict().refine((body) => Object.keys(body).length > 0, { message: "Indica pelo menos um campo para alterar." });
 const idempotencyHeadersSchema = z.object({ "idempotency-key": z.string().trim().min(8).max(128) });
 const commandParamsSchema = z.object({ commandId: z.string().uuid() });
-const commandConfirmationBodySchema = z.object({ confirmation: z.literal("GENERATE_PAYMENT_REFERENCE") });
+const commandConfirmationBodySchema = z.object({ confirmation: z.enum(["GENERATE_PAYMENT_REFERENCE", "UPDATE_CONTACT_DETAILS"]) });
 
 export type SecretariaRoutesOptions = {
   env: Env;
@@ -163,6 +171,18 @@ export async function secretariaRoutes(app: FastifyInstance, opts: SecretariaRou
       try { return { data: await opts.application.getProfile(request.student!), meta: meta(request, { coverage: "live" }) }; }
       catch (error) { return sendError(request, reply, error); }
     });
+    protectedApp.get("/me/contact-details", { schema: { tags: ["Secretaria - Perfil"], response: { 200: envelopeSchema, ...errorResponses } } }, async (request, reply) => {
+      try {
+        const data = await opts.application.getContactDetails(request.student!);
+        return { data, meta: meta(request, { coverage: "live", observedAt: data.observedAt }) };
+      } catch (error) { return sendError(request, reply, error); }
+    });
+    protectedApp.get("/consents", { schema: { tags: ["Secretaria - Privacidade"], response: { 200: envelopeSchema, ...errorResponses } } }, async (request, reply) => {
+      try {
+        const data = await opts.application.getConsents(request.student!);
+        return { data, meta: meta(request, { coverage: data.coverage, observedAt: data.observedAt }) };
+      } catch (error) { return sendError(request, reply, error); }
+    });
 
     async function dataset(request: FastifyRequest, reply: FastifyReply, domain: string) {
       try {
@@ -193,13 +213,12 @@ export async function secretariaRoutes(app: FastifyInstance, opts: SecretariaRou
       protectedApp.get(path, { schema: { tags: ["Secretaria - Processos"], response: { 200: envelopeSchema, ...errorResponses } } }, (request, reply) => dataset(request, reply, domain));
     }
 
-    const disabledReads = ["/consents", "/finance/receipts", "/finance/receipts/:id/content"];
+    const disabledReads = ["/finance/receipts", "/finance/receipts/:id/content"];
     for (const url of disabledReads) {
       protectedApp.get(url, { schema: { tags: ["Secretaria - Capabilities"], response: { ...errorResponses } } }, async (request, reply) => sendError(request, reply, new SecretariaError("SECRETARIA_CAPABILITY_DISABLED", "Esta leitura aguarda confirmação do contrato upstream.", 409)));
     }
 
     const disabledMutations: Array<{ method: "POST" | "PUT" | "PATCH" | "DELETE"; url: string }> = [
-      { method: "PATCH", url: "/me/contact-details" },
       { method: "PUT", url: "/me/photo" },
       { method: "DELETE", url: "/me/photo" },
       { method: "PATCH", url: "/consents/:consentId" },
@@ -228,6 +247,31 @@ export async function secretariaRoutes(app: FastifyInstance, opts: SecretariaRou
         handler: async (request, reply) => sendError(request, reply, new SecretariaError("SECRETARIA_CAPABILITY_DISABLED", "Esta operação aguarda autorização, contrato e teste individual.", 409)),
       });
     }
+
+    protectedApp.patch("/me/contact-details", {
+      config: {
+        rateLimit: {
+          max: 10,
+          timeWindow: 15 * 60_000,
+          keyGenerator: (request: FastifyRequest) => `${request.ip}:${request.student?.id ?? "anonymous"}:contact-details`,
+        },
+      },
+      schema: {
+        tags: ["Secretaria - Perfil"],
+        headers: idempotencyHeadersSchema,
+        body: contactDetailsBodySchema,
+        response: { 202: envelopeSchema, ...errorResponses },
+      },
+    }, async (request, reply) => {
+      try {
+        const command = await opts.application.prepareContactDetails(
+          request.student!,
+          request.body as z.infer<typeof contactDetailsBodySchema>,
+          String(request.headers["idempotency-key"]),
+        );
+        return reply.status(202).send({ data: command, meta: meta(request, { coverage: "live" }) });
+      } catch (error) { return sendError(request, reply, error); }
+    });
 
     protectedApp.post("/finance/payment-references", {
       config: {
@@ -267,7 +311,16 @@ export async function secretariaRoutes(app: FastifyInstance, opts: SecretariaRou
     protectedApp.post("/commands/:commandId/confirm", {
       schema: { tags: ["Secretaria - Comandos"], params: commandParamsSchema, body: commandConfirmationBodySchema, response: { 200: envelopeSchema, ...errorResponses } },
     }, async (request, reply) => {
-      try { return { data: await opts.application.confirmCommand(request.student!, (request.params as z.infer<typeof commandParamsSchema>).commandId), meta: meta(request, { coverage: "live" }) }; }
+      try {
+        return {
+          data: await opts.application.confirmCommand(
+            request.student!,
+            (request.params as z.infer<typeof commandParamsSchema>).commandId,
+            (request.body as z.infer<typeof commandConfirmationBodySchema>).confirmation,
+          ),
+          meta: meta(request, { coverage: "live" }),
+        };
+      }
       catch (error) { return sendError(request, reply, error); }
     });
     protectedApp.post("/commands/:commandId/reconcile", {

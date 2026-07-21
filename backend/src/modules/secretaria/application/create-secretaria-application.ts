@@ -16,6 +16,7 @@ export function createSecretariaApplication(env: Env, override?: SecretariaAppli
   });
   return new LiveSecretariaApplication(gateway, keyring, {
     paymentReferenceEnabled: env.SECRETARIA_WRITE_PAYMENT_REFERENCE_ENABLED,
+    contactDetailsEnabled: env.SECRETARIA_WRITE_CONTACT_DETAILS_ENABLED,
     confirmationTtlSeconds: env.SECRETARIA_COMMAND_CONFIRMATION_TTL_SECONDS,
     commandLeaseSeconds: env.SECRETARIA_COMMAND_LEASE_SECONDS,
   });

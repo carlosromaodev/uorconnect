@@ -20,6 +20,37 @@ export type SecretariaProfile = {
   phone: string | null;
 };
 
+export type SecretariaAddress = {
+  line1: string | null;
+  country: string | null;
+  postalCode: string | null;
+  postalSuffix: string | null;
+  district: string | null;
+  municipality: string | null;
+  parish: string | null;
+  foreignCountry: string | null;
+};
+
+export type SecretariaContactDetails = {
+  email: string | null;
+  phone: string | null;
+  mobile: string | null;
+  primaryAddress: SecretariaAddress;
+  secondaryAddress: SecretariaAddress;
+  mailingAddress: "PRIMARY" | "SECONDARY" | null;
+  editableFields: Array<"email" | "phone" | "mobile" | "primaryAddressLine" | "secondaryAddressLine" | "mailingAddress">;
+  observedAt: string;
+};
+
+export type SecretariaContactDetailsPatch = {
+  email?: string;
+  phone?: string | null;
+  mobile?: string | null;
+  primaryAddressLine?: string;
+  secondaryAddressLine?: string | null;
+  mailingAddress?: "PRIMARY" | "SECONDARY";
+};
+
 export type SecretariaSession = {
   cookies: Record<string, string>;
   authenticatedAt: string;
@@ -73,8 +104,8 @@ export type SecretariaCommandStatus =
 
 export type SecretariaCommandView = {
   id: string;
-  type: "GENERATE_PAYMENT_REFERENCE";
-  risk: "MEDIUM";
+  type: "GENERATE_PAYMENT_REFERENCE" | "UPDATE_CONTACT_DETAILS";
+  risk: "LOW" | "MEDIUM" | "HIGH";
   status: SecretariaCommandStatus;
   requiresConfirmation: boolean;
   confirmationExpiresAt: string | null;

@@ -5,7 +5,7 @@ document_id: ADR-006
 status: accepted
 owner: Arquitetura UOR Estudante
 authority: informative_until_approved
-version: 1.0
+version: 1.1
 last_reviewed: 2026-07-21
 approved_by: Product Owner
 approved_at: 2026-07-21
@@ -25,7 +25,7 @@ depends_on:
 
 ## Contexto
 
-O repositório atual usa backend Fastify, schemas Zod, Prisma e persistência SQLite/PostgreSQL conforme o ambiente. A integração Moodle estabeleceu padrões para gateway web, envelopes cifrados, sessão, snapshots, leases, workers, schemas HTTP e testes. A nova integração Secretaria está isolada em módulo próprio, com fundação de sessão/leitura/snapshot e primeiro comando financeiro implementado; a migração do acoplamento legado de autenticação continua separada.
+O repositório atual usa backend Fastify, schemas Zod, Prisma e persistência SQLite/PostgreSQL conforme o ambiente. A integração Moodle estabeleceu padrões para gateway web, envelopes cifrados, sessão, snapshots, leases, workers, schemas HTTP e testes. A integração Secretaria está isolada em módulo próprio, com fundação de sessão/leitura/snapshot e comandos de referência e pedido de alteração de contactos implementados; a migração do acoplamento legado de autenticação continua separada.
 
 A especificação da API Secretaria → UOR Estudante define comportamentos obrigatórios, mas não deve eternizar tecnologias ou caminhos físicos. Este ADR registra as escolhas técnicas propostas após a auditoria inicial do repositório.
 
@@ -86,6 +86,8 @@ O TTL exato será configuração operacional, não invariante do produto.
 - Manter parsers puros e contratos upstream versionados por capacidade.
 - Capturar somente fixtures anonimizadas.
 - Não devolver HTML, cookies, URLs internas ou IDs upstream à aplicação.
+- Usar identificação de navegador compatível porque o netPA rejeita user-agents de cliente personalizados; a versão fica coberta por contrato vivo.
+- Em alterações de contacto, reler o formulário completo, verificar precondição, preservar campos fora do patch e tratar `success=true` como submissão de pedido, não atualização imediata.
 - Permitir substituição pelo gateway de API oficial no futuro.
 
 ### 8. Feature flags e circuit breakers

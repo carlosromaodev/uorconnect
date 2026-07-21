@@ -15,10 +15,22 @@ function fakeApplication(): SecretariaApplication {
     disconnect: vi.fn(async () => ({ status: "DISCONNECTED", connected: false, credentialStored: false, actionRequired: "connect", retryable: false, lastAuthenticatedAt: null, lastSuccessfulSyncAt: null })),
     deleteImportedData: vi.fn(async () => ({ deletedSnapshots: 2, deletedSyncRuns: 1, deletedCommands: 1 })),
     getProfile: vi.fn(async () => ({ studentNumber: "20240001", displayName: "Estudante Teste", email: null, course: "Curso", birthDate: null, nationality: null, phone: null })),
+    getContactDetails: vi.fn(async () => ({
+      email: "student@example.test",
+      phone: null,
+      mobile: null,
+      primaryAddress: { line1: "Rua Teste", country: "Angola", postalCode: null, postalSuffix: null, district: null, municipality: null, parish: null, foreignCountry: null },
+      secondaryAddress: { line1: null, country: null, postalCode: null, postalSuffix: null, district: null, municipality: null, parish: null, foreignCountry: null },
+      mailingAddress: "PRIMARY",
+      editableFields: ["email", "phone", "mobile", "primaryAddressLine", "secondaryAddressLine", "mailingAddress"],
+      observedAt: "2026-07-21T20:00:00.000Z",
+    })),
+    getConsents: vi.fn(async () => ({ domain: "privacy.consents", items: [], total: 0, observedAt: "2026-07-21T20:00:00.000Z", coverage: "live" })),
     getDataset: vi.fn(async (_student, domain) => ({ data: { domain, items: [{ subject: "Teste" }], total: 1, observedAt: "2026-07-21T20:00:00.000Z", coverage: "live" }, stale: false, snapshotVersion: null })),
     startSync: vi.fn(async () => ({ id: "b0fd0d6c-e3a5-4abb-a760-c9463fe42336", status: "COMPLETED", snapshotVersion: 1, domains: [], completedDomains: [], failedDomains: [], startedAt: "2026-07-21T20:00:00.000Z", finishedAt: "2026-07-21T20:00:01.000Z" })),
     getSync: vi.fn(async () => ({ id: "b0fd0d6c-e3a5-4abb-a760-c9463fe42336", status: "COMPLETED", snapshotVersion: 1, domains: [], completedDomains: [], failedDomains: [], startedAt: "2026-07-21T20:00:00.000Z", finishedAt: "2026-07-21T20:00:01.000Z" })),
     preparePaymentReference: vi.fn(async () => ({ id: "8b5e8ab9-3989-4517-8a82-56128794ae87", type: "GENERATE_PAYMENT_REFERENCE", risk: "MEDIUM", status: "AWAITING_CONFIRMATION", requiresConfirmation: true, confirmationExpiresAt: "2026-07-21T20:05:00.000Z", result: null, errorCode: null, createdAt: "2026-07-21T20:00:00.000Z", updatedAt: "2026-07-21T20:00:00.000Z", completedAt: null })),
+    prepareContactDetails: vi.fn(async () => ({ id: "d3bd8d65-5695-41b8-9f22-e3b042ea4e6f", type: "UPDATE_CONTACT_DETAILS", risk: "MEDIUM", status: "AWAITING_CONFIRMATION", requiresConfirmation: true, confirmationExpiresAt: "2026-07-21T20:05:00.000Z", result: null, errorCode: null, createdAt: "2026-07-21T20:00:00.000Z", updatedAt: "2026-07-21T20:00:00.000Z", completedAt: null })),
     getCommand: vi.fn(async () => ({ id: "8b5e8ab9-3989-4517-8a82-56128794ae87", type: "GENERATE_PAYMENT_REFERENCE", risk: "MEDIUM", status: "AWAITING_CONFIRMATION", requiresConfirmation: true, confirmationExpiresAt: "2026-07-21T20:05:00.000Z", result: null, errorCode: null, createdAt: "2026-07-21T20:00:00.000Z", updatedAt: "2026-07-21T20:00:00.000Z", completedAt: null })),
     getCommandAttempts: vi.fn(async () => []),
     confirmCommand: vi.fn(async () => ({ id: "8b5e8ab9-3989-4517-8a82-56128794ae87", type: "GENERATE_PAYMENT_REFERENCE", risk: "MEDIUM", status: "SUCCEEDED", requiresConfirmation: false, confirmationExpiresAt: "2026-07-21T20:05:00.000Z", result: { items: [], observedAt: "2026-07-21T20:01:00.000Z" }, errorCode: null, createdAt: "2026-07-21T20:00:00.000Z", updatedAt: "2026-07-21T20:01:00.000Z", completedAt: "2026-07-21T20:01:00.000Z" })),
@@ -84,6 +96,27 @@ describe("Secretaria routes", () => {
     expect(write.statusCode).toBe(202);
     expect(write.json().data.status).toBe("AWAITING_CONFIRMATION");
     expect(application.preparePaymentReference).toHaveBeenCalledWith({ id: 1, studentNumber: "20240001" }, [chargeRef], "payment-reference-test-001");
+
+    const contacts = await app.inject({ method: "GET", url: "/api/v1/integrations/secretaria/me/contact-details", headers: { authorization } });
+    expect(contacts.statusCode).toBe(200);
+    expect(contacts.json().data.email).toBe("student@example.test");
+    const consents = await app.inject({ method: "GET", url: "/api/v1/integrations/secretaria/consents", headers: { authorization } });
+    expect(consents.statusCode).toBe(200);
+    expect(consents.json().data).toMatchObject({ domain: "privacy.consents", total: 0 });
+
+    const contactWrite = await app.inject({
+      method: "PATCH",
+      url: "/api/v1/integrations/secretaria/me/contact-details",
+      headers: { authorization, "content-type": "application/json", "idempotency-key": "contact-details-test-001" },
+      payload: { mobile: "+244 900 000 000" },
+    });
+    expect(contactWrite.statusCode).toBe(202);
+    expect(contactWrite.json().data).toMatchObject({ type: "UPDATE_CONTACT_DETAILS", status: "AWAITING_CONFIRMATION" });
+    expect(application.prepareContactDetails).toHaveBeenCalledWith(
+      { id: 1, studentNumber: "20240001" },
+      { mobile: "+244 900 000 000" },
+      "contact-details-test-001",
+    );
 
     const confirm = await app.inject({
       method: "POST",

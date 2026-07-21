@@ -13,7 +13,11 @@ function gateway(): SecretariaGateway {
     authenticate: vi.fn(),
     validateSession: vi.fn(),
     getProfile: vi.fn(),
+    getContactDetails: vi.fn(),
+    getConsents: vi.fn(),
     getDataset: vi.fn(),
+    prepareContactDetails: vi.fn(),
+    updateContactDetails: vi.fn(),
     preparePaymentReference: vi.fn(),
     generatePaymentReference: vi.fn(),
     verifyPaymentReference: vi.fn(),
@@ -26,12 +30,16 @@ describe("LiveSecretariaApplication command controls", () => {
     const crypto = keyring();
     const app = new LiveSecretariaApplication(gateway(), crypto, {
       paymentReferenceEnabled: false,
+      contactDetailsEnabled: false,
       confirmationTtlSeconds: 300,
       commandLeaseSeconds: 300,
     });
 
     expect(app.capabilities().find((capability) => capability.key === "paymentReference")).toMatchObject({ status: "disabled" });
+    expect(app.capabilities().find((capability) => capability.key === "contactDetails" && capability.mode === "write")).toMatchObject({ status: "disabled" });
     await expect(app.preparePaymentReference({ id: 1, studentNumber: "20240001" }, [`scr_${"a".repeat(43)}`], "idempotency-test"))
+      .rejects.toMatchObject({ code: "SECRETARIA_CAPABILITY_DISABLED" });
+    await expect(app.prepareContactDetails({ id: 1, studentNumber: "20240001" }, { mobile: "+244 900 000 000" }, "contact-details-test"))
       .rejects.toMatchObject({ code: "SECRETARIA_CAPABILITY_DISABLED" });
     app.stop();
   });
