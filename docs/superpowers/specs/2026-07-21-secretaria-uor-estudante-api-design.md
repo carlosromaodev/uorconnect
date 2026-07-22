@@ -1,7 +1,7 @@
 ---
 document_id: SPEC-EST-SECRETARIA-001
 title: API Secretaria → UOR Estudante
-version: 1.6.0
+version: 1.7.0
 status: approved
 authority: normative_product_contract
 owner: UOR Estudante
@@ -23,9 +23,9 @@ O adaptador da Secretaria esconderá URLs, stages, cookies, campos de formulári
 
 Itens financeiros usam `chargeRef` opaco autenticado por HMAC e rotacionável; o contrato público nunca transporta os três identificadores exigidos pelo wizard netPA.
 
-A primeira entrega aprova a fundação, a persistência controlada da credencial, a sessão, o catálogo de capacidades, a leitura normalizada, os snapshots e a sincronização. Um motor genérico de comandos também faz parte da fundação, mas cada mutação permanecerá desativada até satisfazer autorização, contrato upstream, feature flag, testes e pós-condição próprios.
+A implementação aprovada inclui fundação, persistência controlada da credencial, sessão, catálogo de capacidades, leitura normalizada, snapshots, sincronização e motor durável de comandos. Cada mutação permanece desligada por padrão e só é ativada quando satisfaz contrato upstream, feature flag, testes e pós-condição próprios.
 
-O âmbito financeiro limita-se a consultar cobranças, gerar ou extrair referências oficiais, apresentá-las ou partilhá-las de forma autorizada, consultar pagamentos já realizados fora do produto e obter recibos permitidos. A UOR Estudante não inicia, executa, cancela ou processa pagamentos e não recebe instrumentos financeiros.
+O âmbito financeiro limita-se a consultar cobranças, gerar ou extrair referências oficiais e apresentar o respetivo documento quando disponível. Histórico de pagamentos e recibos só serão ativados se o portal expuser contratos verificáveis. A UOR Estudante não inicia, executa, cancela ou processa pagamentos e não recebe instrumentos financeiros.
 
 ## 2. Produto, autoridade e propriedade
 
@@ -55,7 +55,7 @@ Uma inspeção autenticada e não destrutiva confirmou respostas estruturadas pa
 - aulas e sumários;
 - calendário e lista de exames;
 - faltas e presenças;
-- situação financeira e pagamentos registados;
+- situação financeira, cobranças e referências;
 - candidaturas existentes;
 - formações avançadas e estágios;
 - inscrições em épocas de exame;
@@ -64,7 +64,7 @@ Uma inspeção autenticada e não destrutiva confirmou respostas estruturadas pa
 - consentimentos;
 - diretório público de cursos.
 
-A leitura possui viabilidade alta. A escrita é condicionada porque os formulários, tokens, validações, permissões e pós-condições ainda precisam de ser capturados e testados individualmente.
+A leitura possui viabilidade alta. Dois perfis autorizados foram ensaiados integralmente em 2026-07-22. Foram confirmados contratos vivos para todas as leituras listadas, diretório de cursos, cancelamento de pedido cadastral e o ciclo de cópia de prova/revisão/reapreciação. Escritas restantes continuam condicionadas por janela funcional, dados obrigatórios e pós-condição observável.
 
 O upstream observado usa HTTP. Em produção, a integração fica bloqueada até existir HTTPS institucional ou túnel/proxy privado aprovado entre a UOR Estudante e o netPA. O HTTP atual só pode ser usado no ambiente autorizado de desenvolvimento/homologação com configuração explícita.
 
@@ -347,7 +347,7 @@ Não existe rota de troca de senha na primeira versão.
 | DELETE | `/exam-registrations/:registrationRef` | approved_write_feature_flagged | Preparar cancelamento por referência opaca; exige `Idempotency-Key`. |
 | GET | `/grade-review-requests` | approved_read | Consultar pedidos de revisão. |
 | GET | `/grade-review-requests/:reviewRef` | approved_read | Consultar estado/resposta oficial por referência opaca. |
-| POST | `/grade-review-requests` | approved_write_feature_flagged | Preparar comando de revisão sem anexos; exige `Idempotency-Key` e confirmação `SUBMIT_GRADE_REVIEW`. |
+| POST | `/grade-review-requests` | approved_write_feature_flagged | Preparar pedido de cópia, revisão ou reapreciação sem anexos; exige `Idempotency-Key` e confirmação `SUBMIT_GRADE_REVIEW`. |
 | GET | `/applications` | approved_read | Consultar candidaturas. |
 | POST | `/applications` | conditional_write | Submeter candidatura aprovada. |
 | PATCH | `/applications/:id` | conditional_write | Alterar enquanto editável. |
@@ -369,7 +369,7 @@ Não existe rota de troca de senha na primeira versão.
 
 `needs_product_validation` exige confirmação de necessidade funcional, mas não a descoberta de uma nova tecnologia.
 
-O item de revisão expõe `reviewRef`, estado oficial, número do pedido quando existir e `availableAction`: `REQUEST_PROOF_COPY`, `SUBMIT_REVIEW`, `SUBMIT_RECONSIDERATION` ou `null`. A API v1 só implementa `SUBMIT_REVIEW`; não cria automaticamente pedido de cópia de prova, não submete reapreciação e não aceita anexos. `POST /grade-review-requests` recebe `reviewRef` e `justification` não vazia com até 16000 caracteres, devolve um comando de risco alto e só alcança o upstream após confirmação explícita. O sucesso requer releitura de um novo estado oficial.
+O item de revisão expõe `reviewRef`, estado oficial, número do pedido quando existir e `availableAction`: `REQUEST_PROOF_COPY`, `SUBMIT_REVIEW`, `SUBMIT_RECONSIDERATION` ou `null`. `POST /grade-review-requests` recebe `reviewRef`, `operation` (`PROOF_COPY`, `REVIEW` ou `RECONSIDERATION`) e justificação de até 16000 caracteres, obrigatória salvo para cópia. O comando é de risco alto, só alcança o upstream após confirmação explícita e só conclui depois de reler um novo estado oficial. Anexos permanecem fora da v1.
 
 ### 10.5 Finanças e referências
 
@@ -378,11 +378,12 @@ O item de revisão expõe `reviewRef`, estado oficial, número do pedido quando 
 | GET | `/finance/overview` | approved_read | Resumo oficial. |
 | GET | `/finance/charges` | approved_read | Cobranças, vencimentos, moeda e estado. |
 | GET | `/finance/payment-references` | approved_read | Referências existentes. |
+| GET | `/finance/payment-references/:chargeRef/document` | approved_read | Proxy PDF seguro do documento oficial quando disponível. |
 | POST | `/finance/payment-references` | approved_write_feature_flagged | Preparar comando para gerar/extrair referência oficial; exige `Idempotency-Key`. |
 | POST | `/finance/payment-references/:id/share-requests` | approved_write_pending_contract | Partilhar somente referência autorizada. |
-| GET | `/finance/payments` | approved_read | Histórico/estado oficial após pagamento externo. |
-| GET | `/finance/receipts` | approved_read | Recibos disponíveis quando suportados. |
-| GET | `/finance/receipts/:id/content` | approved_read | Proxy seguro quando o recibo estiver disponível. |
+| GET | `/finance/payments` | unsupported_upstream | O perfil observado não expõe histórico verificável; devolve cobertura `unsupported`. |
+| GET | `/finance/receipts` | pending_contract | Recibos não são anunciados como disponíveis sem contrato observado. |
+| GET | `/finance/receipts/:id/content` | pending_contract | Proxy só será ativado depois de contrato e ownership verificáveis. |
 
 Não existem payment intents, hosted checkout, `nextAction: redirect`, confirmação/cancelamento de pagamento ou captura de instrumento financeiro.
 

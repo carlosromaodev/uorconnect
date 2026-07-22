@@ -29,10 +29,12 @@ function fakeApplication(): SecretariaApplication {
     getPhoto: vi.fn(async () => ({ body: Buffer.from("GIF89a-test"), contentType: "image/gif", contentLength: 11, sha256: "photo-etag" })),
     getConsents: vi.fn(async () => ({ domain: "privacy.consents", items: [], total: 0, observedAt: "2026-07-21T20:00:00.000Z", coverage: "live" })),
     getDataset: vi.fn(async (_student, domain) => ({ data: { domain, items: [{ subject: "Teste" }], total: 1, observedAt: "2026-07-21T20:00:00.000Z", coverage: "live" }, stale: false, snapshotVersion: null })),
+    getPaymentReferenceDocument: vi.fn(async () => ({ body: Buffer.from("%PDF-1.7\ntest"), contentType: "application/pdf", contentLength: 13, sha256: "document-etag", filename: "referencia-pagamento-secretaria.pdf" })),
     startSync: vi.fn(async () => ({ id: "b0fd0d6c-e3a5-4abb-a760-c9463fe42336", status: "COMPLETED", snapshotVersion: 1, domains: [], completedDomains: [], failedDomains: [], startedAt: "2026-07-21T20:00:00.000Z", finishedAt: "2026-07-21T20:00:01.000Z" })),
     getSync: vi.fn(async () => ({ id: "b0fd0d6c-e3a5-4abb-a760-c9463fe42336", status: "COMPLETED", snapshotVersion: 1, domains: [], completedDomains: [], failedDomains: [], startedAt: "2026-07-21T20:00:00.000Z", finishedAt: "2026-07-21T20:00:01.000Z" })),
     preparePaymentReference: vi.fn(async () => ({ id: "8b5e8ab9-3989-4517-8a82-56128794ae87", type: "GENERATE_PAYMENT_REFERENCE", risk: "MEDIUM", status: "AWAITING_CONFIRMATION", requiresConfirmation: true, confirmationExpiresAt: "2026-07-21T20:05:00.000Z", result: null, errorCode: null, createdAt: "2026-07-21T20:00:00.000Z", updatedAt: "2026-07-21T20:00:00.000Z", completedAt: null })),
     prepareContactDetails: vi.fn(async () => ({ id: "d3bd8d65-5695-41b8-9f22-e3b042ea4e6f", type: "UPDATE_CONTACT_DETAILS", risk: "MEDIUM", status: "AWAITING_CONFIRMATION", requiresConfirmation: true, confirmationExpiresAt: "2026-07-21T20:05:00.000Z", result: null, errorCode: null, createdAt: "2026-07-21T20:00:00.000Z", updatedAt: "2026-07-21T20:00:00.000Z", completedAt: null })),
+    prepareContactDetailsCancellation: vi.fn(async () => ({ id: "4cd6c645-f2c5-4781-a8c5-379494208621", type: "CANCEL_CONTACT_CHANGE_REQUEST", risk: "MEDIUM", status: "AWAITING_CONFIRMATION", requiresConfirmation: true, confirmationExpiresAt: "2026-07-21T20:05:00.000Z", result: null, errorCode: null, createdAt: "2026-07-21T20:00:00.000Z", updatedAt: "2026-07-21T20:00:00.000Z", completedAt: null })),
     preparePhoto: vi.fn(async () => ({ id: "0c359bab-4f18-478c-8a46-64ead3c14dab", type: "UPDATE_PHOTO", risk: "MEDIUM", status: "AWAITING_CONFIRMATION", requiresConfirmation: true, confirmationExpiresAt: "2026-07-21T20:05:00.000Z", result: null, errorCode: null, createdAt: "2026-07-21T20:00:00.000Z", updatedAt: "2026-07-21T20:00:00.000Z", completedAt: null })),
     prepareExamRegistrationCancellation: vi.fn(async () => ({ id: "1df88f78-4ec0-4d4f-9f86-18bdd37fa40f", type: "CANCEL_EXAM_REGISTRATION", risk: "MEDIUM", status: "AWAITING_CONFIRMATION", requiresConfirmation: true, confirmationExpiresAt: "2026-07-21T20:05:00.000Z", result: null, errorCode: null, createdAt: "2026-07-21T20:00:00.000Z", updatedAt: "2026-07-21T20:00:00.000Z", completedAt: null })),
     prepareGradeReview: vi.fn(async () => ({ id: "31e127a5-3ccd-4e80-9b1f-16af9ee802dd", type: "SUBMIT_GRADE_REVIEW", risk: "HIGH", status: "AWAITING_CONFIRMATION", requiresConfirmation: true, confirmationExpiresAt: "2026-07-21T20:05:00.000Z", result: null, errorCode: null, createdAt: "2026-07-21T20:00:00.000Z", updatedAt: "2026-07-21T20:00:00.000Z", completedAt: null })),
@@ -101,6 +103,18 @@ describe("Secretaria routes", () => {
     expect(write.statusCode).toBe(202);
     expect(write.json().data.status).toBe("AWAITING_CONFIRMATION");
     expect(application.preparePaymentReference).toHaveBeenCalledWith({ id: 1, studentNumber: "20240001" }, [chargeRef], "payment-reference-test-001");
+    const referenceDocument = await app.inject({
+      method: "GET",
+      url: `/api/v1/integrations/secretaria/finance/payment-references/${chargeRef}/document`,
+      headers: { authorization },
+    });
+    expect(referenceDocument.statusCode).toBe(200);
+    expect(referenceDocument.headers["content-type"]).toContain("application/pdf");
+    expect(referenceDocument.headers["content-disposition"]).toContain("referencia-pagamento-secretaria.pdf");
+
+    const directory = await app.inject({ method: "GET", url: "/api/v1/integrations/secretaria/directory/courses", headers: { authorization } });
+    expect(directory.statusCode).toBe(200);
+    expect(application.getDataset).toHaveBeenCalledWith({ id: 1, studentNumber: "20240001" }, "directory.courses");
 
     const contacts = await app.inject({ method: "GET", url: "/api/v1/integrations/secretaria/me/contact-details", headers: { authorization } });
     expect(contacts.statusCode).toBe(200);
@@ -121,6 +135,17 @@ describe("Secretaria routes", () => {
       { id: 1, studentNumber: "20240001" },
       { mobile: "+244 900 000 000" },
       "contact-details-test-001",
+    );
+    const contactCancellation = await app.inject({
+      method: "DELETE",
+      url: "/api/v1/integrations/secretaria/me/contact-details/change-request",
+      headers: { authorization, "idempotency-key": "contact-cancel-test-001" },
+    });
+    expect(contactCancellation.statusCode).toBe(202);
+    expect(contactCancellation.json().data).toMatchObject({ type: "CANCEL_CONTACT_CHANGE_REQUEST", status: "AWAITING_CONFIRMATION" });
+    expect(application.prepareContactDetailsCancellation).toHaveBeenCalledWith(
+      { id: 1, studentNumber: "20240001" },
+      "contact-cancel-test-001",
     );
 
     const photoRead = await app.inject({ method: "GET", url: "/api/v1/integrations/secretaria/me/photo", headers: { authorization } });
@@ -166,8 +191,23 @@ describe("Secretaria routes", () => {
     expect(application.prepareGradeReview).toHaveBeenCalledWith(
       { id: 1, studentNumber: "20240001" },
       reviewRef,
+      "REVIEW",
       "Solicito revisão conforme os critérios publicados.",
       "grade-review-test-001",
+    );
+    const proofCopy = await app.inject({
+      method: "POST",
+      url: "/api/v1/integrations/secretaria/grade-review-requests",
+      headers: { authorization, "content-type": "application/json", "idempotency-key": "grade-proof-test-001" },
+      payload: { reviewRef, operation: "PROOF_COPY" },
+    });
+    expect(proofCopy.statusCode).toBe(202);
+    expect(application.prepareGradeReview).toHaveBeenLastCalledWith(
+      { id: 1, studentNumber: "20240001" },
+      reviewRef,
+      "PROOF_COPY",
+      "",
+      "grade-proof-test-001",
     );
     vi.mocked(application.getDataset).mockResolvedValueOnce({
       data: { domain: "process.gradeReviews", items: [{ reviewRef, state: "Em Validação" }], total: 1, observedAt: "2026-07-22T10:00:00.000Z", coverage: "live" },

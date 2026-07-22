@@ -65,6 +65,14 @@ export type SecretariaPhotoInput = {
   height: number;
 };
 
+export type SecretariaDocument = {
+  body: Buffer;
+  contentType: "application/pdf";
+  contentLength: number;
+  sha256: string;
+  filename: string;
+};
+
 export type SecretariaExamRegistrationCancellation = {
   registrationRef: string;
   preconditionHash: string;
@@ -72,6 +80,7 @@ export type SecretariaExamRegistrationCancellation = {
 
 export type SecretariaGradeReviewSubmission = {
   reviewRef: string;
+  operation: "REVIEW" | "PROOF_COPY" | "RECONSIDERATION";
   justification: string;
   preconditionHash: string;
 };
@@ -129,7 +138,7 @@ export type SecretariaCommandStatus =
 
 export type SecretariaCommandView = {
   id: string;
-  type: "GENERATE_PAYMENT_REFERENCE" | "UPDATE_CONTACT_DETAILS" | "UPDATE_PHOTO" | "CANCEL_EXAM_REGISTRATION" | "SUBMIT_GRADE_REVIEW";
+  type: "GENERATE_PAYMENT_REFERENCE" | "UPDATE_CONTACT_DETAILS" | "CANCEL_CONTACT_CHANGE_REQUEST" | "UPDATE_PHOTO" | "CANCEL_EXAM_REGISTRATION" | "SUBMIT_GRADE_REVIEW";
   risk: "LOW" | "MEDIUM" | "HIGH";
   status: SecretariaCommandStatus;
   requiresConfirmation: boolean;

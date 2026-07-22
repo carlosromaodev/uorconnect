@@ -24,9 +24,9 @@ depends_on:
 - Evidência: `static`, `automated_test`, `integration_test`, `runtime_observed`, `production_observed`.
 - `implemented` significa código identificado sem verificação suficiente.
 - Verificação executada em 2026-07-21 no ambiente `local-test`, por `Codex`, sobre o commit de base `669aed0`.
-- Suite backend completa nesta árvore: 109 ficheiros/447 testes passaram de 110 ficheiros/450 testes; 3 testes preexistentes de referrals em `passport-game-rules.spec.ts` falharam porque o mock não expõe `prisma.student.findFirst`. Suite frontend anteriormente verificada: 3 ficheiros/6 testes.
-- API Secretaria verificada adicionalmente nesta entrega: 5 ficheiros/18 testes focados, incluindo persistência SQLite isolada dos comandos, build de produção, schema Prisma, contrato browser autorizado e smoke de login, identidade, sessão, contactos, fotografia, inscrições em épocas, revisão de nota, consentimentos vazios, exames, faltas e finanças.
-- O lint TypeScript global mantém 3 erros preexistentes em testes de eliminação de estudante, Odin AI e erros HTTP; o build de produção não apresenta erros.
+- Suite backend completa nesta árvore: 109 ficheiros/448 testes passaram de 110 ficheiros/451 testes; 3 testes preexistentes de referrals em `passport-game-rules.spec.ts` falharam porque o mock não expõe `prisma.student.findFirst`. Suite frontend anteriormente verificada: 3 ficheiros/6 testes.
+- API Secretaria verificada adicionalmente nesta entrega: contratos unitários/de rota/persistência, build de produção e ensaio vivo integral em dois perfis autorizados para identidade, contactos, fotografia, consentimentos, 10 datasets académicos, finanças, sete processos e diretório de cursos. O ensaio encontrou e eliminou exposição de identidade interna em faltas, candidaturas e ações HTML.
+- O lint TypeScript global e o build de produção estão aprovados nesta árvore.
 - Leitura viva da fotografia foi repetida pelo gateway HTTP: assinatura binária PNG, 959 bytes e precondição consistente. O multipart JPEG foi capturado com POST bloqueado; nenhuma fotografia foi alterada.
 - As duas contas autorizadas estavam fora do período de inscrição, com listas vazias. O cancelamento foi capturado como POST form-urlencoded de campo único com a requisição bloqueada; nenhum registo foi alterado e o contrato de criação permanece desconhecido.
 - O contrato de contactos foi observado no navegador e repetido pelo gateway HTTP com submissão no-op: o portal devolveu `parameterErrors`/`success=false` por campos legados obrigatórios incompletos, sem criar pedido ou alterar valores.
@@ -126,12 +126,15 @@ depends_on:
 | [ ] | RF-EST-087 | deprecated | static | reservado: troca de senha não pertence à API v1 |
 | [ ] | RF-EST-088 | partial | runtime_observed | leitura oficial “Sem consentimentos” implementada; escrita permanece desativada porque não existe finalidade editável nas contas autorizadas |
 | [ ] | RF-EST-089 | partial | integration_test | leitura com referência opaca e cancelamento durável/reconciliável implementados sob flag; criação continua bloqueada até observar janela elegível e pós-condição real |
-| [ ] | RF-EST-090 | implemented | integration_test | lista/detalhe normalizados, `reviewRef` opaco e comando de risco alto com justificação, idempotência, confirmação, precondição e reconciliação implementados; flag desativada e submissão real de revisão elegível ainda não verificada |
+| [ ] | RF-EST-090 | implemented | integration_test | cópia de prova, revisão e reapreciação usam `reviewRef` opaco, comando de risco alto, idempotência, confirmação, precondição e reconciliação; cópia foi observada ao vivo e as demais dependem de estado elegível |
 | [ ] | RF-EST-091 | planned | — | candidatura permanece com flag/contrato desativados |
 | [ ] | RF-EST-092 | planned | — | escritas de processos permanecem com flags/contratos desativados |
 | [ ] | RF-EST-093 | implemented | runtime_observed | wizard `REFERENCIAS_MB` confirmado ao sucesso; comando persistente testado em SQLite, concorrência PostgreSQL/piloto TLS pendentes |
 | [ ] | RF-EST-094 | deprecated | static | reservado: payment intent/checkout não pertence à API v1 |
 | [ ] | RF-EST-095 | planned | — | contrato de recibos não confirmado |
+| [x] | RF-EST-096 | verified | runtime_observed | `/directory/courses` normalizado e observado nos dois perfis autorizados; 12 registos por página no contrato vivo |
+| [ ] | RF-EST-097 | implemented | integration_test | proxy PDF valida assinatura, tamanho, ownership por `chargeRef`, ETag e limpeza de buffer; documento vivo não estava disponível na releitura final |
+| [ ] | RF-EST-098 | implemented | integration_test | endpoint e resposta oficial mapeados; comando durável usa a flag de contactos, confirmação e precondição; execução real depende de pedido pendente |
 
 ## Requisitos não funcionais
 

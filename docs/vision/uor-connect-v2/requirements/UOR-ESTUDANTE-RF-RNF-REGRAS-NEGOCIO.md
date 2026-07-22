@@ -158,11 +158,14 @@ O estado de implementação não vive neste catálogo; consultar a [matriz de ra
 | RF-EST-086 | Atualizar ou remover fotografia quando suportado. | Should | F7 | JPEG é normalizado, cifrado e submetido por comando; remoção só existe quando o portal expuser contrato verificável. |
 | RF-EST-088 | Atualizar consentimentos editáveis do portal. | Must | F7 | Finalidade, versão, decisão e pós-condição oficial ficam registadas. |
 | RF-EST-089 | Criar ou cancelar inscrição em época quando permitido. | Must | F7 | Referência pública é opaca, estado/ação elegíveis são validados e a inscrição oficial é relida; criação permanece indisponível sem contrato observado numa janela ativa. |
-| RF-EST-090 | Preparar e submeter revisão oficial de nota sem anexos. | Should | F7 | Rascunho e submissão são distintos; pedido oficial recebe estado verificável. |
+| RF-EST-090 | Preparar e submeter cópia de prova, revisão ou reapreciação oficial sem anexos. | Should | F7 | A ação elegível é relida, rascunho e confirmação são distintos e o pedido oficial recebe estado verificável. |
 | RF-EST-091 | Gerir candidatura enquanto oficialmente editável. | Should | F7 | Transições fora do estado permitido são rejeitadas. |
 | RF-EST-092 | Gerir formações, estágios, atividades e competências aprovadas. | Could | F7 | Cada capacidade possui contrato, flag e pós-condição próprios. |
 | RF-EST-093 | Gerar ou extrair referência oficial de pagamento. | Must | F7 | Comando idempotente exige confirmação e devolve somente referência oficial; não processa pagamento. |
 | RF-EST-095 | Consultar recibos permitidos. | Should | F2 | Conteúdo é entregue por proxy seguro quando o contrato upstream suportar. |
+| RF-EST-096 | Consultar diretório institucional de cursos. | Should | F2 | Lista pública é normalizada sem IDs internos nem código executável. |
+| RF-EST-097 | Obter documento oficial de referência de pagamento. | Must | F7 | PDF é validado por assinatura, limitado, servido por proxy e associado a `chargeRef` opaco do titular. |
+| RF-EST-098 | Cancelar pedido pendente de alteração cadastral. | Should | F7 | Comando idempotente exige confirmação, precondição e resposta oficial inequívoca. |
 
 `RF-EST-087` e `RF-EST-094` permanecem reservados e não são reutilizados: troca de senha, payment intent, checkout e processamento de pagamento não pertencem à v1.
 

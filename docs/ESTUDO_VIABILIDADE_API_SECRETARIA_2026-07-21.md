@@ -89,7 +89,7 @@ O conector atual em `backend/src/modules/auth/infra/secretaria-client.ts` demons
 - extração de número, nome, email, curso, nascimento, nacionalidade e telefone;
 - inferência de ano letivo, período, ano curricular, disciplina, turma e estado da inscrição.
 
-Hoje, porém, `backend/src/modules/secretaria/http/secretaria.routes.ts` expõe apenas o estado planeado da integração. Ou seja, a autenticação usada pelo módulo de login prova a possibilidade técnica, mas ainda não existe uma API de Secretaria completa e isolada.
+Atualização de 2026-07-22: `backend/src/modules/secretaria` já contém a API isolada, sessão cifrada, leituras normalizadas, snapshots e comandos duráveis controlados por feature flag. O diagnóstico original de rota apenas planeada fica preservado como estado anterior ao início da implementação.
 
 ## 5. Arquitetura recomendada
 

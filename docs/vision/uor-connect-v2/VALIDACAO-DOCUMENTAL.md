@@ -46,8 +46,8 @@ Em `local-test`, sobre código base `669aed0`:
 
 - backend: 7 ficheiros e 45 testes aprovados para identidade, login e Moodle;
 - frontend: 3 ficheiros e 6 testes aprovados para login e apresentação de perfil;
-- Secretaria nesta entrega: 5 ficheiros e 18 testes focados aprovados, incluindo revisão de nota, persistência SQLite isolada, build e schema Prisma válidos;
-- suite backend: 109 ficheiros/447 testes aprovados de 110/450; as 3 falhas continuam limitadas ao mock preexistente de referrals do Passport;
+- Secretaria nesta entrega: contratos focados, persistência SQLite isolada, build e ensaio vivo integral em dois perfis autorizados; todas as leituras foram percorridas e os campos internos encontrados foram minimizados;
+- suite backend: 109 ficheiros/448 testes aprovados de 110/451; as 3 falhas continuam limitadas ao mock preexistente de referrals do Passport;
 - nível máximo atribuído conforme cada teste: `automated_test` ou `integration_test`;
 - uma prova controlada autorizada gerou somente referência oficial e confirmou sucesso do portal; nenhum checkout ou pagamento foi processado.
 
@@ -55,7 +55,7 @@ Em `local-test`, sobre código base `669aed0`:
 
 - `/estudante`, `/eventos` e `/direcao` são gateways temporários.
 - O código ainda usa nomes de produto substituídos.
-- Escritas de referência e revisão de nota da Secretaria estão implementadas, mas desligadas por padrão; produção continua bloqueada até HTTPS/túnel TLS e ensaio persistente por capacidade.
+- Escritas de referência, contactos/cancelamento cadastral, fotografia, cancelamento de época e ciclo de revisão de nota estão implementadas, mas desligadas por padrão; produção continua bloqueada até HTTPS/túnel TLS e piloto persistente por capacidade.
 - JWT e consultas legadas nem sempre incluem contexto institucional completo.
 - Rotas e administração de Eventos ainda ocupam a aplicação geral.
 - Ownership lógico não é imposto no acesso à base partilhada.

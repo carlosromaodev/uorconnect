@@ -34,7 +34,7 @@ depends_on:
 - Um backend Fastify regista módulos de autenticação, projetos, eventos, votação, passaporte, certificados, comunicação, relatórios e administração.
 - `/api/v1/student`, `/api/v1/events` e `/api/v1/direction` são endpoints de contexto, não APIs funcionais completas.
 - Moodle possui sessão, perfil, cursos, secções, materiais, sincronização, persistência, cifragem e testes.
-- Secretaria funcional permanece acoplada à autenticação; a API `/api/v1/integrations/secretaria` declara `planned/not_synced`.
+- A autenticação legada ainda usa a Secretaria, mas a API `/api/v1/integrations/secretaria` já possui módulo isolado, sessão cifrada, leituras vivas, snapshots e comandos controlados por feature flag.
 - O schema Prisma mistura identidade, Eventos e Moodle na mesma base; ownership lógico ainda não está imposto.
 - Não existe domínio funcional de UOR Direção; relatórios/admin atuais são predominantemente operacionais de Eventos.
 
@@ -50,7 +50,7 @@ Em ambiente local de teste, commit de base `669aed0`:
 
 - backend: 7 ficheiros e 45 testes aprovados para identidade, login e Moodle;
 - frontend: 3 ficheiros e 6 testes aprovados para login/proveniência de perfil;
-- nenhuma operação de escrita foi executada contra Secretaria, Moodle ou produção.
+- os ensaios autorizados da Secretaria criaram uma referência oficial e um pedido de cópia de prova; nenhum pagamento, checkout ou instrumento financeiro foi processado.
 
 ## 3. Classificação do código
 
@@ -69,7 +69,7 @@ Em ambiente local de teste, commit de base `669aed0`:
 1. Nomes antigos dos produtos permanecem no código.
 2. Rotas públicas de Eventos ocupam a raiz do ecossistema.
 3. `/estudante` não é produto independente.
-4. Secretaria Integration API não está ligada ao upstream.
+4. Secretaria Integration API está ligada ao upstream em desenvolvimento autorizado; promoção para produção está bloqueada por HTTP sem TLS institucional.
 5. Identidade usa `institutionCode + studentNumber`, mas JWT e várias consultas ainda transportam apenas `studentNumber`.
 6. Módulos acedem diretamente ao Prisma partilhado, sem contratos de ownership por produto.
 7. Admin operacional é apresentado como destino provisório da Direção.

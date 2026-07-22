@@ -7,6 +7,7 @@ import type {
   SecretariaContactDetailsPatch,
   SecretariaCommandResult,
   SecretariaDataset,
+  SecretariaDocument,
   SecretariaExamRegistrationCancellation,
   SecretariaGradeReviewSubmission,
   SecretariaPaymentReferenceResult,
@@ -50,6 +51,7 @@ export const SECRETARIA_DATASETS: Record<string, DatasetContract> = {
   "process.internships": { stage: "MeusEstagios", path: "/netpa/ajax/meusestagios/estagios", description: "Estágios" },
   "process.activities": { stage: "AtividadesExtraCurricularesAluno", path: "/netpa/ajax/atividadesextracurricularesaluno/atividadesCurriculares", description: "Atividades extracurriculares" },
   "process.languages": { stage: "CompetenciasLinguisticasAluno", path: "/netpa/ajax/competenciaslinguisticasaluno/competenciaLinguistica", description: "Competências linguísticas" },
+  "directory.courses": { stage: "CursosDiretorioPublico", path: "/netpa/ajax/cursosdiretoriopublico/cursos", description: "Diretório institucional de cursos" },
 };
 
 // netPA rejects non-browser user agents before rendering protected forms.
@@ -282,12 +284,34 @@ function normalizeKey(key: string) {
 
 function normalizeValue(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(normalizeValue);
+  if (typeof value === "string") {
+    if (/javascript\s*:|\bon(?:click|load|error)\s*=|<script\b/i.test(value)) return null;
+    return decodeHtml(value);
+  }
   if (!value || typeof value !== "object") return value;
   const result: Record<string, unknown> = {};
   for (const [rawKey, rawValue] of Object.entries(value as Record<string, unknown>)) {
     const key = normalizeKey(rawKey);
-    if (!key || key === "id" || key === "rownum" || key.startsWith("__") || /(password|cookie|token|sess)/i.test(key)) continue;
-    result[key] = normalizeValue(rawValue);
+    if (
+      !key
+      || key === "id"
+      || key === "rownum"
+      || key.startsWith("__")
+      || /(password|cookie|token|sess)/i.test(key)
+      || /^(?:cd|code|codigo)?Aluno$/i.test(key)
+      || /(?:^|_)(?:id)?Individuo$/i.test(key)
+      || /^individuo/i.test(key)
+      || /^(?:individuo)?(?:Name|Nome)Completo$/i.test(key)
+      || /(?:nm|nome)Completo/i.test(key)
+      || /^(?:nomeAluno|identificacao)$/i.test(key)
+      || /(?:acessoListaAlunos|paginaUc|linkUrl|href)/i.test(key)
+      || /^(?:businessId|id.*financeira|detalheCalc)$/i.test(key)
+      || /^id[A-Z]/.test(key)
+      || /^(?:registerId|workflowInstanceId)$/i.test(key)
+      || /(?:accao|acao|acoes|operacao|selection|seleccao).*calc$/i.test(key)
+    ) continue;
+    const normalized = normalizeValue(rawValue);
+    if (normalized !== null) result[key] = normalized;
   }
   return result;
 }
@@ -318,12 +342,41 @@ function paymentSelection(record: Record<string, unknown>): SecretariaPaymentSel
   return { id: values[0], idFinanceira: values[1], inputId: values[2] };
 }
 
+function paymentDocumentPath(record: Record<string, unknown>) {
+  const markup = String(record.referenciaMBCalc ?? record.REFERENCIA_MB_CALC ?? "");
+  const href = markup.match(/href\s*=\s*(["'])(.*?)\1/i)?.[2] ?? markup.match(/(doc\?stage=StepSeleccionarItemsConta[^\s"'<>]+)/i)?.[1];
+  if (!href) {
+    const idFinanceira = String(record.idFinanceira ?? record.ID_FINANCEIRA ?? "").trim();
+    const reference = String(record.referencia ?? record.REFERENCIA ?? "").trim();
+    if (!idFinanceira || !reference || reference === "-" || idFinanceira.length > 256 || reference.length > 256 || /[\u0000-\u001f\u007f]/.test(`${idFinanceira}${reference}`)) return null;
+    const fallback = new URL("/netpa/doc", "http://secretaria.invalid");
+    fallback.searchParams.set("stage", "StepSeleccionarItemsConta");
+    fallback.searchParams.set("_event", "docDocumentoPagamentoReferencias");
+    fallback.searchParams.set("idFinanceiraRefMB", idFinanceira);
+    fallback.searchParams.set("numberReferenciaRefMB", reference);
+    return `${fallback.pathname}${fallback.search}`;
+  }
+  const decoded = decodeHtml(href);
+  const url = new URL(decoded, "http://secretaria.invalid/netpa/");
+  const allowed = new Set(["stage", "_event", "idFinanceiraRefMB", "numberReferenciaRefMB"]);
+  if (
+    url.pathname !== "/netpa/doc"
+    || url.searchParams.get("stage")?.toLowerCase() !== "stepseleccionaritemsconta"
+    || url.searchParams.get("_event") !== "docDocumentoPagamentoReferencias"
+    || !url.searchParams.get("idFinanceiraRefMB")
+    || !url.searchParams.get("numberReferenciaRefMB")
+    || [...url.searchParams.keys()].some((key) => !allowed.has(key))
+  ) return null;
+  return `${url.pathname}${url.search}`;
+}
+
 type PaymentReferenceCandidates = (selection: SecretariaPaymentSelection) => string[];
 type ExamRegistrationReferenceCandidates = (id: string) => string[];
 type GradeReviewReferenceCandidates = (id: string) => string[];
 
 function normalizePaymentRecord(record: Record<string, unknown>, paymentReferenceCandidates: PaymentReferenceCandidates): Record<string, unknown> {
   const normalized = normalizeValue(record) as Record<string, unknown>;
+  const paymentReference = decodeHtml(String(record.referenciaMBCalc ?? record.REFERENCIA_MB_CALC ?? record.referencia ?? record.REFERENCIA ?? ""));
   delete normalized.id;
   delete normalized.idNumberConta;
   delete normalized.idItemConta;
@@ -335,6 +388,7 @@ function normalizePaymentRecord(record: Record<string, unknown>, paymentReferenc
   }
   const selection = paymentSelection(record);
   if (selection) normalized.chargeRef = paymentReferenceCandidates(selection)[0];
+  if (paymentReference && paymentReference !== "-") normalized.paymentReference = paymentReference;
   return normalized;
 }
 
@@ -809,7 +863,48 @@ export class NetpaSecretariaGateway implements SecretariaGateway {
     };
   }
 
+  async prepareContactDetailsCancellation(session: SecretariaSession) {
+    const html = await this.#personalDataPage(session);
+    if (!/ajax\/boletimmatricula\/cancelarPedido/i.test(html) || !/function\s+cancelarPedidoRequestfunc\s*\(/i.test(html)) {
+      throw new SecretariaError("SECRETARIA_UPSTREAM_CHANGED", "O contrato de cancelamento do pedido cadastral mudou.", 502, false, "contact_support");
+    }
+    return { preconditionHash: normalizedContactHash(contactDetailsFromHtml(html)) };
+  }
+
+  async cancelContactDetailsChangeRequest(session: SecretariaSession, preconditionHash: string) {
+    const html = await this.#personalDataPage(session);
+    if (normalizedContactHash(contactDetailsFromHtml(html)) !== preconditionHash) {
+      throw new SecretariaError("SECRETARIA_PRECONDITION_FAILED", "Os dados cadastrais mudaram depois da preparação; revê e prepara novamente.", 409);
+    }
+    if (!/ajax\/boletimmatricula\/cancelarPedido/i.test(html) || !/function\s+cancelarPedidoRequestfunc\s*\(/i.test(html)) {
+      throw new SecretariaError("SECRETARIA_UPSTREAM_CHANGED", "O contrato de cancelamento do pedido cadastral mudou.", 502, false, "contact_support");
+    }
+    const path = "/netpa/ajax/boletimmatricula/cancelarPedido";
+    const result = await this.#request(path, {
+      method: "POST",
+      headers: {
+        ...this.#headers(session, true),
+        "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+        Referer: new URL("/netpa/page?stage=BoletimMatricula", this.#baseUrl).toString(),
+      },
+      body: "",
+    });
+    mergeSetCookies(session.cookies, result.response.headers);
+    if (authFailure(result.text)) throw new SecretariaError("SECRETARIA_REAUTH_REQUIRED", "A sessão da Secretaria expirou.", 409, true, "reauthenticate");
+    if (result.response.status >= 400) throw new SecretariaError("SECRETARIA_UNAVAILABLE", "A Secretaria rejeitou o cancelamento do pedido cadastral.", 503, true);
+    let response: { success?: unknown; result?: unknown };
+    try { response = JSON.parse(result.text) as { success?: unknown; result?: unknown }; }
+    catch (error) { throw new SecretariaError("SECRETARIA_COMMAND_OUTCOME_UNKNOWN", "A Secretaria devolveu uma resposta ambígua ao cancelamento cadastral.", 502, true, "none", { cause: error }); }
+    if (response.success !== true || response.result !== "success") {
+      throw new SecretariaError("SECRETARIA_VALIDATION_FAILED", "A Secretaria recusou o cancelamento do pedido cadastral.", 422);
+    }
+    return { items: [{ outcome: "CONTACT_CHANGE_REQUEST_CANCELLED" }], observedAt: new Date().toISOString() };
+  }
+
   async getDataset(session: SecretariaSession, domain: string): Promise<SecretariaDataset> {
+    if (domain === "finance.payments") {
+      return { domain, items: [], total: 0, observedAt: new Date().toISOString(), coverage: "unsupported" };
+    }
     if (domain === "process.examRegistrations") {
       const rows = await this.#examRegistrationRows(session);
       const items = rows
@@ -849,8 +944,53 @@ export class NetpaSecretariaGateway implements SecretariaGateway {
     } catch (error) {
       throw new SecretariaError("SECRETARIA_UPSTREAM_CHANGED", `A resposta de ${contract.description} não é compatível.`, 502, false, "contact_support", { cause: error });
     }
-    const normalized = domain.startsWith("finance.") ? normalizePaymentPayload(payload, this.options.paymentReferenceCandidates) : unwrapPayload(payload);
+    let normalized = domain.startsWith("finance.") ? normalizePaymentPayload(payload, this.options.paymentReferenceCandidates) : unwrapPayload(payload);
+    if (domain === "finance.references") {
+      normalized = {
+        items: normalized.items.filter((item) => {
+          const value = Object.entries(item).find(([key]) => /(?:referencia.*mb|paymentReference)/i.test(key))?.[1];
+          return typeof value === "string" && value.replace(/\s+/g, "").length > 3 && value.trim() !== "-";
+        }),
+        total: 0,
+      };
+      normalized.total = normalized.items.length;
+    } else if (domain === "finance.overview") {
+      const referenceCount = normalized.items.filter((item) => Object.entries(item).some(([key, value]) => /(?:referencia.*mb|paymentReference)/i.test(key) && typeof value === "string" && value.replace(/\s+/g, "").length > 3 && value.trim() !== "-")).length;
+      normalized = { items: [{ outstandingItemCount: normalized.items.length, paymentReferenceCount: referenceCount }], total: 1 };
+    }
     return { domain, ...normalized, observedAt: new Date().toISOString(), coverage: "live" };
+  }
+
+  async getPaymentReferenceDocument(session: SecretariaSession, chargeRef: string): Promise<SecretariaDocument> {
+    const payload = await this.#paymentPayload(session, "stepseleccionaritemsconta", "/netpa/ajax/stepseleccionaritemsconta/pagamentos");
+    const [selection] = this.#resolvePaymentSelections(payload.items, [chargeRef]);
+    const row = payload.items.find((candidate) => {
+      const current = paymentSelection(candidate);
+      return current?.id === selection.id && current.idFinanceira === selection.idFinanceira && current.inputId === selection.inputId;
+    });
+    const path = row ? paymentDocumentPath(row) : null;
+    if (!path) throw new SecretariaError("SECRETARIA_RESOURCE_NOT_FOUND", "O documento da referência ainda não está disponível.", 404);
+    const result = await this.#bufferRequest(path, {
+      headers: { ...this.#headers(session), Accept: "application/pdf" , Referer: new URL("/netpa/page?stage=stepseleccionaritemsconta", this.#baseUrl).toString() },
+    });
+    mergeSetCookies(session.cookies, result.response.headers);
+    if (result.response.status >= 400) {
+      result.bytes.fill(0);
+      throw new SecretariaError("SECRETARIA_UNAVAILABLE", "Não foi possível obter o documento da referência.", 503, true);
+    }
+    if (result.bytes.length < 5 || result.bytes.subarray(0, 5).toString("ascii") !== "%PDF-") {
+      const text = result.bytes.toString("utf8");
+      result.bytes.fill(0);
+      if (authFailure(text)) throw new SecretariaError("SECRETARIA_REAUTH_REQUIRED", "A sessão da Secretaria expirou.", 409, true, "reauthenticate");
+      throw new SecretariaError("SECRETARIA_UPSTREAM_CHANGED", "A Secretaria devolveu um documento financeiro incompatível.", 502, false, "contact_support");
+    }
+    return {
+      body: result.bytes,
+      contentType: "application/pdf",
+      contentLength: result.bytes.length,
+      sha256: createHash("sha256").update(result.bytes).digest("hex"),
+      filename: "referencia-pagamento-secretaria.pdf",
+    };
   }
 
   async #examRegistrationRows(session: SecretariaSession, requireCancellationContract = false) {
@@ -975,25 +1115,27 @@ export class NetpaSecretariaGateway implements SecretariaGateway {
     throw new SecretariaError("SECRETARIA_RESOURCE_NOT_FOUND", "A avaliação já não está disponível no fluxo de revisão.", 404);
   }
 
-  async prepareGradeReview(session: SecretariaSession, reviewRef: string, justification: string): Promise<SecretariaGradeReviewSubmission> {
+  async prepareGradeReview(session: SecretariaSession, reviewRef: string, operation: SecretariaGradeReviewSubmission["operation"], justification: string): Promise<SecretariaGradeReviewSubmission> {
     const normalizedJustification = justification.trim();
-    if (!normalizedJustification || normalizedJustification.length > 16_000) {
-      throw new SecretariaError("SECRETARIA_REQUEST_INVALID", "A justificação deve ter entre 1 e 16000 caracteres.", 422);
+    if ((operation !== "PROOF_COPY" && !normalizedJustification) || normalizedJustification.length > 16_000) {
+      throw new SecretariaError("SECRETARIA_REQUEST_INVALID", "A justificação deve ter entre 1 e 16000 caracteres para revisão ou reapreciação.", 422);
     }
     const resolved = this.#resolveGradeReview(await this.#gradeReviewRows(session, true), reviewRef);
-    if (gradeReviewAction(resolved.record) !== "SUBMIT_REVIEW") {
-      throw new SecretariaError("SECRETARIA_COMMAND_STATE_INVALID", "A revisão de nota não pode ser submetida no estado atual.", 409);
+    const expectedAction = operation === "REVIEW" ? "SUBMIT_REVIEW" : operation === "PROOF_COPY" ? "REQUEST_PROOF_COPY" : "SUBMIT_RECONSIDERATION";
+    if (gradeReviewAction(resolved.record) !== expectedAction) {
+      throw new SecretariaError("SECRETARIA_COMMAND_STATE_INVALID", "A operação de revisão não pode ser submetida no estado atual.", 409);
     }
-    return { reviewRef, justification: normalizedJustification, preconditionHash: gradeReviewHash(resolved.record) };
+    return { reviewRef, operation, justification: normalizedJustification, preconditionHash: gradeReviewHash(resolved.record) };
   }
 
-  async verifyGradeReview(session: SecretariaSession, reviewRef: string): Promise<SecretariaCommandResult | null> {
+  async verifyGradeReview(session: SecretariaSession, reviewRef: string, operation: SecretariaGradeReviewSubmission["operation"] = "REVIEW"): Promise<SecretariaCommandResult | null> {
     const resolved = this.#resolveGradeReview(await this.#gradeReviewRows(session), reviewRef);
     const state = decodeHtml(String(resolved.record.descEstadoCalc ?? resolved.record.DESC_ESTADO_CALC ?? ""));
-    if (gradeReviewAction(resolved.record) === "SUBMIT_REVIEW" || !state || state === "-" || /aguarda\s+pedido\s+de\s+revis[aã]o/i.test(state)) return null;
+    const expectedAction = operation === "REVIEW" ? "SUBMIT_REVIEW" : operation === "PROOF_COPY" ? "REQUEST_PROOF_COPY" : "SUBMIT_RECONSIDERATION";
+    if (gradeReviewAction(resolved.record) === expectedAction || !state || state === "-") return null;
     const requestNumber = decodeHtml(String(resolved.record.numberPedidoCalc ?? resolved.record.NUMBER_PEDIDO_CALC ?? "")) || null;
     return {
-      items: [{ outcome: "GRADE_REVIEW_SUBMITTED", reviewRef, state, requestNumber }],
+      items: [{ outcome: operation === "REVIEW" ? "GRADE_REVIEW_SUBMITTED" : operation === "PROOF_COPY" ? "GRADE_PROOF_COPY_REQUESTED" : "GRADE_RECONSIDERATION_SUBMITTED", reviewRef, state, requestNumber }],
       observedAt: new Date().toISOString(),
     };
   }
@@ -1003,8 +1145,9 @@ export class NetpaSecretariaGateway implements SecretariaGateway {
     if (gradeReviewHash(resolved.record) !== submission.preconditionHash) {
       throw new SecretariaError("SECRETARIA_PRECONDITION_FAILED", "A avaliação mudou depois da preparação; revê e prepara novamente.", 409);
     }
-    if (gradeReviewAction(resolved.record) !== "SUBMIT_REVIEW") {
-      throw new SecretariaError("SECRETARIA_COMMAND_STATE_INVALID", "A revisão de nota não pode ser submetida no estado atual.", 409);
+    const expectedAction = submission.operation === "REVIEW" ? "SUBMIT_REVIEW" : submission.operation === "PROOF_COPY" ? "REQUEST_PROOF_COPY" : "SUBMIT_RECONSIDERATION";
+    if (gradeReviewAction(resolved.record) !== expectedAction) {
+      throw new SecretariaError("SECRETARIA_COMMAND_STATE_INVALID", "A operação de revisão não pode ser submetida no estado atual.", 409);
     }
     const path = `/netpa/ajax/listapedidosrevisaonotasaluno/pedidosrevisao/${encodeURIComponent(resolved.id)}`;
     const result = await this.#request(path, {
@@ -1014,7 +1157,9 @@ export class NetpaSecretariaGateway implements SecretariaGateway {
         "Content-Type": "application/json",
         Referer: new URL("/netpa/page?stage=ListaPedidosRevisaoNotasAluno", this.#baseUrl).toString(),
       },
-      body: JSON.stringify({ id: resolved.id, justificacaoPedidoTemp: submission.justification }),
+      body: JSON.stringify(submission.operation === "RECONSIDERATION"
+        ? { id: resolved.id, justificacaoReapreciacaoTemp: submission.justification }
+        : { id: resolved.id, justificacaoPedidoTemp: submission.operation === "PROOF_COPY" ? "#pedidocopia#" : submission.justification }),
     });
     mergeSetCookies(session.cookies, result.response.headers);
     if (authFailure(result.text)) throw new SecretariaError("SECRETARIA_REAUTH_REQUIRED", "A sessão da Secretaria expirou.", 409, true, "reauthenticate");
@@ -1026,7 +1171,7 @@ export class NetpaSecretariaGateway implements SecretariaGateway {
       throw new SecretariaError("SECRETARIA_COMMAND_OUTCOME_UNKNOWN", "A Secretaria devolveu uma resposta ambígua à revisão de nota.", 502, true, "none", { cause: error });
     }
     if (response.success !== true) throw new SecretariaError("SECRETARIA_VALIDATION_FAILED", "A Secretaria recusou a revisão de nota.", 422);
-    const verified = await this.verifyGradeReview(session, submission.reviewRef);
+    const verified = await this.verifyGradeReview(session, submission.reviewRef, submission.operation);
     if (!verified) throw new SecretariaError("SECRETARIA_COMMAND_OUTCOME_UNKNOWN", "A Secretaria aceitou o pedido, mas o novo estado ainda não foi confirmado na leitura oficial.", 502, true);
     return verified;
   }
@@ -1136,7 +1281,7 @@ export class NetpaSecretariaGateway implements SecretariaGateway {
       chargeRef: chargeRefs[index],
     }));
     const referencePresent = normalized.every((row) => {
-      const referenceEntry = Object.entries(row).find(([key]) => /referencia.*mb/i.test(key));
+      const referenceEntry = Object.entries(row).find(([key]) => /(?:referencia.*mb|paymentReference)/i.test(key));
       const value = String(referenceEntry?.[1] ?? "").replace(/\s+/g, "").trim();
       return value.length > 3 && value !== "-";
     });

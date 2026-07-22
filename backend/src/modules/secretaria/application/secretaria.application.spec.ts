@@ -69,6 +69,7 @@ describe("LiveSecretariaApplication command controls", () => {
     await expect(app.prepareGradeReview(
       { id: 1, studentNumber: "20240001" },
       `sgr_${"a".repeat(43)}`,
+      "REVIEW",
       "Justificação de teste",
       "grade-review-test",
     )).rejects.toMatchObject({ code: "SECRETARIA_CAPABILITY_DISABLED" });

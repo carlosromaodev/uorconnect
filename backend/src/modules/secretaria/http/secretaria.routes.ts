@@ -39,6 +39,7 @@ const academicParamsSchema = z.object({ resource: z.enum(["overview", "history",
 const paymentReferenceBodySchema = z.object({
   chargeRefs: z.array(z.string().regex(/^scr_[A-Za-z0-9_-]{43}$/)).min(1).max(20),
 });
+const paymentReferenceParamsSchema = z.object({ chargeRef: z.string().regex(/^scr_[A-Za-z0-9_-]{43}$/) });
 const contactDetailsBodySchema = z.object({
   email: z.string().trim().email().max(254).optional(),
   phone: z.string().trim().max(40).regex(/^[+0-9() .-]*$/).nullable().optional(),
@@ -53,12 +54,17 @@ const photoBodySchema = z.object({
 const examRegistrationParamsSchema = z.object({ registrationRef: z.string().regex(/^ser_[A-Za-z0-9_-]{43}$/) });
 const gradeReviewBodySchema = z.object({
   reviewRef: z.string().regex(/^sgr_[A-Za-z0-9_-]{43}$/),
-  justification: z.string().trim().min(1).max(16_000),
-}).strict();
+  operation: z.enum(["REVIEW", "PROOF_COPY", "RECONSIDERATION"]).default("REVIEW"),
+  justification: z.string().trim().max(16_000).default(""),
+}).strict().superRefine((body, ctx) => {
+  if (body.operation !== "PROOF_COPY" && !body.justification) {
+    ctx.addIssue({ code: z.ZodIssueCode.custom, path: ["justification"], message: "A justificação é obrigatória." });
+  }
+});
 const gradeReviewParamsSchema = z.object({ reviewRef: z.string().regex(/^sgr_[A-Za-z0-9_-]{43}$/) });
 const idempotencyHeadersSchema = z.object({ "idempotency-key": z.string().trim().min(8).max(128) });
 const commandParamsSchema = z.object({ commandId: z.string().uuid() });
-const commandConfirmationBodySchema = z.object({ confirmation: z.enum(["GENERATE_PAYMENT_REFERENCE", "UPDATE_CONTACT_DETAILS", "UPDATE_PHOTO", "CANCEL_EXAM_REGISTRATION", "SUBMIT_GRADE_REVIEW"]) });
+const commandConfirmationBodySchema = z.object({ confirmation: z.enum(["GENERATE_PAYMENT_REFERENCE", "UPDATE_CONTACT_DETAILS", "CANCEL_CONTACT_CHANGE_REQUEST", "UPDATE_PHOTO", "CANCEL_EXAM_REGISTRATION", "SUBMIT_GRADE_REVIEW"]) });
 
 export type SecretariaRoutesOptions = {
   env: Env;
@@ -261,6 +267,26 @@ export async function secretariaRoutes(app: FastifyInstance, opts: SecretariaRou
     protectedApp.get("/finance/charges", { schema: { tags: ["Secretaria - Finanças"], response: { 200: envelopeSchema, ...errorResponses } } }, (request, reply) => dataset(request, reply, "finance.charges"));
     protectedApp.get("/finance/payment-references", { schema: { tags: ["Secretaria - Finanças"], response: { 200: envelopeSchema, ...errorResponses } } }, (request, reply) => dataset(request, reply, "finance.references"));
     protectedApp.get("/finance/payments", { schema: { tags: ["Secretaria - Finanças"], response: { 200: envelopeSchema, ...errorResponses } } }, (request, reply) => dataset(request, reply, "finance.payments"));
+    protectedApp.get("/finance/payment-references/:chargeRef/document", {
+      schema: { tags: ["Secretaria - Finanças"], params: paymentReferenceParamsSchema, response: { ...errorResponses } },
+    }, async (request, reply) => {
+      try {
+        const { chargeRef } = request.params as z.infer<typeof paymentReferenceParamsSchema>;
+        const document = await opts.application.getPaymentReferenceDocument(request.student!, chargeRef);
+        const clearDocument = () => document.body.fill(0);
+        reply.raw.once("finish", clearDocument);
+        reply.raw.once("close", clearDocument);
+        const etag = `"${document.sha256}"`;
+        reply.header("ETag", etag);
+        reply.header("Content-Type", document.contentType);
+        reply.header("Content-Length", String(document.contentLength));
+        reply.header("Content-Disposition", `attachment; filename="${document.filename}"`);
+        reply.header("X-Content-Type-Options", "nosniff");
+        if (request.headers["if-none-match"] === etag) return reply.status(304).send();
+        return reply.send(document.body);
+      } catch (error) { return sendError(request, reply, error); }
+    });
+    protectedApp.get("/directory/courses", { schema: { tags: ["Secretaria - Diretório"], response: { 200: envelopeSchema, ...errorResponses } } }, (request, reply) => dataset(request, reply, "directory.courses"));
 
     const processRoutes: Array<[string, string]> = [
       ["/exam-registrations", "process.examRegistrations"],
@@ -343,6 +369,26 @@ export async function secretariaRoutes(app: FastifyInstance, opts: SecretariaRou
       } catch (error) { return sendError(request, reply, error); }
     });
 
+    protectedApp.delete("/me/contact-details/change-request", {
+      config: {
+        rateLimit: {
+          max: 5,
+          timeWindow: 15 * 60_000,
+          keyGenerator: (request: FastifyRequest) => `${request.ip}:${request.student?.id ?? "anonymous"}:contact-details-cancel`,
+        },
+      },
+      schema: {
+        tags: ["Secretaria - Perfil"],
+        headers: idempotencyHeadersSchema,
+        response: { 202: envelopeSchema, ...errorResponses },
+      },
+    }, async (request, reply) => {
+      try {
+        const command = await opts.application.prepareContactDetailsCancellation(request.student!, String(request.headers["idempotency-key"]));
+        return reply.status(202).send({ data: command, meta: meta(request, { coverage: "live" }) });
+      } catch (error) { return sendError(request, reply, error); }
+    });
+
     protectedApp.put("/me/photo", {
       config: {
         rateLimit: {
@@ -420,6 +466,7 @@ export async function secretariaRoutes(app: FastifyInstance, opts: SecretariaRou
         const command = await opts.application.prepareGradeReview(
           request.student!,
           body.reviewRef,
+          body.operation,
           body.justification,
           String(request.headers["idempotency-key"]),
         );

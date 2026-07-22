@@ -40,7 +40,9 @@ describe("NetpaSecretariaGateway finance contract", () => {
       descItem: "Propina de teste",
       dateVencimento: "31/12/2026",
       valorItemCalc: "100,00",
-      referenciaMBCalc: generated ? "Entidade TEST Referência TEST" : "",
+      referenciaMBCalc: generated
+        ? '<a href="doc?stage=StepSeleccionarItemsConta&amp;_event=docDocumentoPagamentoReferencias&amp;idFinanceiraRefMB=finance-document&amp;numberReferenciaRefMB=reference-document">Entidade TEST Referência TEST</a>'
+        : "",
     });
     const summaryRow = {
       id: "summary-internal-id",
@@ -67,6 +69,9 @@ describe("NetpaSecretariaGateway finance contract", () => {
       }
       if (url.pathname === "/netpa/ajax/stepconfirmarpagamento/pagamentos") {
         return new Response(JSON.stringify({ result: [summaryRow], total: 1 }), { status: 200, headers: { "content-type": "application/json" } });
+      }
+      if (url.pathname === "/netpa/doc") {
+        return new Response(Buffer.from("%PDF-1.7\nsecretaria-test"), { status: 200, headers: { "content-type": "application/pdf" } });
       }
       if (url.pathname === "/netpa/page" && method === "POST" && url.searchParams.get("stage") === "stepseleccionaritemsconta") {
         return new Response(form("stepseleccionartipopagamento"), { status: 200 });
@@ -104,12 +109,40 @@ describe("NetpaSecretariaGateway finance contract", () => {
     const final = observedPosts.find((entry) => entry.body.get("_formsubmitstage") === "stepconfirmarpagamento");
     expect(final?.body.get("submitAction")).toBe("Confirmar");
     await expect(gateway.verifyPaymentReference(session, [chargeRef])).resolves.toMatchObject({ items: [{ chargeRef }] });
+    const document = await gateway.getPaymentReferenceDocument(session, chargeRef);
+    expect(document).toMatchObject({ contentType: "application/pdf", filename: "referencia-pagamento-secretaria.pdf" });
+    expect(document.body.subarray(0, 5).toString("ascii")).toBe("%PDF-");
+    document.body.fill(0);
+  });
+
+  it("remove identidade pessoal, ids internos e ações executáveis dos datasets", async () => {
+    vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request) => {
+      const url = new URL(typeof input === "string" || input instanceof URL ? input.toString() : input.url);
+      if (url.pathname.endsWith("/faltasAlunosPorDisciplina")) {
+        return new Response(JSON.stringify({ result: [{
+          CD_ALUNO: "student-secret",
+          ID_INDIVIDUO: "person-secret",
+          NM_COMPLETO: "Private Student Name",
+          descDiscip: "Programação",
+          numberFaltas: 2,
+          acoesCalc: '<a href="javascript:deleteEverything()">apagar</a>',
+        }], total: 1 }), { status: 200 });
+      }
+      return new Response("<html><body>Protected stage</body></html>", { status: 200 });
+    }));
+    const result = await testGateway().getDataset(session, "academic.absences");
+    expect(result.items).toEqual([{ descDiscip: "Programação", numberFaltas: 2 }]);
+    expect(JSON.stringify(result)).not.toContain("student-secret");
+    expect(JSON.stringify(result)).not.toContain("Private Student Name");
+    expect(JSON.stringify(result)).not.toContain("javascript");
   });
 });
 
 describe("NetpaSecretariaGateway personal data contracts", () => {
   it("lê contactos e submete somente o patch preservando o formulário completo", async () => {
-    const personalData = `<html><body><form id="boletimForm" name="boletimForm">
+    const personalData = `<html><body><script>
+      function cancelarPedidoRequestfunc(){ return 'ajax/boletimmatricula/cancelarPedido'; }
+    </script><form id="boletimForm" name="boletimForm">
       <input type="hidden" name="_formsubmitstage" value="boletimmatricula">
       <input type="hidden" name="_formsubmitname" value="boletimForm">
       <input type="hidden" name="_formfieldnames" value="email,telefonePrincipal,telemovel,moradaPrincipal,moradaSecundaria,moradaCorreio,identificacaoNumero">
@@ -131,6 +164,9 @@ describe("NetpaSecretariaGateway personal data contracts", () => {
         submissions.push(new URLSearchParams(String(init.body ?? "")));
         return new Response(JSON.stringify({ success: true, parameterErrors: {} }), { status: 200 });
       }
+      if ((init.method ?? "GET") === "POST" && url.pathname === "/netpa/ajax/boletimmatricula/cancelarPedido") {
+        return new Response(JSON.stringify({ success: true, result: "success" }), { status: 200 });
+      }
       if (url.searchParams.get("stage") === "BoletimMatricula") return new Response(personalData, { status: 200 });
       return new Response("not found", { status: 404 });
     }));
@@ -151,6 +187,10 @@ describe("NetpaSecretariaGateway personal data contracts", () => {
     expect(submissions[0]?.get("telemovel")).toBe("");
     expect(submissions[0]?.get("identificacaoNumero")).toBe("PRESERVE-ME");
     expect(submissions[0]?.get("moradaCorreio")).toBe("P");
+    const cancellation = await gateway.prepareContactDetailsCancellation(session);
+    await expect(gateway.cancelContactDetailsChangeRequest(session, cancellation.preconditionHash)).resolves.toMatchObject({
+      items: [{ outcome: "CONTACT_CHANGE_REQUEST_CANCELLED" }],
+    });
   });
 
   it("devolve conjunto vazio apenas para o estado de consentimentos confirmado", async () => {
@@ -300,38 +340,49 @@ describe("NetpaSecretariaGateway grade review contracts", () => {
     expect(JSON.stringify(dataset)).not.toContain("justificacaoPedidoTemp");
     expect(JSON.stringify(dataset)).not.toContain("efectuarPedidoRevisaoNota");
 
-    const prepared = await gateway.prepareGradeReview(session, reviewRef, "  Justificação objetiva para revisão.  ");
+    const prepared = await gateway.prepareGradeReview(session, reviewRef, "REVIEW", "  Justificação objetiva para revisão.  ");
     expect(prepared.justification).toBe("Justificação objetiva para revisão.");
     const result = await gateway.submitGradeReview(session, prepared);
     expect(submittedBody).toEqual({ id: upstreamId, justificacaoPedidoTemp: "Justificação objetiva para revisão." });
     expect(result.items[0]).toEqual({ outcome: "GRADE_REVIEW_SUBMITTED", reviewRef, state: "Em Validação", requestNumber: "TEST-001" });
   });
 
-  it("falha fechado quando a linha ainda exige pedido de cópia de prova", async () => {
+  it("submete pedido de cópia de prova com o marcador oficial e impede revisão fora de sequência", async () => {
     const page = `<html><body><script>
       const store = { autoSync: true, url: 'ajax/listapedidosrevisaonotasaluno/pedidosrevisao', fields: [{name: 'justificacaoPedidoTemp'}] };
       function submitReview(){ if (Ext.get('justificacaoPedirRevisao').dom.value.length > 16000) return false; record.set('justificacaoPedidoTemp', Ext.get('justificacaoPedirRevisao').dom.value); }
     </script></body></html>`;
-    let mutationCount = 0;
+    let submittedBody: Record<string, unknown> | null = null;
     vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request, init: RequestInit = {}) => {
       const url = new URL(typeof input === "string" || input instanceof URL ? input.toString() : input.url);
       if (url.pathname === "/netpa/page") return new Response(page, { status: 200 });
       if (url.pathname === "/netpa/ajax/listapedidosrevisaonotasaluno/pedidosrevisao") {
         return new Response(JSON.stringify({
           success: true,
-          result: [{ id: "proof-first", descEstadoCalc: "-", accaoCalc: `<a href="javascript:efectuarPedidoCopiaProva()">Pedir prova</a>` }],
+          result: [{
+            id: "proof-first",
+            descEstadoCalc: submittedBody ? "Aguarda prova" : "-",
+            numberPedidoCalc: submittedBody ? "TEST-PROOF" : "-",
+            accaoCalc: submittedBody ? "" : `<a href="javascript:efectuarPedidoCopiaProva()">Pedir prova</a>`,
+          }],
           total: 1,
         }), { status: 200, headers: { "content-type": "application/json" } });
       }
-      if (init.method === "PUT") mutationCount += 1;
+      if (init.method === "PUT") {
+        submittedBody = JSON.parse(String(init.body)) as Record<string, unknown>;
+        return new Response(JSON.stringify({ success: true }), { status: 200, headers: { "content-type": "application/json" } });
+      }
       return new Response("not found", { status: 404 });
     }));
 
     const gateway = testGateway();
     const dataset = await gateway.getDataset(session, "process.gradeReviews");
     expect(dataset.items[0]).toMatchObject({ availableAction: "REQUEST_PROOF_COPY", canSubmitReview: false });
-    await expect(gateway.prepareGradeReview(session, String(dataset.items[0].reviewRef), "Justificação"))
+    await expect(gateway.prepareGradeReview(session, String(dataset.items[0].reviewRef), "REVIEW", "Justificação"))
       .rejects.toMatchObject({ code: "SECRETARIA_COMMAND_STATE_INVALID" });
-    expect(mutationCount).toBe(0);
+    const prepared = await gateway.prepareGradeReview(session, String(dataset.items[0].reviewRef), "PROOF_COPY", "");
+    const result = await gateway.submitGradeReview(session, prepared);
+    expect(submittedBody).toEqual({ id: "proof-first", justificacaoPedidoTemp: "#pedidocopia#" });
+    expect(result.items[0]).toMatchObject({ outcome: "GRADE_PROOF_COPY_REQUESTED", state: "Aguarda prova" });
   });
 });

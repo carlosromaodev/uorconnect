@@ -13,7 +13,7 @@ O sistema implantado continua orientado sobretudo à UOR Eventos: portal, projet
 - `/estudante`, `/eventos` e `/direcao` existem como gateways, não produtos completos.
 - `/api/v1/student`, `/events` e `/direction` são endpoints de contexto.
 - Moodle possui integração robusta e testada, ainda consumida fora de um shell Estudante completo.
-- Secretaria possui parsing no login; a API própria ainda está `planned/not_synced`.
+- Secretaria possui API própria isolada com contratos vivos e comandos por feature flag; o parsing legado do login ainda existe e deve ser migrado.
 - UOR Direção funcional ainda não existe; admin/relatórios atuais são operacionais de Eventos.
 
 ## Fundação disponível

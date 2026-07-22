@@ -1,6 +1,7 @@
 import type {
   SecretariaContactDetails,
   SecretariaContactDetailsPatch,
+  SecretariaDocument,
   SecretariaCommandResult,
   SecretariaDataset,
   SecretariaExamRegistrationCancellation,
@@ -22,16 +23,19 @@ export interface SecretariaGateway {
   getPhoto(session: SecretariaSession): Promise<SecretariaPhoto>;
   getConsents(session: SecretariaSession): Promise<SecretariaDataset>;
   getDataset(session: SecretariaSession, domain: string): Promise<SecretariaDataset>;
+  getPaymentReferenceDocument(session: SecretariaSession, chargeRef: string): Promise<SecretariaDocument>;
   prepareContactDetails(session: SecretariaSession, patch: SecretariaContactDetailsPatch): Promise<{ patch: SecretariaContactDetailsPatch; preconditionHash: string }>;
   updateContactDetails(session: SecretariaSession, patch: SecretariaContactDetailsPatch, preconditionHash: string): Promise<SecretariaCommandResult>;
+  prepareContactDetailsCancellation(session: SecretariaSession): Promise<{ preconditionHash: string }>;
+  cancelContactDetailsChangeRequest(session: SecretariaSession, preconditionHash: string): Promise<SecretariaCommandResult>;
   preparePhoto(session: SecretariaSession): Promise<{ preconditionHash: string }>;
   updatePhoto(session: SecretariaSession, jpeg: Buffer, preconditionHash: string): Promise<SecretariaCommandResult>;
   prepareExamRegistrationCancellation(session: SecretariaSession, registrationRef: string): Promise<SecretariaExamRegistrationCancellation>;
   cancelExamRegistration(session: SecretariaSession, cancellation: SecretariaExamRegistrationCancellation): Promise<SecretariaCommandResult>;
   verifyExamRegistrationCancellation(session: SecretariaSession, registrationRef: string): Promise<SecretariaCommandResult | null>;
-  prepareGradeReview(session: SecretariaSession, reviewRef: string, justification: string): Promise<SecretariaGradeReviewSubmission>;
+  prepareGradeReview(session: SecretariaSession, reviewRef: string, operation: SecretariaGradeReviewSubmission["operation"], justification: string): Promise<SecretariaGradeReviewSubmission>;
   submitGradeReview(session: SecretariaSession, submission: SecretariaGradeReviewSubmission): Promise<SecretariaCommandResult>;
-  verifyGradeReview(session: SecretariaSession, reviewRef: string): Promise<SecretariaCommandResult | null>;
+  verifyGradeReview(session: SecretariaSession, reviewRef: string, operation?: SecretariaGradeReviewSubmission["operation"]): Promise<SecretariaCommandResult | null>;
   preparePaymentReference(session: SecretariaSession, chargeRefs: string[]): Promise<{ chargeRefs: string[] }>;
   generatePaymentReference(session: SecretariaSession, chargeRefs: string[]): Promise<SecretariaPaymentReferenceResult>;
   verifyPaymentReference(session: SecretariaSession, chargeRefs: string[]): Promise<SecretariaPaymentReferenceResult | null>;

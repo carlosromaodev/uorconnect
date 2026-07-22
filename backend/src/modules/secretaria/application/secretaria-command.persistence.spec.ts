@@ -94,14 +94,17 @@ describe("Secretaria command persistence", () => {
       getPhoto: vi.fn(),
       getConsents: vi.fn(),
       getDataset: vi.fn(),
+      getPaymentReferenceDocument: vi.fn(),
       prepareContactDetails: vi.fn(async (_session, patch) => ({ patch, preconditionHash: "contact-precondition-hash" })),
       updateContactDetails: vi.fn(async () => ({ items: [{ outcome: "CHANGE_REQUEST_SUBMITTED", changedFields: ["mobile"] }], observedAt: "2026-07-21T20:02:00.000Z" })),
+      prepareContactDetailsCancellation: vi.fn(async () => ({ preconditionHash: "contact-precondition-hash" })),
+      cancelContactDetailsChangeRequest: vi.fn(async () => ({ items: [{ outcome: "CONTACT_CHANGE_REQUEST_CANCELLED" }], observedAt: "2026-07-21T20:02:30.000Z" })),
       preparePhoto: vi.fn(async () => ({ preconditionHash: "photo-precondition-hash" })),
       updatePhoto: vi.fn(async (_session, jpeg) => ({ items: [{ outcome: "PHOTO_CHANGE_REQUEST_SUBMITTED", sha256: createHash("sha256").update(jpeg).digest("hex"), contentType: "image/jpeg", size: jpeg.length }], observedAt: "2026-07-21T20:03:00.000Z" })),
       prepareExamRegistrationCancellation: vi.fn(async (_session, registrationRef) => ({ registrationRef, preconditionHash: "exam-precondition-hash" })),
       cancelExamRegistration: vi.fn(async (_session, cancellation) => ({ items: [{ outcome: "EXAM_REGISTRATION_CANCELLED", registrationRef: cancellation.registrationRef }], observedAt: "2026-07-22T09:00:00.000Z" })),
       verifyExamRegistrationCancellation: vi.fn(),
-      prepareGradeReview: vi.fn(async (_session, reviewRef, justification) => ({ reviewRef, justification, preconditionHash: "grade-review-precondition-hash" })),
+      prepareGradeReview: vi.fn(async (_session, reviewRef, operation, justification) => ({ reviewRef, operation, justification, preconditionHash: "grade-review-precondition-hash" })),
       submitGradeReview: vi.fn(async (_session, submission) => ({ items: [{ outcome: "GRADE_REVIEW_SUBMITTED", reviewRef: submission.reviewRef, state: "Em Validação", requestNumber: "TEST" }], observedAt: "2026-07-22T10:00:00.000Z" })),
       verifyGradeReview: vi.fn(),
       preparePaymentReference: vi.fn(async (_session, chargeRefs) => ({ chargeRefs })),
@@ -159,6 +162,16 @@ describe("Secretaria command persistence", () => {
     });
     expect(gateway.updateContactDetails).toHaveBeenCalledTimes(1);
 
+    const contactCancellation = await application.prepareContactDetailsCancellation(student, "contact-cancel-001");
+    expect(contactCancellation).toMatchObject({ type: "CANCEL_CONTACT_CHANGE_REQUEST", status: "AWAITING_CONFIRMATION" });
+    const contactCancellationSucceeded = await application.confirmCommand(student, contactCancellation.id, "CANCEL_CONTACT_CHANGE_REQUEST");
+    expect(contactCancellationSucceeded).toMatchObject({
+      type: "CANCEL_CONTACT_CHANGE_REQUEST",
+      status: "SUCCEEDED",
+      result: { items: [{ outcome: "CONTACT_CHANGE_REQUEST_CANCELLED" }] },
+    });
+    expect(gateway.cancelContactDetailsChangeRequest).toHaveBeenCalledTimes(1);
+
     const photoBody = Buffer.alloc(128, 1);
     const photoHash = createHash("sha256").update(photoBody).digest("hex");
     const photo = await application.preparePhoto(student, { body: photoBody, sha256: photoHash, width: 128, height: 128 }, "photo-001");
@@ -184,7 +197,7 @@ describe("Secretaria command persistence", () => {
 
     const reviewRef = `sgr_${"e".repeat(43)}`;
     const justification = "A classificação deve ser revista com base nos critérios publicados.";
-    const review = await application.prepareGradeReview(student, reviewRef, justification, "grade-review-001");
+    const review = await application.prepareGradeReview(student, reviewRef, "REVIEW", justification, "grade-review-001");
     expect(review).toMatchObject({ type: "SUBMIT_GRADE_REVIEW", risk: "HIGH", status: "AWAITING_CONFIRMATION" });
     const storedReview = await database.secretariaCommand.findUniqueOrThrow({ where: { id: review.id } });
     expect(storedReview.payloadEnvelope).not.toContain(reviewRef);

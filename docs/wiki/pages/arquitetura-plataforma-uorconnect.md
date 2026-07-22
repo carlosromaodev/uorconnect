@@ -31,7 +31,7 @@ UOR Connect é o ecossistema. UOR Estudante, UOR Eventos e UOR Direção são pr
 
 - Os três endpoints de produto são ainda declarativos.
 - Moodle possui integração funcional em `/integrations/moodle`.
-- Secretaria API declara `planned/not_synced`; parsing funcional permanece em autenticação.
+- Secretaria API possui módulo isolado com sessão cifrada, leitura/snapshot e comandos controlados; o acoplamento legado do login ainda aguarda migração.
 - Frontend/backend/deploy são aplicações únicas.
 - Direção ainda não possui domínio funcional próprio.
 

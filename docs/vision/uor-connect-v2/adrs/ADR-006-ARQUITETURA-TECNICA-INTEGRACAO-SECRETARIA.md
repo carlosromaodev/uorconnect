@@ -25,7 +25,7 @@ depends_on:
 
 ## Contexto
 
-O repositório atual usa backend Fastify, schemas Zod, Prisma e persistência SQLite/PostgreSQL conforme o ambiente. A integração Moodle estabeleceu padrões para gateway web, envelopes cifrados, sessão, snapshots, leases, workers, schemas HTTP e testes. A integração Secretaria está isolada em módulo próprio, com fundação de sessão/leitura/snapshot e comandos controlados de referência, contactos, fotografia, cancelamento de inscrição em época e revisão de nota sem anexos; a migração do acoplamento legado de autenticação continua separada.
+O repositório atual usa backend Fastify, schemas Zod, Prisma e persistência SQLite/PostgreSQL conforme o ambiente. A integração Moodle estabeleceu padrões para gateway web, envelopes cifrados, sessão, snapshots, leases, workers, schemas HTTP e testes. A integração Secretaria está isolada em módulo próprio, com sessão/leitura/snapshot, minimização por domínio, proxy PDF e comandos controlados de referência, contactos/cancelamento cadastral, fotografia, cancelamento de inscrição em época e cópia/revisão/reapreciação de nota sem anexos; a migração do acoplamento legado de autenticação continua separada.
 
 A especificação da API Secretaria → UOR Estudante define comportamentos obrigatórios, mas não deve eternizar tecnologias ou caminhos físicos. Este ADR registra as escolhas técnicas propostas após a auditoria inicial do repositório.
 
