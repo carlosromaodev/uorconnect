@@ -1,7 +1,7 @@
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
 import { PrismaClient } from "@uor/moodle-test-prisma";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
@@ -91,10 +91,13 @@ describe("Secretaria command persistence", () => {
       validateSession: vi.fn(async () => true),
       getProfile: vi.fn(),
       getContactDetails: vi.fn(),
+      getPhoto: vi.fn(),
       getConsents: vi.fn(),
       getDataset: vi.fn(),
       prepareContactDetails: vi.fn(async (_session, patch) => ({ patch, preconditionHash: "contact-precondition-hash" })),
       updateContactDetails: vi.fn(async () => ({ items: [{ outcome: "CHANGE_REQUEST_SUBMITTED", changedFields: ["mobile"] }], observedAt: "2026-07-21T20:02:00.000Z" })),
+      preparePhoto: vi.fn(async () => ({ preconditionHash: "photo-precondition-hash" })),
+      updatePhoto: vi.fn(async (_session, jpeg) => ({ items: [{ outcome: "PHOTO_CHANGE_REQUEST_SUBMITTED", sha256: createHash("sha256").update(jpeg).digest("hex"), contentType: "image/jpeg", size: jpeg.length }], observedAt: "2026-07-21T20:03:00.000Z" })),
       preparePaymentReference: vi.fn(async (_session, chargeRefs) => ({ chargeRefs })),
       generatePaymentReference: vi.fn(async () => ({ items: [{ reference: "REFERENCE-SECRET" }], observedAt: "2026-07-21T20:01:00.000Z" })),
       verifyPaymentReference: vi.fn(),
@@ -104,6 +107,7 @@ describe("Secretaria command persistence", () => {
     const application = new LiveSecretariaApplication(gateway, keyring, {
       paymentReferenceEnabled: true,
       contactDetailsEnabled: true,
+      photoEnabled: true,
       confirmationTtlSeconds: 300,
       commandLeaseSeconds: 300,
     }, database as never);
@@ -146,6 +150,17 @@ describe("Secretaria command persistence", () => {
       result: { items: [{ outcome: "CHANGE_REQUEST_SUBMITTED", changedFields: ["mobile"] }] },
     });
     expect(gateway.updateContactDetails).toHaveBeenCalledTimes(1);
+
+    const photoBody = Buffer.alloc(128, 1);
+    const photoHash = createHash("sha256").update(photoBody).digest("hex");
+    const photo = await application.preparePhoto(student, { body: photoBody, sha256: photoHash, width: 128, height: 128 }, "photo-001");
+    expect(photo).toMatchObject({ type: "UPDATE_PHOTO", status: "AWAITING_CONFIRMATION" });
+    const storedPhoto = await database.secretariaCommand.findUniqueOrThrow({ where: { id: photo.id } });
+    expect(storedPhoto.payloadEnvelope).not.toContain(photoBody.toString("base64"));
+    const photoSucceeded = await application.confirmCommand(student, photo.id, "UPDATE_PHOTO");
+    expect(photoSucceeded).toMatchObject({ type: "UPDATE_PHOTO", status: "SUCCEEDED", result: { items: [{ outcome: "PHOTO_CHANGE_REQUEST_SUBMITTED", sha256: photoHash }] } });
+    expect(gateway.updatePhoto).toHaveBeenCalledTimes(1);
+    photoBody.fill(0);
     application.stop();
   });
 });

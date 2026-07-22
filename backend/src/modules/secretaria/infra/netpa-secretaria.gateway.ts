@@ -8,6 +8,7 @@ import type {
   SecretariaDataset,
   SecretariaPaymentReferenceResult,
   SecretariaPaymentSelection,
+  SecretariaPhoto,
   SecretariaProfile,
   SecretariaSession,
 } from "../domain/models";
@@ -154,6 +155,47 @@ function contactDetailsFromHtml(html: string): SecretariaContactDetails {
 function normalizedContactHash(details: SecretariaContactDetails) {
   const { observedAt: _observedAt, editableFields: _editableFields, ...stable } = details;
   return createHash("sha256").update(JSON.stringify(stable)).digest("hex");
+}
+
+function photoLocationFromHtml(html: string) {
+  const candidates = [...html.matchAll(/<img\b[^>]*\bsrc=["'][^"']*PhotoLoader\?[^"']+["'][^>]*>/gi)]
+    .map((match) => ({ markup: match[0], attrs: attributes(match[0]) }));
+  const selected = candidates.find((candidate) => /fotoactual/i.test(candidate.attrs.alt ?? "")) ?? candidates[0];
+  if (!selected?.attrs.src) throw new SecretariaError("SECRETARIA_RESOURCE_NOT_FOUND", "A Secretaria não disponibilizou uma fotografia para este perfil.", 404);
+  const url = new URL(selected.attrs.src, "http://secretaria.invalid/netpa/");
+  const unexpectedKeys = [...url.searchParams.keys()].filter((key) => !["codAluno", "codCurso"].includes(key) && !/^\d{6,}$/.test(key));
+  if (url.pathname !== "/netpa/PhotoLoader" || !url.searchParams.get("codAluno") || !url.searchParams.get("codCurso") || unexpectedKeys.length) {
+    throw new SecretariaError("SECRETARIA_UPSTREAM_CHANGED", "O contrato da fotografia da Secretaria mudou.", 502, false, "contact_support");
+  }
+  const safe = new URL("/netpa/PhotoLoader", "http://secretaria.invalid");
+  safe.searchParams.set("codAluno", url.searchParams.get("codAluno")!);
+  safe.searchParams.set("codCurso", url.searchParams.get("codCurso")!);
+  return `${safe.pathname}${safe.search}`;
+}
+
+function detectedImageType(bytes: Buffer): SecretariaPhoto["contentType"] | null {
+  if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return "image/jpeg";
+  if (bytes.length >= 8 && bytes.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return "image/png";
+  if (bytes.length >= 6 && ["GIF87a", "GIF89a"].includes(bytes.subarray(0, 6).toString("ascii"))) return "image/gif";
+  return null;
+}
+
+function photoFormPayload(html: string) {
+  const form = formMarkup(html, "atualizarFotografia");
+  const input = form?.match(/<input\b[^>]*\bname=["']photo["'][^>]*>/i)?.[0];
+  const inputAttributes = input ? attributes(input) : {};
+  const payload = formPayload(html, "atualizarFotografia");
+  if (
+    !form
+    || inputAttributes.type?.toLowerCase() !== "file"
+    || inputAttributes.accept?.toLowerCase() !== "image/jpeg"
+    || payload.get("_formsubmitstage")?.toLowerCase() !== "atualizarfotografia"
+    || payload.get("_formsubmitname") !== "atualizarFotografia"
+    || payload.get("_formfieldnames") !== "photo"
+  ) {
+    throw new SecretariaError("SECRETARIA_UPSTREAM_CHANGED", "O contrato de atualização da fotografia mudou.", 502, false, "contact_support");
+  }
+  return payload;
 }
 
 function visibleText(html: string) {
@@ -305,7 +347,7 @@ export class NetpaSecretariaGateway implements SecretariaGateway {
     this.#baseUrl = new URL(options.baseUrl);
   }
 
-  async #request(path: string, init: RequestInit = {}): Promise<{ response: Response; text: string }> {
+  async #bufferRequest(path: string, init: RequestInit = {}): Promise<{ response: Response; bytes: Buffer }> {
     const url = new URL(path, this.#baseUrl);
     if (url.origin !== this.#baseUrl.origin) throw new SecretariaError("SECRETARIA_UNSAFE_REDIRECT", "A Secretaria devolveu um destino não permitido.", 502);
     const controller = new AbortController();
@@ -313,18 +355,26 @@ export class NetpaSecretariaGateway implements SecretariaGateway {
     try {
       const response = await fetch(url, { ...init, signal: controller.signal, redirect: "manual" });
       const bytes = Buffer.from(await response.arrayBuffer());
-      try {
-        if (bytes.length > this.options.maxResponseBytes) throw new SecretariaError("SECRETARIA_RESPONSE_TOO_LARGE", "A resposta da Secretaria excede o limite permitido.", 502);
-        return { response, text: bytes.toString("utf8") };
-      } finally {
+      if (bytes.length > this.options.maxResponseBytes) {
         bytes.fill(0);
+        throw new SecretariaError("SECRETARIA_RESPONSE_TOO_LARGE", "A resposta da Secretaria excede o limite permitido.", 502);
       }
+      return { response, bytes };
     } catch (error) {
       if (error instanceof SecretariaError) throw error;
       const timeoutFailure = error instanceof Error && error.name === "AbortError";
       throw new SecretariaError("SECRETARIA_UNAVAILABLE", timeoutFailure ? "A Secretaria excedeu o tempo limite." : "A Secretaria está temporariamente indisponível.", 503, true, "none", { cause: error });
     } finally {
       clearTimeout(timeout);
+    }
+  }
+
+  async #request(path: string, init: RequestInit = {}): Promise<{ response: Response; text: string }> {
+    const result = await this.#bufferRequest(path, init);
+    try {
+      return { response: result.response, text: result.bytes.toString("utf8") };
+    } finally {
+      result.bytes.fill(0);
     }
   }
 
@@ -488,6 +538,111 @@ export class NetpaSecretariaGateway implements SecretariaGateway {
 
   async getContactDetails(session: SecretariaSession): Promise<SecretariaContactDetails> {
     return contactDetailsFromHtml(await this.#personalDataPage(session));
+  }
+
+  async #photoPage(session: SecretariaSession) {
+    const path = "/netpa/page?stage=AtualizarFotografia";
+    const page = await this.#request(path, { headers: this.#headers(session) });
+    mergeSetCookies(session.cookies, page.response.headers);
+    if (authFailure(page.text)) throw new SecretariaError("SECRETARIA_REAUTH_REQUIRED", "A sessão da Secretaria expirou.", 409, true, "reauthenticate");
+    if (page.response.status >= 400) throw new SecretariaError("SECRETARIA_UNAVAILABLE", "Não foi possível abrir a fotografia da Secretaria.", 503, true);
+    return page.text;
+  }
+
+  async #photoFromPage(session: SecretariaSession, html: string): Promise<SecretariaPhoto> {
+    const result = await this.#bufferRequest(photoLocationFromHtml(html), { headers: this.#headers(session) });
+    mergeSetCookies(session.cookies, result.response.headers);
+    if (result.response.status >= 400) {
+      result.bytes.fill(0);
+      throw new SecretariaError("SECRETARIA_UNAVAILABLE", "Não foi possível obter a fotografia da Secretaria.", 503, true);
+    }
+    const contentType = detectedImageType(result.bytes);
+    if (!contentType) {
+      const text = result.bytes.toString("utf8");
+      result.bytes.fill(0);
+      if (authFailure(text)) throw new SecretariaError("SECRETARIA_REAUTH_REQUIRED", "A sessão da Secretaria expirou.", 409, true, "reauthenticate");
+      throw new SecretariaError("SECRETARIA_UPSTREAM_CHANGED", "A Secretaria devolveu um conteúdo de fotografia incompatível.", 502, false, "contact_support");
+    }
+    return {
+      body: result.bytes,
+      contentType,
+      contentLength: result.bytes.length,
+      sha256: createHash("sha256").update(result.bytes).digest("hex"),
+    };
+  }
+
+  async getPhoto(session: SecretariaSession): Promise<SecretariaPhoto> {
+    return this.#photoFromPage(session, await this.#photoPage(session));
+  }
+
+  async preparePhoto(session: SecretariaSession) {
+    const html = await this.#photoPage(session);
+    photoFormPayload(html);
+    const current = await this.#photoFromPage(session, html);
+    try {
+      return { preconditionHash: current.sha256 };
+    } finally {
+      current.body.fill(0);
+    }
+  }
+
+  async updatePhoto(session: SecretariaSession, jpeg: Buffer, preconditionHash: string) {
+    const html = await this.#photoPage(session);
+    const urlEncoded = photoFormPayload(html);
+    const current = await this.#photoFromPage(session, html);
+    try {
+      if (current.sha256 !== preconditionHash) {
+        throw new SecretariaError("SECRETARIA_PRECONDITION_FAILED", "A fotografia mudou depois da preparação; revê e prepara novamente.", 409);
+      }
+    } finally {
+      current.body.fill(0);
+    }
+
+    const multipart = new FormData();
+    for (const [key, value] of urlEncoded) multipart.append(key, value);
+    multipart.set("_formsubmitstage", "atualizarfotografia");
+    multipart.set("_formsubmitname", "atualizarFotografia");
+    multipart.set("submitAction", "");
+    multipart.set("photo", new Blob([new Uint8Array(jpeg)], { type: "image/jpeg" }), "profile-photo.jpg");
+
+    const path = "/netpa/page?stage=atualizarfotografia";
+    let result = await this.#request(path, {
+      method: "POST",
+      headers: { ...this.#headers(session), Referer: new URL("/netpa/page?stage=AtualizarFotografia", this.#baseUrl).toString() },
+      body: multipart,
+    });
+    mergeSetCookies(session.cookies, result.response.headers);
+    const location = result.response.headers.get("location");
+    if (location && result.response.status >= 300 && result.response.status < 400) {
+      const target = new URL(location, this.#baseUrl);
+      if (target.origin !== this.#baseUrl.origin) throw new SecretariaError("SECRETARIA_UNSAFE_REDIRECT", "A Secretaria devolveu um destino não permitido.", 502);
+      result = await this.#request(`${target.pathname}${target.search}`, { headers: this.#headers(session) });
+      mergeSetCookies(session.cookies, result.response.headers);
+    }
+    if (authFailure(result.text)) throw new SecretariaError("SECRETARIA_REAUTH_REQUIRED", "A sessão da Secretaria expirou.", 409, true, "reauthenticate");
+    if (result.response.status >= 400) throw new SecretariaError("SECRETARIA_UNAVAILABLE", "A Secretaria rejeitou o pedido de fotografia.", 503, true);
+
+    const text = visibleText(result.text);
+    if (/erro|inválid|invalido|não foi possível|nao foi possivel/i.test(text)) {
+      throw new SecretariaError("SECRETARIA_VALIDATION_FAILED", "A Secretaria recusou a fotografia submetida.", 422);
+    }
+    const successMessage = /(?:pedido|fotografia).{0,140}(?:efetuad[oa]|submetid[oa]|registad[oa]).{0,100}sucesso|sucesso.{0,100}(?:pedido|fotografia)/i.test(text);
+    let changed = false;
+    try {
+      const official = await this.getPhoto(session);
+      changed = official.sha256 !== preconditionHash;
+      official.body.fill(0);
+    } catch {
+      // The submission response may be authoritative even while the image
+      // projection is temporarily unavailable.
+    }
+    if (!changed && !successMessage) {
+      throw new SecretariaError("SECRETARIA_COMMAND_OUTCOME_UNKNOWN", "A Secretaria não confirmou de forma inequívoca o pedido de fotografia.", 502, true);
+    }
+    return {
+      items: [{ outcome: changed ? "PHOTO_UPDATED" : "PHOTO_CHANGE_REQUEST_SUBMITTED", sha256: createHash("sha256").update(jpeg).digest("hex"), contentType: "image/jpeg", size: jpeg.length }],
+      observedAt: new Date().toISOString(),
+    };
   }
 
   async getConsents(session: SecretariaSession): Promise<SecretariaDataset> {

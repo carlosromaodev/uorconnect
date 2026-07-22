@@ -1,5 +1,7 @@
+import { createHash } from "node:crypto";
 import type { FastifyInstance, FastifyReply, FastifyRequest } from "fastify";
 import { serializerCompiler, validatorCompiler } from "fastify-type-provider-zod";
+import sharp from "sharp";
 import { z } from "zod";
 import type { Env } from "../../../config/env";
 import { authGuard } from "../../auth/http/auth.middleware";
@@ -45,9 +47,12 @@ const contactDetailsBodySchema = z.object({
   secondaryAddressLine: z.string().trim().max(300).nullable().optional(),
   mailingAddress: z.enum(["PRIMARY", "SECONDARY"]).optional(),
 }).strict().refine((body) => Object.keys(body).length > 0, { message: "Indica pelo menos um campo para alterar." });
+const photoBodySchema = z.object({
+  dataUrl: z.string().regex(/^data:image\/jpeg;base64,[A-Za-z0-9+/]+={0,2}$/).max(1_500_000),
+}).strict();
 const idempotencyHeadersSchema = z.object({ "idempotency-key": z.string().trim().min(8).max(128) });
 const commandParamsSchema = z.object({ commandId: z.string().uuid() });
-const commandConfirmationBodySchema = z.object({ confirmation: z.enum(["GENERATE_PAYMENT_REFERENCE", "UPDATE_CONTACT_DETAILS"]) });
+const commandConfirmationBodySchema = z.object({ confirmation: z.enum(["GENERATE_PAYMENT_REFERENCE", "UPDATE_CONTACT_DETAILS", "UPDATE_PHOTO"]) });
 
 export type SecretariaRoutesOptions = {
   env: Env;
@@ -76,6 +81,40 @@ async function sendError(request: FastifyRequest, reply: FastifyReply, error: un
 
 function meta(request: FastifyRequest, options: { coverage?: string; stale?: boolean; snapshotVersion?: number | null; observedAt?: string | null } = {}) {
   return { traceId: request.id, source: "secretaria_uor" as const, ...options };
+}
+
+async function normalizedPhoto(dataUrl: string) {
+  const encoded = dataUrl.slice("data:image/jpeg;base64,".length);
+  const source = Buffer.from(encoded, "base64");
+  try {
+    if (source.length === 0 || source.length > 1_048_576 || source[0] !== 0xff || source[1] !== 0xd8 || source[2] !== 0xff) {
+      throw new SecretariaError("SECRETARIA_REQUEST_INVALID", "A fotografia deve ser um JPEG válido com no máximo 1024 KB.", 422);
+    }
+    const metadata = await sharp(source, { failOn: "warning", limitInputPixels: 64_000_000 }).metadata();
+    if (!metadata.width || !metadata.height || metadata.format !== "jpeg" || (metadata.pages ?? 1) !== 1 || metadata.width < 64 || metadata.height < 64) {
+      throw new SecretariaError("SECRETARIA_REQUEST_INVALID", "A fotografia JPEG deve ter pelo menos 64×64 píxeis.", 422);
+    }
+    const normalized = await sharp(source, { failOn: "warning", limitInputPixels: 64_000_000 })
+      .rotate()
+      .resize({ width: 2_000, height: 2_000, fit: "inside", withoutEnlargement: true })
+      .jpeg({ quality: 88, mozjpeg: true })
+      .toBuffer({ resolveWithObject: true });
+    if (normalized.data.length > 1_048_576) {
+      normalized.data.fill(0);
+      throw new SecretariaError("SECRETARIA_REQUEST_INVALID", "A fotografia continua acima de 1024 KB depois da normalização.", 422);
+    }
+    return {
+      body: normalized.data,
+      sha256: createHash("sha256").update(normalized.data).digest("hex"),
+      width: normalized.info.width,
+      height: normalized.info.height,
+    };
+  } catch (error) {
+    if (isSecretariaError(error)) throw error;
+    throw new SecretariaError("SECRETARIA_REQUEST_INVALID", "Não foi possível validar a fotografia JPEG.", 422, false, "none", { cause: error });
+  } finally {
+    source.fill(0);
+  }
 }
 
 async function defaultFindEligibleStudent(studentId: number) {
@@ -177,6 +216,23 @@ export async function secretariaRoutes(app: FastifyInstance, opts: SecretariaRou
         return { data, meta: meta(request, { coverage: "live", observedAt: data.observedAt }) };
       } catch (error) { return sendError(request, reply, error); }
     });
+    protectedApp.get("/me/photo", { schema: { tags: ["Secretaria - Perfil"], response: { ...errorResponses } } }, async (request, reply) => {
+      try {
+        const photo = await opts.application.getPhoto(request.student!);
+        const clearPhoto = () => photo.body.fill(0);
+        reply.raw.once("finish", clearPhoto);
+        reply.raw.once("close", clearPhoto);
+        const etag = `"${photo.sha256}"`;
+        const extension = photo.contentType === "image/jpeg" ? "jpg" : photo.contentType === "image/png" ? "png" : "gif";
+        reply.header("ETag", etag);
+        reply.header("Content-Type", photo.contentType);
+        reply.header("Content-Length", String(photo.contentLength));
+        reply.header("Content-Disposition", `inline; filename="secretaria-profile-photo.${extension}"`);
+        reply.header("X-Content-Type-Options", "nosniff");
+        if (request.headers["if-none-match"] === etag) return reply.status(304).send();
+        return reply.send(photo.body);
+      } catch (error) { return sendError(request, reply, error); }
+    });
     protectedApp.get("/consents", { schema: { tags: ["Secretaria - Privacidade"], response: { 200: envelopeSchema, ...errorResponses } } }, async (request, reply) => {
       try {
         const data = await opts.application.getConsents(request.student!);
@@ -219,7 +275,6 @@ export async function secretariaRoutes(app: FastifyInstance, opts: SecretariaRou
     }
 
     const disabledMutations: Array<{ method: "POST" | "PUT" | "PATCH" | "DELETE"; url: string }> = [
-      { method: "PUT", url: "/me/photo" },
       { method: "DELETE", url: "/me/photo" },
       { method: "PATCH", url: "/consents/:consentId" },
       { method: "POST", url: "/exam-registrations" },
@@ -271,6 +326,37 @@ export async function secretariaRoutes(app: FastifyInstance, opts: SecretariaRou
         );
         return reply.status(202).send({ data: command, meta: meta(request, { coverage: "live" }) });
       } catch (error) { return sendError(request, reply, error); }
+    });
+
+    protectedApp.put("/me/photo", {
+      config: {
+        rateLimit: {
+          max: 5,
+          timeWindow: 15 * 60_000,
+          keyGenerator: (request: FastifyRequest) => `${request.ip}:${request.student?.id ?? "anonymous"}:photo`,
+        },
+      },
+      schema: {
+        tags: ["Secretaria - Perfil"],
+        headers: idempotencyHeadersSchema,
+        body: photoBodySchema,
+        response: { 202: envelopeSchema, ...errorResponses },
+      },
+    }, async (request, reply) => {
+      let photo: Awaited<ReturnType<typeof normalizedPhoto>> | null = null;
+      try {
+        photo = await normalizedPhoto((request.body as z.infer<typeof photoBodySchema>).dataUrl);
+        const command = await opts.application.preparePhoto(
+          request.student!,
+          photo,
+          String(request.headers["idempotency-key"]),
+        );
+        return reply.status(202).send({ data: command, meta: meta(request, { coverage: "live" }) });
+      } catch (error) {
+        return sendError(request, reply, error);
+      } finally {
+        photo?.body.fill(0);
+      }
     });
 
     protectedApp.post("/finance/payment-references", {

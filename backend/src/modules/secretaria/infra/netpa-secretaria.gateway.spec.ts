@@ -122,11 +122,11 @@ describe("NetpaSecretariaGateway personal data contracts", () => {
       <input type="text" name="identificacaoNumero" value="PRESERVE-ME">
       <input type="hidden" name="submitAction" value="">
     </form></body></html>`;
-    let submitted: URLSearchParams | null = null;
+    const submissions: URLSearchParams[] = [];
     vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request, init: RequestInit = {}) => {
       const url = new URL(typeof input === "string" || input instanceof URL ? input.toString() : input.url);
       if ((init.method ?? "GET") === "POST" && url.pathname === "/netpa/ajax") {
-        submitted = new URLSearchParams(String(init.body ?? ""));
+        submissions.push(new URLSearchParams(String(init.body ?? "")));
         return new Response(JSON.stringify({ success: true, parameterErrors: {} }), { status: 200 });
       }
       if (url.searchParams.get("stage") === "BoletimMatricula") return new Response(personalData, { status: 200 });
@@ -145,10 +145,10 @@ describe("NetpaSecretariaGateway personal data contracts", () => {
     const prepared = await gateway.prepareContactDetails(session, { email: "new@example.test", mobile: null });
     const result = await gateway.updateContactDetails(session, prepared.patch, prepared.preconditionHash);
     expect(result.items[0]).toEqual({ outcome: "CHANGE_REQUEST_SUBMITTED", changedFields: ["email", "mobile"] });
-    expect(submitted?.get("email")).toBe("new@example.test");
-    expect(submitted?.get("telemovel")).toBe("");
-    expect(submitted?.get("identificacaoNumero")).toBe("PRESERVE-ME");
-    expect(submitted?.get("moradaCorreio")).toBe("P");
+    expect(submissions[0]?.get("email")).toBe("new@example.test");
+    expect(submissions[0]?.get("telemovel")).toBe("");
+    expect(submissions[0]?.get("identificacaoNumero")).toBe("PRESERVE-ME");
+    expect(submissions[0]?.get("moradaCorreio")).toBe("P");
   });
 
   it("devolve conjunto vazio apenas para o estado de consentimentos confirmado", async () => {
@@ -162,5 +162,48 @@ describe("NetpaSecretariaGateway personal data contracts", () => {
       total: 0,
       coverage: "live",
     });
+  });
+
+  it("serve a fotografia por proxy e submete JPEG multipart com precondição", async () => {
+    const photoPage = `<html><body>
+      <img src="/netpa/PhotoLoader?codAluno=student&amp;codCurso=course">
+      <form id="atualizarFotografia" name="atualizarFotografia">
+        <input type="hidden" name="_formsubmitstage" value="atualizarfotografia">
+        <input type="hidden" name="_formsubmitname" value="atualizarFotografia">
+        <input type="hidden" name="_formfieldnames" value="photo">
+        <input type="file" name="photo" accept="image/jpeg">
+        <input type="hidden" name="submitAction" value="">
+      </form>
+    </body></html>`;
+    const initial = Buffer.from("GIF89a-initial-photo");
+    const replacement = Buffer.concat([Buffer.from([0xff, 0xd8, 0xff]), Buffer.alloc(128, 2)]);
+    let uploaded = false;
+    let multipartFields: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request, init: RequestInit = {}) => {
+      const url = new URL(typeof input === "string" || input instanceof URL ? input.toString() : input.url);
+      if (url.pathname === "/netpa/PhotoLoader") return new Response(uploaded ? replacement : initial, { status: 200 });
+      if ((init.method ?? "GET") === "POST" && url.searchParams.get("stage") === "atualizarfotografia") {
+        const formData = init.body as FormData;
+        multipartFields = [...formData.keys()].sort();
+        const file = formData.get("photo") as File;
+        expect(file.type).toBe("image/jpeg");
+        expect(file.name).toBe("profile-photo.jpg");
+        uploaded = true;
+        return new Response("<html><p>Pedido de fotografia submetido com sucesso.</p></html>", { status: 200 });
+      }
+      if (url.pathname === "/netpa/page") return new Response(photoPage, { status: 200 });
+      return new Response("not found", { status: 404 });
+    }));
+
+    const gateway = testGateway();
+    const current = await gateway.getPhoto(session);
+    expect(current).toMatchObject({ contentType: "image/gif", contentLength: initial.length });
+    current.body.fill(0);
+    const prepared = await gateway.preparePhoto(session);
+    const result = await gateway.updatePhoto(session, replacement, prepared.preconditionHash);
+    expect(result.items[0]).toMatchObject({ outcome: "PHOTO_UPDATED", contentType: "image/jpeg", size: replacement.length });
+    expect(multipartFields).toEqual(["_formfieldnames", "_formsubmitname", "_formsubmitstage", "photo", "submitAction"]);
+    initial.fill(0);
+    replacement.fill(0);
   });
 });

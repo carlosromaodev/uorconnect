@@ -1,7 +1,7 @@
 ---
 document_id: SPEC-EST-SECRETARIA-001
 title: API Secretaria → UOR Estudante
-version: 1.3.0
+version: 1.4.0
 status: approved
 authority: normative_product_contract
 owner: UOR Estudante
@@ -10,7 +10,7 @@ approved_at: 2026-07-21
 review_cycle: quarterly
 next_review: 2026-10-21
 created_at: 2026-07-21
-updated_at: 2026-07-21
+updated_at: 2026-07-22
 ---
 
 # API Secretaria → UOR Estudante
@@ -315,8 +315,9 @@ As tabelas usam `approved_foundation`, `approved_read`, `approved_write_pending_
 | GET | `/me` | approved_read | Perfil institucional e mutabilidade por campo. |
 | GET | `/me/contact-details` | approved_read | Consultar contactos, moradas e mutabilidade confirmada. |
 | PATCH | `/me/contact-details` | approved_write_feature_flagged | Preparar comando de submissão de pedido de alteração; exige `Idempotency-Key`. |
-| PUT | `/me/photo` | conditional_write | Atualizar fotografia validada. |
-| DELETE | `/me/photo` | conditional_write | Remover fotografia quando suportado. |
+| GET | `/me/photo` | approved_read | Entregar fotografia oficial por proxy autenticado, com ETag e `no-store`. |
+| PUT | `/me/photo` | approved_write_feature_flagged | Preparar comando de fotografia JPEG normalizada; exige `Idempotency-Key`. |
+| DELETE | `/me/photo` | unsupported | O portal não oferece remoção da fotografia. |
 | GET | `/consents` | approved_read | Consultar consentimentos. |
 | PATCH | `/consents/:consentId` | conditional_write | Atualizar consentimento permitido. |
 
@@ -647,6 +648,14 @@ O formulário `BoletimMatricula` confirmou como editáveis `email`, `telefonePri
 O portal descreve a operação como pedido de alteração. `success=true` significa `CHANGE_REQUEST_SUBMITTED`, não aplicação imediata. `parameterErrors` é convertido em `SECRETARIA_VALIDATION_FAILED`; as duas contas de teste possuem campos legados obrigatórios incompletos e o portal rejeitou submissões no-op sem criar pedido. Como não existe endpoint observado para consultar o pedido, resultados ambíguos permanecem `UNKNOWN` e não podem ser reconciliados ou reenviados automaticamente.
 
 A escrita fica desligada por padrão em `SECRETARIA_WRITE_CONTACT_DETAILS_ENABLED=false`. O estado atual de `myconsents` foi confirmado como “Sem consentimentos”, sem formulário ou callback de escrita. `GET /consents` devolve conjunto vazio; qualquer novo layout falha fechado como mudança de contrato, e `PATCH /consents/:consentId` permanece desativado até existir consentimento editável autorizado.
+
+## 21.3 Contrato de fotografia verificado em 2026-07-22
+
+A fotografia vigente é obtida por `PhotoLoader` com identificadores internos mantidos exclusivamente no gateway. `GET /me/photo` deteta o formato pela assinatura binária, não pelo `Content-Type` inconsistente do upstream, e devolve conteúdo autenticado com `ETag`, `nosniff` e cache privado desativado.
+
+O formulário `AtualizarFotografia` envia `multipart/form-data` para `stage=atualizarfotografia`, exige o campo `photo`, aceita somente `image/jpeg` e limita o ficheiro a 1024 KB. A API valida a imagem, remove metadados, corrige orientação, limita dimensões e cifra o JPEG no payload do comando antes da confirmação. Imagens, base64 e identificadores nunca entram em logs ou resultados do comando.
+
+Antes da submissão, o gateway compara o hash da fotografia oficial com a precondição capturada. Mudança oficial do hash ou mensagem inequívoca de sucesso conclui o comando; resposta ambígua fica `UNKNOWN` e nunca é reenviada automaticamente. A flag `SECRETARIA_WRITE_PHOTO_ENABLED=false` mantém a escrita desligada por padrão. Nenhuma remoção foi implementada porque o portal não expõe esse efeito.
 
 ## 22. Migração e sequência de entrega
 

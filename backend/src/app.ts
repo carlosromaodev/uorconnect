@@ -65,6 +65,7 @@ export function buildApp(env: Env, deps?: AppDependencies) {
           "res.headers['set-cookie']",
           "req.body.username",
           "req.body.password",
+          "req.body.dataUrl",
           "username",
           "password",
           "cookieJar",
@@ -104,7 +105,7 @@ export function buildApp(env: Env, deps?: AppDependencies) {
           callback(null, isAllowedOrigin ? origin : false);
         },
     methods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization", "ngrok-skip-browser-warning", "x-csrf-token"],
+    allowedHeaders: ["Content-Type", "Authorization", "Idempotency-Key", "ngrok-skip-browser-warning", "x-csrf-token"],
     credentials: true,
     maxAge: 86400
   });

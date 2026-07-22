@@ -5,8 +5,8 @@ document_id: ADR-006
 status: accepted
 owner: Arquitetura UOR Estudante
 authority: informative_until_approved
-version: 1.1
-last_reviewed: 2026-07-21
+version: 1.2
+last_reviewed: 2026-07-22
 approved_by: Product Owner
 approved_at: 2026-07-21
 review_cycle: por alteração de arquitetura/provedor
@@ -88,6 +88,8 @@ O TTL exato será configuração operacional, não invariante do produto.
 - Não devolver HTML, cookies, URLs internas ou IDs upstream à aplicação.
 - Usar identificação de navegador compatível porque o netPA rejeita user-agents de cliente personalizados; a versão fica coberta por contrato vivo.
 - Em alterações de contacto, reler o formulário completo, verificar precondição, preservar campos fora do patch e tratar `success=true` como submissão de pedido, não atualização imediata.
+- Servir fotografia somente por proxy autenticado, detetar o tipo pela assinatura binária e nunca expor os parâmetros de `PhotoLoader`.
+- Normalizar uploads para JPEG sem metadados, cifrar o payload do comando e exigir precondição sobre o hash oficial antes do multipart upstream.
 - Permitir substituição pelo gateway de API oficial no futuro.
 
 ### 8. Feature flags e circuit breakers

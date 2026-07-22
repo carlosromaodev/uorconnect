@@ -1,4 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
+import sharp from "sharp";
 import { buildApp } from "../../../app";
 import { loadEnv } from "../../../config/env";
 import { signStudentToken } from "../../auth/utils/jwt";
@@ -25,12 +26,14 @@ function fakeApplication(): SecretariaApplication {
       editableFields: ["email", "phone", "mobile", "primaryAddressLine", "secondaryAddressLine", "mailingAddress"],
       observedAt: "2026-07-21T20:00:00.000Z",
     })),
+    getPhoto: vi.fn(async () => ({ body: Buffer.from("GIF89a-test"), contentType: "image/gif", contentLength: 11, sha256: "photo-etag" })),
     getConsents: vi.fn(async () => ({ domain: "privacy.consents", items: [], total: 0, observedAt: "2026-07-21T20:00:00.000Z", coverage: "live" })),
     getDataset: vi.fn(async (_student, domain) => ({ data: { domain, items: [{ subject: "Teste" }], total: 1, observedAt: "2026-07-21T20:00:00.000Z", coverage: "live" }, stale: false, snapshotVersion: null })),
     startSync: vi.fn(async () => ({ id: "b0fd0d6c-e3a5-4abb-a760-c9463fe42336", status: "COMPLETED", snapshotVersion: 1, domains: [], completedDomains: [], failedDomains: [], startedAt: "2026-07-21T20:00:00.000Z", finishedAt: "2026-07-21T20:00:01.000Z" })),
     getSync: vi.fn(async () => ({ id: "b0fd0d6c-e3a5-4abb-a760-c9463fe42336", status: "COMPLETED", snapshotVersion: 1, domains: [], completedDomains: [], failedDomains: [], startedAt: "2026-07-21T20:00:00.000Z", finishedAt: "2026-07-21T20:00:01.000Z" })),
     preparePaymentReference: vi.fn(async () => ({ id: "8b5e8ab9-3989-4517-8a82-56128794ae87", type: "GENERATE_PAYMENT_REFERENCE", risk: "MEDIUM", status: "AWAITING_CONFIRMATION", requiresConfirmation: true, confirmationExpiresAt: "2026-07-21T20:05:00.000Z", result: null, errorCode: null, createdAt: "2026-07-21T20:00:00.000Z", updatedAt: "2026-07-21T20:00:00.000Z", completedAt: null })),
     prepareContactDetails: vi.fn(async () => ({ id: "d3bd8d65-5695-41b8-9f22-e3b042ea4e6f", type: "UPDATE_CONTACT_DETAILS", risk: "MEDIUM", status: "AWAITING_CONFIRMATION", requiresConfirmation: true, confirmationExpiresAt: "2026-07-21T20:05:00.000Z", result: null, errorCode: null, createdAt: "2026-07-21T20:00:00.000Z", updatedAt: "2026-07-21T20:00:00.000Z", completedAt: null })),
+    preparePhoto: vi.fn(async () => ({ id: "0c359bab-4f18-478c-8a46-64ead3c14dab", type: "UPDATE_PHOTO", risk: "MEDIUM", status: "AWAITING_CONFIRMATION", requiresConfirmation: true, confirmationExpiresAt: "2026-07-21T20:05:00.000Z", result: null, errorCode: null, createdAt: "2026-07-21T20:00:00.000Z", updatedAt: "2026-07-21T20:00:00.000Z", completedAt: null })),
     getCommand: vi.fn(async () => ({ id: "8b5e8ab9-3989-4517-8a82-56128794ae87", type: "GENERATE_PAYMENT_REFERENCE", risk: "MEDIUM", status: "AWAITING_CONFIRMATION", requiresConfirmation: true, confirmationExpiresAt: "2026-07-21T20:05:00.000Z", result: null, errorCode: null, createdAt: "2026-07-21T20:00:00.000Z", updatedAt: "2026-07-21T20:00:00.000Z", completedAt: null })),
     getCommandAttempts: vi.fn(async () => []),
     confirmCommand: vi.fn(async () => ({ id: "8b5e8ab9-3989-4517-8a82-56128794ae87", type: "GENERATE_PAYMENT_REFERENCE", risk: "MEDIUM", status: "SUCCEEDED", requiresConfirmation: false, confirmationExpiresAt: "2026-07-21T20:05:00.000Z", result: { items: [], observedAt: "2026-07-21T20:01:00.000Z" }, errorCode: null, createdAt: "2026-07-21T20:00:00.000Z", updatedAt: "2026-07-21T20:01:00.000Z", completedAt: "2026-07-21T20:01:00.000Z" })),
@@ -118,6 +121,23 @@ describe("Secretaria routes", () => {
       "contact-details-test-001",
     );
 
+    const photoRead = await app.inject({ method: "GET", url: "/api/v1/integrations/secretaria/me/photo", headers: { authorization } });
+    expect(photoRead.statusCode).toBe(200);
+    expect(photoRead.headers.etag).toBe('"photo-etag"');
+    expect(photoRead.headers["content-type"]).toContain("image/gif");
+
+    const jpeg = await sharp({ create: { width: 128, height: 128, channels: 3, background: "#dddddd" } }).jpeg().toBuffer();
+    const photoWrite = await app.inject({
+      method: "PUT",
+      url: "/api/v1/integrations/secretaria/me/photo",
+      headers: { authorization, "content-type": "application/json", "idempotency-key": "photo-update-test-001" },
+      payload: { dataUrl: `data:image/jpeg;base64,${jpeg.toString("base64")}` },
+    });
+    jpeg.fill(0);
+    expect(photoWrite.statusCode).toBe(202);
+    expect(photoWrite.json().data).toMatchObject({ type: "UPDATE_PHOTO", status: "AWAITING_CONFIRMATION" });
+    expect(application.preparePhoto).toHaveBeenCalledOnce();
+
     const confirm = await app.inject({
       method: "POST",
       url: "/api/v1/integrations/secretaria/commands/8b5e8ab9-3989-4517-8a82-56128794ae87/confirm",
@@ -126,6 +146,22 @@ describe("Secretaria routes", () => {
     });
     expect(confirm.statusCode).toBe(200);
     expect(confirm.json().data.status).toBe("SUCCEEDED");
+    await app.close();
+  });
+
+  it("rejeita conteúdo que apenas declara ser JPEG", async () => {
+    const { app, application, authorization } = setup();
+    const invalidJpeg = Buffer.from([0xff, 0xd8, 0xff, 0x00, 0x01]);
+    const response = await app.inject({
+      method: "PUT",
+      url: "/api/v1/integrations/secretaria/me/photo",
+      headers: { authorization, "content-type": "application/json", "idempotency-key": "invalid-photo-test-001" },
+      payload: { dataUrl: `data:image/jpeg;base64,${invalidJpeg.toString("base64")}` },
+    });
+    invalidJpeg.fill(0);
+    expect(response.statusCode).toBe(422);
+    expect(response.json().error.code).toBe("SECRETARIA_REQUEST_INVALID");
+    expect(application.preparePhoto).not.toHaveBeenCalled();
     await app.close();
   });
 });

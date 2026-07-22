@@ -4,6 +4,7 @@ import type { SecretariaGateway, SecretariaCredentials } from "../domain/gateway
 import { SecretariaError } from "../domain/errors";
 import type {
   SecretariaCapability,
+  SecretariaCommandResult,
   SecretariaContactDetails,
   SecretariaContactDetailsPatch,
   SecretariaCommandAttemptView,
@@ -11,6 +12,8 @@ import type {
   SecretariaConnectionView,
   SecretariaDataset,
   SecretariaProfile,
+  SecretariaPhoto,
+  SecretariaPhotoInput,
   SecretariaSession,
   SecretariaStudentIdentity,
   SecretariaSyncView,
@@ -29,12 +32,14 @@ export interface SecretariaApplication {
   deleteImportedData(student: SecretariaStudentIdentity): Promise<{ deletedSnapshots: number; deletedSyncRuns: number; deletedCommands: number }>;
   getProfile(student: SecretariaStudentIdentity): Promise<SecretariaProfile>;
   getContactDetails(student: SecretariaStudentIdentity): Promise<SecretariaContactDetails>;
+  getPhoto(student: SecretariaStudentIdentity): Promise<SecretariaPhoto>;
   getConsents(student: SecretariaStudentIdentity): Promise<SecretariaDataset>;
   getDataset(student: SecretariaStudentIdentity, domain: string): Promise<{ data: SecretariaDataset; stale: boolean; snapshotVersion: number | null }>;
   startSync(student: SecretariaStudentIdentity, domains?: string[]): Promise<SecretariaSyncView>;
   getSync(student: SecretariaStudentIdentity, runId: string): Promise<SecretariaSyncView>;
   preparePaymentReference(student: SecretariaStudentIdentity, chargeRefs: string[], idempotencyKey: string): Promise<SecretariaCommandView>;
   prepareContactDetails(student: SecretariaStudentIdentity, patch: SecretariaContactDetailsPatch, idempotencyKey: string): Promise<SecretariaCommandView>;
+  preparePhoto(student: SecretariaStudentIdentity, photo: SecretariaPhotoInput, idempotencyKey: string): Promise<SecretariaCommandView>;
   getCommand(student: SecretariaStudentIdentity, commandId: string): Promise<SecretariaCommandView>;
   getCommandAttempts(student: SecretariaStudentIdentity, commandId: string): Promise<SecretariaCommandAttemptView[]>;
   confirmCommand(student: SecretariaStudentIdentity, commandId: string, confirmation?: SecretariaCommandView["type"]): Promise<SecretariaCommandView>;
@@ -46,12 +51,13 @@ export interface SecretariaApplication {
 
 const PAYMENT_REFERENCE_COMMAND = "GENERATE_PAYMENT_REFERENCE" as const;
 const CONTACT_DETAILS_COMMAND = "UPDATE_CONTACT_DETAILS" as const;
+const PHOTO_COMMAND = "UPDATE_PHOTO" as const;
 type SecretariaCommandType = SecretariaCommandView["type"];
 
 type StoredCommand = NonNullable<Awaited<ReturnType<SecretariaDatabase["secretariaCommand"]["findFirst"]>>>;
 
 function commandView(command: StoredCommand, result: SecretariaCommandView["result"]): SecretariaCommandView {
-  if (command.type !== PAYMENT_REFERENCE_COMMAND && command.type !== CONTACT_DETAILS_COMMAND) {
+  if (command.type !== PAYMENT_REFERENCE_COMMAND && command.type !== CONTACT_DETAILS_COMMAND && command.type !== PHOTO_COMMAND) {
     throw new SecretariaError("SECRETARIA_UPSTREAM_CHANGED", "Foi encontrado um tipo de comando da Secretaria não suportado.", 500, false, "contact_support");
   }
   return {
@@ -146,7 +152,7 @@ export class LiveSecretariaApplication implements SecretariaApplication {
   constructor(
     private readonly gateway: SecretariaGateway,
     private readonly keyring: SecretariaCryptoKeyring,
-    private readonly commandOptions: { paymentReferenceEnabled: boolean; contactDetailsEnabled: boolean; confirmationTtlSeconds: number; commandLeaseSeconds: number },
+    private readonly commandOptions: { paymentReferenceEnabled: boolean; contactDetailsEnabled: boolean; photoEnabled: boolean; confirmationTtlSeconds: number; commandLeaseSeconds: number },
     private readonly db: SecretariaDatabase = prisma,
   ) {}
 
@@ -319,6 +325,10 @@ export class LiveSecretariaApplication implements SecretariaApplication {
     return this.#withSession(student, (session) => this.gateway.getContactDetails(session));
   }
 
+  async getPhoto(student: SecretariaStudentIdentity) {
+    return this.#withSession(student, (session) => this.gateway.getPhoto(session));
+  }
+
   async getConsents(student: SecretariaStudentIdentity) {
     return this.#withSession(student, (session) => this.gateway.getConsents(session));
   }
@@ -423,9 +433,16 @@ export class LiveSecretariaApplication implements SecretariaApplication {
     }
   }
 
+  #requirePhotoWrite() {
+    if (!this.commandOptions.photoEnabled) {
+      throw new SecretariaError("SECRETARIA_CAPABILITY_DISABLED", "A submissão de fotografia está desativada por configuração.", 409);
+    }
+  }
+
   #requireCommandWrite(type: string) {
     if (type === PAYMENT_REFERENCE_COMMAND) return this.#requirePaymentReferenceWrite();
     if (type === CONTACT_DETAILS_COMMAND) return this.#requireContactDetailsWrite();
+    if (type === PHOTO_COMMAND) return this.#requirePhotoWrite();
     throw new SecretariaError("SECRETARIA_COMMAND_STATE_INVALID", "O tipo de comando não é suportado.", 409);
   }
 
@@ -571,6 +588,78 @@ export class LiveSecretariaApplication implements SecretariaApplication {
     }
   }
 
+  async preparePhoto(student: SecretariaStudentIdentity, photo: SecretariaPhotoInput, idempotencyKey: string) {
+    this.#requirePhotoWrite();
+    const actualHash = createHash("sha256").update(photo.body).digest("hex");
+    if (
+      photo.body.length === 0
+      || photo.body.length > 1_048_576
+      || actualHash !== photo.sha256
+      || photo.width < 64
+      || photo.height < 64
+      || photo.width > 8_000
+      || photo.height > 8_000
+    ) {
+      throw new SecretariaError("SECRETARIA_REQUEST_INVALID", "A fotografia JPEG não cumpre os limites permitidos.", 422);
+    }
+    const publicPayload = { sha256: photo.sha256, size: photo.body.length, width: photo.width, height: photo.height };
+    const hash = requestHash(PHOTO_COMMAND, publicPayload);
+    const byIdempotency = await this.db.secretariaCommand.findFirst({
+      where: { studentId: student.id, type: PHOTO_COMMAND, idempotencyKey },
+    });
+    if (byIdempotency) {
+      if (byIdempotency.requestHash !== hash) {
+        throw new SecretariaError("SECRETARIA_IDEMPOTENCY_CONFLICT", "A chave de idempotência já foi usada com outro pedido.", 409);
+      }
+      return this.#commandView(student, byIdempotency);
+    }
+    const semanticDuplicate = await this.db.secretariaCommand.findFirst({
+      where: {
+        studentId: student.id,
+        type: PHOTO_COMMAND,
+        requestHash: hash,
+        OR: [
+          { status: { in: ["AWAITING_CONFIRMATION", "SUBMITTING", "VERIFYING", "UNKNOWN"] } },
+          { status: "SUCCEEDED", completedAt: { gte: new Date(Date.now() - 24 * 60 * 60_000) } },
+        ],
+      },
+      orderBy: { createdAt: "desc" },
+    });
+    if (semanticDuplicate) return this.#commandView(student, semanticDuplicate);
+
+    const connection = await this.db.secretariaConnection.findUnique({ where: { studentId: student.id } });
+    if (!connection?.credentialsEnvelope) throw new SecretariaError("SECRETARIA_SESSION_REQUIRED", "Liga a conta da Secretaria para continuar.", 409, false, "connect");
+    const prepared = await this.#withSession(student, (session) => this.gateway.preparePhoto(session));
+    const payloadEnvelope = this.keyring.encryptJson(
+      { ...publicPayload, jpegBase64: photo.body.toString("base64"), preconditionHash: prepared.preconditionHash },
+      this.#context(student, connection.connectionGeneration, "command"),
+    );
+    const confirmationExpiresAt = new Date(Date.now() + this.commandOptions.confirmationTtlSeconds * 1000);
+    try {
+      const command = await this.db.secretariaCommand.create({
+        data: {
+          studentId: student.id,
+          type: PHOTO_COMMAND,
+          risk: "MEDIUM",
+          status: "AWAITING_CONFIRMATION",
+          idempotencyKey,
+          requestHash: hash,
+          payloadEnvelope,
+          connectionGeneration: connection.connectionGeneration,
+          confirmationExpiresAt,
+        },
+      });
+      return this.#commandView(student, command);
+    } catch (error) {
+      const concurrent = await this.db.secretariaCommand.findFirst({
+        where: { studentId: student.id, type: PHOTO_COMMAND, idempotencyKey },
+      });
+      if (!concurrent) throw error;
+      if (concurrent.requestHash !== hash) throw new SecretariaError("SECRETARIA_IDEMPOTENCY_CONFLICT", "A chave de idempotência já foi usada com outro pedido.", 409);
+      return this.#commandView(student, concurrent);
+    }
+  }
+
   async getCommand(student: SecretariaStudentIdentity, commandId: string) {
     return this.#commandView(student, await this.#command(student, commandId));
   }
@@ -618,21 +707,34 @@ export class LiveSecretariaApplication implements SecretariaApplication {
     if (!claimed) return this.#commandView(student, await this.#command(student, commandId));
 
     try {
-      const result = command.type === PAYMENT_REFERENCE_COMMAND
-        ? await (async () => {
-          const payload = this.keyring.decryptJson<{ chargeRefs: string[] }>(
-            command.payloadEnvelope,
-            this.#context(student, command.connectionGeneration, "command"),
-          );
-          return this.#withSession(student, (session) => this.gateway.generatePaymentReference(session, payload.chargeRefs));
-        })()
-        : await (async () => {
-          const payload = this.keyring.decryptJson<{ patch: SecretariaContactDetailsPatch; preconditionHash: string }>(
-            command.payloadEnvelope,
-            this.#context(student, command.connectionGeneration, "command"),
-          );
-          return this.#withSession(student, (session) => this.gateway.updateContactDetails(session, payload.patch, payload.preconditionHash));
-        })();
+      let result: SecretariaCommandResult;
+      if (command.type === PAYMENT_REFERENCE_COMMAND) {
+        const payload = this.keyring.decryptJson<{ chargeRefs: string[] }>(
+          command.payloadEnvelope,
+          this.#context(student, command.connectionGeneration, "command"),
+        );
+        result = await this.#withSession(student, (session) => this.gateway.generatePaymentReference(session, payload.chargeRefs));
+      } else if (command.type === CONTACT_DETAILS_COMMAND) {
+        const payload = this.keyring.decryptJson<{ patch: SecretariaContactDetailsPatch; preconditionHash: string }>(
+          command.payloadEnvelope,
+          this.#context(student, command.connectionGeneration, "command"),
+        );
+        result = await this.#withSession(student, (session) => this.gateway.updateContactDetails(session, payload.patch, payload.preconditionHash));
+      } else {
+        const payload = this.keyring.decryptJson<{ jpegBase64: string; sha256: string; size: number; preconditionHash: string }>(
+          command.payloadEnvelope,
+          this.#context(student, command.connectionGeneration, "command"),
+        );
+        const jpeg = Buffer.from(payload.jpegBase64, "base64");
+        try {
+          if (jpeg.length !== payload.size || createHash("sha256").update(jpeg).digest("hex") !== payload.sha256) {
+            throw new SecretariaError("SECRETARIA_ENVELOPE_INVALID", "O payload cifrado da fotografia é inválido.", 500, false, "contact_support");
+          }
+          result = await this.#withSession(student, (session) => this.gateway.updatePhoto(session, jpeg, payload.preconditionHash));
+        } finally {
+          jpeg.fill(0);
+        }
+      }
       await this.db.secretariaCommand.update({ where: { id: command.id }, data: { status: "VERIFYING" } });
       const responseHash = NetpaSecretariaGateway.normalizedHash(result);
       const resultEnvelope = this.keyring.encryptJson(result, this.#context(student, command.connectionGeneration, "command_result"));
@@ -660,7 +762,7 @@ export class LiveSecretariaApplication implements SecretariaApplication {
     const command = await this.#command(student, commandId);
     this.#requireCommandWrite(command.type);
     if (command.status === "SUCCEEDED") return this.#commandView(student, command);
-    if (command.type === CONTACT_DETAILS_COMMAND) {
+    if (command.type === CONTACT_DETAILS_COMMAND || command.type === PHOTO_COMMAND) {
       throw new SecretariaError(
         "SECRETARIA_COMMAND_RECONCILIATION_UNSUPPORTED",
         "A Secretaria não expõe consulta do pedido de alteração; não é seguro repetir automaticamente.",
@@ -738,10 +840,11 @@ export class LiveSecretariaApplication implements SecretariaApplication {
     const reads = [
       { key: "profile", description: "Perfil institucional" },
       { key: "contactDetails", description: "Contactos e moradas institucionais" },
+      { key: "photo", description: "Fotografia institucional por proxy seguro" },
       { key: "consents", description: "Consentimentos disponíveis para o utilizador" },
       ...Object.entries(SECRETARIA_DATASETS).map(([key, contract]) => ({ key, description: contract.description })),
     ];
-    const writes = ["photo", "consents", "examRegistration", "gradeReview", "application", "advancedTraining", "internship", "activity", "languageCompetency"];
+    const writes = ["consents", "examRegistration", "gradeReview", "application", "advancedTraining", "internship", "activity", "languageCompetency"];
     return [
       ...reads.map((item) => ({ ...item, mode: "read" as const, status: "available" as const })),
       { key: "finance.receipts", description: "O contrato de recibos ainda não foi confirmado.", mode: "read" as const, status: "unsupported" as const },
@@ -760,6 +863,14 @@ export class LiveSecretariaApplication implements SecretariaApplication {
           : "Contrato verificado; ativação depende da feature flag operacional.",
         mode: "write" as const,
         status: this.commandOptions.contactDetailsEnabled ? "available" as const : "disabled" as const,
+      },
+      {
+        key: "photo",
+        description: this.commandOptions.photoEnabled
+          ? "Pedido de fotografia JPEG com validação, idempotência, confirmação e precondição."
+          : "Contrato de atualização verificado; ativação depende da feature flag operacional.",
+        mode: "write" as const,
+        status: this.commandOptions.photoEnabled ? "available" as const : "disabled" as const,
       },
       ...writes.map((key) => ({ key, description: "Aguardando contrato e verificação individual.", mode: "write" as const, status: "disabled" as const })),
     ];
@@ -781,12 +892,14 @@ export class DisabledSecretariaApplication implements SecretariaApplication {
   deleteImportedData(): never { return this.#disabled(); }
   getProfile(): never { return this.#disabled(); }
   getContactDetails(): never { return this.#disabled(); }
+  getPhoto(): never { return this.#disabled(); }
   getConsents(): never { return this.#disabled(); }
   getDataset(): never { return this.#disabled(); }
   startSync(): never { return this.#disabled(); }
   getSync(): never { return this.#disabled(); }
   preparePaymentReference(): never { return this.#disabled(); }
   prepareContactDetails(): never { return this.#disabled(); }
+  preparePhoto(): never { return this.#disabled(); }
   getCommand(): never { return this.#disabled(); }
   getCommandAttempts(): never { return this.#disabled(); }
   confirmCommand(): never { return this.#disabled(); }

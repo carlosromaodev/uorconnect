@@ -5,8 +5,8 @@ document_id: UOR-EST-TRACE-001
 status: approved
 owner: Engenharia UOR Estudante
 authority: informative
-version: 1.3
-last_reviewed: 2026-07-21
+version: 1.4
+last_reviewed: 2026-07-22
 approved_by: Product Owner
 approved_at: 2026-07-21
 review_cycle: por entrega verificada
@@ -24,8 +24,9 @@ depends_on:
 - Evidência: `static`, `automated_test`, `integration_test`, `runtime_observed`, `production_observed`.
 - `implemented` significa código identificado sem verificação suficiente.
 - Verificação executada em 2026-07-21 no ambiente `local-test`, por `Codex`, sobre o commit de base `669aed0`.
-- Suite backend completa nesta árvore: 109 ficheiros/442 testes passaram; 3 testes preexistentes de referrals em `passport-game-rules.spec.ts` falharam porque o mock não expõe `prisma.student.findFirst`. Suite frontend anteriormente verificada: 3 ficheiros/6 testes.
-- API Secretaria verificada adicionalmente nesta entrega: 5 ficheiros/11 testes focados, incluindo persistência SQLite isolada dos comandos, build de produção, contrato browser autorizado e smoke de login, identidade, sessão, contactos, consentimentos vazios, exames, faltas e finanças.
+- Suite backend completa nesta árvore: 109 ficheiros/444 testes passaram; 3 testes preexistentes de referrals em `passport-game-rules.spec.ts` falharam porque o mock não expõe `prisma.student.findFirst`. Suite frontend anteriormente verificada: 3 ficheiros/6 testes.
+- API Secretaria verificada adicionalmente nesta entrega: 5 ficheiros/13 testes focados, incluindo persistência SQLite isolada dos comandos, build de produção, contrato browser autorizado e smoke de login, identidade, sessão, contactos, fotografia, consentimentos vazios, exames, faltas e finanças.
+- Leitura viva da fotografia foi repetida pelo gateway HTTP: assinatura binária PNG, 959 bytes e precondição consistente. O multipart JPEG foi capturado com POST bloqueado; nenhuma fotografia foi alterada.
 - O contrato de contactos foi observado no navegador e repetido pelo gateway HTTP com submissão no-op: o portal devolveu `parameterErrors`/`success=false` por campos legados obrigatórios incompletos, sem criar pedido ou alterar valores.
 - Uma prova controlada gerou referência oficial na conta de teste e observou `stepresultadopagamento`/sucesso; não houve checkout, cartão ou processamento de pagamento. A chamada não passou ainda pelo motor persistente implantado, portanto RF-EST-093 permanece `implemented`, não `verified`.
 
@@ -118,7 +119,7 @@ depends_on:
 | [ ] | RF-EST-083 | planned | — | moderação do mercado ausente |
 | [ ] | RF-EST-084 | partial | static | admin atual é transversal/Eventos e não Estudante isolado |
 | [ ] | RF-EST-085 | implemented | integration_test | leitura, patch permitido, precondição, idempotência e comando implementados; flag desativada e sucesso real bloqueado por dados obrigatórios incompletos nas contas de teste |
-| [ ] | RF-EST-086 | planned | — | fotografia permanece com flag/contrato desativados |
+| [ ] | RF-EST-086 | implemented | integration_test | leitura proxy e comando JPEG com precondição implementados; multipart observado, flag desativada e sucesso real não executado; remoção não suportada pelo portal |
 | [ ] | RF-EST-087 | deprecated | static | reservado: troca de senha não pertence à API v1 |
 | [ ] | RF-EST-088 | partial | runtime_observed | leitura oficial “Sem consentimentos” implementada; escrita permanece desativada porque não existe finalidade editável nas contas autorizadas |
 | [ ] | RF-EST-089 | planned | — | inscrição em época permanece com flag/contrato desativados |

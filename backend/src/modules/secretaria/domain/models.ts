@@ -51,6 +51,20 @@ export type SecretariaContactDetailsPatch = {
   mailingAddress?: "PRIMARY" | "SECONDARY";
 };
 
+export type SecretariaPhoto = {
+  body: Buffer;
+  contentType: "image/jpeg" | "image/png" | "image/gif";
+  contentLength: number;
+  sha256: string;
+};
+
+export type SecretariaPhotoInput = {
+  body: Buffer;
+  sha256: string;
+  width: number;
+  height: number;
+};
+
 export type SecretariaSession = {
   cookies: Record<string, string>;
   authenticatedAt: string;
@@ -104,12 +118,12 @@ export type SecretariaCommandStatus =
 
 export type SecretariaCommandView = {
   id: string;
-  type: "GENERATE_PAYMENT_REFERENCE" | "UPDATE_CONTACT_DETAILS";
+  type: "GENERATE_PAYMENT_REFERENCE" | "UPDATE_CONTACT_DETAILS" | "UPDATE_PHOTO";
   risk: "LOW" | "MEDIUM" | "HIGH";
   status: SecretariaCommandStatus;
   requiresConfirmation: boolean;
   confirmationExpiresAt: string | null;
-  result: { items: Array<Record<string, unknown>>; observedAt: string } | null;
+  result: SecretariaCommandResult | null;
   errorCode: string | null;
   createdAt: string;
   updatedAt: string;
@@ -131,7 +145,9 @@ export type SecretariaPaymentSelection = {
   inputId: string;
 };
 
-export type SecretariaPaymentReferenceResult = {
+export type SecretariaCommandResult = {
   items: Array<Record<string, unknown>>;
   observedAt: string;
 };
+
+export type SecretariaPaymentReferenceResult = SecretariaCommandResult;
