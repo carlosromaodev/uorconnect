@@ -5,7 +5,9 @@ import type {
   SecretariaAddress,
   SecretariaContactDetails,
   SecretariaContactDetailsPatch,
+  SecretariaCommandResult,
   SecretariaDataset,
+  SecretariaExamRegistrationCancellation,
   SecretariaPaymentReferenceResult,
   SecretariaPaymentSelection,
   SecretariaPhoto,
@@ -316,6 +318,7 @@ function paymentSelection(record: Record<string, unknown>): SecretariaPaymentSel
 }
 
 type PaymentReferenceCandidates = (selection: SecretariaPaymentSelection) => string[];
+type ExamRegistrationReferenceCandidates = (id: string) => string[];
 
 function normalizePaymentRecord(record: Record<string, unknown>, paymentReferenceCandidates: PaymentReferenceCandidates): Record<string, unknown> {
   const normalized = normalizeValue(record) as Record<string, unknown>;
@@ -340,10 +343,47 @@ function normalizePaymentPayload(payload: unknown, paymentReferenceCandidates: P
   return { items, total: raw.total };
 }
 
+function examRegistrationId(record: Record<string, unknown>): string | null {
+  const value = record.id ?? record.ID;
+  if ((typeof value !== "string" && typeof value !== "number") || !String(value).trim() || String(value).length > 256) return null;
+  const id = String(value).trim();
+  return /[\u0000-\u001f\u007f]/.test(id) ? null : id;
+}
+
+function examRegistrationAction(record: Record<string, unknown>) {
+  return String(record.accaoCalc ?? record.ACCAO_CALC ?? "");
+}
+
+function normalizeExamRegistrationRecord(record: Record<string, unknown>, candidates: ExamRegistrationReferenceCandidates) {
+  const id = examRegistrationId(record);
+  if (!id) return null;
+  const normalized = normalizeValue(record) as Record<string, unknown>;
+  delete normalized.id;
+  delete normalized.accaoCalc;
+  delete normalized.operacao;
+  for (const [key, value] of Object.entries(normalized)) {
+    if (typeof value === "string") normalized[key] = decodeHtml(value);
+  }
+  normalized.registrationRef = candidates(id)[0];
+  normalized.canCancel = /\banular\s*\(/i.test(examRegistrationAction(record));
+  return normalized;
+}
+
+function examRegistrationHash(record: Record<string, unknown>) {
+  const id = examRegistrationId(record);
+  return NetpaSecretariaGateway.normalizedHash({ id, record: normalizeValue(record), canCancel: /\banular\s*\(/i.test(examRegistrationAction(record)) });
+}
+
 export class NetpaSecretariaGateway implements SecretariaGateway {
   readonly #baseUrl: URL;
 
-  constructor(private readonly options: { baseUrl: string; timeoutMs: number; maxResponseBytes: number; paymentReferenceCandidates: PaymentReferenceCandidates }) {
+  constructor(private readonly options: {
+    baseUrl: string;
+    timeoutMs: number;
+    maxResponseBytes: number;
+    paymentReferenceCandidates: PaymentReferenceCandidates;
+    examRegistrationReferenceCandidates: ExamRegistrationReferenceCandidates;
+  }) {
     this.#baseUrl = new URL(options.baseUrl);
   }
 
@@ -727,6 +767,13 @@ export class NetpaSecretariaGateway implements SecretariaGateway {
   }
 
   async getDataset(session: SecretariaSession, domain: string): Promise<SecretariaDataset> {
+    if (domain === "process.examRegistrations") {
+      const rows = await this.#examRegistrationRows(session);
+      const items = rows
+        .map((record) => normalizeExamRegistrationRecord(record, this.options.examRegistrationReferenceCandidates))
+        .filter((record): record is Record<string, unknown> => Boolean(record));
+      return { domain, items, total: items.length, observedAt: new Date().toISOString(), coverage: "live" };
+    }
     const contract = SECRETARIA_DATASETS[domain];
     if (!contract) throw new SecretariaError("SECRETARIA_RESOURCE_NOT_FOUND", "O conjunto de dados solicitado não existe.", 404);
     const stagePath = `/netpa/page?stage=${encodeURIComponent(contract.stage)}&submitaction=null`;
@@ -754,6 +801,91 @@ export class NetpaSecretariaGateway implements SecretariaGateway {
     }
     const normalized = domain.startsWith("finance.") ? normalizePaymentPayload(payload, this.options.paymentReferenceCandidates) : unwrapPayload(payload);
     return { domain, ...normalized, observedAt: new Date().toISOString(), coverage: "live" };
+  }
+
+  async #examRegistrationRows(session: SecretariaSession, requireCancellationContract = false) {
+    const stagePath = "/netpa/page?stage=ConsultaInscricaoEpocas&submitaction=null";
+    const stage = await this.#request(stagePath, { headers: this.#headers(session) });
+    mergeSetCookies(session.cookies, stage.response.headers);
+    if (authFailure(stage.text)) throw new SecretariaError("SECRETARIA_REAUTH_REQUIRED", "A sessão da Secretaria expirou.", 409, true, "reauthenticate");
+    if (stage.response.status >= 400) throw new SecretariaError("SECRETARIA_UNAVAILABLE", "Não foi possível abrir as inscrições em épocas.", 503, true);
+    if (requireCancellationContract && (!/ajax\/consultainscricaoepocas\/anulaInscricaoEpoca/i.test(stage.text) || !/function\s+anular\s*\(/i.test(stage.text))) {
+      throw new SecretariaError("SECRETARIA_UPSTREAM_CHANGED", "O contrato de cancelamento de inscrição em época mudou.", 502, false, "contact_support");
+    }
+    const path = `/netpa/ajax/consultainscricaoepocas/listaInscricoesEpocas?_dc=${Date.now()}&page=1&start=0&limit=500`;
+    const payload = await this.#jsonRequest(session, path, stagePath);
+    const object = payload && typeof payload === "object" ? payload as Record<string, unknown> : {};
+    if (object.success !== true || !Array.isArray(object.result)) {
+      throw new SecretariaError("SECRETARIA_UPSTREAM_CHANGED", "A lista de inscrições em épocas devolveu um contrato incompatível.", 502, false, "contact_support");
+    }
+    return rawPayload(payload).items;
+  }
+
+  #resolveExamRegistration(rows: Array<Record<string, unknown>>, registrationRef: string) {
+    for (const record of rows) {
+      const id = examRegistrationId(record);
+      if (id && this.options.examRegistrationReferenceCandidates(id).includes(registrationRef)) return { id, record };
+    }
+    throw new SecretariaError("SECRETARIA_RESOURCE_NOT_FOUND", "A inscrição em época já não está disponível.", 404);
+  }
+
+  async prepareExamRegistrationCancellation(session: SecretariaSession, registrationRef: string): Promise<SecretariaExamRegistrationCancellation> {
+    const resolved = this.#resolveExamRegistration(await this.#examRegistrationRows(session, true), registrationRef);
+    if (!/\banular\s*\(/i.test(examRegistrationAction(resolved.record))) {
+      throw new SecretariaError("SECRETARIA_COMMAND_STATE_INVALID", "A inscrição não pode ser anulada no estado atual.", 409);
+    }
+    return { registrationRef, preconditionHash: examRegistrationHash(resolved.record) };
+  }
+
+  async verifyExamRegistrationCancellation(session: SecretariaSession, registrationRef: string): Promise<SecretariaCommandResult | null> {
+    const rows = await this.#examRegistrationRows(session);
+    let resolved: { id: string; record: Record<string, unknown> } | null = null;
+    try {
+      resolved = this.#resolveExamRegistration(rows, registrationRef);
+    } catch (error) {
+      if (error instanceof SecretariaError && error.code === "SECRETARIA_RESOURCE_NOT_FOUND") {
+        return { items: [{ outcome: "EXAM_REGISTRATION_CANCELLED", registrationRef }], observedAt: new Date().toISOString() };
+      }
+      throw error;
+    }
+    const status = String(resolved.record.DsStaInscExame ?? resolved.record.estadoCalc ?? "");
+    if (!/\banular\s*\(/i.test(examRegistrationAction(resolved.record)) && /anulad|cancelad/i.test(status)) {
+      return { items: [{ outcome: "EXAM_REGISTRATION_CANCELLED", registrationRef }], observedAt: new Date().toISOString() };
+    }
+    return null;
+  }
+
+  async cancelExamRegistration(session: SecretariaSession, cancellation: SecretariaExamRegistrationCancellation): Promise<SecretariaCommandResult> {
+    const resolved = this.#resolveExamRegistration(await this.#examRegistrationRows(session, true), cancellation.registrationRef);
+    if (examRegistrationHash(resolved.record) !== cancellation.preconditionHash) {
+      throw new SecretariaError("SECRETARIA_PRECONDITION_FAILED", "A inscrição mudou depois da preparação; revê e prepara novamente.", 409);
+    }
+    if (!/\banular\s*\(/i.test(examRegistrationAction(resolved.record))) {
+      throw new SecretariaError("SECRETARIA_COMMAND_STATE_INVALID", "A inscrição não pode ser anulada no estado atual.", 409);
+    }
+    const path = "/netpa/ajax/consultainscricaoepocas/anulaInscricaoEpoca";
+    const result = await this.#request(path, {
+      method: "POST",
+      headers: {
+        ...this.#headers(session, true),
+        "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+        Referer: new URL("/netpa/page?stage=ConsultaInscricaoEpocas", this.#baseUrl).toString(),
+      },
+      body: new URLSearchParams({ id: resolved.id }).toString(),
+    });
+    mergeSetCookies(session.cookies, result.response.headers);
+    if (authFailure(result.text)) throw new SecretariaError("SECRETARIA_REAUTH_REQUIRED", "A sessão da Secretaria expirou.", 409, true, "reauthenticate");
+    if (result.response.status >= 400) throw new SecretariaError("SECRETARIA_UNAVAILABLE", "A Secretaria rejeitou o cancelamento da inscrição.", 503, true);
+    let response: { success?: unknown; message?: unknown };
+    try {
+      response = JSON.parse(result.text) as { success?: unknown; message?: unknown };
+    } catch (error) {
+      throw new SecretariaError("SECRETARIA_COMMAND_OUTCOME_UNKNOWN", "A Secretaria devolveu uma resposta ambígua ao cancelamento.", 502, true, "none", { cause: error });
+    }
+    if (response.success !== true) throw new SecretariaError("SECRETARIA_VALIDATION_FAILED", "A Secretaria recusou o cancelamento da inscrição.", 422);
+    const verified = await this.verifyExamRegistrationCancellation(session, cancellation.registrationRef);
+    if (!verified) throw new SecretariaError("SECRETARIA_COMMAND_OUTCOME_UNKNOWN", "A Secretaria aceitou o pedido, mas a anulação ainda não foi confirmada na leitura oficial.", 502, true);
+    return verified;
   }
 
   async preparePaymentReference(session: SecretariaSession, chargeRefs: string[]) {

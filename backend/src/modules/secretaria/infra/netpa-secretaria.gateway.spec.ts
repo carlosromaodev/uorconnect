@@ -19,6 +19,7 @@ function testGateway() {
     timeoutMs: 5_000,
     maxResponseBytes: 1_000_000,
     paymentReferenceCandidates: (value) => [`scr_${Buffer.from(JSON.stringify(value)).toString("base64url").padEnd(43, "x").slice(0, 43)}`],
+    examRegistrationReferenceCandidates: (id) => [`ser_${Buffer.from(id).toString("base64url").padEnd(43, "x").slice(0, 43)}`],
   });
 }
 
@@ -205,5 +206,51 @@ describe("NetpaSecretariaGateway personal data contracts", () => {
     expect(multipartFields).toEqual(["_formfieldnames", "_formsubmitname", "_formsubmitstage", "photo", "submitAction"]);
     initial.fill(0);
     replacement.fill(0);
+  });
+});
+
+describe("NetpaSecretariaGateway exam registration contracts", () => {
+  it("expõe referência opaca e só conclui a anulação após releitura oficial", async () => {
+    const page = `<html><body><script>
+      function anular(id){ anulaInscricaoEpocafunc("id=" + id); }
+      function anulaInscricaoEpocafunc(params){ return params; }
+      const endpoint = "ajax/consultainscricaoepocas/anulaInscricaoEpoca";
+    </script></body></html>`;
+    const activeRow = {
+      id: "upstream-registration-1",
+      CdLectivoFmt: "2025-26",
+      CdDiscipFmt: "Álgebra",
+      DsStaInscExame: "Inscrito",
+      accaoCalc: `<a onclick="anular('upstream-registration-1')">Anular</a>`,
+      operacao: "internal-operation",
+    };
+    let cancelled = false;
+    let cancellationBody = "";
+    vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request, init: RequestInit = {}) => {
+      const url = new URL(typeof input === "string" || input instanceof URL ? input.toString() : input.url);
+      if (url.pathname === "/netpa/page") return new Response(page, { status: 200 });
+      if (url.pathname.endsWith("/listaInscricoesEpocas")) {
+        return new Response(JSON.stringify({ success: true, result: cancelled ? [] : [activeRow], total: cancelled ? 0 : 1 }), { status: 200 });
+      }
+      if (url.pathname.endsWith("/anulaInscricaoEpoca") && init.method === "POST") {
+        cancellationBody = String(init.body ?? "");
+        cancelled = true;
+        return new Response(JSON.stringify({ success: true }), { status: 200 });
+      }
+      return new Response("not found", { status: 404 });
+    }));
+
+    const gateway = testGateway();
+    const dataset = await gateway.getDataset(session, "process.examRegistrations");
+    const registrationRef = String(dataset.items[0].registrationRef);
+    expect(registrationRef).toMatch(/^ser_[A-Za-z0-9_-]{43}$/);
+    expect(dataset.items[0]).toMatchObject({ cdDiscipFmt: "Álgebra", canCancel: true });
+    expect(JSON.stringify(dataset)).not.toContain("upstream-registration-1");
+    expect(JSON.stringify(dataset)).not.toContain("internal-operation");
+
+    const prepared = await gateway.prepareExamRegistrationCancellation(session, registrationRef);
+    const result = await gateway.cancelExamRegistration(session, prepared);
+    expect(new URLSearchParams(cancellationBody).get("id")).toBe("upstream-registration-1");
+    expect(result.items[0]).toEqual({ outcome: "EXAM_REGISTRATION_CANCELLED", registrationRef });
   });
 });

@@ -45,6 +45,9 @@ describe("SecretariaCryptoKeyring", () => {
     expect(references[0]).toMatch(/^scr_[A-Za-z0-9_-]{43}$/);
     expect(references[0]).not.toContain("internal-id");
     expect(crypto.opaqueReferenceCandidates(["internal-id", "finance-id", "input-id"])).toEqual(references);
+    const registrationRefs = crypto.opaqueReferenceCandidates("internal-registration", { purpose: "exam-registration-ref", prefix: "ser" });
+    expect(registrationRefs[0]).toMatch(/^ser_[A-Za-z0-9_-]{43}$/);
+    expect(registrationRefs[0]).not.toBe(references[0]);
     crypto.destroy();
   });
 });

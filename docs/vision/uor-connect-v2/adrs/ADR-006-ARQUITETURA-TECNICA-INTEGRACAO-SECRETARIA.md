@@ -5,7 +5,7 @@ document_id: ADR-006
 status: accepted
 owner: Arquitetura UOR Estudante
 authority: informative_until_approved
-version: 1.2
+version: 1.3
 last_reviewed: 2026-07-22
 approved_by: Product Owner
 approved_at: 2026-07-21
@@ -25,7 +25,7 @@ depends_on:
 
 ## Contexto
 
-O repositório atual usa backend Fastify, schemas Zod, Prisma e persistência SQLite/PostgreSQL conforme o ambiente. A integração Moodle estabeleceu padrões para gateway web, envelopes cifrados, sessão, snapshots, leases, workers, schemas HTTP e testes. A integração Secretaria está isolada em módulo próprio, com fundação de sessão/leitura/snapshot e comandos de referência e pedido de alteração de contactos implementados; a migração do acoplamento legado de autenticação continua separada.
+O repositório atual usa backend Fastify, schemas Zod, Prisma e persistência SQLite/PostgreSQL conforme o ambiente. A integração Moodle estabeleceu padrões para gateway web, envelopes cifrados, sessão, snapshots, leases, workers, schemas HTTP e testes. A integração Secretaria está isolada em módulo próprio, com fundação de sessão/leitura/snapshot e comandos controlados de referência, contactos, fotografia e cancelamento de inscrição em época; a migração do acoplamento legado de autenticação continua separada.
 
 A especificação da API Secretaria → UOR Estudante define comportamentos obrigatórios, mas não deve eternizar tecnologias ou caminhos físicos. Este ADR registra as escolhas técnicas propostas após a auditoria inicial do repositório.
 
@@ -90,6 +90,7 @@ O TTL exato será configuração operacional, não invariante do produto.
 - Em alterações de contacto, reler o formulário completo, verificar precondição, preservar campos fora do patch e tratar `success=true` como submissão de pedido, não atualização imediata.
 - Servir fotografia somente por proxy autenticado, detetar o tipo pela assinatura binária e nunca expor os parâmetros de `PhotoLoader`.
 - Normalizar uploads para JPEG sem metadados, cifrar o payload do comando e exigir precondição sobre o hash oficial antes do multipart upstream.
+- Substituir IDs de inscrições em épocas por referências HMAC específicas do recurso; resolver o ID somente no gateway e concluir cancelamento apenas após releitura oficial.
 - Permitir substituição pelo gateway de API oficial no futuro.
 
 ### 8. Feature flags e circuit breakers

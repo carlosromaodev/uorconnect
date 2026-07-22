@@ -102,6 +102,7 @@ const envSchema = z.object({
   SECRETARIA_WRITE_PAYMENT_REFERENCE_ENABLED: z.preprocess(normalizeBoolean, z.boolean()).default(false),
   SECRETARIA_WRITE_CONTACT_DETAILS_ENABLED: z.preprocess(normalizeBoolean, z.boolean()).default(false),
   SECRETARIA_WRITE_PHOTO_ENABLED: z.preprocess(normalizeBoolean, z.boolean()).default(false),
+  SECRETARIA_WRITE_EXAM_REGISTRATION_CANCEL_ENABLED: z.preprocess(normalizeBoolean, z.boolean()).default(false),
   SECRETARIA_COMMAND_CONFIRMATION_TTL_SECONDS: z.coerce.number().int().min(60).max(900).default(300),
   SECRETARIA_COMMAND_LEASE_SECONDS: z.coerce.number().int().min(60).max(900).default(300),
   GAME_NOTIFICATIONS_START_AT: z.string().min(1).default("2026-05-18T00:00:00+01:00"),
@@ -152,14 +153,16 @@ const envSchema = z.object({
         message: "HTTP Secretaria access requires explicit non-production acknowledgement",
       });
     }
-    if (value.NODE_ENV === "production" && (value.SECRETARIA_WRITE_PAYMENT_REFERENCE_ENABLED || value.SECRETARIA_WRITE_CONTACT_DETAILS_ENABLED || value.SECRETARIA_WRITE_PHOTO_ENABLED) && secretariaProtocol !== "https:") {
+    if (value.NODE_ENV === "production" && (value.SECRETARIA_WRITE_PAYMENT_REFERENCE_ENABLED || value.SECRETARIA_WRITE_CONTACT_DETAILS_ENABLED || value.SECRETARIA_WRITE_PHOTO_ENABLED || value.SECRETARIA_WRITE_EXAM_REGISTRATION_CANCEL_ENABLED) && secretariaProtocol !== "https:") {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
         path: [value.SECRETARIA_WRITE_PAYMENT_REFERENCE_ENABLED
           ? "SECRETARIA_WRITE_PAYMENT_REFERENCE_ENABLED"
           : value.SECRETARIA_WRITE_CONTACT_DETAILS_ENABLED
             ? "SECRETARIA_WRITE_CONTACT_DETAILS_ENABLED"
-            : "SECRETARIA_WRITE_PHOTO_ENABLED"],
+            : value.SECRETARIA_WRITE_PHOTO_ENABLED
+              ? "SECRETARIA_WRITE_PHOTO_ENABLED"
+              : "SECRETARIA_WRITE_EXAM_REGISTRATION_CANCEL_ENABLED"],
         message: "Secretaria writes require an HTTPS upstream or approved TLS tunnel",
       });
     }

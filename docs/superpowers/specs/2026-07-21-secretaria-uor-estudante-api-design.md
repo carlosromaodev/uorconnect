@@ -1,7 +1,7 @@
 ---
 document_id: SPEC-EST-SECRETARIA-001
 title: API Secretaria → UOR Estudante
-version: 1.4.0
+version: 1.5.0
 status: approved
 authority: normative_product_contract
 owner: UOR Estudante
@@ -344,7 +344,7 @@ Não existe rota de troca de senha na primeira versão.
 |---|---|---|---|
 | GET | `/exam-registrations` | approved_read | Consultar inscrições em épocas. |
 | POST | `/exam-registrations` | conditional_write | Inscrever quando capacidade aprovada. |
-| DELETE | `/exam-registrations/:id` | conditional_write | Cancelar quando permitido. |
+| DELETE | `/exam-registrations/:registrationRef` | approved_write_feature_flagged | Preparar cancelamento por referência opaca; exige `Idempotency-Key`. |
 | GET | `/grade-review-requests` | approved_read | Consultar pedidos de revisão. |
 | GET | `/grade-review-requests/:id` | approved_read | Consultar estado/resposta oficial. |
 | POST | `/grade-review-requests` | conditional_write | Preparar/submeter revisão sem anexos. |
@@ -656,6 +656,14 @@ A fotografia vigente é obtida por `PhotoLoader` com identificadores internos ma
 O formulário `AtualizarFotografia` envia `multipart/form-data` para `stage=atualizarfotografia`, exige o campo `photo`, aceita somente `image/jpeg` e limita o ficheiro a 1024 KB. A API valida a imagem, remove metadados, corrige orientação, limita dimensões e cifra o JPEG no payload do comando antes da confirmação. Imagens, base64 e identificadores nunca entram em logs ou resultados do comando.
 
 Antes da submissão, o gateway compara o hash da fotografia oficial com a precondição capturada. Mudança oficial do hash ou mensagem inequívoca de sucesso conclui o comando; resposta ambígua fica `UNKNOWN` e nunca é reenviada automaticamente. A flag `SECRETARIA_WRITE_PHOTO_ENABLED=false` mantém a escrita desligada por padrão. Nenhuma remoção foi implementada porque o portal não expõe esse efeito.
+
+## 21.4 Contrato de inscrições em épocas verificado em 2026-07-22
+
+As duas contas autorizadas apresentaram o mesmo estado oficial: fora do período de inscrição, sem inscrições e sem épocas elegíveis. A leitura usa `listaInscricoesEpocas`, devolve somente campos normalizados e substitui o identificador interno por `registrationRef` autenticada. HTML de ações, operação interna e ID upstream não atravessam o gateway.
+
+O cancelamento definitivo usa `POST /netpa/ajax/consultainscricaoepocas/anulaInscricaoEpoca`, `application/x-www-form-urlencoded` e somente o campo `id`. Método e payload foram capturados com a requisição bloqueada no navegador; nenhum cancelamento foi enviado. A API resolve o ID pela lista oficial no momento da preparação e da confirmação, verifica a ação `anular`, aplica precondição sobre o registo e só conclui quando a releitura mostra o item ausente ou inequivocamente anulado.
+
+`DELETE /exam-registrations/:registrationRef` apenas prepara `CANCEL_EXAM_REGISTRATION`; a escrita real depende de confirmação explícita e de `SECRETARIA_WRITE_EXAM_REGISTRATION_CANCEL_ENABLED=false`. Resultados incertos são reconciliados exclusivamente por leitura. `POST /exam-registrations` continua desativado porque o portal não renderiza o contrato de criação fora de uma janela elegível.
 
 ## 22. Migração e sequência de entrega
 

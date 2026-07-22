@@ -98,6 +98,9 @@ describe("Secretaria command persistence", () => {
       updateContactDetails: vi.fn(async () => ({ items: [{ outcome: "CHANGE_REQUEST_SUBMITTED", changedFields: ["mobile"] }], observedAt: "2026-07-21T20:02:00.000Z" })),
       preparePhoto: vi.fn(async () => ({ preconditionHash: "photo-precondition-hash" })),
       updatePhoto: vi.fn(async (_session, jpeg) => ({ items: [{ outcome: "PHOTO_CHANGE_REQUEST_SUBMITTED", sha256: createHash("sha256").update(jpeg).digest("hex"), contentType: "image/jpeg", size: jpeg.length }], observedAt: "2026-07-21T20:03:00.000Z" })),
+      prepareExamRegistrationCancellation: vi.fn(async (_session, registrationRef) => ({ registrationRef, preconditionHash: "exam-precondition-hash" })),
+      cancelExamRegistration: vi.fn(async (_session, cancellation) => ({ items: [{ outcome: "EXAM_REGISTRATION_CANCELLED", registrationRef: cancellation.registrationRef }], observedAt: "2026-07-22T09:00:00.000Z" })),
+      verifyExamRegistrationCancellation: vi.fn(),
       preparePaymentReference: vi.fn(async (_session, chargeRefs) => ({ chargeRefs })),
       generatePaymentReference: vi.fn(async () => ({ items: [{ reference: "REFERENCE-SECRET" }], observedAt: "2026-07-21T20:01:00.000Z" })),
       verifyPaymentReference: vi.fn(),
@@ -108,6 +111,7 @@ describe("Secretaria command persistence", () => {
       paymentReferenceEnabled: true,
       contactDetailsEnabled: true,
       photoEnabled: true,
+      examRegistrationCancelEnabled: true,
       confirmationTtlSeconds: 300,
       commandLeaseSeconds: 300,
     }, database as never);
@@ -160,7 +164,31 @@ describe("Secretaria command persistence", () => {
     const photoSucceeded = await application.confirmCommand(student, photo.id, "UPDATE_PHOTO");
     expect(photoSucceeded).toMatchObject({ type: "UPDATE_PHOTO", status: "SUCCEEDED", result: { items: [{ outcome: "PHOTO_CHANGE_REQUEST_SUBMITTED", sha256: photoHash }] } });
     expect(gateway.updatePhoto).toHaveBeenCalledTimes(1);
+
+    const registrationRef = `ser_${"c".repeat(43)}`;
+    const cancellation = await application.prepareExamRegistrationCancellation(student, registrationRef, "exam-cancel-001");
+    expect(cancellation).toMatchObject({ type: "CANCEL_EXAM_REGISTRATION", status: "AWAITING_CONFIRMATION" });
+    const storedCancellation = await database.secretariaCommand.findUniqueOrThrow({ where: { id: cancellation.id } });
+    expect(storedCancellation.payloadEnvelope).not.toContain(registrationRef);
+    const cancellationSucceeded = await application.confirmCommand(student, cancellation.id, "CANCEL_EXAM_REGISTRATION");
+    expect(cancellationSucceeded).toMatchObject({
+      type: "CANCEL_EXAM_REGISTRATION",
+      status: "SUCCEEDED",
+      result: { items: [{ outcome: "EXAM_REGISTRATION_CANCELLED", registrationRef }] },
+    });
+    expect(gateway.cancelExamRegistration).toHaveBeenCalledTimes(1);
+
+    const uncertainRef = `ser_${"d".repeat(43)}`;
+    const uncertain = await application.prepareExamRegistrationCancellation(student, uncertainRef, "exam-cancel-unknown-001");
+    await database.secretariaCommand.update({ where: { id: uncertain.id }, data: { status: "UNKNOWN", errorCode: "SECRETARIA_COMMAND_OUTCOME_UNKNOWN" } });
+    vi.mocked(gateway.verifyExamRegistrationCancellation).mockResolvedValue({
+      items: [{ outcome: "EXAM_REGISTRATION_CANCELLED", registrationRef: uncertainRef }],
+      observedAt: "2026-07-22T09:05:00.000Z",
+    });
+    const reconciled = await application.reconcileCommand(student, uncertain.id);
+    expect(reconciled).toMatchObject({ status: "SUCCEEDED", result: { items: [{ registrationRef: uncertainRef }] } });
+    expect(gateway.verifyExamRegistrationCancellation).toHaveBeenCalledWith(expect.anything(), uncertainRef);
     photoBody.fill(0);
     application.stop();
-  });
+  }, 15_000);
 });

@@ -34,6 +34,7 @@ function fakeApplication(): SecretariaApplication {
     preparePaymentReference: vi.fn(async () => ({ id: "8b5e8ab9-3989-4517-8a82-56128794ae87", type: "GENERATE_PAYMENT_REFERENCE", risk: "MEDIUM", status: "AWAITING_CONFIRMATION", requiresConfirmation: true, confirmationExpiresAt: "2026-07-21T20:05:00.000Z", result: null, errorCode: null, createdAt: "2026-07-21T20:00:00.000Z", updatedAt: "2026-07-21T20:00:00.000Z", completedAt: null })),
     prepareContactDetails: vi.fn(async () => ({ id: "d3bd8d65-5695-41b8-9f22-e3b042ea4e6f", type: "UPDATE_CONTACT_DETAILS", risk: "MEDIUM", status: "AWAITING_CONFIRMATION", requiresConfirmation: true, confirmationExpiresAt: "2026-07-21T20:05:00.000Z", result: null, errorCode: null, createdAt: "2026-07-21T20:00:00.000Z", updatedAt: "2026-07-21T20:00:00.000Z", completedAt: null })),
     preparePhoto: vi.fn(async () => ({ id: "0c359bab-4f18-478c-8a46-64ead3c14dab", type: "UPDATE_PHOTO", risk: "MEDIUM", status: "AWAITING_CONFIRMATION", requiresConfirmation: true, confirmationExpiresAt: "2026-07-21T20:05:00.000Z", result: null, errorCode: null, createdAt: "2026-07-21T20:00:00.000Z", updatedAt: "2026-07-21T20:00:00.000Z", completedAt: null })),
+    prepareExamRegistrationCancellation: vi.fn(async () => ({ id: "1df88f78-4ec0-4d4f-9f86-18bdd37fa40f", type: "CANCEL_EXAM_REGISTRATION", risk: "MEDIUM", status: "AWAITING_CONFIRMATION", requiresConfirmation: true, confirmationExpiresAt: "2026-07-21T20:05:00.000Z", result: null, errorCode: null, createdAt: "2026-07-21T20:00:00.000Z", updatedAt: "2026-07-21T20:00:00.000Z", completedAt: null })),
     getCommand: vi.fn(async () => ({ id: "8b5e8ab9-3989-4517-8a82-56128794ae87", type: "GENERATE_PAYMENT_REFERENCE", risk: "MEDIUM", status: "AWAITING_CONFIRMATION", requiresConfirmation: true, confirmationExpiresAt: "2026-07-21T20:05:00.000Z", result: null, errorCode: null, createdAt: "2026-07-21T20:00:00.000Z", updatedAt: "2026-07-21T20:00:00.000Z", completedAt: null })),
     getCommandAttempts: vi.fn(async () => []),
     confirmCommand: vi.fn(async () => ({ id: "8b5e8ab9-3989-4517-8a82-56128794ae87", type: "GENERATE_PAYMENT_REFERENCE", risk: "MEDIUM", status: "SUCCEEDED", requiresConfirmation: false, confirmationExpiresAt: "2026-07-21T20:05:00.000Z", result: { items: [], observedAt: "2026-07-21T20:01:00.000Z" }, errorCode: null, createdAt: "2026-07-21T20:00:00.000Z", updatedAt: "2026-07-21T20:01:00.000Z", completedAt: "2026-07-21T20:01:00.000Z" })),
@@ -137,6 +138,20 @@ describe("Secretaria routes", () => {
     expect(photoWrite.statusCode).toBe(202);
     expect(photoWrite.json().data).toMatchObject({ type: "UPDATE_PHOTO", status: "AWAITING_CONFIRMATION" });
     expect(application.preparePhoto).toHaveBeenCalledOnce();
+
+    const registrationRef = `ser_${"c".repeat(43)}`;
+    const examCancellation = await app.inject({
+      method: "DELETE",
+      url: `/api/v1/integrations/secretaria/exam-registrations/${registrationRef}`,
+      headers: { authorization, "idempotency-key": "exam-cancel-test-001" },
+    });
+    expect(examCancellation.statusCode).toBe(202);
+    expect(examCancellation.json().data).toMatchObject({ type: "CANCEL_EXAM_REGISTRATION", status: "AWAITING_CONFIRMATION" });
+    expect(application.prepareExamRegistrationCancellation).toHaveBeenCalledWith(
+      { id: 1, studentNumber: "20240001" },
+      registrationRef,
+      "exam-cancel-test-001",
+    );
 
     const confirm = await app.inject({
       method: "POST",

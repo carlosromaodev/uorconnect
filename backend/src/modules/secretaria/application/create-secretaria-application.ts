@@ -13,11 +13,13 @@ export function createSecretariaApplication(env: Env, override?: SecretariaAppli
     timeoutMs: env.SECRETARIA_FETCH_TIMEOUT_MS,
     maxResponseBytes: env.SECRETARIA_MAX_RESPONSE_BYTES,
     paymentReferenceCandidates: (selection) => keyring.opaqueReferenceCandidates([selection.id, selection.idFinanceira, selection.inputId]),
+    examRegistrationReferenceCandidates: (id) => keyring.opaqueReferenceCandidates(id, { purpose: "exam-registration-ref", prefix: "ser" }),
   });
   return new LiveSecretariaApplication(gateway, keyring, {
     paymentReferenceEnabled: env.SECRETARIA_WRITE_PAYMENT_REFERENCE_ENABLED,
     contactDetailsEnabled: env.SECRETARIA_WRITE_CONTACT_DETAILS_ENABLED,
     photoEnabled: env.SECRETARIA_WRITE_PHOTO_ENABLED,
+    examRegistrationCancelEnabled: env.SECRETARIA_WRITE_EXAM_REGISTRATION_CANCEL_ENABLED,
     confirmationTtlSeconds: env.SECRETARIA_COMMAND_CONFIRMATION_TTL_SECONDS,
     commandLeaseSeconds: env.SECRETARIA_COMMAND_LEASE_SECONDS,
   });

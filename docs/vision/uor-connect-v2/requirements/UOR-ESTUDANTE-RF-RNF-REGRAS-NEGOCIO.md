@@ -5,7 +5,7 @@ document_id: UOR-EST-REQ-001
 status: approved
 owner: Produto UOR Estudante
 authority: normative
-version: 1.3
+version: 1.4
 last_reviewed: 2026-07-22
 approved_by: Product Owner
 approved_at: 2026-07-21
@@ -157,7 +157,7 @@ O estado de implementação não vive neste catálogo; consultar a [matriz de ra
 | RF-EST-085 | Atualizar contactos explicitamente editáveis na Secretaria. | Should | F7 | Só campos confirmados entram no patch; o formulário restante é preservado e a aceitação oficial do pedido é registada sem assumir aplicação imediata. |
 | RF-EST-086 | Atualizar ou remover fotografia quando suportado. | Should | F7 | JPEG é normalizado, cifrado e submetido por comando; remoção só existe quando o portal expuser contrato verificável. |
 | RF-EST-088 | Atualizar consentimentos editáveis do portal. | Must | F7 | Finalidade, versão, decisão e pós-condição oficial ficam registadas. |
-| RF-EST-089 | Criar ou cancelar inscrição em época quando permitido. | Must | F7 | Elegibilidade é validada e a inscrição oficial é relida. |
+| RF-EST-089 | Criar ou cancelar inscrição em época quando permitido. | Must | F7 | Referência pública é opaca, estado/ação elegíveis são validados e a inscrição oficial é relida; criação permanece indisponível sem contrato observado numa janela ativa. |
 | RF-EST-090 | Preparar e submeter revisão oficial de nota sem anexos. | Should | F7 | Rascunho e submissão são distintos; pedido oficial recebe estado verificável. |
 | RF-EST-091 | Gerir candidatura enquanto oficialmente editável. | Should | F7 | Transições fora do estado permitido são rejeitadas. |
 | RF-EST-092 | Gerir formações, estágios, atividades e competências aprovadas. | Could | F7 | Cada capacidade possui contrato, flag e pós-condição próprios. |

@@ -65,6 +65,11 @@ export type SecretariaPhotoInput = {
   height: number;
 };
 
+export type SecretariaExamRegistrationCancellation = {
+  registrationRef: string;
+  preconditionHash: string;
+};
+
 export type SecretariaSession = {
   cookies: Record<string, string>;
   authenticatedAt: string;
@@ -118,7 +123,7 @@ export type SecretariaCommandStatus =
 
 export type SecretariaCommandView = {
   id: string;
-  type: "GENERATE_PAYMENT_REFERENCE" | "UPDATE_CONTACT_DETAILS" | "UPDATE_PHOTO";
+  type: "GENERATE_PAYMENT_REFERENCE" | "UPDATE_CONTACT_DETAILS" | "UPDATE_PHOTO" | "CANCEL_EXAM_REGISTRATION";
   risk: "LOW" | "MEDIUM" | "HIGH";
   status: SecretariaCommandStatus;
   requiresConfirmation: boolean;

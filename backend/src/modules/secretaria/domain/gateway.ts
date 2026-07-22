@@ -3,6 +3,7 @@ import type {
   SecretariaContactDetailsPatch,
   SecretariaCommandResult,
   SecretariaDataset,
+  SecretariaExamRegistrationCancellation,
   SecretariaPaymentReferenceResult,
   SecretariaPhoto,
   SecretariaProfile,
@@ -24,6 +25,9 @@ export interface SecretariaGateway {
   updateContactDetails(session: SecretariaSession, patch: SecretariaContactDetailsPatch, preconditionHash: string): Promise<SecretariaCommandResult>;
   preparePhoto(session: SecretariaSession): Promise<{ preconditionHash: string }>;
   updatePhoto(session: SecretariaSession, jpeg: Buffer, preconditionHash: string): Promise<SecretariaCommandResult>;
+  prepareExamRegistrationCancellation(session: SecretariaSession, registrationRef: string): Promise<SecretariaExamRegistrationCancellation>;
+  cancelExamRegistration(session: SecretariaSession, cancellation: SecretariaExamRegistrationCancellation): Promise<SecretariaCommandResult>;
+  verifyExamRegistrationCancellation(session: SecretariaSession, registrationRef: string): Promise<SecretariaCommandResult | null>;
   preparePaymentReference(session: SecretariaSession, chargeRefs: string[]): Promise<{ chargeRefs: string[] }>;
   generatePaymentReference(session: SecretariaSession, chargeRefs: string[]): Promise<SecretariaPaymentReferenceResult>;
   verifyPaymentReference(session: SecretariaSession, chargeRefs: string[]): Promise<SecretariaPaymentReferenceResult | null>;

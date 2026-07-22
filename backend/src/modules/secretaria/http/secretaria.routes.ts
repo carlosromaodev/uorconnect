@@ -50,9 +50,10 @@ const contactDetailsBodySchema = z.object({
 const photoBodySchema = z.object({
   dataUrl: z.string().regex(/^data:image\/jpeg;base64,[A-Za-z0-9+/]+={0,2}$/).max(1_500_000),
 }).strict();
+const examRegistrationParamsSchema = z.object({ registrationRef: z.string().regex(/^ser_[A-Za-z0-9_-]{43}$/) });
 const idempotencyHeadersSchema = z.object({ "idempotency-key": z.string().trim().min(8).max(128) });
 const commandParamsSchema = z.object({ commandId: z.string().uuid() });
-const commandConfirmationBodySchema = z.object({ confirmation: z.enum(["GENERATE_PAYMENT_REFERENCE", "UPDATE_CONTACT_DETAILS", "UPDATE_PHOTO"]) });
+const commandConfirmationBodySchema = z.object({ confirmation: z.enum(["GENERATE_PAYMENT_REFERENCE", "UPDATE_CONTACT_DETAILS", "UPDATE_PHOTO", "CANCEL_EXAM_REGISTRATION"]) });
 
 export type SecretariaRoutesOptions = {
   env: Env;
@@ -278,7 +279,6 @@ export async function secretariaRoutes(app: FastifyInstance, opts: SecretariaRou
       { method: "DELETE", url: "/me/photo" },
       { method: "PATCH", url: "/consents/:consentId" },
       { method: "POST", url: "/exam-registrations" },
-      { method: "DELETE", url: "/exam-registrations/:id" },
       { method: "POST", url: "/grade-review-requests" },
       { method: "POST", url: "/applications" },
       { method: "PATCH", url: "/applications/:id" },
@@ -357,6 +357,32 @@ export async function secretariaRoutes(app: FastifyInstance, opts: SecretariaRou
       } finally {
         photo?.body.fill(0);
       }
+    });
+
+    protectedApp.delete("/exam-registrations/:registrationRef", {
+      config: {
+        rateLimit: {
+          max: 10,
+          timeWindow: 15 * 60_000,
+          keyGenerator: (request: FastifyRequest) => `${request.ip}:${request.student?.id ?? "anonymous"}:exam-registration-cancel`,
+        },
+      },
+      schema: {
+        tags: ["Secretaria - Processos"],
+        headers: idempotencyHeadersSchema,
+        params: examRegistrationParamsSchema,
+        response: { 202: envelopeSchema, ...errorResponses },
+      },
+    }, async (request, reply) => {
+      try {
+        const { registrationRef } = request.params as z.infer<typeof examRegistrationParamsSchema>;
+        const command = await opts.application.prepareExamRegistrationCancellation(
+          request.student!,
+          registrationRef,
+          String(request.headers["idempotency-key"]),
+        );
+        return reply.status(202).send({ data: command, meta: meta(request, { coverage: "live" }) });
+      } catch (error) { return sendError(request, reply, error); }
     });
 
     protectedApp.post("/finance/payment-references", {

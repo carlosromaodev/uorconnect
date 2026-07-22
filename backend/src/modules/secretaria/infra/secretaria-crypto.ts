@@ -122,14 +122,17 @@ export class SecretariaCryptoKeyring {
     }
   }
 
-  opaqueReferenceCandidates(value: unknown): string[] {
-    const payload = Buffer.from(JSON.stringify(["uor-estudante", "secretaria", VERSION, "payment-charge-ref", value]));
+  opaqueReferenceCandidates(value: unknown, options: { purpose?: string; prefix?: string } = {}): string[] {
+    const purpose = options.purpose ?? "payment-charge-ref";
+    const prefix = options.prefix ?? "scr";
+    if (!/^[a-z]{3}$/.test(prefix) || !/^[a-z0-9-]{3,64}$/.test(purpose)) throw configurationError();
+    const payload = Buffer.from(JSON.stringify(["uor-estudante", "secretaria", VERSION, purpose, value]));
     try {
       const ordered = [this.activeKeyId, ...[...this.#keys.keys()].filter((keyId) => keyId !== this.activeKeyId)];
       return ordered.map((keyId) => {
         const key = this.#keys.get(keyId);
         if (!key) throw configurationError();
-        return `scr_${createHmac("sha256", key).update(payload).digest("base64url")}`;
+        return `${prefix}_${createHmac("sha256", key).update(payload).digest("base64url")}`;
       });
     } finally {
       payload.fill(0);

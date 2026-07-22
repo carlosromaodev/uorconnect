@@ -21,6 +21,9 @@ function gateway(): SecretariaGateway {
     updateContactDetails: vi.fn(),
     preparePhoto: vi.fn(),
     updatePhoto: vi.fn(),
+    prepareExamRegistrationCancellation: vi.fn(),
+    cancelExamRegistration: vi.fn(),
+    verifyExamRegistrationCancellation: vi.fn(),
     preparePaymentReference: vi.fn(),
     generatePaymentReference: vi.fn(),
     verifyPaymentReference: vi.fn(),
@@ -35,6 +38,7 @@ describe("LiveSecretariaApplication command controls", () => {
       paymentReferenceEnabled: false,
       contactDetailsEnabled: false,
       photoEnabled: false,
+      examRegistrationCancelEnabled: false,
       confirmationTtlSeconds: 300,
       commandLeaseSeconds: 300,
     });
@@ -42,6 +46,7 @@ describe("LiveSecretariaApplication command controls", () => {
     expect(app.capabilities().find((capability) => capability.key === "paymentReference")).toMatchObject({ status: "disabled" });
     expect(app.capabilities().find((capability) => capability.key === "contactDetails" && capability.mode === "write")).toMatchObject({ status: "disabled" });
     expect(app.capabilities().find((capability) => capability.key === "photo" && capability.mode === "write")).toMatchObject({ status: "disabled" });
+    expect(app.capabilities().find((capability) => capability.key === "examRegistration.cancel")).toMatchObject({ status: "disabled" });
     await expect(app.preparePaymentReference({ id: 1, studentNumber: "20240001" }, [`scr_${"a".repeat(43)}`], "idempotency-test"))
       .rejects.toMatchObject({ code: "SECRETARIA_CAPABILITY_DISABLED" });
     await expect(app.prepareContactDetails({ id: 1, studentNumber: "20240001" }, { mobile: "+244 900 000 000" }, "contact-details-test"))
@@ -50,6 +55,11 @@ describe("LiveSecretariaApplication command controls", () => {
       { id: 1, studentNumber: "20240001" },
       { body: Buffer.from([0xff, 0xd8, 0xff]), sha256: "invalid", width: 64, height: 64 },
       "photo-test",
+    )).rejects.toMatchObject({ code: "SECRETARIA_CAPABILITY_DISABLED" });
+    await expect(app.prepareExamRegistrationCancellation(
+      { id: 1, studentNumber: "20240001" },
+      `ser_${"a".repeat(43)}`,
+      "exam-cancel-test",
     )).rejects.toMatchObject({ code: "SECRETARIA_CAPABILITY_DISABLED" });
     app.stop();
   });
