@@ -1,7 +1,7 @@
 ---
 document_id: SPEC-EST-SECRETARIA-001
 title: API Secretaria → UOR Estudante
-version: 1.5.0
+version: 1.6.0
 status: approved
 authority: normative_product_contract
 owner: UOR Estudante
@@ -346,8 +346,8 @@ Não existe rota de troca de senha na primeira versão.
 | POST | `/exam-registrations` | conditional_write | Inscrever quando capacidade aprovada. |
 | DELETE | `/exam-registrations/:registrationRef` | approved_write_feature_flagged | Preparar cancelamento por referência opaca; exige `Idempotency-Key`. |
 | GET | `/grade-review-requests` | approved_read | Consultar pedidos de revisão. |
-| GET | `/grade-review-requests/:id` | approved_read | Consultar estado/resposta oficial. |
-| POST | `/grade-review-requests` | conditional_write | Preparar/submeter revisão sem anexos. |
+| GET | `/grade-review-requests/:reviewRef` | approved_read | Consultar estado/resposta oficial por referência opaca. |
+| POST | `/grade-review-requests` | approved_write_feature_flagged | Preparar comando de revisão sem anexos; exige `Idempotency-Key` e confirmação `SUBMIT_GRADE_REVIEW`. |
 | GET | `/applications` | approved_read | Consultar candidaturas. |
 | POST | `/applications` | conditional_write | Submeter candidatura aprovada. |
 | PATCH | `/applications/:id` | conditional_write | Alterar enquanto editável. |
@@ -368,6 +368,8 @@ Não existe rota de troca de senha na primeira versão.
 | DELETE | `/language-competencies/:id` | conditional_write | Remover quando aprovado. |
 
 `needs_product_validation` exige confirmação de necessidade funcional, mas não a descoberta de uma nova tecnologia.
+
+O item de revisão expõe `reviewRef`, estado oficial, número do pedido quando existir e `availableAction`: `REQUEST_PROOF_COPY`, `SUBMIT_REVIEW`, `SUBMIT_RECONSIDERATION` ou `null`. A API v1 só implementa `SUBMIT_REVIEW`; não cria automaticamente pedido de cópia de prova, não submete reapreciação e não aceita anexos. `POST /grade-review-requests` recebe `reviewRef` e `justification` não vazia com até 16000 caracteres, devolve um comando de risco alto e só alcança o upstream após confirmação explícita. O sucesso requer releitura de um novo estado oficial.
 
 ### 10.5 Finanças e referências
 

@@ -5,7 +5,7 @@ document_id: ADR-006
 status: accepted
 owner: Arquitetura UOR Estudante
 authority: informative_until_approved
-version: 1.3
+version: 1.4
 last_reviewed: 2026-07-22
 approved_by: Product Owner
 approved_at: 2026-07-21
@@ -25,7 +25,7 @@ depends_on:
 
 ## Contexto
 
-O repositório atual usa backend Fastify, schemas Zod, Prisma e persistência SQLite/PostgreSQL conforme o ambiente. A integração Moodle estabeleceu padrões para gateway web, envelopes cifrados, sessão, snapshots, leases, workers, schemas HTTP e testes. A integração Secretaria está isolada em módulo próprio, com fundação de sessão/leitura/snapshot e comandos controlados de referência, contactos, fotografia e cancelamento de inscrição em época; a migração do acoplamento legado de autenticação continua separada.
+O repositório atual usa backend Fastify, schemas Zod, Prisma e persistência SQLite/PostgreSQL conforme o ambiente. A integração Moodle estabeleceu padrões para gateway web, envelopes cifrados, sessão, snapshots, leases, workers, schemas HTTP e testes. A integração Secretaria está isolada em módulo próprio, com fundação de sessão/leitura/snapshot e comandos controlados de referência, contactos, fotografia, cancelamento de inscrição em época e revisão de nota sem anexos; a migração do acoplamento legado de autenticação continua separada.
 
 A especificação da API Secretaria → UOR Estudante define comportamentos obrigatórios, mas não deve eternizar tecnologias ou caminhos físicos. Este ADR registra as escolhas técnicas propostas após a auditoria inicial do repositório.
 
@@ -57,7 +57,7 @@ A especificação da API Secretaria → UOR Estudante define comportamentos obri
 - Generalizar a primitiva AES-256-GCM validada no módulo Moodle para uma biblioteca interna de envelopes, sem tornar o módulo Secretaria dependente do Moodle.
 - Usar envelopes distintos para credencial, sessão, payloads/locators sensíveis e resultados financeiros.
 - Incluir AAD com versão, finalidade, instituição, estudante e geração.
-- Derivar `chargeRef` por HMAC com domínio próprio e aceitar candidatos de chaves ainda vigentes durante rotação; IDs upstream nunca entram no contrato público.
+- Derivar `chargeRef`, `registrationRef` e `reviewRef` por HMAC com domínio próprio e aceitar candidatos de chaves ainda vigentes durante rotação; IDs upstream nunca entram no contrato público.
 - Configurar keyring por segredo externo à base de dados, com rotação na leitura, revogação e inventário por `keyId`.
 - Nunca armazenar a senha descifrada no cache de aplicação.
 
@@ -91,6 +91,7 @@ O TTL exato será configuração operacional, não invariante do produto.
 - Servir fotografia somente por proxy autenticado, detetar o tipo pela assinatura binária e nunca expor os parâmetros de `PhotoLoader`.
 - Normalizar uploads para JPEG sem metadados, cifrar o payload do comando e exigir precondição sobre o hash oficial antes do multipart upstream.
 - Substituir IDs de inscrições em épocas por referências HMAC específicas do recurso; resolver o ID somente no gateway e concluir cancelamento apenas após releitura oficial.
+- Normalizar a grelha de revisão sem HTML/IDs internos, distinguir `REQUEST_PROOF_COPY`, `SUBMIT_REVIEW` e `SUBMIT_RECONSIDERATION`, e permitir nesta entrega apenas `SUBMIT_REVIEW` sem anexos. O comando usa `reviewRef`, justificação até 16000 caracteres, precondição, confirmação explícita e releitura do estado oficial.
 - Permitir substituição pelo gateway de API oficial no futuro.
 
 ### 8. Feature flags e circuit breakers

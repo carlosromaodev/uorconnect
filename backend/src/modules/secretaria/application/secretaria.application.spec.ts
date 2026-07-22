@@ -24,6 +24,9 @@ function gateway(): SecretariaGateway {
     prepareExamRegistrationCancellation: vi.fn(),
     cancelExamRegistration: vi.fn(),
     verifyExamRegistrationCancellation: vi.fn(),
+    prepareGradeReview: vi.fn(),
+    submitGradeReview: vi.fn(),
+    verifyGradeReview: vi.fn(),
     preparePaymentReference: vi.fn(),
     generatePaymentReference: vi.fn(),
     verifyPaymentReference: vi.fn(),
@@ -39,6 +42,7 @@ describe("LiveSecretariaApplication command controls", () => {
       contactDetailsEnabled: false,
       photoEnabled: false,
       examRegistrationCancelEnabled: false,
+      gradeReviewEnabled: false,
       confirmationTtlSeconds: 300,
       commandLeaseSeconds: 300,
     });
@@ -47,6 +51,7 @@ describe("LiveSecretariaApplication command controls", () => {
     expect(app.capabilities().find((capability) => capability.key === "contactDetails" && capability.mode === "write")).toMatchObject({ status: "disabled" });
     expect(app.capabilities().find((capability) => capability.key === "photo" && capability.mode === "write")).toMatchObject({ status: "disabled" });
     expect(app.capabilities().find((capability) => capability.key === "examRegistration.cancel")).toMatchObject({ status: "disabled" });
+    expect(app.capabilities().find((capability) => capability.key === "gradeReview.submit")).toMatchObject({ status: "disabled" });
     await expect(app.preparePaymentReference({ id: 1, studentNumber: "20240001" }, [`scr_${"a".repeat(43)}`], "idempotency-test"))
       .rejects.toMatchObject({ code: "SECRETARIA_CAPABILITY_DISABLED" });
     await expect(app.prepareContactDetails({ id: 1, studentNumber: "20240001" }, { mobile: "+244 900 000 000" }, "contact-details-test"))
@@ -60,6 +65,12 @@ describe("LiveSecretariaApplication command controls", () => {
       { id: 1, studentNumber: "20240001" },
       `ser_${"a".repeat(43)}`,
       "exam-cancel-test",
+    )).rejects.toMatchObject({ code: "SECRETARIA_CAPABILITY_DISABLED" });
+    await expect(app.prepareGradeReview(
+      { id: 1, studentNumber: "20240001" },
+      `sgr_${"a".repeat(43)}`,
+      "Justificação de teste",
+      "grade-review-test",
     )).rejects.toMatchObject({ code: "SECRETARIA_CAPABILITY_DISABLED" });
     app.stop();
   });

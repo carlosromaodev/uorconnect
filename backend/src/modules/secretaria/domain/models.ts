@@ -70,6 +70,12 @@ export type SecretariaExamRegistrationCancellation = {
   preconditionHash: string;
 };
 
+export type SecretariaGradeReviewSubmission = {
+  reviewRef: string;
+  justification: string;
+  preconditionHash: string;
+};
+
 export type SecretariaSession = {
   cookies: Record<string, string>;
   authenticatedAt: string;
@@ -123,7 +129,7 @@ export type SecretariaCommandStatus =
 
 export type SecretariaCommandView = {
   id: string;
-  type: "GENERATE_PAYMENT_REFERENCE" | "UPDATE_CONTACT_DETAILS" | "UPDATE_PHOTO" | "CANCEL_EXAM_REGISTRATION";
+  type: "GENERATE_PAYMENT_REFERENCE" | "UPDATE_CONTACT_DETAILS" | "UPDATE_PHOTO" | "CANCEL_EXAM_REGISTRATION" | "SUBMIT_GRADE_REVIEW";
   risk: "LOW" | "MEDIUM" | "HIGH";
   status: SecretariaCommandStatus;
   requiresConfirmation: boolean;

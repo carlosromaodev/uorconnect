@@ -51,9 +51,14 @@ const photoBodySchema = z.object({
   dataUrl: z.string().regex(/^data:image\/jpeg;base64,[A-Za-z0-9+/]+={0,2}$/).max(1_500_000),
 }).strict();
 const examRegistrationParamsSchema = z.object({ registrationRef: z.string().regex(/^ser_[A-Za-z0-9_-]{43}$/) });
+const gradeReviewBodySchema = z.object({
+  reviewRef: z.string().regex(/^sgr_[A-Za-z0-9_-]{43}$/),
+  justification: z.string().trim().min(1).max(16_000),
+}).strict();
+const gradeReviewParamsSchema = z.object({ reviewRef: z.string().regex(/^sgr_[A-Za-z0-9_-]{43}$/) });
 const idempotencyHeadersSchema = z.object({ "idempotency-key": z.string().trim().min(8).max(128) });
 const commandParamsSchema = z.object({ commandId: z.string().uuid() });
-const commandConfirmationBodySchema = z.object({ confirmation: z.enum(["GENERATE_PAYMENT_REFERENCE", "UPDATE_CONTACT_DETAILS", "UPDATE_PHOTO", "CANCEL_EXAM_REGISTRATION"]) });
+const commandConfirmationBodySchema = z.object({ confirmation: z.enum(["GENERATE_PAYMENT_REFERENCE", "UPDATE_CONTACT_DETAILS", "UPDATE_PHOTO", "CANCEL_EXAM_REGISTRATION", "SUBMIT_GRADE_REVIEW"]) });
 
 export type SecretariaRoutesOptions = {
   env: Env;
@@ -269,6 +274,17 @@ export async function secretariaRoutes(app: FastifyInstance, opts: SecretariaRou
     for (const [path, domain] of processRoutes) {
       protectedApp.get(path, { schema: { tags: ["Secretaria - Processos"], response: { 200: envelopeSchema, ...errorResponses } } }, (request, reply) => dataset(request, reply, domain));
     }
+    protectedApp.get("/grade-review-requests/:reviewRef", {
+      schema: { tags: ["Secretaria - Processos"], params: gradeReviewParamsSchema, response: { 200: envelopeSchema, ...errorResponses } },
+    }, async (request, reply) => {
+      try {
+        const { reviewRef } = request.params as z.infer<typeof gradeReviewParamsSchema>;
+        const result = await opts.application.getDataset(request.student!, "process.gradeReviews");
+        const item = result.data.items.find((candidate) => candidate.reviewRef === reviewRef);
+        if (!item) throw new SecretariaError("SECRETARIA_RESOURCE_NOT_FOUND", "O pedido de revisão não foi encontrado.", 404);
+        return reply.send({ data: item, meta: meta(request, { coverage: result.data.coverage, stale: result.stale, snapshotVersion: result.snapshotVersion, observedAt: result.data.observedAt }) });
+      } catch (error) { return sendError(request, reply, error); }
+    });
 
     const disabledReads = ["/finance/receipts", "/finance/receipts/:id/content"];
     for (const url of disabledReads) {
@@ -279,7 +295,6 @@ export async function secretariaRoutes(app: FastifyInstance, opts: SecretariaRou
       { method: "DELETE", url: "/me/photo" },
       { method: "PATCH", url: "/consents/:consentId" },
       { method: "POST", url: "/exam-registrations" },
-      { method: "POST", url: "/grade-review-requests" },
       { method: "POST", url: "/applications" },
       { method: "PATCH", url: "/applications/:id" },
       { method: "POST", url: "/advanced-training" },
@@ -379,6 +394,33 @@ export async function secretariaRoutes(app: FastifyInstance, opts: SecretariaRou
         const command = await opts.application.prepareExamRegistrationCancellation(
           request.student!,
           registrationRef,
+          String(request.headers["idempotency-key"]),
+        );
+        return reply.status(202).send({ data: command, meta: meta(request, { coverage: "live" }) });
+      } catch (error) { return sendError(request, reply, error); }
+    });
+
+    protectedApp.post("/grade-review-requests", {
+      config: {
+        rateLimit: {
+          max: 5,
+          timeWindow: 15 * 60_000,
+          keyGenerator: (request: FastifyRequest) => `${request.ip}:${request.student?.id ?? "anonymous"}:grade-review`,
+        },
+      },
+      schema: {
+        tags: ["Secretaria - Processos"],
+        headers: idempotencyHeadersSchema,
+        body: gradeReviewBodySchema,
+        response: { 202: envelopeSchema, ...errorResponses },
+      },
+    }, async (request, reply) => {
+      try {
+        const body = request.body as z.infer<typeof gradeReviewBodySchema>;
+        const command = await opts.application.prepareGradeReview(
+          request.student!,
+          body.reviewRef,
+          body.justification,
           String(request.headers["idempotency-key"]),
         );
         return reply.status(202).send({ data: command, meta: meta(request, { coverage: "live" }) });

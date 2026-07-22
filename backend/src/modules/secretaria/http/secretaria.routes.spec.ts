@@ -35,6 +35,7 @@ function fakeApplication(): SecretariaApplication {
     prepareContactDetails: vi.fn(async () => ({ id: "d3bd8d65-5695-41b8-9f22-e3b042ea4e6f", type: "UPDATE_CONTACT_DETAILS", risk: "MEDIUM", status: "AWAITING_CONFIRMATION", requiresConfirmation: true, confirmationExpiresAt: "2026-07-21T20:05:00.000Z", result: null, errorCode: null, createdAt: "2026-07-21T20:00:00.000Z", updatedAt: "2026-07-21T20:00:00.000Z", completedAt: null })),
     preparePhoto: vi.fn(async () => ({ id: "0c359bab-4f18-478c-8a46-64ead3c14dab", type: "UPDATE_PHOTO", risk: "MEDIUM", status: "AWAITING_CONFIRMATION", requiresConfirmation: true, confirmationExpiresAt: "2026-07-21T20:05:00.000Z", result: null, errorCode: null, createdAt: "2026-07-21T20:00:00.000Z", updatedAt: "2026-07-21T20:00:00.000Z", completedAt: null })),
     prepareExamRegistrationCancellation: vi.fn(async () => ({ id: "1df88f78-4ec0-4d4f-9f86-18bdd37fa40f", type: "CANCEL_EXAM_REGISTRATION", risk: "MEDIUM", status: "AWAITING_CONFIRMATION", requiresConfirmation: true, confirmationExpiresAt: "2026-07-21T20:05:00.000Z", result: null, errorCode: null, createdAt: "2026-07-21T20:00:00.000Z", updatedAt: "2026-07-21T20:00:00.000Z", completedAt: null })),
+    prepareGradeReview: vi.fn(async () => ({ id: "31e127a5-3ccd-4e80-9b1f-16af9ee802dd", type: "SUBMIT_GRADE_REVIEW", risk: "HIGH", status: "AWAITING_CONFIRMATION", requiresConfirmation: true, confirmationExpiresAt: "2026-07-21T20:05:00.000Z", result: null, errorCode: null, createdAt: "2026-07-21T20:00:00.000Z", updatedAt: "2026-07-21T20:00:00.000Z", completedAt: null })),
     getCommand: vi.fn(async () => ({ id: "8b5e8ab9-3989-4517-8a82-56128794ae87", type: "GENERATE_PAYMENT_REFERENCE", risk: "MEDIUM", status: "AWAITING_CONFIRMATION", requiresConfirmation: true, confirmationExpiresAt: "2026-07-21T20:05:00.000Z", result: null, errorCode: null, createdAt: "2026-07-21T20:00:00.000Z", updatedAt: "2026-07-21T20:00:00.000Z", completedAt: null })),
     getCommandAttempts: vi.fn(async () => []),
     confirmCommand: vi.fn(async () => ({ id: "8b5e8ab9-3989-4517-8a82-56128794ae87", type: "GENERATE_PAYMENT_REFERENCE", risk: "MEDIUM", status: "SUCCEEDED", requiresConfirmation: false, confirmationExpiresAt: "2026-07-21T20:05:00.000Z", result: { items: [], observedAt: "2026-07-21T20:01:00.000Z" }, errorCode: null, createdAt: "2026-07-21T20:00:00.000Z", updatedAt: "2026-07-21T20:01:00.000Z", completedAt: "2026-07-21T20:01:00.000Z" })),
@@ -152,6 +153,34 @@ describe("Secretaria routes", () => {
       registrationRef,
       "exam-cancel-test-001",
     );
+
+    const reviewRef = `sgr_${"d".repeat(43)}`;
+    const gradeReview = await app.inject({
+      method: "POST",
+      url: "/api/v1/integrations/secretaria/grade-review-requests",
+      headers: { authorization, "content-type": "application/json", "idempotency-key": "grade-review-test-001" },
+      payload: { reviewRef, justification: "  Solicito revisão conforme os critérios publicados.  " },
+    });
+    expect(gradeReview.statusCode).toBe(202);
+    expect(gradeReview.json().data).toMatchObject({ type: "SUBMIT_GRADE_REVIEW", risk: "HIGH", status: "AWAITING_CONFIRMATION" });
+    expect(application.prepareGradeReview).toHaveBeenCalledWith(
+      { id: 1, studentNumber: "20240001" },
+      reviewRef,
+      "Solicito revisão conforme os critérios publicados.",
+      "grade-review-test-001",
+    );
+    vi.mocked(application.getDataset).mockResolvedValueOnce({
+      data: { domain: "process.gradeReviews", items: [{ reviewRef, state: "Em Validação" }], total: 1, observedAt: "2026-07-22T10:00:00.000Z", coverage: "live" },
+      stale: false,
+      snapshotVersion: null,
+    });
+    const gradeReviewDetail = await app.inject({
+      method: "GET",
+      url: `/api/v1/integrations/secretaria/grade-review-requests/${reviewRef}`,
+      headers: { authorization },
+    });
+    expect(gradeReviewDetail.statusCode).toBe(200);
+    expect(gradeReviewDetail.json().data).toEqual({ reviewRef, state: "Em Validação" });
 
     const confirm = await app.inject({
       method: "POST",

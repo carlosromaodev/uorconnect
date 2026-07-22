@@ -5,7 +5,7 @@ document_id: UOR-EST-TRACE-001
 status: approved
 owner: Engenharia UOR Estudante
 authority: informative
-version: 1.5
+version: 1.6
 last_reviewed: 2026-07-22
 approved_by: Product Owner
 approved_at: 2026-07-21
@@ -24,12 +24,14 @@ depends_on:
 - Evidência: `static`, `automated_test`, `integration_test`, `runtime_observed`, `production_observed`.
 - `implemented` significa código identificado sem verificação suficiente.
 - Verificação executada em 2026-07-21 no ambiente `local-test`, por `Codex`, sobre o commit de base `669aed0`.
-- Suite backend completa nesta árvore: 109 ficheiros/445 testes passaram; 3 testes preexistentes de referrals em `passport-game-rules.spec.ts` falharam porque o mock não expõe `prisma.student.findFirst`. Suite frontend anteriormente verificada: 3 ficheiros/6 testes.
-- API Secretaria verificada adicionalmente nesta entrega: 5 ficheiros/14 testes focados, incluindo persistência SQLite isolada dos comandos, build de produção, contrato browser autorizado e smoke de login, identidade, sessão, contactos, fotografia, inscrições em épocas, consentimentos vazios, exames, faltas e finanças.
+- Suite backend completa nesta árvore: 109 ficheiros/447 testes passaram de 110 ficheiros/450 testes; 3 testes preexistentes de referrals em `passport-game-rules.spec.ts` falharam porque o mock não expõe `prisma.student.findFirst`. Suite frontend anteriormente verificada: 3 ficheiros/6 testes.
+- API Secretaria verificada adicionalmente nesta entrega: 5 ficheiros/18 testes focados, incluindo persistência SQLite isolada dos comandos, build de produção, schema Prisma, contrato browser autorizado e smoke de login, identidade, sessão, contactos, fotografia, inscrições em épocas, revisão de nota, consentimentos vazios, exames, faltas e finanças.
+- O lint TypeScript global mantém 3 erros preexistentes em testes de eliminação de estudante, Odin AI e erros HTTP; o build de produção não apresenta erros.
 - Leitura viva da fotografia foi repetida pelo gateway HTTP: assinatura binária PNG, 959 bytes e precondição consistente. O multipart JPEG foi capturado com POST bloqueado; nenhuma fotografia foi alterada.
 - As duas contas autorizadas estavam fora do período de inscrição, com listas vazias. O cancelamento foi capturado como POST form-urlencoded de campo único com a requisição bloqueada; nenhum registo foi alterado e o contrato de criação permanece desconhecido.
 - O contrato de contactos foi observado no navegador e repetido pelo gateway HTTP com submissão no-op: o portal devolveu `parameterErrors`/`success=false` por campos legados obrigatórios incompletos, sem criar pedido ou alterar valores.
 - Uma prova controlada gerou referência oficial na conta de teste e observou `stepresultadopagamento`/sucesso; não houve checkout, cartão ou processamento de pagamento. A chamada não passou ainda pelo motor persistente implantado, portanto RF-EST-093 permanece `implemented`, não `verified`.
+- O fluxo de revisão de nota foi mapeado no browser autorizado: referência da linha, estados oficiais, ações por fase, limite de 16000 caracteres e `PUT application/json` com `id` e `justificacaoPedidoTemp`. Uma confirmação de “pedido de cópia de prova” alcançou o ambiente de teste antes de o `autoSync`/`PUT` ser identificado, deixando uma linha em `Aguarda prova`; o portal não expôs cancelamento. Todas as sondas mutáveis posteriores foram bloqueadas no cliente.
 
 ## Requisitos funcionais
 
@@ -124,7 +126,7 @@ depends_on:
 | [ ] | RF-EST-087 | deprecated | static | reservado: troca de senha não pertence à API v1 |
 | [ ] | RF-EST-088 | partial | runtime_observed | leitura oficial “Sem consentimentos” implementada; escrita permanece desativada porque não existe finalidade editável nas contas autorizadas |
 | [ ] | RF-EST-089 | partial | integration_test | leitura com referência opaca e cancelamento durável/reconciliável implementados sob flag; criação continua bloqueada até observar janela elegível e pós-condição real |
-| [ ] | RF-EST-090 | planned | — | revisão oficial permanece com flag/contrato desativados |
+| [ ] | RF-EST-090 | implemented | integration_test | lista/detalhe normalizados, `reviewRef` opaco e comando de risco alto com justificação, idempotência, confirmação, precondição e reconciliação implementados; flag desativada e submissão real de revisão elegível ainda não verificada |
 | [ ] | RF-EST-091 | planned | — | candidatura permanece com flag/contrato desativados |
 | [ ] | RF-EST-092 | planned | — | escritas de processos permanecem com flags/contratos desativados |
 | [ ] | RF-EST-093 | implemented | runtime_observed | wizard `REFERENCIAS_MB` confirmado ao sucesso; comando persistente testado em SQLite, concorrência PostgreSQL/piloto TLS pendentes |

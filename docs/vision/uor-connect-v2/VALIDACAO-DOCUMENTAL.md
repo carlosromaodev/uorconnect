@@ -5,8 +5,8 @@ document_id: UOR-V2-VALIDATION-001
 status: approved
 owner: Arquitetura UOR Connect
 authority: informative
-version: 1.1
-last_reviewed: 2026-07-21
+version: 1.2
+last_reviewed: 2026-07-22
 approved_by: Codex verification
 approved_at: 2026-07-21
 review_cycle: por alteração normativa material
@@ -46,7 +46,8 @@ Em `local-test`, sobre código base `669aed0`:
 
 - backend: 7 ficheiros e 45 testes aprovados para identidade, login e Moodle;
 - frontend: 3 ficheiros e 6 testes aprovados para login e apresentação de perfil;
-- Secretaria nesta entrega: 5 ficheiros e 9 testes focados aprovados, incluindo persistência SQLite isolada, build e schema Prisma válidos;
+- Secretaria nesta entrega: 5 ficheiros e 18 testes focados aprovados, incluindo revisão de nota, persistência SQLite isolada, build e schema Prisma válidos;
+- suite backend: 109 ficheiros/447 testes aprovados de 110/450; as 3 falhas continuam limitadas ao mock preexistente de referrals do Passport;
 - nível máximo atribuído conforme cada teste: `automated_test` ou `integration_test`;
 - uma prova controlada autorizada gerou somente referência oficial e confirmou sucesso do portal; nenhum checkout ou pagamento foi processado.
 
@@ -54,7 +55,7 @@ Em `local-test`, sobre código base `669aed0`:
 
 - `/estudante`, `/eventos` e `/direcao` são gateways temporários.
 - O código ainda usa nomes de produto substituídos.
-- Escrita de referência Secretaria está implementada, mas desligada por padrão; produção continua bloqueada até HTTPS/túnel TLS e ensaio persistente.
+- Escritas de referência e revisão de nota da Secretaria estão implementadas, mas desligadas por padrão; produção continua bloqueada até HTTPS/túnel TLS e ensaio persistente por capacidade.
 - JWT e consultas legadas nem sempre incluem contexto institucional completo.
 - Rotas e administração de Eventos ainda ocupam a aplicação geral.
 - Ownership lógico não é imposto no acesso à base partilhada.

@@ -4,6 +4,7 @@ import type {
   SecretariaCommandResult,
   SecretariaDataset,
   SecretariaExamRegistrationCancellation,
+  SecretariaGradeReviewSubmission,
   SecretariaPaymentReferenceResult,
   SecretariaPhoto,
   SecretariaProfile,
@@ -28,6 +29,9 @@ export interface SecretariaGateway {
   prepareExamRegistrationCancellation(session: SecretariaSession, registrationRef: string): Promise<SecretariaExamRegistrationCancellation>;
   cancelExamRegistration(session: SecretariaSession, cancellation: SecretariaExamRegistrationCancellation): Promise<SecretariaCommandResult>;
   verifyExamRegistrationCancellation(session: SecretariaSession, registrationRef: string): Promise<SecretariaCommandResult | null>;
+  prepareGradeReview(session: SecretariaSession, reviewRef: string, justification: string): Promise<SecretariaGradeReviewSubmission>;
+  submitGradeReview(session: SecretariaSession, submission: SecretariaGradeReviewSubmission): Promise<SecretariaCommandResult>;
+  verifyGradeReview(session: SecretariaSession, reviewRef: string): Promise<SecretariaCommandResult | null>;
   preparePaymentReference(session: SecretariaSession, chargeRefs: string[]): Promise<{ chargeRefs: string[] }>;
   generatePaymentReference(session: SecretariaSession, chargeRefs: string[]): Promise<SecretariaPaymentReferenceResult>;
   verifyPaymentReference(session: SecretariaSession, chargeRefs: string[]): Promise<SecretariaPaymentReferenceResult | null>;

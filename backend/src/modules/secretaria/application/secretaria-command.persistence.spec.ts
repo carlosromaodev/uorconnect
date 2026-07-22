@@ -101,6 +101,9 @@ describe("Secretaria command persistence", () => {
       prepareExamRegistrationCancellation: vi.fn(async (_session, registrationRef) => ({ registrationRef, preconditionHash: "exam-precondition-hash" })),
       cancelExamRegistration: vi.fn(async (_session, cancellation) => ({ items: [{ outcome: "EXAM_REGISTRATION_CANCELLED", registrationRef: cancellation.registrationRef }], observedAt: "2026-07-22T09:00:00.000Z" })),
       verifyExamRegistrationCancellation: vi.fn(),
+      prepareGradeReview: vi.fn(async (_session, reviewRef, justification) => ({ reviewRef, justification, preconditionHash: "grade-review-precondition-hash" })),
+      submitGradeReview: vi.fn(async (_session, submission) => ({ items: [{ outcome: "GRADE_REVIEW_SUBMITTED", reviewRef: submission.reviewRef, state: "Em Validação", requestNumber: "TEST" }], observedAt: "2026-07-22T10:00:00.000Z" })),
+      verifyGradeReview: vi.fn(),
       preparePaymentReference: vi.fn(async (_session, chargeRefs) => ({ chargeRefs })),
       generatePaymentReference: vi.fn(async () => ({ items: [{ reference: "REFERENCE-SECRET" }], observedAt: "2026-07-21T20:01:00.000Z" })),
       verifyPaymentReference: vi.fn(),
@@ -112,6 +115,7 @@ describe("Secretaria command persistence", () => {
       contactDetailsEnabled: true,
       photoEnabled: true,
       examRegistrationCancelEnabled: true,
+      gradeReviewEnabled: true,
       confirmationTtlSeconds: 300,
       commandLeaseSeconds: 300,
     }, database as never);
@@ -177,6 +181,21 @@ describe("Secretaria command persistence", () => {
       result: { items: [{ outcome: "EXAM_REGISTRATION_CANCELLED", registrationRef }] },
     });
     expect(gateway.cancelExamRegistration).toHaveBeenCalledTimes(1);
+
+    const reviewRef = `sgr_${"e".repeat(43)}`;
+    const justification = "A classificação deve ser revista com base nos critérios publicados.";
+    const review = await application.prepareGradeReview(student, reviewRef, justification, "grade-review-001");
+    expect(review).toMatchObject({ type: "SUBMIT_GRADE_REVIEW", risk: "HIGH", status: "AWAITING_CONFIRMATION" });
+    const storedReview = await database.secretariaCommand.findUniqueOrThrow({ where: { id: review.id } });
+    expect(storedReview.payloadEnvelope).not.toContain(reviewRef);
+    expect(storedReview.payloadEnvelope).not.toContain(justification);
+    const reviewSucceeded = await application.confirmCommand(student, review.id, "SUBMIT_GRADE_REVIEW");
+    expect(reviewSucceeded).toMatchObject({
+      type: "SUBMIT_GRADE_REVIEW",
+      status: "SUCCEEDED",
+      result: { items: [{ outcome: "GRADE_REVIEW_SUBMITTED", reviewRef }] },
+    });
+    expect(gateway.submitGradeReview).toHaveBeenCalledTimes(1);
 
     const uncertainRef = `ser_${"d".repeat(43)}`;
     const uncertain = await application.prepareExamRegistrationCancellation(student, uncertainRef, "exam-cancel-unknown-001");

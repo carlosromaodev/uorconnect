@@ -8,6 +8,7 @@ import type {
   SecretariaCommandResult,
   SecretariaDataset,
   SecretariaExamRegistrationCancellation,
+  SecretariaGradeReviewSubmission,
   SecretariaPaymentReferenceResult,
   SecretariaPaymentSelection,
   SecretariaPhoto,
@@ -319,6 +320,7 @@ function paymentSelection(record: Record<string, unknown>): SecretariaPaymentSel
 
 type PaymentReferenceCandidates = (selection: SecretariaPaymentSelection) => string[];
 type ExamRegistrationReferenceCandidates = (id: string) => string[];
+type GradeReviewReferenceCandidates = (id: string) => string[];
 
 function normalizePaymentRecord(record: Record<string, unknown>, paymentReferenceCandidates: PaymentReferenceCandidates): Record<string, unknown> {
   const normalized = normalizeValue(record) as Record<string, unknown>;
@@ -374,6 +376,46 @@ function examRegistrationHash(record: Record<string, unknown>) {
   return NetpaSecretariaGateway.normalizedHash({ id, record: normalizeValue(record), canCancel: /\banular\s*\(/i.test(examRegistrationAction(record)) });
 }
 
+function gradeReviewId(record: Record<string, unknown>): string | null {
+  const value = record.id ?? record.ID;
+  if ((typeof value !== "string" && typeof value !== "number") || !String(value).trim() || String(value).length > 512) return null;
+  const id = String(value).trim();
+  return /[\u0000-\u001f\u007f]/.test(id) ? null : id;
+}
+
+function gradeReviewAction(record: Record<string, unknown>) {
+  const markup = String(record.accaoCalc ?? record.ACCAO_CALC ?? "");
+  if (/\befectuarPedidoRevisaoNota\s*\(/i.test(markup)) return "SUBMIT_REVIEW" as const;
+  if (/\befectuarPedidoReapreciacao\s*\(/i.test(markup)) return "SUBMIT_RECONSIDERATION" as const;
+  if (/\befectuarPedidoCopiaProva\s*\(/i.test(markup)) return "REQUEST_PROOF_COPY" as const;
+  return null;
+}
+
+function normalizeGradeReviewRecord(record: Record<string, unknown>, candidates: GradeReviewReferenceCandidates) {
+  const id = gradeReviewId(record);
+  if (!id) return null;
+  const normalized = normalizeValue(record) as Record<string, unknown>;
+  delete normalized.id;
+  delete normalized.accaoCalc;
+  delete normalized.justificacaoPedidoTemp;
+  delete normalized.justificacaoReapreciacaoTemp;
+  for (const [key, value] of Object.entries(normalized)) {
+    if (typeof value === "string") normalized[key] = decodeHtml(value);
+  }
+  normalized.reviewRef = candidates(id)[0];
+  normalized.availableAction = gradeReviewAction(record);
+  normalized.canSubmitReview = gradeReviewAction(record) === "SUBMIT_REVIEW";
+  return normalized;
+}
+
+function gradeReviewHash(record: Record<string, unknown>) {
+  return NetpaSecretariaGateway.normalizedHash({
+    id: gradeReviewId(record),
+    record: normalizeValue(record),
+    availableAction: gradeReviewAction(record),
+  });
+}
+
 export class NetpaSecretariaGateway implements SecretariaGateway {
   readonly #baseUrl: URL;
 
@@ -383,6 +425,7 @@ export class NetpaSecretariaGateway implements SecretariaGateway {
     maxResponseBytes: number;
     paymentReferenceCandidates: PaymentReferenceCandidates;
     examRegistrationReferenceCandidates: ExamRegistrationReferenceCandidates;
+    gradeReviewReferenceCandidates: GradeReviewReferenceCandidates;
   }) {
     this.#baseUrl = new URL(options.baseUrl);
   }
@@ -774,6 +817,13 @@ export class NetpaSecretariaGateway implements SecretariaGateway {
         .filter((record): record is Record<string, unknown> => Boolean(record));
       return { domain, items, total: items.length, observedAt: new Date().toISOString(), coverage: "live" };
     }
+    if (domain === "process.gradeReviews") {
+      const rows = await this.#gradeReviewRows(session);
+      const items = rows
+        .map((record) => normalizeGradeReviewRecord(record, this.options.gradeReviewReferenceCandidates))
+        .filter((record): record is Record<string, unknown> => Boolean(record));
+      return { domain, items, total: items.length, observedAt: new Date().toISOString(), coverage: "live" };
+    }
     const contract = SECRETARIA_DATASETS[domain];
     if (!contract) throw new SecretariaError("SECRETARIA_RESOURCE_NOT_FOUND", "O conjunto de dados solicitado não existe.", 404);
     const stagePath = `/netpa/page?stage=${encodeURIComponent(contract.stage)}&submitaction=null`;
@@ -885,6 +935,99 @@ export class NetpaSecretariaGateway implements SecretariaGateway {
     if (response.success !== true) throw new SecretariaError("SECRETARIA_VALIDATION_FAILED", "A Secretaria recusou o cancelamento da inscrição.", 422);
     const verified = await this.verifyExamRegistrationCancellation(session, cancellation.registrationRef);
     if (!verified) throw new SecretariaError("SECRETARIA_COMMAND_OUTCOME_UNKNOWN", "A Secretaria aceitou o pedido, mas a anulação ainda não foi confirmada na leitura oficial.", 502, true);
+    return verified;
+  }
+
+  async #gradeReviewRows(session: SecretariaSession, requireSubmissionContract = false) {
+    const stagePath = "/netpa/page?stage=ListaPedidosRevisaoNotasAluno&submitaction=null";
+    const stage = await this.#request(stagePath, { headers: this.#headers(session) });
+    mergeSetCookies(session.cookies, stage.response.headers);
+    if (authFailure(stage.text)) throw new SecretariaError("SECRETARIA_REAUTH_REQUIRED", "A sessão da Secretaria expirou.", 409, true, "reauthenticate");
+    if (stage.response.status >= 400) throw new SecretariaError("SECRETARIA_UNAVAILABLE", "Não foi possível abrir os pedidos de revisão de nota.", 503, true);
+    if (requireSubmissionContract && (
+      !/autoSync\s*:\s*true/i.test(stage.text)
+      || !/url\s*:\s*["']ajax\/listapedidosrevisaonotasaluno\/pedidosrevisao["']/i.test(stage.text)
+      || !/name\s*:\s*["']justificacaoPedidoTemp["']/i.test(stage.text)
+      || !/record\.set\s*\(\s*["']justificacaoPedidoTemp["']/i.test(stage.text)
+      || !/justificacaoPedirRevisao[^\n]{0,400}?\.length\s*>\s*16000/i.test(stage.text)
+    )) {
+      throw new SecretariaError("SECRETARIA_UPSTREAM_CHANGED", "O contrato de submissão de revisão de nota mudou.", 502, false, "contact_support");
+    }
+    const url = new URL("/netpa/ajax/listapedidosrevisaonotasaluno/pedidosrevisao", this.#baseUrl);
+    url.searchParams.set("_dc", String(Date.now()));
+    url.searchParams.set("page", "1");
+    url.searchParams.set("start", "0");
+    url.searchParams.set("limit", "500");
+    url.searchParams.set("limpar", "false");
+    const payload = await this.#jsonRequest(session, `${url.pathname}${url.search}`, stagePath);
+    const object = payload && typeof payload === "object" ? payload as Record<string, unknown> : {};
+    if (object.success !== true || !Array.isArray(object.result)) {
+      throw new SecretariaError("SECRETARIA_UPSTREAM_CHANGED", "A lista de revisões de nota devolveu um contrato incompatível.", 502, false, "contact_support");
+    }
+    return rawPayload(payload).items;
+  }
+
+  #resolveGradeReview(rows: Array<Record<string, unknown>>, reviewRef: string) {
+    for (const record of rows) {
+      const id = gradeReviewId(record);
+      if (id && this.options.gradeReviewReferenceCandidates(id).includes(reviewRef)) return { id, record };
+    }
+    throw new SecretariaError("SECRETARIA_RESOURCE_NOT_FOUND", "A avaliação já não está disponível no fluxo de revisão.", 404);
+  }
+
+  async prepareGradeReview(session: SecretariaSession, reviewRef: string, justification: string): Promise<SecretariaGradeReviewSubmission> {
+    const normalizedJustification = justification.trim();
+    if (!normalizedJustification || normalizedJustification.length > 16_000) {
+      throw new SecretariaError("SECRETARIA_REQUEST_INVALID", "A justificação deve ter entre 1 e 16000 caracteres.", 422);
+    }
+    const resolved = this.#resolveGradeReview(await this.#gradeReviewRows(session, true), reviewRef);
+    if (gradeReviewAction(resolved.record) !== "SUBMIT_REVIEW") {
+      throw new SecretariaError("SECRETARIA_COMMAND_STATE_INVALID", "A revisão de nota não pode ser submetida no estado atual.", 409);
+    }
+    return { reviewRef, justification: normalizedJustification, preconditionHash: gradeReviewHash(resolved.record) };
+  }
+
+  async verifyGradeReview(session: SecretariaSession, reviewRef: string): Promise<SecretariaCommandResult | null> {
+    const resolved = this.#resolveGradeReview(await this.#gradeReviewRows(session), reviewRef);
+    const state = decodeHtml(String(resolved.record.descEstadoCalc ?? resolved.record.DESC_ESTADO_CALC ?? ""));
+    if (gradeReviewAction(resolved.record) === "SUBMIT_REVIEW" || !state || state === "-" || /aguarda\s+pedido\s+de\s+revis[aã]o/i.test(state)) return null;
+    const requestNumber = decodeHtml(String(resolved.record.numberPedidoCalc ?? resolved.record.NUMBER_PEDIDO_CALC ?? "")) || null;
+    return {
+      items: [{ outcome: "GRADE_REVIEW_SUBMITTED", reviewRef, state, requestNumber }],
+      observedAt: new Date().toISOString(),
+    };
+  }
+
+  async submitGradeReview(session: SecretariaSession, submission: SecretariaGradeReviewSubmission): Promise<SecretariaCommandResult> {
+    const resolved = this.#resolveGradeReview(await this.#gradeReviewRows(session, true), submission.reviewRef);
+    if (gradeReviewHash(resolved.record) !== submission.preconditionHash) {
+      throw new SecretariaError("SECRETARIA_PRECONDITION_FAILED", "A avaliação mudou depois da preparação; revê e prepara novamente.", 409);
+    }
+    if (gradeReviewAction(resolved.record) !== "SUBMIT_REVIEW") {
+      throw new SecretariaError("SECRETARIA_COMMAND_STATE_INVALID", "A revisão de nota não pode ser submetida no estado atual.", 409);
+    }
+    const path = `/netpa/ajax/listapedidosrevisaonotasaluno/pedidosrevisao/${encodeURIComponent(resolved.id)}`;
+    const result = await this.#request(path, {
+      method: "PUT",
+      headers: {
+        ...this.#headers(session, true),
+        "Content-Type": "application/json",
+        Referer: new URL("/netpa/page?stage=ListaPedidosRevisaoNotasAluno", this.#baseUrl).toString(),
+      },
+      body: JSON.stringify({ id: resolved.id, justificacaoPedidoTemp: submission.justification }),
+    });
+    mergeSetCookies(session.cookies, result.response.headers);
+    if (authFailure(result.text)) throw new SecretariaError("SECRETARIA_REAUTH_REQUIRED", "A sessão da Secretaria expirou.", 409, true, "reauthenticate");
+    if (result.response.status >= 400) throw new SecretariaError("SECRETARIA_UNAVAILABLE", "A Secretaria rejeitou a submissão da revisão de nota.", 503, true);
+    let response: { success?: unknown };
+    try {
+      response = JSON.parse(result.text) as { success?: unknown };
+    } catch (error) {
+      throw new SecretariaError("SECRETARIA_COMMAND_OUTCOME_UNKNOWN", "A Secretaria devolveu uma resposta ambígua à revisão de nota.", 502, true, "none", { cause: error });
+    }
+    if (response.success !== true) throw new SecretariaError("SECRETARIA_VALIDATION_FAILED", "A Secretaria recusou a revisão de nota.", 422);
+    const verified = await this.verifyGradeReview(session, submission.reviewRef);
+    if (!verified) throw new SecretariaError("SECRETARIA_COMMAND_OUTCOME_UNKNOWN", "A Secretaria aceitou o pedido, mas o novo estado ainda não foi confirmado na leitura oficial.", 502, true);
     return verified;
   }
 

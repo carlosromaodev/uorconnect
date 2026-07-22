@@ -20,6 +20,7 @@ function testGateway() {
     maxResponseBytes: 1_000_000,
     paymentReferenceCandidates: (value) => [`scr_${Buffer.from(JSON.stringify(value)).toString("base64url").padEnd(43, "x").slice(0, 43)}`],
     examRegistrationReferenceCandidates: (id) => [`ser_${Buffer.from(id).toString("base64url").padEnd(43, "x").slice(0, 43)}`],
+    gradeReviewReferenceCandidates: (id) => [`sgr_${Buffer.from(id).toString("base64url").padEnd(43, "x").slice(0, 43)}`],
   });
 }
 
@@ -252,5 +253,85 @@ describe("NetpaSecretariaGateway exam registration contracts", () => {
     const result = await gateway.cancelExamRegistration(session, prepared);
     expect(new URLSearchParams(cancellationBody).get("id")).toBe("upstream-registration-1");
     expect(result.items[0]).toEqual({ outcome: "EXAM_REGISTRATION_CANCELLED", registrationRef });
+  });
+});
+
+describe("NetpaSecretariaGateway grade review contracts", () => {
+  it("expõe referência opaca e só conclui a revisão após releitura oficial", async () => {
+    const page = `<html><body><script>
+      function efectuarPedidoRevisaoNota(){ return true; }
+      const store = { autoSync: true, url: 'ajax/listapedidosrevisaonotasaluno/pedidosrevisao', fields: [{name: 'justificacaoPedidoTemp'}] };
+      function submitReview(){ if (Ext.get('justificacaoPedirRevisao').dom.value.length > 16000) return false; record.set('justificacaoPedidoTemp', Ext.get('justificacaoPedirRevisao').dom.value); }
+    </script></body></html>`;
+    const upstreamId = "grade-review-upstream-1";
+    let submitted = false;
+    let submittedBody: Record<string, unknown> | null = null;
+    const row = () => ({
+      id: upstreamId,
+      anoLectivoPeriodoCalc: "2025-26",
+      descDiscipCalc: "Unidade Curricular de Teste",
+      descEpocaCalc: "Avaliação de Teste",
+      descEstadoCalc: submitted ? "Em Validação" : "Aguarda pedido de revisão",
+      numberPedidoCalc: submitted ? "TEST-001" : "",
+      accaoCalc: submitted ? "" : `<a href="javascript:efectuarPedidoRevisaoNota()">Pedir revisão</a>`,
+      justificacaoPedidoTemp: "internal-only",
+      justificacaoReapreciacaoTemp: "internal-only",
+    });
+    vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request, init: RequestInit = {}) => {
+      const url = new URL(typeof input === "string" || input instanceof URL ? input.toString() : input.url);
+      if (url.pathname === "/netpa/page") return new Response(page, { status: 200 });
+      if (url.pathname === "/netpa/ajax/listapedidosrevisaonotasaluno/pedidosrevisao") {
+        return new Response(JSON.stringify({ success: true, result: [row()], total: 1 }), { status: 200, headers: { "content-type": "application/json" } });
+      }
+      if (url.pathname.endsWith(`/${upstreamId}`) && init.method === "PUT") {
+        submittedBody = JSON.parse(String(init.body ?? "{}")) as Record<string, unknown>;
+        submitted = true;
+        return new Response(JSON.stringify({ success: true, result: row() }), { status: 200, headers: { "content-type": "application/json" } });
+      }
+      return new Response("not found", { status: 404 });
+    }));
+
+    const gateway = testGateway();
+    const dataset = await gateway.getDataset(session, "process.gradeReviews");
+    const reviewRef = String(dataset.items[0].reviewRef);
+    expect(reviewRef).toMatch(/^sgr_[A-Za-z0-9_-]{43}$/);
+    expect(dataset.items[0]).toMatchObject({ availableAction: "SUBMIT_REVIEW", canSubmitReview: true });
+    expect(JSON.stringify(dataset)).not.toContain(upstreamId);
+    expect(JSON.stringify(dataset)).not.toContain("justificacaoPedidoTemp");
+    expect(JSON.stringify(dataset)).not.toContain("efectuarPedidoRevisaoNota");
+
+    const prepared = await gateway.prepareGradeReview(session, reviewRef, "  Justificação objetiva para revisão.  ");
+    expect(prepared.justification).toBe("Justificação objetiva para revisão.");
+    const result = await gateway.submitGradeReview(session, prepared);
+    expect(submittedBody).toEqual({ id: upstreamId, justificacaoPedidoTemp: "Justificação objetiva para revisão." });
+    expect(result.items[0]).toEqual({ outcome: "GRADE_REVIEW_SUBMITTED", reviewRef, state: "Em Validação", requestNumber: "TEST-001" });
+  });
+
+  it("falha fechado quando a linha ainda exige pedido de cópia de prova", async () => {
+    const page = `<html><body><script>
+      const store = { autoSync: true, url: 'ajax/listapedidosrevisaonotasaluno/pedidosrevisao', fields: [{name: 'justificacaoPedidoTemp'}] };
+      function submitReview(){ if (Ext.get('justificacaoPedirRevisao').dom.value.length > 16000) return false; record.set('justificacaoPedidoTemp', Ext.get('justificacaoPedirRevisao').dom.value); }
+    </script></body></html>`;
+    let mutationCount = 0;
+    vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request, init: RequestInit = {}) => {
+      const url = new URL(typeof input === "string" || input instanceof URL ? input.toString() : input.url);
+      if (url.pathname === "/netpa/page") return new Response(page, { status: 200 });
+      if (url.pathname === "/netpa/ajax/listapedidosrevisaonotasaluno/pedidosrevisao") {
+        return new Response(JSON.stringify({
+          success: true,
+          result: [{ id: "proof-first", descEstadoCalc: "-", accaoCalc: `<a href="javascript:efectuarPedidoCopiaProva()">Pedir prova</a>` }],
+          total: 1,
+        }), { status: 200, headers: { "content-type": "application/json" } });
+      }
+      if (init.method === "PUT") mutationCount += 1;
+      return new Response("not found", { status: 404 });
+    }));
+
+    const gateway = testGateway();
+    const dataset = await gateway.getDataset(session, "process.gradeReviews");
+    expect(dataset.items[0]).toMatchObject({ availableAction: "REQUEST_PROOF_COPY", canSubmitReview: false });
+    await expect(gateway.prepareGradeReview(session, String(dataset.items[0].reviewRef), "Justificação"))
+      .rejects.toMatchObject({ code: "SECRETARIA_COMMAND_STATE_INVALID" });
+    expect(mutationCount).toBe(0);
   });
 });
