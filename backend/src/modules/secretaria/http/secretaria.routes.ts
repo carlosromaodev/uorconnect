@@ -7,6 +7,7 @@ import type { Env } from "../../../config/env";
 import { authGuard } from "../../auth/http/auth.middleware";
 import { SecretariaError, isSecretariaError } from "../domain/errors";
 import type { SecretariaApplication } from "../application/secretaria.application";
+import { escapeHtml, renderPdfFromHtml } from "../../reports/http/pdf-report.utils";
 
 const metaSchema = z.object({
   traceId: z.string(),
@@ -40,6 +41,7 @@ const paymentReferenceBodySchema = z.object({
   chargeRefs: z.array(z.string().regex(/^scr_[A-Za-z0-9_-]{43}$/)).min(1).max(20),
 });
 const paymentReferenceParamsSchema = z.object({ chargeRef: z.string().regex(/^scr_[A-Za-z0-9_-]{43}$/) });
+const receiptParamsSchema = z.object({ receiptRef: z.string().regex(/^srr_[A-Za-z0-9_-]{43}$/) });
 const contactDetailsBodySchema = z.object({
   email: z.string().trim().email().max(254).optional(),
   phone: z.string().trim().max(40).regex(/^[+0-9() .-]*$/).nullable().optional(),
@@ -127,6 +129,20 @@ async function normalizedPhoto(dataUrl: string) {
   } finally {
     source.fill(0);
   }
+}
+
+function receiptHtml(fields: Record<string, string | boolean | null>, observedAt: string) {
+  const labels: Record<string, string> = {
+    description: "Descrição", dueDate: "Vencimento", invoiced: "Faturado", paid: "Pago",
+    itemType: "Tipo", quantity: "Quantidade", amount: "Valor", surcharge: "Acréscimo",
+    discount: "Desconto", vat: "IVA", debtAmount: "Dívida", modality: "Modalidade",
+    voided: "Anulado", installment: "Prestação", notes: "Observações",
+  };
+  const rows = Object.entries(fields).map(([key, value]) => `<tr><th>${escapeHtml(labels[key] ?? key)}</th><td>${escapeHtml(typeof value === "boolean" ? (value ? "Sim" : "Não") : value ?? "—")}</td></tr>`).join("");
+  return `<!doctype html><html lang="pt"><head><meta charset="utf-8"><style>
+    @page{size:A4;margin:18mm}body{font:14px Arial,sans-serif;color:#17212b}h1{font-size:22px;margin:0 0 6px}.note{color:#5f6f7d;margin:0 0 24px}table{width:100%;border-collapse:collapse}th,td{padding:9px 10px;border:1px solid #d7dee5;text-align:left}th{width:35%;background:#f4f7f9}.footer{margin-top:22px;font-size:11px;color:#657786}</style></head><body>
+    <h1>Extrato de pagamento</h1><p class="note">Dados consultados na Secretaria UOR. Documento informativo; não substitui recibo fiscal.</p><table>${rows}</table>
+    <p class="footer">Consulta realizada em ${escapeHtml(observedAt)}.</p></body></html>`;
 }
 
 async function defaultFindEligibleStudent(studentId: number) {
@@ -266,7 +282,40 @@ export async function secretariaRoutes(app: FastifyInstance, opts: SecretariaRou
     protectedApp.get("/finance/overview", { schema: { tags: ["Secretaria - Finanças"], response: { 200: envelopeSchema, ...errorResponses } } }, (request, reply) => dataset(request, reply, "finance.overview"));
     protectedApp.get("/finance/charges", { schema: { tags: ["Secretaria - Finanças"], response: { 200: envelopeSchema, ...errorResponses } } }, (request, reply) => dataset(request, reply, "finance.charges"));
     protectedApp.get("/finance/payment-references", { schema: { tags: ["Secretaria - Finanças"], response: { 200: envelopeSchema, ...errorResponses } } }, (request, reply) => dataset(request, reply, "finance.references"));
+    protectedApp.get("/finance/tuition", { schema: { tags: ["Secretaria - Finanças"], response: { 200: envelopeSchema, ...errorResponses } } }, (request, reply) => dataset(request, reply, "finance.tuition"));
+    protectedApp.get("/finance/debts", { schema: { tags: ["Secretaria - Finanças"], response: { 200: envelopeSchema, ...errorResponses } } }, (request, reply) => dataset(request, reply, "finance.debts"));
     protectedApp.get("/finance/payments", { schema: { tags: ["Secretaria - Finanças"], response: { 200: envelopeSchema, ...errorResponses } } }, (request, reply) => dataset(request, reply, "finance.payments"));
+    protectedApp.get("/finance/receipts", { schema: { tags: ["Secretaria - Finanças"], response: { 200: envelopeSchema, ...errorResponses } } }, (request, reply) => dataset(request, reply, "finance.receipts"));
+    protectedApp.get("/finance/receipts/:receiptRef", {
+      schema: { tags: ["Secretaria - Finanças"], params: receiptParamsSchema, response: { 200: envelopeSchema, ...errorResponses } },
+    }, async (request, reply) => {
+      try {
+        const { receiptRef } = request.params as z.infer<typeof receiptParamsSchema>;
+        const receipt = await opts.application.getReceipt(request.student!, receiptRef);
+        return reply.send({ data: receipt, meta: meta(request, { coverage: "live", observedAt: receipt.observedAt }) });
+      } catch (error) { return sendError(request, reply, error); }
+    });
+    protectedApp.get("/finance/receipts/:receiptRef/content", {
+      schema: { tags: ["Secretaria - Finanças"], params: receiptParamsSchema, response: { ...errorResponses } },
+    }, async (request, reply) => {
+      try {
+        const { receiptRef } = request.params as z.infer<typeof receiptParamsSchema>;
+        const receipt = await opts.application.getReceipt(request.student!, receiptRef);
+        const pdf = await renderPdfFromHtml(receiptHtml(receipt.fields, receipt.observedAt), { footerLabel: "UOR Estudante · Secretaria" });
+        const etag = `"${createHash("sha256").update(pdf).digest("hex")}"`;
+        const clear = () => pdf.fill(0);
+        reply.raw.once("finish", clear);
+        reply.raw.once("close", clear);
+        reply.header("ETag", etag);
+        reply.header("Content-Type", "application/pdf");
+        reply.header("Content-Length", String(pdf.length));
+        reply.header("Content-Disposition", 'attachment; filename="extrato-pagamento-secretaria.pdf"');
+        reply.header("X-Document-Status", "informational-not-fiscal-receipt");
+        reply.header("X-Content-Type-Options", "nosniff");
+        if (request.headers["if-none-match"] === etag) return reply.status(304).send();
+        return reply.send(pdf);
+      } catch (error) { return sendError(request, reply, error); }
+    });
     protectedApp.get("/finance/payment-references/:chargeRef/document", {
       schema: { tags: ["Secretaria - Finanças"], params: paymentReferenceParamsSchema, response: { ...errorResponses } },
     }, async (request, reply) => {
@@ -311,11 +360,6 @@ export async function secretariaRoutes(app: FastifyInstance, opts: SecretariaRou
         return reply.send({ data: item, meta: meta(request, { coverage: result.data.coverage, stale: result.stale, snapshotVersion: result.snapshotVersion, observedAt: result.data.observedAt }) });
       } catch (error) { return sendError(request, reply, error); }
     });
-
-    const disabledReads = ["/finance/receipts", "/finance/receipts/:id/content"];
-    for (const url of disabledReads) {
-      protectedApp.get(url, { schema: { tags: ["Secretaria - Capabilities"], response: { ...errorResponses } } }, async (request, reply) => sendError(request, reply, new SecretariaError("SECRETARIA_CAPABILITY_DISABLED", "Esta leitura aguarda confirmação do contrato upstream.", 409)));
-    }
 
     const disabledMutations: Array<{ method: "POST" | "PUT" | "PATCH" | "DELETE"; url: string }> = [
       { method: "DELETE", url: "/me/photo" },

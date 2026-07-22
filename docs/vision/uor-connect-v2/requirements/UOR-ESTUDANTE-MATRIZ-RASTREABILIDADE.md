@@ -5,7 +5,7 @@ document_id: UOR-EST-TRACE-001
 status: approved
 owner: Engenharia UOR Estudante
 authority: informative
-version: 1.6
+version: 1.7
 last_reviewed: 2026-07-22
 approved_by: Product Owner
 approved_at: 2026-07-21
@@ -24,13 +24,13 @@ depends_on:
 - Evidência: `static`, `automated_test`, `integration_test`, `runtime_observed`, `production_observed`.
 - `implemented` significa código identificado sem verificação suficiente.
 - Verificação executada em 2026-07-21 no ambiente `local-test`, por `Codex`, sobre o commit de base `669aed0`.
-- Suite backend completa nesta árvore: 109 ficheiros/448 testes passaram de 110 ficheiros/451 testes; 3 testes preexistentes de referrals em `passport-game-rules.spec.ts` falharam porque o mock não expõe `prisma.student.findFirst`. Suite frontend anteriormente verificada: 3 ficheiros/6 testes.
+- Suite backend completa nesta árvore: 109 ficheiros/449 testes passaram de 110 ficheiros/452 testes; 3 testes preexistentes de referrals em `passport-game-rules.spec.ts` falharam porque o mock não expõe `prisma.student.findFirst`. Suite frontend anteriormente verificada: 3 ficheiros/6 testes.
 - API Secretaria verificada adicionalmente nesta entrega: contratos unitários/de rota/persistência, build de produção e ensaio vivo integral em dois perfis autorizados para identidade, contactos, fotografia, consentimentos, 10 datasets académicos, finanças, sete processos e diretório de cursos. O ensaio encontrou e eliminou exposição de identidade interna em faltas, candidaturas e ações HTML.
-- O lint TypeScript global e o build de produção estão aprovados nesta árvore.
+- O build de produção está aprovado. O lint TypeScript não aponta erro no módulo Secretaria, mas permanece globalmente vermelho por três fixtures antigas fora deste âmbito (`delete-incomplete-student`, `odin-ai.service` e `http-errors`).
 - Leitura viva da fotografia foi repetida pelo gateway HTTP: assinatura binária PNG, 959 bytes e precondição consistente. O multipart JPEG foi capturado com POST bloqueado; nenhuma fotografia foi alterada.
 - As duas contas autorizadas estavam fora do período de inscrição, com listas vazias. O cancelamento foi capturado como POST form-urlencoded de campo único com a requisição bloqueada; nenhum registo foi alterado e o contrato de criação permanece desconhecido.
 - O contrato de contactos foi observado no navegador e repetido pelo gateway HTTP com submissão no-op: o portal devolveu `parameterErrors`/`success=false` por campos legados obrigatórios incompletos, sem criar pedido ou alterar valores.
-- Uma prova controlada gerou referência oficial na conta de teste e observou `stepresultadopagamento`/sucesso; não houve checkout, cartão ou processamento de pagamento. A chamada não passou ainda pelo motor persistente implantado, portanto RF-EST-093 permanece `implemented`, não `verified`.
+- Um terceiro perfil autorizado confirmou ao vivo extrato de propinas, dívidas, histórico, comprovativos imprimíveis e cobranças de recurso. Uma prova controlada gerou uma referência, reconciliou-a e extraiu o PDF oficial; não houve checkout, cartão ou processamento de pagamento.
 - O fluxo de revisão de nota foi mapeado no browser autorizado: referência da linha, estados oficiais, ações por fase, limite de 16000 caracteres e `PUT application/json` com `id` e `justificacaoPedidoTemp`. Uma confirmação de “pedido de cópia de prova” alcançou o ambiente de teste antes de o `autoSync`/`PUT` ser identificado, deixando uma linha em `Aguarda prova`; o portal não expôs cancelamento. Todas as sondas mutáveis posteriores foram bloqueadas no cliente.
 
 ## Requisitos funcionais
@@ -104,9 +104,9 @@ depends_on:
 | [ ] | RF-EST-065 | partial | static | convites/equipas de Eventos não cumprem pedido académico coletivo |
 | [ ] | RF-EST-066 | planned | — | retirada de pedido coletivo ausente |
 | [ ] | RF-EST-067 | implemented | runtime_observed | `/finance/overview`; dados oficiais observados |
-| [ ] | RF-EST-068 | implemented | runtime_observed | `/finance/charges`; normalização inicial usa contrato financeiro confirmado |
+| [x] | RF-EST-068 | verified | runtime_observed | `/finance/tuition`, `/finance/debts` e `/finance/charges`; contratos vivos e testes de parser aprovados |
 | [ ] | RF-EST-069 | implemented | runtime_observed | referências existentes e `chargeRef` opaco entregues em leitura |
-| [ ] | RF-EST-070 | implemented | runtime_observed | `/finance/payments`; um registo observado, sem processamento de dinheiro |
+| [x] | RF-EST-070 | verified | runtime_observed | `/finance/payments`; linhas pagas, datas e saldos confirmados no extrato vivo |
 | [ ] | RF-EST-071 | planned | — | partilha de referência ausente |
 | [ ] | RF-EST-072 | planned | — | responsável financeiro ausente |
 | [ ] | RF-EST-073 | planned | — | autorização contextual genérica ausente |
@@ -129,11 +129,11 @@ depends_on:
 | [ ] | RF-EST-090 | implemented | integration_test | cópia de prova, revisão e reapreciação usam `reviewRef` opaco, comando de risco alto, idempotência, confirmação, precondição e reconciliação; cópia foi observada ao vivo e as demais dependem de estado elegível |
 | [ ] | RF-EST-091 | planned | — | candidatura permanece com flag/contrato desativados |
 | [ ] | RF-EST-092 | planned | — | escritas de processos permanecem com flags/contratos desativados |
-| [ ] | RF-EST-093 | implemented | runtime_observed | wizard `REFERENCIAS_MB` confirmado ao sucesso; comando persistente testado em SQLite, concorrência PostgreSQL/piloto TLS pendentes |
+| [x] | RF-EST-093 | verified | runtime_observed | wizard `REFERENCIAS_MB`, reconciliação e extração PDF confirmados num recurso elegível; sem pagamento |
 | [ ] | RF-EST-094 | deprecated | static | reservado: payment intent/checkout não pertence à API v1 |
-| [ ] | RF-EST-095 | planned | — | contrato de recibos não confirmado |
+| [x] | RF-EST-095 | verified | runtime_observed | índice, detalhe por `receiptRef` opaco e PDF informativo verificados; `officialFiscalReceipt=false` explícito |
 | [x] | RF-EST-096 | verified | runtime_observed | `/directory/courses` normalizado e observado nos dois perfis autorizados; 12 registos por página no contrato vivo |
-| [ ] | RF-EST-097 | implemented | integration_test | proxy PDF valida assinatura, tamanho, ownership por `chargeRef`, ETag e limpeza de buffer; documento vivo não estava disponível na releitura final |
+| [x] | RF-EST-097 | verified | runtime_observed | proxy PDF validou assinatura, ownership por `chargeRef`, ETag e documento vivo de recurso |
 | [ ] | RF-EST-098 | implemented | integration_test | endpoint e resposta oficial mapeados; comando durável usa a flag de contactos, confirmação e precondição; execução real depende de pedido pendente |
 
 ## Requisitos não funcionais

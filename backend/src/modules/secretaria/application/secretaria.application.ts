@@ -13,6 +13,7 @@ import type {
   SecretariaDataset,
   SecretariaDocument,
   SecretariaProfile,
+  SecretariaReceiptDetail,
   SecretariaPhoto,
   SecretariaPhotoInput,
   SecretariaSession,
@@ -38,6 +39,7 @@ export interface SecretariaApplication {
   getConsents(student: SecretariaStudentIdentity): Promise<SecretariaDataset>;
   getDataset(student: SecretariaStudentIdentity, domain: string): Promise<{ data: SecretariaDataset; stale: boolean; snapshotVersion: number | null }>;
   getPaymentReferenceDocument(student: SecretariaStudentIdentity, chargeRef: string): Promise<SecretariaDocument>;
+  getReceipt(student: SecretariaStudentIdentity, receiptRef: string): Promise<SecretariaReceiptDetail>;
   startSync(student: SecretariaStudentIdentity, domains?: string[]): Promise<SecretariaSyncView>;
   getSync(student: SecretariaStudentIdentity, runId: string): Promise<SecretariaSyncView>;
   preparePaymentReference(student: SecretariaStudentIdentity, chargeRefs: string[], idempotencyKey: string): Promise<SecretariaCommandView>;
@@ -363,6 +365,13 @@ export class LiveSecretariaApplication implements SecretariaApplication {
       throw new SecretariaError("SECRETARIA_REQUEST_INVALID", "A referência financeira é inválida.", 422);
     }
     return this.#withSession(student, (session) => this.gateway.getPaymentReferenceDocument(session, chargeRef));
+  }
+
+  async getReceipt(student: SecretariaStudentIdentity, receiptRef: string) {
+    if (!/^srr_[A-Za-z0-9_-]{43}$/.test(receiptRef)) {
+      throw new SecretariaError("SECRETARIA_REQUEST_INVALID", "A referência do comprovativo é inválida.", 422);
+    }
+    return this.#withSession(student, (session) => this.gateway.getReceipt(session, receiptRef));
   }
 
   async startSync(student: SecretariaStudentIdentity, requested?: string[]) {
@@ -1061,15 +1070,13 @@ export class LiveSecretariaApplication implements SecretariaApplication {
       { key: "photo", description: "Fotografia institucional por proxy seguro" },
       { key: "consents", description: "Consentimentos disponíveis para o utilizador" },
       ...Object.entries(SECRETARIA_DATASETS)
-        .filter(([key]) => key !== "finance.payments")
         .map(([key, contract]) => ({ key, description: contract.description })),
       { key: "finance.referenceDocument", description: "Documento PDF oficial de uma referência de pagamento" },
     ];
     const writes = ["consents", "examRegistration.create", "application", "advancedTraining", "internship", "activity", "languageCompetency"];
     return [
       ...reads.map((item) => ({ ...item, mode: "read" as const, status: "available" as const })),
-      { key: "finance.receipts", description: "O contrato de recibos ainda não foi confirmado.", mode: "read" as const, status: "unsupported" as const },
-      { key: "finance.payments", description: "O portal não expõe um histórico de pagamentos verificável neste perfil.", mode: "read" as const, status: "unsupported" as const },
+      { key: "finance.receiptDetail", description: "Detalhe imprimível de um item pago, com referência opaca.", mode: "read" as const, status: "available" as const },
       {
         key: "paymentReference",
         description: this.commandOptions.paymentReferenceEnabled
@@ -1142,6 +1149,7 @@ export class DisabledSecretariaApplication implements SecretariaApplication {
   getConsents(): never { return this.#disabled(); }
   getDataset(): never { return this.#disabled(); }
   getPaymentReferenceDocument(): never { return this.#disabled(); }
+  getReceipt(): never { return this.#disabled(); }
   startSync(): never { return this.#disabled(); }
   getSync(): never { return this.#disabled(); }
   preparePaymentReference(): never { return this.#disabled(); }

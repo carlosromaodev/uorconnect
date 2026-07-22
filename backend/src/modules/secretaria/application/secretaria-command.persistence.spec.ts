@@ -95,6 +95,7 @@ describe("Secretaria command persistence", () => {
       getConsents: vi.fn(),
       getDataset: vi.fn(),
       getPaymentReferenceDocument: vi.fn(),
+      getReceipt: vi.fn(),
       prepareContactDetails: vi.fn(async (_session, patch) => ({ patch, preconditionHash: "contact-precondition-hash" })),
       updateContactDetails: vi.fn(async () => ({ items: [{ outcome: "CHANGE_REQUEST_SUBMITTED", changedFields: ["mobile"] }], observedAt: "2026-07-21T20:02:00.000Z" })),
       prepareContactDetailsCancellation: vi.fn(async () => ({ preconditionHash: "contact-precondition-hash" })),

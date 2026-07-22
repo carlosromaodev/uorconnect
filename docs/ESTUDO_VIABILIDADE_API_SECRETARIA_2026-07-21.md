@@ -5,7 +5,7 @@ document_id: UOR-SECRETARIA-FEASIBILITY
 status: approved
 owner: Integrações UOR Estudante
 authority: informative
-version: 1.0
+version: 1.1
 last_reviewed: 2026-07-21
 depends_on:
   - vision/uor-connect-v2/SDD-002-UOR-ESTUDANTE.md
@@ -33,6 +33,8 @@ O maior bloqueador de produção é de segurança: o endereço atualmente usado 
 ## 2. Método e limites da análise
 
 Foi usada a conta de teste fornecida para autenticação e navegação somente de leitura. Não foram submetidos pedidos, candidaturas, inscrições, alterações de dados, pagamentos, fotografia ou senha.
+
+Atualização de 2026-07-22: depois do diagnóstico inicial, contas adicionais autorizadas permitiram validar escrita controlada. Foi gerada apenas uma referência de pagamento para uma cobrança de recurso e extraído o respetivo PDF; nenhum pagamento foi iniciado ou liquidado. Também foram confirmados os contratos de propinas, valores em dívida, histórico de pagamentos e detalhes imprimíveis de itens pagos.
 
 O login respondeu com HTTP 200 e apresentou a área privada e respetivo menu. Foram identificados 29 destinos internos. Contudo, o sistema legado devolveu a mesma página de validação de navegador ao coletor HTTP para os diferentes destinos. Portanto:
 
@@ -67,7 +69,7 @@ O login respondeu com HTTP 200 e apresentou a área privada e respetivo menu. Fo
 | Atividades | Atividades extracurriculares | `AtividadesExtraCurricularesAluno` | Médio, leitura |
 | Competências | Competências linguísticas | `CompetenciasLinguisticasAluno` | Médio, leitura |
 | Financeiro | Resumo financeiro | `SituacaoFinanceira` | Alto, leitura; sensibilidade elevada |
-| Financeiro | Propinas, dívidas e pagamentos | `stepseleccionaritemsconta` / `StepSeleccionarItemsConta` | Alto, leitura; pagamento não confirmado |
+| Financeiro | Propinas, dívidas, pagamentos e comprovativos | `SituacaoFinanceira`, `DIFTasks` e `StepSeleccionarItemsConta` | Alto, leitura e geração de referência confirmadas; liquidação fora da API |
 | Diretórios | Cursos | `CursosDiretorioPublico` | Alto, leitura e cacheável |
 | Diretórios | Unidades curriculares | menu confirmado; destino a validar | Alto, leitura e cacheável |
 | Diretórios | Horários | menu confirmado; destino a validar | Alto, leitura |

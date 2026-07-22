@@ -9,6 +9,7 @@ import type {
   SecretariaPaymentReferenceResult,
   SecretariaPhoto,
   SecretariaProfile,
+  SecretariaReceiptDetail,
   SecretariaSession,
 } from "./models";
 
@@ -24,6 +25,7 @@ export interface SecretariaGateway {
   getConsents(session: SecretariaSession): Promise<SecretariaDataset>;
   getDataset(session: SecretariaSession, domain: string): Promise<SecretariaDataset>;
   getPaymentReferenceDocument(session: SecretariaSession, chargeRef: string): Promise<SecretariaDocument>;
+  getReceipt(session: SecretariaSession, receiptRef: string): Promise<SecretariaReceiptDetail>;
   prepareContactDetails(session: SecretariaSession, patch: SecretariaContactDetailsPatch): Promise<{ patch: SecretariaContactDetailsPatch; preconditionHash: string }>;
   updateContactDetails(session: SecretariaSession, patch: SecretariaContactDetailsPatch, preconditionHash: string): Promise<SecretariaCommandResult>;
   prepareContactDetailsCancellation(session: SecretariaSession): Promise<{ preconditionHash: string }>;

@@ -13,6 +13,7 @@ export function createSecretariaApplication(env: Env, override?: SecretariaAppli
     timeoutMs: env.SECRETARIA_FETCH_TIMEOUT_MS,
     maxResponseBytes: env.SECRETARIA_MAX_RESPONSE_BYTES,
     paymentReferenceCandidates: (selection) => keyring.opaqueReferenceCandidates([selection.id, selection.idFinanceira, selection.inputId]),
+    receiptReferenceCandidates: (value) => keyring.opaqueReferenceCandidates(value, { purpose: "finance-receipt-ref", prefix: "srr" }),
     examRegistrationReferenceCandidates: (id) => keyring.opaqueReferenceCandidates(id, { purpose: "exam-registration-ref", prefix: "ser" }),
     gradeReviewReferenceCandidates: (id) => keyring.opaqueReferenceCandidates(id, { purpose: "grade-review-ref", prefix: "sgr" }),
   });

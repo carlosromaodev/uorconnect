@@ -14,6 +14,7 @@ import type {
   SecretariaPaymentSelection,
   SecretariaPhoto,
   SecretariaProfile,
+  SecretariaReceiptDetail,
   SecretariaSession,
 } from "../domain/models";
 
@@ -43,7 +44,10 @@ export const SECRETARIA_DATASETS: Record<string, DatasetContract> = {
   "finance.overview": { stage: "stepseleccionaritemsconta", path: "/netpa/ajax/stepseleccionaritemsconta/pagamentos", description: "Situação financeira" },
   "finance.charges": { stage: "stepseleccionaritemsconta", path: "/netpa/ajax/stepseleccionaritemsconta/pagamentos", description: "Cobranças" },
   "finance.references": { stage: "stepseleccionaritemsconta", path: "/netpa/ajax/stepseleccionaritemsconta/pagamentos", description: "Referências oficiais" },
-  "finance.payments": { stage: "stepseleccionaritemsconta", path: "/netpa/ajax/stepseleccionaritemsconta/pagamentos", description: "Pagamentos registados" },
+  "finance.tuition": { stage: "DIFTasks", path: "/netpa/DIFTasks?_PR_=1&_AP_=9&_MD_=1&_SR_=173&_ST_=1", description: "Extrato de propinas" },
+  "finance.debts": { stage: "DIFTasks", path: "/netpa/DIFTasks?_PR_=1&_AP_=9&_MD_=1&_SR_=176&_ST_=1", description: "Valores em dívida" },
+  "finance.payments": { stage: "DIFTasks", path: "/netpa/DIFTasks?_PR_=1&_AP_=9&_MD_=1&_SR_=173&_ST_=1", description: "Histórico de pagamentos" },
+  "finance.receipts": { stage: "DIFTasks", path: "/netpa/DIFTasks?_PR_=1&_AP_=9&_MD_=1&_SR_=173&_ST_=1", description: "Comprovativos imprimíveis de itens pagos" },
   "process.examRegistrations": { stage: "ConsultaInscricaoEpocas", path: "/netpa/ajax/consultainscricaoepocas/listaInscricoesEpocas", description: "Inscrições em épocas" },
   "process.gradeReviews": { stage: "ListaPedidosRevisaoNotasAluno", path: "/netpa/ajax/listapedidosrevisaonotasaluno/pedidosrevisao", description: "Pedidos de revisão" },
   "process.applications": { stage: "CandidaturasExistentes", path: "/netpa/ajax/candidaturasexistentes/historicoCandidaturas", description: "Candidaturas" },
@@ -59,6 +63,14 @@ export const SECRETARIA_DATASETS: Record<string, DatasetContract> = {
 const USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36";
 
 function decodeHtml(value: string): string {
+  const namedEntities: Record<string, string> = {
+    aacute: "á", agrave: "à", acirc: "â", atilde: "ã", auml: "ä",
+    eacute: "é", egrave: "è", ecirc: "ê", euml: "ë",
+    iacute: "í", igrave: "ì", icirc: "î", iuml: "ï",
+    oacute: "ó", ograve: "ò", ocirc: "ô", otilde: "õ", ouml: "ö",
+    uacute: "ú", ugrave: "ù", ucirc: "û", uuml: "ü", ccedil: "ç",
+    ordm: "º", ordf: "ª", ndash: "–", mdash: "—", euro: "€",
+  };
   return value
     .replace(/&#x([0-9a-f]+);/gi, (_match, code: string) => String.fromCodePoint(Number.parseInt(code, 16)))
     .replace(/&#(\d+);/g, (_match, code: string) => String.fromCodePoint(Number.parseInt(code, 10)))
@@ -69,6 +81,11 @@ function decodeHtml(value: string): string {
     .replace(/&lt;/gi, "<")
     .replace(/&gt;/gi, ">")
     .replace(/&#39;/gi, "'")
+    .replace(/&([a-z]+);/gi, (entity, name: string) => {
+      const decoded = namedEntities[name.toLowerCase()];
+      if (!decoded) return entity;
+      return name[0] === name[0].toUpperCase() ? decoded.toUpperCase() : decoded;
+    })
     .replace(/<[^>]+>/g, " ")
     .replace(/\s+/g, " ")
     .trim();
@@ -371,12 +388,15 @@ function paymentDocumentPath(record: Record<string, unknown>) {
 }
 
 type PaymentReferenceCandidates = (selection: SecretariaPaymentSelection) => string[];
+type ReceiptReferenceCandidates = (value: { item: string; academicYear: string | null }) => string[];
 type ExamRegistrationReferenceCandidates = (id: string) => string[];
 type GradeReviewReferenceCandidates = (id: string) => string[];
 
 function normalizePaymentRecord(record: Record<string, unknown>, paymentReferenceCandidates: PaymentReferenceCandidates): Record<string, unknown> {
   const normalized = normalizeValue(record) as Record<string, unknown>;
-  const paymentReference = decodeHtml(String(record.referenciaMBCalc ?? record.REFERENCIA_MB_CALC ?? record.referencia ?? record.REFERENCIA ?? ""));
+  const paymentReference = [record.referenciaMBCalc, record.REFERENCIA_MB_CALC, record.referencia, record.REFERENCIA]
+    .map((value) => decodeHtml(String(value ?? "")).trim())
+    .find((value) => value.length > 0 && value !== "-") ?? "";
   delete normalized.id;
   delete normalized.idNumberConta;
   delete normalized.idItemConta;
@@ -397,6 +417,146 @@ function normalizePaymentPayload(payload: unknown, paymentReferenceCandidates: P
   const items = raw.items
     .map((value) => normalizePaymentRecord(value, paymentReferenceCandidates));
   return { items, total: raw.total };
+}
+
+function isoPortalDate(value: string) {
+  const match = value.match(/^(\d{2})[-/](\d{2})[-/](\d{4})/);
+  return match ? `${match[3]}-${match[2]}-${match[1]}` : value || null;
+}
+
+function numericAmount(value: string) {
+  const normalized = value.replace(/\s*KZ\s*/i, "").replace(/,/g, "").trim();
+  const amount = Number.parseFloat(normalized);
+  return Number.isFinite(amount) ? amount : 0;
+}
+
+function htmlRows(html: string) {
+  type Row = { start: number; cells: string[] };
+  const rows: Array<{ markup: string; cells: string[] }> = [];
+  const rowStack: Row[] = [];
+  const cellStack: Array<{ row: Row; text: string[] }> = [];
+  for (const token of html.matchAll(/<[^>]*>|[^<]+/g)) {
+    const value = token[0];
+    if (/^<tr\b/i.test(value)) {
+      rowStack.push({ start: token.index, cells: [] });
+    } else if (/^<\/tr\b/i.test(value)) {
+      const row = rowStack.pop();
+      if (row) rows.push({ markup: html.slice(row.start, token.index + value.length), cells: row.cells });
+    } else if (/^<t[hd]\b/i.test(value)) {
+      const row = rowStack.at(-1);
+      if (row) cellStack.push({ row, text: [] });
+    } else if (/^<\/t[hd]\b/i.test(value)) {
+      const cell = cellStack.pop();
+      if (cell) cell.row.cells.push(decodeHtml(cell.text.join(" ")));
+    } else if (!value.startsWith("<")) {
+      for (const cell of cellStack) cell.text.push(value);
+    }
+  }
+  return rows;
+}
+
+function selectedAcademicYear(html: string) {
+  const select = [...html.matchAll(/<select\b([^>]*)>([\s\S]*?)<\/select>/gi)]
+    .find((match) => attributes(match[1]).name?.toLowerCase() === "anolectivo");
+  if (!select) return null;
+  const options = [...select[2].matchAll(/<option\b([^>]*)>([\s\S]*?)<\/option>/gi)]
+    .map((option) => ({ attrs: attributes(option[1]), text: decodeHtml(option[2]) }));
+  const selected = options.find((option) => "selected" in option.attrs) ?? options[0];
+  return selected?.text || selected?.attrs.value || null;
+}
+
+function tuitionLedgerFromHtml(html: string, receiptReferenceCandidates: ReceiptReferenceCandidates) {
+  const rows = htmlRows(html);
+  const headers = new Set(rows.flatMap((row) => row.cells.map((cell) => normalizeKey(cell))));
+  if (!["descricao", "dtVencimento", "refMb", "valor", "dtPagamento", "pago", "divida", "multa"].every((header) => headers.has(header))) {
+    throw new SecretariaError("SECRETARIA_UPSTREAM_CHANGED", "O contrato do extrato de propinas mudou.", 502, false, "contact_support");
+  }
+  const academicYear = selectedAcademicYear(html);
+  const items = rows.flatMap(({ markup, cells }) => {
+    const action = markup.match(/Propinas_columnClick\(\s*(['"])(.*?)\1\s*,\s*(['"])info\3[^)]*itemPago=([SN])/i);
+    if (!action || cells.length < 9) return [];
+    const internalItem = decodeHtml(action[2]).trim();
+    if (!internalItem || internalItem.length > 128 || /[\u0000-\u001f\u007f]/.test(internalItem)) return [];
+    const paidAmount = cells[6] ?? "";
+    const debtAmount = cells[7] ?? "";
+    const paymentDate = isoPortalDate(cells[5] ?? "");
+    const paid = action[4].toUpperCase() === "S" || numericAmount(paidAmount) > 0 || Boolean(paymentDate);
+    const debt = numericAmount(debtAmount);
+    const status = paid && debt === 0 ? "PAID" : paid && debt > 0 ? "PARTIAL" : debt > 0 ? "OUTSTANDING" : "PENDING";
+    const receiptRef = paid ? receiptReferenceCandidates({ item: internalItem, academicYear })[0] : null;
+    return [{
+      academicYear,
+      description: cells[1] || null,
+      dueDate: isoPortalDate(cells[2] ?? ""),
+      paymentReference: cells[3] || null,
+      amount: cells[4] || null,
+      paymentDate,
+      paidAmount: paidAmount || null,
+      debtAmount: debtAmount || null,
+      penaltyAmount: cells[8] || null,
+      status,
+      ...(receiptRef ? { receiptRef } : {}),
+    }];
+  });
+  return { items, total: items.length };
+}
+
+function debtLedgerFromHtml(html: string) {
+  const rows = htmlRows(html);
+  const headers = new Set(rows.flatMap((row) => row.cells.map((cell) => normalizeKey(cell))));
+  const headerContract = ["descricao", "tipo", "dtVencimento", "total", "pago", "totalDivida"].every((header) => headers.has(header));
+  const formContract = ["Items_FORM_descricao", "Items_FORM_tipo", "Items_FORM_dataVencimento", "Items_FORM_total", "Items_FORM_totalPago", "Items_FORM_totalDivida"].every((field) => html.includes(field));
+  if (!headerContract && !formContract) {
+    throw new SecretariaError("SECRETARIA_UPSTREAM_CHANGED", "O contrato dos valores em dívida mudou.", 502, false, "contact_support");
+  }
+  const items = rows.flatMap(({ cells }) => {
+    if (cells.length !== 6 || !cells[0] || /^(Descrição|Total\s+Dívida)/i.test(cells[0])) return [];
+    const paid = numericAmount(cells[4]);
+    const debt = numericAmount(cells[5]);
+    if (!paid && !debt && !numericAmount(cells[3])) return [];
+    return [{
+      description: cells[0],
+      type: cells[1] || null,
+      dueDate: isoPortalDate(cells[2] ?? ""),
+      amount: cells[3] || null,
+      paidAmount: cells[4] || null,
+      debtAmount: cells[5] || null,
+      status: debt > 0 && paid > 0 ? "PARTIAL" : debt > 0 ? "OUTSTANDING" : "PAID",
+    }];
+  });
+  return { items, total: items.length };
+}
+
+function receiptFieldsFromHtml(html: string): Record<string, string | boolean | null> {
+  if (!/Detalhe\s+Item\s+Conta/i.test(visibleText(html))) {
+    throw new SecretariaError("SECRETARIA_UPSTREAM_CHANGED", "O contrato do comprovativo de pagamento mudou.", 502, false, "contact_support");
+  }
+  const aliases: Record<string, string> = {
+    descricao: "description", dtVencimento: "dueDate", facturado: "invoiced", pago: "paid",
+    tipoItem: "itemType", quantidade: "quantity", valor: "amount", acrescimo: "surcharge",
+    desconto: "discount", iva: "vat", totalDivida: "debtAmount", modalidade: "modality",
+    anulado: "voided", prestacao: "installment", observacoes: "notes",
+  };
+  const fields: Record<string, string | boolean | null> = {};
+  const pairs = htmlRows(html).filter(({ cells }) => cells.length === 2).map(({ cells }) => cells);
+  for (const match of html.matchAll(/<t[hd]\b[^>]*>([\s\S]*?)<\/t[hd]>\s*<t[hd]\b[^>]*>([\s\S]*?)<\/t[hd]>/gi)) {
+    pairs.push([decodeHtml(match[1]), decodeHtml(match[2])]);
+  }
+  for (const cells of pairs) {
+    const key = normalizeKey(cells[0].replace(/:$/, ""));
+    const target = aliases[key];
+    if (!target) continue;
+    const value = cells[1] || null;
+    fields[target] = /^(invoiced|paid|voided)$/.test(target) && value ? /^sim$/i.test(value) : target === "dueDate" && value ? isoPortalDate(value) : value;
+  }
+  if (fields.paid === undefined) {
+    const paidState = visibleText(html).match(/\bPago\s+(Sim|Não|Nao)\b/i)?.[1];
+    if (paidState) fields.paid = /^sim$/i.test(paidState);
+  }
+  if (!fields.description || fields.paid !== true) {
+    throw new SecretariaError("SECRETARIA_UPSTREAM_CHANGED", "O comprovativo devolvido não identifica inequivocamente um item pago.", 502, false, "contact_support");
+  }
+  return fields;
 }
 
 function examRegistrationId(record: Record<string, unknown>): string | null {
@@ -478,6 +638,7 @@ export class NetpaSecretariaGateway implements SecretariaGateway {
     timeoutMs: number;
     maxResponseBytes: number;
     paymentReferenceCandidates: PaymentReferenceCandidates;
+    receiptReferenceCandidates: ReceiptReferenceCandidates;
     examRegistrationReferenceCandidates: ExamRegistrationReferenceCandidates;
     gradeReviewReferenceCandidates: GradeReviewReferenceCandidates;
   }) {
@@ -509,7 +670,14 @@ export class NetpaSecretariaGateway implements SecretariaGateway {
   async #request(path: string, init: RequestInit = {}): Promise<{ response: Response; text: string }> {
     const result = await this.#bufferRequest(path, init);
     try {
-      return { response: result.response, text: result.bytes.toString("utf8") };
+      const contentType = result.response.headers.get("content-type") ?? "";
+      const htmlHead = result.bytes.subarray(0, Math.min(result.bytes.length, 4096)).toString("latin1");
+      const declaredCharset = contentType.match(/charset\s*=\s*["']?([^;\s"']+)/i)?.[1]
+        ?? htmlHead.match(/charset\s*=\s*["']?([^;\s"'>]+)/i)?.[1]
+        ?? "utf-8";
+      const legacyWestern = /^(?:iso-8859-1|latin1|windows-1252|cp1252)$/i.test(declaredCharset);
+      const text = legacyWestern ? new TextDecoder("windows-1252").decode(result.bytes) : result.bytes.toString("utf8");
+      return { response: result.response, text };
     } finally {
       result.bytes.fill(0);
     }
@@ -573,6 +741,21 @@ export class NetpaSecretariaGateway implements SecretariaGateway {
     url.searchParams.set("limit", "500");
     const payload = await this.#jsonRequest(session, `${url.pathname}${url.search}`, stagePath);
     return rawPayload(payload);
+  }
+
+  async #financialPage(session: SecretariaSession, path: string, description: string) {
+    const summaryPath = "/netpa/page?stage=SituacaoFinanceira&submitaction=null";
+    const summary = await this.#request(summaryPath, { headers: this.#headers(session) });
+    mergeSetCookies(session.cookies, summary.response.headers);
+    if (authFailure(summary.text)) throw new SecretariaError("SECRETARIA_REAUTH_REQUIRED", "A sessão da Secretaria expirou.", 409, true, "reauthenticate");
+    if (summary.response.status >= 400) throw new SecretariaError("SECRETARIA_UNAVAILABLE", "Não foi possível abrir a situação financeira.", 503, true);
+    const result = await this.#request(path, {
+      headers: { ...this.#headers(session), Referer: new URL(summaryPath, this.#baseUrl).toString() },
+    });
+    mergeSetCookies(session.cookies, result.response.headers);
+    if (authFailure(result.text)) throw new SecretariaError("SECRETARIA_REAUTH_REQUIRED", "A sessão da Secretaria expirou.", 409, true, "reauthenticate");
+    if (result.response.status >= 400) throw new SecretariaError("SECRETARIA_UNAVAILABLE", `Não foi possível consultar ${description}.`, 503, true);
+    return result.text;
   }
 
   #resolvePaymentSelections(rows: Array<Record<string, unknown>>, chargeRefs: string[]) {
@@ -902,8 +1085,18 @@ export class NetpaSecretariaGateway implements SecretariaGateway {
   }
 
   async getDataset(session: SecretariaSession, domain: string): Promise<SecretariaDataset> {
-    if (domain === "finance.payments") {
-      return { domain, items: [], total: 0, observedAt: new Date().toISOString(), coverage: "unsupported" };
+    if (["finance.tuition", "finance.payments", "finance.receipts"].includes(domain)) {
+      const path = SECRETARIA_DATASETS[domain].path;
+      const html = await this.#financialPage(session, path, SECRETARIA_DATASETS[domain].description);
+      const ledger = tuitionLedgerFromHtml(html, this.options.receiptReferenceCandidates);
+      const items = domain === "finance.tuition" ? ledger.items : ledger.items.filter((item) => item.status === "PAID");
+      return { domain, items, total: items.length, observedAt: new Date().toISOString(), coverage: "live" };
+    }
+    if (domain === "finance.debts") {
+      const contract = SECRETARIA_DATASETS[domain];
+      const html = await this.#financialPage(session, contract.path, contract.description);
+      const ledger = debtLedgerFromHtml(html);
+      return { domain, ...ledger, observedAt: new Date().toISOString(), coverage: "live" };
     }
     if (domain === "process.examRegistrations") {
       const rows = await this.#examRegistrationRows(session);
@@ -990,6 +1183,37 @@ export class NetpaSecretariaGateway implements SecretariaGateway {
       contentLength: result.bytes.length,
       sha256: createHash("sha256").update(result.bytes).digest("hex"),
       filename: "referencia-pagamento-secretaria.pdf",
+    };
+  }
+
+  async getReceipt(session: SecretariaSession, receiptRef: string): Promise<SecretariaReceiptDetail> {
+    const ledgerPath = SECRETARIA_DATASETS["finance.receipts"].path;
+    const ledgerHtml = await this.#financialPage(session, ledgerPath, "os comprovativos de pagamento");
+    const academicYear = selectedAcademicYear(ledgerHtml);
+    const candidate = htmlRows(ledgerHtml).map(({ markup }) => {
+      const action = markup.match(/Propinas_columnClick\(\s*(['"])(.*?)\1\s*,\s*(['"])info\3[^)]*itemPago=S/i);
+      const item = action ? decodeHtml(action[2]).trim() : "";
+      return item ? { item, refs: this.options.receiptReferenceCandidates({ item, academicYear }) } : null;
+    }).find((value) => value?.refs.includes(receiptRef));
+    if (!candidate) throw new SecretariaError("SECRETARIA_RESOURCE_NOT_FOUND", "O comprovativo já não está disponível.", 404);
+    const result = await this.#request("/netpa/DIFTasks", {
+      method: "POST",
+      headers: {
+        ...this.#headers(session),
+        "Content-Type": "application/x-www-form-urlencoded",
+        Referer: new URL(ledgerPath, this.#baseUrl).toString(),
+      },
+      body: new URLSearchParams({ DIFTasks: "", _AP_: "9", _MD_: "1", _SR_: "163", _ST_: "5", item: candidate.item }).toString(),
+    });
+    mergeSetCookies(session.cookies, result.response.headers);
+    if (authFailure(result.text)) throw new SecretariaError("SECRETARIA_REAUTH_REQUIRED", "A sessão da Secretaria expirou.", 409, true, "reauthenticate");
+    if (result.response.status >= 400) throw new SecretariaError("SECRETARIA_UNAVAILABLE", "Não foi possível consultar o comprovativo.", 503, true);
+    return {
+      receiptRef,
+      documentKind: "PAYMENT_ITEM_DETAIL",
+      officialFiscalReceipt: false,
+      fields: receiptFieldsFromHtml(result.text),
+      observedAt: new Date().toISOString(),
     };
   }
 
@@ -1281,9 +1505,11 @@ export class NetpaSecretariaGateway implements SecretariaGateway {
       chargeRef: chargeRefs[index],
     }));
     const referencePresent = normalized.every((row) => {
-      const referenceEntry = Object.entries(row).find(([key]) => /(?:referencia.*mb|paymentReference)/i.test(key));
-      const value = String(referenceEntry?.[1] ?? "").replace(/\s+/g, "").trim();
-      return value.length > 3 && value !== "-";
+      return Object.entries(row).some(([key, rawValue]) => {
+        if (!/(?:referencia.*mb|paymentReference)/i.test(key)) return false;
+        const value = String(rawValue ?? "").replace(/\s+/g, "").trim();
+        return value.length > 3 && value !== "-";
+      });
     });
     if (!referencePresent) return null;
     return { items: normalized, observedAt: new Date().toISOString() };

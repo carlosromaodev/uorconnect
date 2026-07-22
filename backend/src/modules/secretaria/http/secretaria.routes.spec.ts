@@ -30,6 +30,7 @@ function fakeApplication(): SecretariaApplication {
     getConsents: vi.fn(async () => ({ domain: "privacy.consents", items: [], total: 0, observedAt: "2026-07-21T20:00:00.000Z", coverage: "live" })),
     getDataset: vi.fn(async (_student, domain) => ({ data: { domain, items: [{ subject: "Teste" }], total: 1, observedAt: "2026-07-21T20:00:00.000Z", coverage: "live" }, stale: false, snapshotVersion: null })),
     getPaymentReferenceDocument: vi.fn(async () => ({ body: Buffer.from("%PDF-1.7\ntest"), contentType: "application/pdf", contentLength: 13, sha256: "document-etag", filename: "referencia-pagamento-secretaria.pdf" })),
+    getReceipt: vi.fn(async (_student, receiptRef) => ({ receiptRef, documentKind: "PAYMENT_ITEM_DETAIL", officialFiscalReceipt: false, fields: { description: "Propina", paid: true, amount: "100.00 Kz" }, observedAt: "2026-07-21T20:00:00.000Z" })),
     startSync: vi.fn(async () => ({ id: "b0fd0d6c-e3a5-4abb-a760-c9463fe42336", status: "COMPLETED", snapshotVersion: 1, domains: [], completedDomains: [], failedDomains: [], startedAt: "2026-07-21T20:00:00.000Z", finishedAt: "2026-07-21T20:00:01.000Z" })),
     getSync: vi.fn(async () => ({ id: "b0fd0d6c-e3a5-4abb-a760-c9463fe42336", status: "COMPLETED", snapshotVersion: 1, domains: [], completedDomains: [], failedDomains: [], startedAt: "2026-07-21T20:00:00.000Z", finishedAt: "2026-07-21T20:00:01.000Z" })),
     preparePaymentReference: vi.fn(async () => ({ id: "8b5e8ab9-3989-4517-8a82-56128794ae87", type: "GENERATE_PAYMENT_REFERENCE", risk: "MEDIUM", status: "AWAITING_CONFIRMATION", requiresConfirmation: true, confirmationExpiresAt: "2026-07-21T20:05:00.000Z", result: null, errorCode: null, createdAt: "2026-07-21T20:00:00.000Z", updatedAt: "2026-07-21T20:00:00.000Z", completedAt: null })),
@@ -111,6 +112,20 @@ describe("Secretaria routes", () => {
     expect(referenceDocument.statusCode).toBe(200);
     expect(referenceDocument.headers["content-type"]).toContain("application/pdf");
     expect(referenceDocument.headers["content-disposition"]).toContain("referencia-pagamento-secretaria.pdf");
+
+    const receiptRef = `srr_${"r".repeat(43)}`;
+    const receipts = await app.inject({ method: "GET", url: "/api/v1/integrations/secretaria/finance/receipts", headers: { authorization } });
+    expect(receipts.statusCode).toBe(200);
+    expect(application.getDataset).toHaveBeenCalledWith({ id: 1, studentNumber: "20240001" }, "finance.receipts");
+    const receipt = await app.inject({ method: "GET", url: `/api/v1/integrations/secretaria/finance/receipts/${receiptRef}`, headers: { authorization } });
+    expect(receipt.statusCode).toBe(200);
+    expect(receipt.json().data).toMatchObject({ receiptRef, officialFiscalReceipt: false, fields: { paid: true } });
+    expect(application.getReceipt).toHaveBeenCalledWith({ id: 1, studentNumber: "20240001" }, receiptRef);
+    const receiptContent = await app.inject({ method: "GET", url: `/api/v1/integrations/secretaria/finance/receipts/${receiptRef}/content`, headers: { authorization } });
+    expect(receiptContent.statusCode).toBe(200);
+    expect(receiptContent.headers["content-type"]).toContain("application/pdf");
+    expect(receiptContent.headers["x-document-status"]).toBe("informational-not-fiscal-receipt");
+    expect(receiptContent.rawPayload.subarray(0, 5).toString("ascii")).toBe("%PDF-");
 
     const directory = await app.inject({ method: "GET", url: "/api/v1/integrations/secretaria/directory/courses", headers: { authorization } });
     expect(directory.statusCode).toBe(200);

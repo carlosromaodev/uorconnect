@@ -19,6 +19,7 @@ function testGateway() {
     timeoutMs: 5_000,
     maxResponseBytes: 1_000_000,
     paymentReferenceCandidates: (value) => [`scr_${Buffer.from(JSON.stringify(value)).toString("base64url").padEnd(43, "x").slice(0, 43)}`],
+    receiptReferenceCandidates: (value) => [`srr_${Buffer.from(JSON.stringify(value)).toString("base64url").padEnd(43, "x").slice(0, 43)}`],
     examRegistrationReferenceCandidates: (id) => [`ser_${Buffer.from(id).toString("base64url").padEnd(43, "x").slice(0, 43)}`],
     gradeReviewReferenceCandidates: (id) => [`sgr_${Buffer.from(id).toString("base64url").padEnd(43, "x").slice(0, 43)}`],
   });
@@ -27,6 +28,37 @@ function testGateway() {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("NetpaSecretariaGateway finance contract", () => {
+  it("expõe propinas, pagamentos, dívidas e comprovativos com referências opacas", async () => {
+    const tuition = `<html><body><form name="myForm"><select name="anoLectivo"><option value="2025" selected>2025-2026</option></select>
+      <table><tr><th></th><th>Descri&ccedil;&atilde;o</th><th>Dt. Vencimento</th><th>Ref. MB</th><th>Valor</th><th>Dt. Pagamento</th><th>Pago</th><th>D&iacute;vida</th><th>Multa</th></tr>
+      <tr><td><a href="javascript:Propinas_columnClick('36','info','modalidade=3','itemPago=S');">info</a></td><td>Fevereiro</td><td>10-02-2026</td><td></td><td>100.00 Kz</td><td>06-02-2026</td><td>100.00 Kz</td><td>0.00 Kz</td><td>0.00 Kz</td></tr></table></form></body></html>`;
+    const debts = `<html><body><table><tr><th>Descrição</th><th>Tipo</th><th>Dt. Vencimento</th><th>Total</th><th>Pago</th><th>Total Dívida</th></tr>
+      <tr><td>Recurso de Física</td><td>Emolumento</td><td>30-01-2026</td><td>16,986.00 Kz</td><td>0.00 Kz</td><td>16,986.00 Kz</td></tr></table></body></html>`;
+    const detail = `<html><body><h1>Detalhe Item Conta</h1><table><tr><td>Descrição:</td><td>Fevereiro</td></tr><tr><td>Dt. Vencimento:</td><td>10-02-2026</td></tr><tr><td>Pago</td><td>Sim</td></tr><tr><td>Facturado:</td><td>Sim</td></tr><tr><td>Valor:</td><td>100.00 Kz</td></tr><tr><td>Anulado:</td><td>Não</td></tr></table></body></html>`;
+    const posts: URLSearchParams[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request, init: RequestInit = {}) => {
+      const url = new URL(typeof input === "string" || input instanceof URL ? input.toString() : input.url);
+      if ((init.method ?? "GET") === "POST") {
+        posts.push(new URLSearchParams(String(init.body ?? "")));
+        return new Response(detail, { status: 200 });
+      }
+      if (url.searchParams.get("_SR_") === "176") return new Response(debts, { status: 200 });
+      return new Response(tuition, { status: 200 });
+    }));
+    const gateway = testGateway();
+    const tuitionResult = await gateway.getDataset(session, "finance.tuition");
+    expect(tuitionResult.items[0]).toMatchObject({ description: "Fevereiro", dueDate: "2026-02-10", paymentDate: "2026-02-06", status: "PAID" });
+    expect(String(tuitionResult.items[0].receiptRef)).toMatch(/^srr_[A-Za-z0-9_-]{43}$/);
+    expect(JSON.stringify(tuitionResult)).not.toContain("'36'");
+    await expect(gateway.getDataset(session, "finance.payments")).resolves.toMatchObject({ total: 1, coverage: "live" });
+    await expect(gateway.getDataset(session, "finance.receipts")).resolves.toMatchObject({ total: 1, coverage: "live" });
+    await expect(gateway.getDataset(session, "finance.debts")).resolves.toMatchObject({ items: [{ status: "OUTSTANDING" }], total: 1 });
+    const receipt = await gateway.getReceipt(session, String(tuitionResult.items[0].receiptRef));
+    expect(receipt).toMatchObject({ officialFiscalReceipt: false, fields: { description: "Fevereiro", paid: true, invoiced: true, voided: false } });
+    expect(posts[0].get("_SR_")).toBe("163");
+    expect(posts[0].get("item")).toBe("36");
+  });
+
   it("devolve referência opaca e executa somente o wizard REFERENCIAS_MB verificado", async () => {
     let generated = false;
     const observedPosts: Array<{ path: string; body: URLSearchParams }> = [];
@@ -40,9 +72,8 @@ describe("NetpaSecretariaGateway finance contract", () => {
       descItem: "Propina de teste",
       dateVencimento: "31/12/2026",
       valorItemCalc: "100,00",
-      referenciaMBCalc: generated
-        ? '<a href="doc?stage=StepSeleccionarItemsConta&amp;_event=docDocumentoPagamentoReferencias&amp;idFinanceiraRefMB=finance-document&amp;numberReferenciaRefMB=reference-document">Entidade TEST Referência TEST</a>'
-        : "",
+      referencia: generated ? "reference-document" : "",
+      referenciaMBCalc: generated ? "-" : "",
     });
     const summaryRow = {
       id: "summary-internal-id",

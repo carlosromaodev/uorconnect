@@ -5,7 +5,7 @@ document_id: UOR-V2-VALIDATION-001
 status: approved
 owner: Arquitetura UOR Connect
 authority: informative
-version: 1.2
+version: 1.3
 last_reviewed: 2026-07-22
 approved_by: Codex verification
 approved_at: 2026-07-21
@@ -25,7 +25,7 @@ depends_on:
 - 7 documentos do pacote SDD v1.0 marcados como `superseded` e preservados.
 - 199 identificadores normativos/retidos da UOR Estudante: 95 RF (incluindo 2 reservados), 44 RNF e 60 RN.
 - 199 entradas correspondentes na matriz, sem omissões ou extras.
-- 20 entradas `verified`: 9 RF, 3 RNF e 8 RN.
+- 26 entradas `verified`: 15 RF, 3 RNF e 8 RN.
 
 ## Verificações aprovadas
 
@@ -47,9 +47,10 @@ Em `local-test`, sobre código base `669aed0`:
 - backend: 7 ficheiros e 45 testes aprovados para identidade, login e Moodle;
 - frontend: 3 ficheiros e 6 testes aprovados para login e apresentação de perfil;
 - Secretaria nesta entrega: contratos focados, persistência SQLite isolada, build e ensaio vivo integral em dois perfis autorizados; todas as leituras foram percorridas e os campos internos encontrados foram minimizados;
-- suite backend: 109 ficheiros/448 testes aprovados de 110/451; as 3 falhas continuam limitadas ao mock preexistente de referrals do Passport;
+- suite backend: 109 ficheiros/449 testes aprovados de 110/452; as 3 falhas continuam limitadas ao mock preexistente de referrals do Passport;
+- build de produção aprovado; lint global ainda bloqueado por três fixtures TypeScript antigas fora do módulo Secretaria;
 - nível máximo atribuído conforme cada teste: `automated_test` ou `integration_test`;
-- uma prova controlada autorizada gerou somente referência oficial e confirmou sucesso do portal; nenhum checkout ou pagamento foi processado.
+- um perfil financeiro autorizado confirmou propinas, dívidas, pagamentos e comprovativos; uma prova controlada gerou/reconciliou uma referência e extraiu o PDF oficial, sem checkout ou pagamento.
 
 ## Incompatibilidades conhecidas
 

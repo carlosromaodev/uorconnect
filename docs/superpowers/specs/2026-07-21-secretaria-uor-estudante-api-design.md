@@ -1,7 +1,7 @@
 ---
 document_id: SPEC-EST-SECRETARIA-001
 title: API Secretaria → UOR Estudante
-version: 1.7.0
+version: 1.8.0
 status: approved
 authority: normative_product_contract
 owner: UOR Estudante
@@ -25,7 +25,7 @@ Itens financeiros usam `chargeRef` opaco autenticado por HMAC e rotacionável; o
 
 A implementação aprovada inclui fundação, persistência controlada da credencial, sessão, catálogo de capacidades, leitura normalizada, snapshots, sincronização e motor durável de comandos. Cada mutação permanece desligada por padrão e só é ativada quando satisfaz contrato upstream, feature flag, testes e pós-condição próprios.
 
-O âmbito financeiro limita-se a consultar cobranças, gerar ou extrair referências oficiais e apresentar o respetivo documento quando disponível. Histórico de pagamentos e recibos só serão ativados se o portal expuser contratos verificáveis. A UOR Estudante não inicia, executa, cancela ou processa pagamentos e não recebe instrumentos financeiros.
+O âmbito financeiro inclui extrato de propinas, valores em dívida, histórico de pagamentos, detalhes imprimíveis de itens pagos, cobranças e geração/extração de referências oficiais. A UOR Estudante não inicia, executa, cancela ou processa pagamentos e não recebe instrumentos financeiros. O detalhe imprimível é identificado explicitamente como informativo e não como recibo fiscal.
 
 ## 2. Produto, autoridade e propriedade
 
@@ -381,9 +381,12 @@ O item de revisão expõe `reviewRef`, estado oficial, número do pedido quando 
 | GET | `/finance/payment-references/:chargeRef/document` | approved_read | Proxy PDF seguro do documento oficial quando disponível. |
 | POST | `/finance/payment-references` | approved_write_feature_flagged | Preparar comando para gerar/extrair referência oficial; exige `Idempotency-Key`. |
 | POST | `/finance/payment-references/:id/share-requests` | approved_write_pending_contract | Partilhar somente referência autorizada. |
-| GET | `/finance/payments` | unsupported_upstream | O perfil observado não expõe histórico verificável; devolve cobertura `unsupported`. |
-| GET | `/finance/receipts` | pending_contract | Recibos não são anunciados como disponíveis sem contrato observado. |
-| GET | `/finance/receipts/:id/content` | pending_contract | Proxy só será ativado depois de contrato e ownership verificáveis. |
+| GET | `/finance/tuition` | approved_read | Extrato de propinas com vencimento, referência, valor, pagamento, dívida, multa e estado. |
+| GET | `/finance/debts` | approved_read | Valores em dívida com tipo, vencimento, total, pago e saldo. |
+| GET | `/finance/payments` | approved_read | Histórico verificado derivado das linhas oficialmente pagas do extrato de propinas. |
+| GET | `/finance/receipts` | approved_read | Índice de itens pagos com `receiptRef` opaco. |
+| GET | `/finance/receipts/:receiptRef` | approved_read | Detalhe imprimível oficial da conta, sem ID interno. |
+| GET | `/finance/receipts/:receiptRef/content` | approved_read | PDF informativo gerado a partir do detalhe vivo; não é anunciado como recibo fiscal. |
 
 Não existem payment intents, hosted checkout, `nextAction: redirect`, confirmação/cancelamento de pagamento ou captura de instrumento financeiro.
 
@@ -628,7 +631,7 @@ Antes da implementação funcional de cada escrita, os RF/RNF/RN devem incorpora
 
 RF-EST-087 e RF-EST-094 ficam reservados/retirados no histórico desta especificação e não são reutilizados: não se propõe requisito de troca de senha nem de payment intent.
 
-## 21.1 Contrato financeiro verificado em 2026-07-21
+## 21.1 Contrato financeiro verificado em 2026-07-21 e ampliado em 2026-07-22
 
 O fluxo autorizado do netPA foi observado com navegador real e uma conta controlada, sem guardar HTML, credenciais ou valores financeiros. O contrato vigente é:
 
@@ -642,7 +645,9 @@ O fluxo autorizado do netPA foi observado com navegador real e uma conta control
 8. aceitar sucesso apenas quando a resposta oficial chega a `stepresultadopagamento` e indica sucesso;
 9. em resposta ambígua, manter `UNKNOWN` e reconciliar por consulta sem repetir a submissão.
 
-A prova controlada chegou ao estado oficial de sucesso e gerou somente referência. Não abriu checkout, não recebeu cartão e não processou dinheiro. A escrita permanece desligada por padrão através de `SECRETARIA_WRITE_PAYMENT_REFERENCE_ENABLED=false`; produção exige upstream HTTPS ou túnel TLS aprovado.
+A prova controlada chegou ao estado oficial de sucesso e gerou somente referência. Em 2026-07-22, um perfil autorizado com cobranças de recurso confirmou novamente a geração, reconciliação e extração do PDF oficial. Não abriu checkout, não recebeu cartão e não processou dinheiro. A escrita permanece desligada por padrão através de `SECRETARIA_WRITE_PAYMENT_REFERENCE_ENABLED=false`; produção exige upstream HTTPS ou túnel TLS aprovado.
+
+O resumo financeiro confirmou ainda dois contratos HTML estáveis: `_SR_=173` apresenta o extrato de propinas e `_SR_=176` os valores em dívida. Uma linha paga abre `_SR_=163&_ST_=5`, com detalhe de faturação/pagamento imprimível. O gateway trata corretamente o `ISO-8859-1` legado, descodifica entidades HTML, corrige tabelas aninhadas, produz `receiptRef` opaco e nunca expõe o identificador `item` do portal. O PDF de comprovativo gerado pela UOR Estudante leva a marca `informational-not-fiscal-receipt`.
 
 ## 21.2 Contratos de contactos e consentimentos verificados em 2026-07-21
 

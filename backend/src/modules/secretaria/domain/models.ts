@@ -171,3 +171,11 @@ export type SecretariaCommandResult = {
 };
 
 export type SecretariaPaymentReferenceResult = SecretariaCommandResult;
+
+export type SecretariaReceiptDetail = {
+  receiptRef: string;
+  documentKind: "PAYMENT_ITEM_DETAIL";
+  officialFiscalReceipt: false;
+  fields: Record<string, string | boolean | null>;
+  observedAt: string;
+};
