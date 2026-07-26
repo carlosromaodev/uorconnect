@@ -59,11 +59,13 @@ export class UorStudentOfficialChangeApplication {
     const current = await this.db.secretariaSnapshot.findMany({
       where: { studentId: input.student.id, snapshotVersion: input.snapshotVersion },
       orderBy: { domain: "asc" },
+      take: 100,
     });
     if (!current.length) return;
     const historical = await this.db.secretariaSnapshot.findMany({
       where: { studentId: input.student.id, snapshotVersion: { lt: input.snapshotVersion } },
       orderBy: [{ snapshotVersion: "desc" }, { domain: "asc" }],
+      take: 1_000,
     });
     const previousByDomain = new Map<string, (typeof historical)[number]>();
     for (const snapshot of historical) {

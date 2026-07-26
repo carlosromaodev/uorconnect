@@ -186,6 +186,7 @@ export class PrismaUorStudentIdentityRepository implements UorStudentIdentityRep
     const rows = await this.db.uorStudentPrivacyPreference.findMany({
       where: { studentId: student.id, institutionCode: student.institutionCode },
       orderBy: { purpose: "asc" },
+      take: PURPOSES.size,
     });
     return rows.map(privacyView);
   }
@@ -320,5 +321,106 @@ export class PrismaUorStudentIdentityRepository implements UorStudentIdentityRep
       ...(scope.includes("provider_snapshots") ? { providerSnapshots: snapshots } : {}),
       ...(scope.includes("sync_history") ? { syncHistory: syncJobs } : {}),
     };
+  }
+
+  async processNextDataDeletion() {
+    const request = await this.db.$transaction(async (tx) => {
+      const pending = await tx.uorStudentDataRequest.findFirst({
+        where: { type: "DELETE", status: "PENDING" },
+        orderBy: [{ requestedAt: "asc" }, { id: "asc" }],
+      });
+      if (!pending) return null;
+      const claimed = await tx.uorStudentDataRequest.updateMany({
+        where: { id: pending.id, status: "PENDING" },
+        data: { status: "PROCESSING", startedAt: new Date(), errorCode: null },
+      });
+      return claimed.count === 1 ? pending : null;
+    });
+    if (!request) return false;
+
+    const scope = parseJson<string[]>(request.scopeJson, []);
+    try {
+      await this.db.$transaction(async (tx) => {
+        const removed: Record<string, number> = {};
+        if (scope.includes("profile")) {
+          removed.profile = (await tx.uorStudentProfileField.deleteMany({
+            where: { studentId: request.studentId, institutionCode: request.institutionCode },
+          })).count;
+        }
+        if (scope.includes("privacy")) {
+          removed.privacy = (await tx.uorStudentPrivacyPreference.deleteMany({
+            where: { studentId: request.studentId, institutionCode: request.institutionCode },
+          })).count;
+        }
+        if (scope.includes("provider_snapshots")) {
+          removed.moodleMaterials = (await tx.moodleMaterialSnapshot.deleteMany({ where: { studentId: request.studentId } })).count;
+          removed.moodleSections = (await tx.moodleSectionSnapshot.deleteMany({ where: { studentId: request.studentId } })).count;
+          removed.moodleCourses = (await tx.moodleCourseSnapshot.deleteMany({ where: { studentId: request.studentId } })).count;
+          removed.moodleEntityRefs = (await tx.moodleEntityRef.deleteMany({ where: { studentId: request.studentId } })).count;
+          removed.secretariaSnapshots = (await tx.secretariaSnapshot.deleteMany({ where: { studentId: request.studentId } })).count;
+          await Promise.all([
+            tx.moodleConnection.updateMany({
+              where: { studentId: request.studentId },
+              data: {
+                status: "DISCONNECTED",
+                credentialsEnvelope: null,
+                sessionEnvelope: null,
+                activeSnapshotVersion: null,
+                activeSyncRunId: null,
+                sessionExpiresAt: null,
+                connectionGeneration: { increment: 1 },
+                sessionVersion: { increment: 1 },
+              },
+            }),
+            tx.secretariaConnection.updateMany({
+              where: { studentId: request.studentId },
+              data: {
+                status: "DISCONNECTED",
+                credentialsEnvelope: null,
+                sessionEnvelope: null,
+                activeSnapshotVersion: null,
+                connectionGeneration: { increment: 1 },
+                sessionVersion: { increment: 1 },
+              },
+            }),
+          ]);
+        }
+        if (scope.includes("sync_history")) {
+          removed.productSyncJobs = (await tx.uorStudentSyncJob.deleteMany({
+            where: { studentId: request.studentId, institutionCode: request.institutionCode },
+          })).count;
+          removed.moodleSyncRuns = (await tx.moodleSyncRun.deleteMany({ where: { studentId: request.studentId } })).count;
+          removed.secretariaSyncRuns = (await tx.secretariaSyncRun.deleteMany({ where: { studentId: request.studentId } })).count;
+        }
+        const completedAt = new Date();
+        await tx.uorStudentDataRequest.update({
+          where: { id: request.id },
+          data: {
+            status: "COMPLETED",
+            completedAt,
+            resultJson: JSON.stringify({ removed, retained: ["audit_and_legal_evidence"], completedAt: completedAt.toISOString() }),
+          },
+        });
+        await tx.uorStudentAuditEvent.create({
+          data: {
+            studentId: request.studentId,
+            institutionCode: request.institutionCode,
+            domain: "privacy",
+            action: "data_request.delete.completed",
+            resourceType: "data_request",
+            resourceId: request.id,
+            purpose: "data_erasure",
+            result: "completed",
+            metadataJson: JSON.stringify({ scope, removed }),
+          },
+        });
+      });
+    } catch {
+      await this.db.uorStudentDataRequest.updateMany({
+        where: { id: request.id, status: "PROCESSING" },
+        data: { status: "FAILED", errorCode: "UOR_STUDENT_DATA_DELETION_FAILED", completedAt: new Date() },
+      });
+    }
+    return true;
   }
 }

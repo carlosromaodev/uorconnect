@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { LiveUorStudentWorkflowApplication } from "./workflow-service";
 import type { UorStudentWorkflowRepository, UorStudentWorkflowView } from "./domain";
+import type { UorStudentOfficialDataRepository } from "../application/ports";
 
 const student = { id: 1, institutionCode: "UOR", studentNumber: "20260001" };
 
@@ -49,6 +50,18 @@ function event(id: string, startsAt: string, endsAt: string): UorStudentWorkflow
   };
 }
 
+function officialEnrollments(items: Array<{ id: string; attributes: Record<string, unknown> }>): UorStudentOfficialDataRepository {
+  return {
+    getDataset: vi.fn(async () => ({
+      domain: "academic.enrollments",
+      items,
+      pagination: { limit: 100, hasMore: false, nextCursor: null, total: items.length },
+      provenance: { source: "secretaria_uor" as const, observedAt: "2026-07-26T10:00:00.000Z", coverage: "exact" as const, stale: false },
+      snapshotVersion: 3,
+    })),
+  };
+}
+
 describe("LiveUorStudentWorkflowApplication", () => {
   it("rejeita wildcard e campos financeiros num acesso de explicador", async () => {
     const service = new LiveUorStudentWorkflowApplication(repository());
@@ -59,6 +72,25 @@ describe("LiveUorStudentWorkflowApplication", () => {
       status: "active",
       payload: { fields: ["academic.grades", "finance.debts"] },
     })).toThrow(expect.objectContaining({ code: "UOR_STUDENT_GRANT_SCOPE_INVALID" }));
+  });
+
+  it("exige validade futura para comunidade e rascunho para recurso local", async () => {
+    const service = new LiveUorStudentWorkflowApplication(repository());
+    expect(() => service.create({
+      owner: student,
+      category: "community_report",
+      scopeKey: "algoritmos:2026",
+      status: "reported",
+      payload: { kind: "room_change" },
+      expiresAt: new Date(Date.now() - 1),
+    })).toThrow(expect.objectContaining({ code: "UOR_STUDENT_EXPIRY_REQUIRED" }));
+    expect(() => service.create({
+      owner: student,
+      category: "academic_appeal",
+      scopeKey: "algoritmos:2026:exam",
+      status: "submitted",
+      payload: { origin: "uor_student" },
+    })).toThrow(expect.objectContaining({ code: "UOR_STUDENT_APPEAL_INVALID" }));
   });
 
   it("deteta apenas a intersecção temporal de eventos pessoais", async () => {
@@ -92,5 +124,84 @@ describe("LiveUorStudentWorkflowApplication", () => {
       dimensions: {},
       scopeKey: "docente:algoritmos:2026",
     });
+  });
+
+  it("publica somente a agregação pedagógica quando a amostra é suficiente", async () => {
+    const evaluations = Array.from({ length: 5 }, (_, index): UorStudentWorkflowView => ({
+      ...event(String(index), new Date(index).toISOString(), new Date(index + 1).toISOString()),
+      category: "teaching_evaluation",
+      ownerProfileId: `20000000-0000-4000-8000-${String(index).padStart(12, "0")}`,
+      scopeKey: "docente:algoritmos:2026",
+      status: "published",
+      payload: { score: index + 1, dimensions: { clarity: index + 1 }, comment: `comentário ${index}` },
+    }));
+    const service = new LiveUorStudentWorkflowApplication(repository(evaluations));
+    const result = await service.aggregateTeachingEvaluations(student, "docente:algoritmos:2026", 5);
+
+    expect(result).toEqual({
+      status: "available",
+      sampleSize: 5,
+      minimumSample: 5,
+      average: "3.00",
+      dimensions: { clarity: "3.00" },
+      scopeKey: "docente:algoritmos:2026",
+    });
+    expect(JSON.stringify(result)).not.toMatch(/ownerProfileId|comentário|20000000-/);
+  });
+
+  it("aceita avaliação apenas para associação oficial à cadeira e período, incluindo aliases locais", async () => {
+    const storage = repository();
+    const service = new LiveUorStudentWorkflowApplication(storage, officialEnrollments([
+      { id: "enrollment-1", attributes: { disciplina: "Programação II", anoLectivo: "2025/2026" } },
+    ]));
+
+    await expect(service.createTeachingEvaluation({
+      student,
+      teacherKey: "docente-1",
+      subjectKey: "Programacao II",
+      period: "2025/2026",
+      score: 4,
+      dimensions: { clarity: 5 },
+    })).resolves.toMatchObject({
+      category: "teaching_evaluation",
+      scopeKey: "docente-1:Programacao II:2025/2026",
+      status: "published",
+    });
+    expect(storage.create).toHaveBeenCalledWith(expect.objectContaining({
+      owner: student,
+      category: "teaching_evaluation",
+      payload: expect.objectContaining({ teacherKey: "docente-1", subjectKey: "Programacao II", period: "2025/2026" }),
+    }));
+  });
+
+  it("nega avaliação sem associação oficial e impede duplicação contextual", async () => {
+    const service = new LiveUorStudentWorkflowApplication(repository(), officialEnrollments([
+      { id: "enrollment-1", attributes: { disciplina: "Redes", periodo: "2025/2026" } },
+    ]));
+    await expect(service.createTeachingEvaluation({
+      student,
+      teacherKey: "docente-1",
+      subjectKey: "Algoritmos",
+      period: "2025/2026",
+      score: 4,
+      dimensions: {},
+    })).rejects.toMatchObject({ code: "UOR_STUDENT_EVALUATION_NOT_ELIGIBLE" });
+
+    const existing: UorStudentWorkflowView = {
+      ...event("evaluation-1", "2026-01-01T10:00:00.000Z", "2026-01-01T11:00:00.000Z"),
+      category: "teaching_evaluation",
+      scopeKey: "docente-1:Algoritmos:2025/2026",
+      status: "published",
+      payload: { score: 4 },
+    };
+    const duplicate = new LiveUorStudentWorkflowApplication(repository([existing]), officialEnrollments([]));
+    await expect(duplicate.createTeachingEvaluation({
+      student,
+      teacherKey: "docente-1",
+      subjectKey: "Algoritmos",
+      period: "2025/2026",
+      score: 5,
+      dimensions: {},
+    })).rejects.toMatchObject({ code: "UOR_STUDENT_EVALUATION_DUPLICATE" });
   });
 });

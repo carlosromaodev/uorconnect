@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" role="img" aria-labelledby="title desc">
+  <title id="title">UOR Estudante</title>
+  <desc id="desc">Símbolo preto em forma de E aberto, com traço e ponto laranja.</desc>
+  <path d="M76 22H55C35 22 25 35 25 55v13c0 20 11 31 31 31h27" fill="none" stroke="#050505" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M54 60h32" fill="none" stroke="#050505" stroke-width="11" stroke-linecap="round"/>
+  <path d="M54 60h14" fill="none" stroke="#FF5A00" stroke-width="11" stroke-linecap="round"/>
+  <circle cx="88" cy="29" r="8" fill="#FF5A00"/>
+</svg>

@@ -23,6 +23,7 @@ import { UorStudentDelegatedFinanceApplication } from "../finance/delegated-fina
 import { UorStudentStepUpApplication } from "../security/step-up-service";
 import { UorStudentOfficialChangeApplication } from "../sync/official-change-service";
 import { PrismaUorStudentPublicIdentityResolver } from "../identity/prisma-uor-student-public-identity.resolver";
+import { UorStudentDataDeletionWorker } from "../identity/uor-student-data-deletion.worker";
 
 export function createUorStudentApplication(options: {
   secretaria: SecretariaApplication;
@@ -49,6 +50,8 @@ export function createUorStudentApplication(options: {
     new PrismaUorStudentAcademicRepository(),
   );
   const identities = new PrismaUorStudentPublicIdentityResolver();
+  const identityRepository = new PrismaUorStudentIdentityRepository();
+  const dataDeletionWorker = new UorStudentDataDeletionWorker(identityRepository);
   const workflows = new LiveUorStudentWorkflowApplication(new PrismaUorStudentWorkflowRepository(), officialData, identities);
   const authorizations = new LiveUorStudentAuthorizationApplication(options.cursorSecret, new OmbalaUorStudentOtpDelivery(options.env));
   const stepUp = new UorStudentStepUpApplication(options.cursorSecret, new OmbalaUorStudentOtpDelivery(options.env));
@@ -57,7 +60,7 @@ export function createUorStudentApplication(options: {
     options.secretaria,
     options.moodle,
     syncScheduler,
-    new PrismaUorStudentIdentityRepository(),
+    identityRepository,
     officialData,
     academics,
     workflows,
@@ -70,5 +73,6 @@ export function createUorStudentApplication(options: {
     new UorStudentDelegatedFinanceApplication(authorizations, officialData, identities),
     stepUp,
     changes,
+    dataDeletionWorker,
   );
 }

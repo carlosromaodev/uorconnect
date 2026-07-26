@@ -120,4 +120,47 @@ describe("PrismaUorStudentIdentityRepository", () => {
     expect(JSON.stringify(payload)).not.toMatch(/credentialsEnvelope|sessionEnvelope|password/i);
     expect(denied).toBeNull();
   });
+
+  it("executa eliminação assíncrona por escopo e preserva identidade oficial e auditoria", async () => {
+    await repository.updateProfile({
+      student: uorStudent,
+      patch: { email: "erase@example.test", bio: "Apagar" },
+      traceId: "trace-profile-before-delete",
+    });
+    await repository.setPrivacy({
+      student: uorStudent,
+      purpose: "public_profile",
+      enabled: true,
+      fields: ["displayName"],
+      expiresAt: null,
+      traceId: "trace-consent-before-delete",
+    });
+    const request = await repository.createDataRequest({
+      student: uorStudent,
+      type: "delete",
+      scope: ["profile", "privacy"],
+      traceId: "trace-delete",
+    });
+
+    expect(request.status).toBe("pending");
+    expect(await repository.processNextDataDeletion()).toBe(true);
+    expect(await repository.processNextDataDeletion()).toBe(false);
+    expect(await repository.getDataRequest(uorStudent, request.id)).toMatchObject({
+      type: "delete",
+      status: "completed",
+      resultAvailable: true,
+      retentions: expect.arrayContaining([
+        { category: "audit_and_legal_evidence", retained: true, reason: "legal_security_retention" },
+      ]),
+    });
+    expect(await client!.uorStudentProfileField.count({ where: { studentId: 1 } })).toBe(0);
+    expect(await client!.uorStudentPrivacyPreference.count({ where: { studentId: 1 } })).toBe(0);
+    expect(await client!.student.findUnique({
+      where: { id: 1 },
+      select: { studentNumber: true, name: true, course: true },
+    })).toEqual({ studentNumber: "20260001", name: "Estudante Oficial", course: "Engenharia" });
+    expect(await client!.uorStudentAuditEvent.findFirst({
+      where: { resourceId: request.id, action: "data_request.delete.completed" },
+    })).toMatchObject({ result: "completed", purpose: "data_erasure" });
+  });
 });

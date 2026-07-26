@@ -12,6 +12,8 @@
     "test:admin-security": "vitest run src/modules/auth/use-cases/login.integration.spec.ts src/modules/auth/use-cases/manage-students.spec.ts src/modules/auth/use-cases/manage-admin-security.spec.ts",
     "test:uor-student": "vitest run src/modules/uor-student src/modules/moodle src/modules/secretaria src/modules/auth/http/uor-student-login-bootstrap.spec.ts",
     "docs:validate:uor-student": "node scripts/validate-uor-student-docs.mjs",
+    "security:scan:uor-student": "node scripts/scan-uor-student-secrets.mjs",
+    "pagination:audit:uor-student": "node scripts/audit-uor-student-pagination.mjs",
     "backup:uor-student": "node scripts/uor-student-backup.mjs",
     "test:watch": "vitest watch",
     "lint": "tsc --noEmit",

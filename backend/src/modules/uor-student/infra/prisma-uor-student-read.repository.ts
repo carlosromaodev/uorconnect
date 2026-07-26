@@ -110,6 +110,7 @@ export class PrismaUorStudentReadRepository implements UorStudentReadRepository 
         : this.db.secretariaSnapshot.findMany({
           where: { studentId: student.id, snapshotVersion: secretariaVersion },
           select: { domain: true, itemCount: true, coverage: true, observedAt: true },
+          take: 100,
         }).then((items) => items.map((item) => ({
           domain: item.domain,
           total: item.itemCount,

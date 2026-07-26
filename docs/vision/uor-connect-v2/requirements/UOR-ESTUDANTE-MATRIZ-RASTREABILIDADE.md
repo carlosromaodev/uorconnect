@@ -23,8 +23,9 @@ depends_on:
 - Estados: `planned`, `in_analysis`, `partial`, `implemented`, `verified`, `blocked`, `deprecated`, `superseded`.
 - Evidência: `static`, `automated_test`, `integration_test`, `runtime_observed`, `production_observed`.
 - `implemented` significa código identificado sem verificação suficiente.
-- Verificação executada em 2026-07-26 no ambiente `local-test`, por `Codex`, sobre o commit `4354fa4`.
-- Suite backend completa: 129 ficheiros/513 testes passaram. `npm run build` e `npm run lint` passaram sem erros.
+- Verificação executada em 2026-07-26 no ambiente `local-test`, por `Codex`, sobre a árvore de trabalho posterior ao commit `4354fa4`.
+- Suite backend completa: 132 ficheiros/527 testes passaram. `npm run build` e `npm run lint` passaram sem erros.
+- Frontend inicial da UOR Estudante: seis testes unitários/contratuais e quatro cenários de browser passaram em Chromium desktop e móvel; lint e build de produção aprovados. O workflow `uor-student-frontend.yml` repete estes gates no GitHub Actions.
 - O schema PostgreSQL foi gerado e validado; as seis migrações UOR Estudante são aditivas. O gate CI executa geração Prisma, migrações, build, testes focados, validação documental e inspeção do utilitário de backup.
 - API Secretaria verificada adicionalmente nesta entrega: contratos unitários/de rota/persistência, build de produção e ensaio vivo integral em dois perfis autorizados para identidade, contactos, fotografia, consentimentos, 10 datasets académicos, finanças, sete processos e diretório de cursos. O ensaio encontrou e eliminou exposição de identidade interna em faltas, candidaturas e ações HTML.
 - O build de produção e o typecheck global estão aprovados; fixtures antigas incompatíveis com os contratos atuais foram atualizadas sem alterar comportamento de produção.
@@ -87,21 +88,21 @@ depends_on:
 | [x] | RF-EST-047 | verified | runtime_observed | horário oficial e alterações expostos por snapshot; cobertura viva observada |
 | [x] | RF-EST-048 | verified | runtime_observed | exames/épocas normalizados; 13 itens observados no smoke autorizado |
 | [x] | RF-EST-049 | verified | integration_test | faltas/presenças oficiais usam coverage e nunca fabricam zero |
-| [ ] | RF-EST-050 | implemented | static | reporte comunitário contextual, privado ao autor, com validade obrigatória |
-| [ ] | RF-EST-051 | implemented | static | confirmações/contestações independentes e transições concorrentes implementadas |
+| [x] | RF-EST-050 | verified | integration_test | reporte contextual exige validade futura, isola o autor e desaparece das consultas públicas após expirar; workflow repository/service tests |
+| [x] | RF-EST-051 | verified | integration_test | reações independentes derivam `reported`, `confirmed` e `contested` com atualização otimista; workflow repository tests |
 | [ ] | RF-EST-052 | implemented | integration_test | associação docente/cadeira/período exposta a partir do horário oficial |
-| [ ] | RF-EST-053 | implemented | automated_test | elegibilidade oficial, unicidade contextual e anonimização implementadas |
+| [x] | RF-EST-053 | verified | automated_test | associação oficial por cadeira/período, aliases locais, unicidade contextual e anonimização agregada testadas |
 | [x] | RF-EST-054 | verified | automated_test | agregado pedagógico oculta amostra pequena e calcula dimensões |
 | [x] | RF-EST-055 | verified | automated_test | denúncia e fila/decisão de moderação isoladas de notas/finanças |
 | [ ] | RF-EST-056 | implemented | static | perfil de explicador escopado por cadeira e disponibilidade |
 | [ ] | RF-EST-057 | implemented | static | pesquisa institucional minimizada por cadeira/estado |
-| [ ] | RF-EST-058 | implemented | integration_test | convite, decisão própria e relação ativa modelados |
+| [x] | RF-EST-058 | verified | integration_test | convite, decisão exclusiva do explicador e ativação da relação testados em SQLite |
 | [x] | RF-EST-059 | verified | automated_test | grant rejeita wildcard/finanças e limita cadeira, período, campos e validade |
 | [ ] | RF-EST-060 | implemented | integration_test | plano, tarefas e sessões pertencem à relação ativa |
-| [ ] | RF-EST-061 | implemented | integration_test | revogação encerra relação e grants associados de forma transacional |
-| [ ] | RF-EST-062 | implemented | static | recurso local nasce como `draft`, separado do comando oficial |
+| [x] | RF-EST-061 | verified | integration_test | revogação pelo participante encerra relação e grants associados na mesma transação; acesso delegado cessa imediatamente |
+| [x] | RF-EST-062 | verified | automated_test | serviço rejeita recurso local fora de `draft`; origem local permanece distinta do comando oficial |
 | [ ] | RF-EST-063 | implemented | integration_test | eventos funcionais preservam histórico/origem do recurso |
-| [ ] | RF-EST-064 | implemented | integration_test | pedido coletivo registra contexto, criador e composição |
+| [x] | RF-EST-064 | verified | integration_test | pedido coletivo registra cadeira/período, titular e composição; isolamento institucional testado |
 | [x] | RF-EST-065 | verified | automated_test | participação requer ação própria e bloqueia inclusão entre instituições |
 | [x] | RF-EST-066 | verified | automated_test | retirada antes da submissão atualiza ator e histórico |
 | [x] | RF-EST-067 | verified | runtime_observed | resumo financeiro oficial observado e separado por domínio |
@@ -117,9 +118,9 @@ depends_on:
 | [x] | RF-EST-077 | verified | automated_test | OTP ligado a ator, autorização, ação/recurso e prazo |
 | [x] | RF-EST-078 | verified | automated_test | tentativas/reenvios, expiração e consumo atómico testados |
 | [x] | RF-EST-079 | verified | automated_test | notificações minimizadas e deduplicadas no ciclo da autorização |
-| [ ] | RF-EST-080 | implemented | static | publicação institucional, expiração e ownership do anúncio |
+| [x] | RF-EST-080 | verified | integration_test | criação, ownership institucional e validade do anúncio testados no repositório de workflows |
 | [ ] | RF-EST-081 | implemented | static | pesquisa paginada por categoria, curso, preço e estado |
-| [ ] | RF-EST-082 | implemented | integration_test | reserva concorrente e transição para vendido implementadas |
+| [x] | RF-EST-082 | verified | integration_test | reserva altera `published` para `reserved` com CAS; segunda reserva e reserva após venda são rejeitadas |
 | [x] | RF-EST-083 | verified | automated_test | denúncia, fila e decisão moderada com auditoria; admin tests |
 | [x] | RF-EST-084 | verified | automated_test | permissão `UOR_STUDENT` isolada e mutações administrativas exigem MFA |
 | [ ] | RF-EST-085 | implemented | integration_test | leitura, patch permitido, precondição, idempotência e comando implementados; flag desativada e sucesso real bloqueado por dados obrigatórios incompletos nas contas de teste |
@@ -143,15 +144,15 @@ depends_on:
 | --- | --- | --- | --- | --- |
 | [x] | RNF-EST-001 | verified | integration_test | prefixo privado, tenant, finalidade e negação por defeito cobertos por testes negativos |
 | [x] | RNF-EST-002 | verified | automated_test | rotas/repositórios impedem IDOR de perfil, snapshot, simulação, workflow e autorização |
-| [ ] | RNF-EST-003 | implemented | automated_test | respostas/logs redigidos e senhas ausentes; scanner de segredos do repositório ainda não é gate |
+| [x] | RNF-EST-003 | verified | automated_test | scanner obrigatório verifica chaves/tokens/private keys e `.env` rastreado em 896 ficheiros; CI bloqueia achados |
 | [x] | RNF-EST-004 | verified | automated_test | AES-256-GCM, AAD, adulteração, rotação e persistência de envelopes testados |
 | [ ] | RNF-EST-005 | blocked | runtime_observed | Secretaria conhecida usa HTTP; depende da instituição/fornecedor |
 | [x] | RNF-EST-006 | verified | automated_test | admin UOR Estudante e operações externas de risco alto exigem MFA/step-up curto |
 | [ ] | RNF-EST-007 | implemented | integration_test | limites por rota, identidade/IP e OTP existem; métricas por limiar aguardam piloto |
-| [ ] | RNF-EST-008 | implemented | automated_test | redação e erros seguros testados; política central de log ainda é transversal |
+| [x] | RNF-EST-008 | verified | automated_test | política central redige auth, cookies, CSRF, MFA, step-up, OTP, senhas, imagens e envelopes; `app-redaction.spec.ts` |
 | [x] | RNF-EST-009 | verified | automated_test | auditoria UOR Estudante contém ator, instituição, domínio, ação, recurso, finalidade, resultado e trace |
 | [x] | RNF-EST-010 | verified | automated_test | perfil, grants, finanças delegadas e autorizações usam campos/finalidade explícitos |
-| [ ] | RNF-EST-011 | partial | static | retenções são declaradas e exportação funciona; executor assíncrono de eliminação ainda não foi ensaiado |
+| [x] | RNF-EST-011 | verified | integration_test | worker assíncrono elimina por escopo, revoga segredos/snapshots e preserva identidade oficial e auditoria legal; identity/worker tests |
 | [x] | RNF-EST-012 | verified | automated_test | amostra mínima, contexto estrito, opt-in/retirada e resposta privada testados |
 | [ ] | RNF-EST-013 | partial | automated_test | frontend responsivo atual não é shell UOR Estudante completo |
 | [ ] | RNF-EST-014 | in_analysis | static | componentes acessíveis existem; auditoria WCAG não executada |
@@ -161,7 +162,7 @@ depends_on:
 | [ ] | RNF-EST-018 | planned | — | INP não medido |
 | [ ] | RNF-EST-019 | planned | — | LCP Estudante não medido |
 | [ ] | RNF-EST-020 | planned | — | CLS Estudante não medido |
-| [ ] | RNF-EST-021 | implemented | automated_test | listas públicas/privadas têm limites e cursores; auditoria automática de toda rota ainda não existe |
+| [x] | RNF-EST-021 | verified | automated_test | gate CI audita todas as 21 consultas `findMany` do produto e exige limite explícito; listas públicas usam limite/cursor |
 | [x] | RNF-EST-022 | verified | integration_test | jobs automáticos, leases, idempotência e retentativa aprovados; `4354fa4` |
 | [x] | RNF-EST-023 | verified | automated_test | snapshots locais e `stale` funcionam sem upstream; repository/application tests |
 | [x] | RNF-EST-024 | verified | integration_test | Zod, parsers e contratos externos falham fechados; suites Moodle/Secretaria |
@@ -209,14 +210,14 @@ depends_on:
 | [x] | RN-EST-017 | verified | automated_test | amostra pequena fica `insufficient_sample` |
 | [x] | RN-EST-018 | verified | automated_test | retirada remove contribuição na consulta seguinte |
 | [x] | RN-EST-019 | verified | automated_test | previsão é `estimated`, com método, hipóteses e incerteza |
-| [ ] | RN-EST-020 | implemented | static | fonte comunitária permanece categoria separada da oficial |
-| [ ] | RN-EST-021 | implemented | static | reporte exige expiração futura e listagem ignora expirados |
-| [ ] | RN-EST-022 | implemented | automated_test | criação valida associação oficial cadeira/período |
-| [ ] | RN-EST-023 | implemented | static | views públicas omitem identidade do avaliador |
+| [x] | RN-EST-020 | verified | automated_test | resposta comunitária é marcada `source=community` e `official=false`; contrato separado do snapshot oficial |
+| [x] | RN-EST-021 | verified | integration_test | criação exige expiração futura e consultas públicas excluem reportes expirados |
+| [x] | RN-EST-022 | verified | automated_test | avaliação aceita somente associação oficial à cadeira/período e nega estudante não elegível |
+| [x] | RN-EST-023 | verified | automated_test | resultado público contém apenas amostra/médias/dimensões; IDs e comentários individuais não são publicados |
 | [x] | RN-EST-024 | verified | automated_test | agregado pedagógico exige amostra mínima |
 | [x] | RN-EST-025 | verified | automated_test | grant/relação fixam estudante, explicador, cadeira e período |
 | [x] | RN-EST-026 | verified | automated_test | wildcard e qualquer campo financeiro são rejeitados |
-| [ ] | RN-EST-027 | implemented | integration_test | revogação transacional encerra relação/grants; teste concorrente específico pendente |
+| [x] | RN-EST-027 | verified | integration_test | revogação transacional encerra relação/grants e `getForActor` nega acesso imediatamente |
 | [x] | RN-EST-028 | verified | automated_test | participante só entra após decisão própria |
 | [x] | RN-EST-029 | verified | automated_test | retirada é permitida somente antes de `submitted` |
 | [x] | RN-EST-030 | verified | automated_test | recurso local só nasce `draft`; submissão oficial é comando separado |
@@ -228,19 +229,19 @@ depends_on:
 | [x] | RN-EST-036 | verified | automated_test | OTP inclui ator, ação, recurso e contexto |
 | [x] | RN-EST-037 | verified | automated_test | expiração, tentativas e reenvios são limitados atomicamente |
 | [x] | RN-EST-038 | verified | integration_test | efeito externo só conclui com pós-condição; ambiguidade fica `UNKNOWN` |
-| [ ] | RN-EST-039 | implemented | static | templates OTP/admin são minimizados; auditoria automática de todo SMS aguarda capacidade transversal |
+| [x] | RN-EST-039 | verified | automated_test | política central permite somente OTP contextual e rejeita nota, dívida, saldo, referência interna e credenciais em SMS |
 | [ ] | RN-EST-040 | implemented | static | anúncio público minimiza contacto e não inclui dados académicos sensíveis |
-| [ ] | RN-EST-041 | implemented | integration_test | reserva usa transição condicional; vendido não volta a reservado |
+| [x] | RN-EST-041 | verified | integration_test | reserva condicional é única e anúncio vendido não volta a `reserved` |
 | [x] | RN-EST-042 | verified | automated_test | moderação acessa somente conteúdo comunitário, nunca notas/finanças |
 | [ ] | RN-EST-043 | partial | static | UOR Estudante rejeita wildcard; permissões `ALL` ainda existem em módulos legados fora do produto |
 | [ ] | RN-EST-044 | implemented | static | UOR Estudante não expõe acesso emergencial; qualquer acesso não modelado falha fechado |
-| [ ] | RN-EST-045 | planned | — | read models Direção ausentes |
+| [x] | RN-EST-045 | verified | integration_test | read model versionado agrega contexto, aplica k-anonimato, isola instituição, exige `UOR_STUDENT`+MFA e audita finalidade para `uor_direction` |
 | [ ] | RN-EST-046 | implemented | automated_test | produto/módulo e finalidade versionada estão no registo de privacidade |
 | [x] | RN-EST-047 | verified | automated_test | audit event distingue domínio, ação funcional, recurso, finalidade e trace |
 | [x] | RN-EST-048 | verified | integration_test | chaves contextuais impedem duplicação em sync, comandos e notificações |
 | [x] | RN-EST-049 | verified | automated_test | `stale` preserva valor e observedAt originais |
 | [x] | RN-EST-050 | verified | automated_test | tenant compõe todas as queries UOR Estudante e testes cruzados falham |
-| [ ] | RN-EST-051 | implemented | static | relações usam ID interno estável; operação administrativa de correção da matrícula não foi exposta |
+| [x] | RN-EST-051 | verified | integration_test | correção administrativa preserva ID interno, perfil público, agregados e auditoria; colisão intrainstitucional é rejeitada |
 | [x] | RN-EST-052 | verified | integration_test | URLs sensíveis do produto usam UUID/ref/cursor opaco + autorização |
 | [x] | RN-EST-053 | verified | automated_test | configuração académica possui versão, vigência e histórico |
 | [x] | RN-EST-054 | verified | static | cada conclusão desta matriz declara nível de evidência; baseline `4354fa4` |

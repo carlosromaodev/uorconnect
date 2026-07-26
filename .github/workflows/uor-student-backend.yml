@@ -47,5 +47,7 @@ jobs:
       - run: npx prisma migrate deploy --schema prisma/schema.deploy.prisma
       - run: npm run build
       - run: npm run test:uor-student
+      - run: npm run security:scan:uor-student
+      - run: npm run pagination:audit:uor-student
       - run: npm run docs:validate:uor-student
       - run: node scripts/uor-student-backup.mjs --help

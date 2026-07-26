@@ -50,6 +50,7 @@ export interface UorStudentIdentityRepository {
   }): Promise<UorStudentDataRequestView>;
   getDataRequest(student: UorStudentIdentity, id: string): Promise<UorStudentDataRequestView | null>;
   getExportPayload(student: UorStudentIdentity, id: string): Promise<Record<string, unknown> | null>;
+  processNextDataDeletion(): Promise<boolean>;
 }
 
 export interface UorStudentOfficialDataRepository {

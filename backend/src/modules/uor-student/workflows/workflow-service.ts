@@ -235,12 +235,7 @@ export class LiveUorStudentWorkflowApplication implements UorStudentWorkflowAppl
       domain: "academic.enrollments",
       limit: 100,
     });
-    const normalized = (value: unknown) => String(value ?? "").trim().toLocaleLowerCase("pt-AO");
-    const eligible = enrollments.items.some(({ attributes }) => {
-      const subject = attributes.subjectKey ?? attributes.subjectCode ?? attributes.unitCode ?? attributes.code ?? attributes.courseCode ?? attributes.disciplineCode;
-      const period = attributes.period ?? attributes.academicPeriod ?? attributes.year ?? attributes.academicYear;
-      return normalized(subject) === normalized(input.subjectKey) && normalized(period) === normalized(input.period);
-    });
+    const eligible = enrollments.items.some(({ attributes }) => scopedAcademicItem(attributes, input.subjectKey, input.period));
     if (!eligible) {
       throw new UorStudentError("UOR_STUDENT_EVALUATION_NOT_ELIGIBLE", "A avaliação exige associação oficial à cadeira e ao período.", 403);
     }

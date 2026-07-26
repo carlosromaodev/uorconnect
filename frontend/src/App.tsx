@@ -46,6 +46,9 @@ const CompletarPerfil = lazy(() => import("./pages/CompletarPerfil"));
 const PassportReferralInvite = lazy(() => import("./pages/PassportReferralInvite"));
 const FormadorCadastro = lazy(() => import("./pages/FormadorCadastro"));
 const FormadorPainel = lazy(() => import("./pages/FormadorPainel"));
+const ProductGateway = lazy(() => import("./pages/ProductGateway"));
+const UorStudentApp = lazy(() => import("./features/uor-student/UorStudentApp"));
+const UorStudentLogin = lazy(() => import("./features/uor-student/UorStudentLogin"));
 
 function RouteFallback() {
   return (
@@ -154,7 +157,17 @@ const AppContent = () => {
   const adminRoute = location.pathname === "/admin" || location.pathname.startsWith("/admin/");
   const liveDisplayRoute = location.pathname === "/votacao-ao-vivo" || location.pathname === "/votacoes/ao-vivo";
   const passportInviteRoute = location.pathname.startsWith("/desafio/convite/");
-  const showChrome = !adminAppHost && !adminRoute && !isSaas && !liveDisplayRoute && !passportInviteRoute;
+  const studentProductRoute =
+    location.pathname === "/estudante-login" ||
+    location.pathname === "/estudante" ||
+    location.pathname.startsWith("/estudante/");
+  const showChrome =
+    !adminAppHost &&
+    !adminRoute &&
+    !isSaas &&
+    !liveDisplayRoute &&
+    !passportInviteRoute &&
+    !studentProductRoute;
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -205,6 +218,12 @@ const AppContent = () => {
                 <Route path="/desafio/convite/:code" element={<PassportReferralInvite />} />
                 <Route path="/formadores/cadastro" element={<FormadorCadastro />} />
                 <Route path="/formadores/painel" element={<FormadorPainel />} />
+                <Route path="/estudante-login" element={<UorStudentLogin />} />
+                <Route path="/estudante/*" element={<UorStudentApp />} />
+                <Route path="/eventos" element={<ProductGateway product="events" />} />
+                <Route path="/eventos/*" element={<ProductGateway product="events" />} />
+                <Route path="/direcao" element={<ProductGateway product="direction" />} />
+                <Route path="/direcao/*" element={<ProductGateway product="direction" />} />
 
                 <Route path="/desafios" element={<Navigate to="/minha-area?tab=desafio" replace />} />
                 <Route path="/desafios/*" element={<Navigate to="/minha-area?tab=desafio" replace />} />

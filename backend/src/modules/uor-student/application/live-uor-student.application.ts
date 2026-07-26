@@ -16,6 +16,7 @@ import type { UorStudentAdminApplication } from "../admin/admin-service";
 import type { UorStudentDelegatedFinanceApplication } from "../finance/delegated-finance-service";
 import type { UorStudentStepUpApplication } from "../security/step-up-service";
 import type { UorStudentOfficialChangeApplication } from "../sync/official-change-service";
+import type { UorStudentDataDeletionWorker } from "../identity/uor-student-data-deletion.worker";
 import type {
   UorStudentApplication,
   UorStudentIdentity,
@@ -121,6 +122,7 @@ export class LiveUorStudentApplication implements UorStudentApplication {
     readonly delegatedFinance?: UorStudentDelegatedFinanceApplication,
     readonly stepUp?: UorStudentStepUpApplication,
     readonly changes?: UorStudentOfficialChangeApplication,
+    private readonly dataDeletionWorker?: UorStudentDataDeletionWorker,
   ) {}
 
   async bootstrapInstitutionalLogin(input: { student: UorStudentIdentity; secretariaPassword: string }) {
@@ -178,8 +180,10 @@ export class LiveUorStudentApplication implements UorStudentApplication {
     return this.identityRepository.setPrivacy({ student, ...input, traceId });
   }
 
-  createDataRequest(student: UorStudentIdentity, input: Parameters<UorStudentApplication["createDataRequest"]>[1], traceId?: string) {
-    return this.identityRepository.createDataRequest({ student, ...input, traceId });
+  async createDataRequest(student: UorStudentIdentity, input: Parameters<UorStudentApplication["createDataRequest"]>[1], traceId?: string) {
+    const request = await this.identityRepository.createDataRequest({ student, ...input, traceId });
+    if (input.type === "delete") this.dataDeletionWorker?.kick();
+    return request;
   }
 
   async getDataRequest(student: UorStudentIdentity, id: string) {
@@ -265,10 +269,16 @@ export class LiveUorStudentApplication implements UorStudentApplication {
   }
 
   async start() {
-    await this.syncScheduler.start();
+    await Promise.all([
+      this.syncScheduler.start(),
+      this.dataDeletionWorker?.start(),
+    ]);
   }
 
   async stop() {
-    await this.syncScheduler.stop();
+    await Promise.all([
+      this.syncScheduler.stop(),
+      this.dataDeletionWorker?.stop(),
+    ]);
   }
 }

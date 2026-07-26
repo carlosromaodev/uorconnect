@@ -3,6 +3,7 @@ import type { Env } from "../../../config/env";
 import { prisma } from "../../../shared/prisma";
 import type { UorStudentIdentity } from "../application/ports";
 import { UorStudentError } from "../domain/errors";
+import { assertUorStudentSmsMinimized, uorStudentOtpMessage } from "../notifications/sms-policy";
 
 type Database = typeof prisma;
 
@@ -234,7 +235,7 @@ export class LiveUorStudentAuthorizationApplication {
       return created;
     });
     try {
-      await this.delivery.send({ studentId: input.student.id, message: `UOR Estudante: código ${code} para confirmar uma autorização. Válido por 10 minutos. Não partilhes este código.` });
+      await this.delivery.send({ studentId: input.student.id, message: uorStudentOtpMessage("authorization", code) });
     } catch (error) {
       await this.db.uorStudentOtpChallenge.update({ where: { id: challenge.id }, data: { status: "DELIVERY_FAILED" } });
       throw new UorStudentError("UOR_STUDENT_OTP_DELIVERY_FAILED", "Não foi possível entregar o código de confirmação.", 503, true);
@@ -359,7 +360,7 @@ export class OmbalaUorStudentOtpDelivery implements UorStudentOtpDelivery {
     const response = await fetch(`${this.env.OMBALA_API_BASE_URL.replace(/\/$/, "")}/v1/messages`, {
       method: "POST",
       headers: { Authorization: `Token ${this.env.OMBALA_API_TOKEN}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ from: this.env.OMBALA_SMS_DEFAULT_SENDER, to: phone, message: input.message }),
+      body: JSON.stringify({ from: this.env.OMBALA_SMS_DEFAULT_SENDER, to: phone, message: assertUorStudentSmsMinimized(input.message) }),
       signal: AbortSignal.timeout(15_000),
     });
     if (!response.ok) throw new Error("OTP_DELIVERY_FAILED");

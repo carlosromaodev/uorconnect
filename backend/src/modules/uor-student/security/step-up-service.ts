@@ -3,6 +3,7 @@ import { prisma } from "../../../shared/prisma";
 import type { UorStudentIdentity } from "../application/ports";
 import type { UorStudentOtpDelivery } from "../authorizations/authorization-service";
 import { UorStudentError } from "../domain/errors";
+import { uorStudentOtpMessage } from "../notifications/sms-policy";
 
 type Database = typeof prisma;
 
@@ -38,7 +39,7 @@ export class UorStudentStepUpApplication {
       await tx.uorStudentAuditEvent.create({ data: { studentId: input.student.id, institutionCode: input.student.institutionCode, domain: "security", action: "step_up.requested", resourceType: "sensitive_operation", resourceId: input.resourceId, purpose: input.action, result: "accepted", traceId: input.traceId } });
       return created;
     });
-    try { await this.delivery.send({ studentId: input.student.id, message: `UOR Estudante: código ${code} para confirmar uma operação sensível. Válido por 10 minutos.` }); }
+    try { await this.delivery.send({ studentId: input.student.id, message: uorStudentOtpMessage("step_up", code) }); }
     catch {
       await this.db.uorStudentStepUpChallenge.update({ where: { id }, data: { status: "DELIVERY_FAILED" } });
       throw new UorStudentError("UOR_STUDENT_STEP_UP_DELIVERY_FAILED", "Não foi possível entregar o código de confirmação.", 503, true);

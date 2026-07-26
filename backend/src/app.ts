@@ -32,6 +32,36 @@ const officialUorConnectOrigins = new Set([
   "https://admin.uorconnect.space",
 ]);
 
+export const sensitiveLogPaths = [
+  "req.headers.authorization",
+  "req.headers.cookie",
+  "req.headers['x-csrf-token']",
+  "req.headers['x-uor-student-mfa']",
+  "req.headers['x-uor-step-up']",
+  "res.headers['set-cookie']",
+  "req.body.username",
+  "req.body.password",
+  "req.body.secretariaPassword",
+  "req.body.moodlePassword",
+  "req.body.code",
+  "req.body.token",
+  "req.body.cookieJar",
+  "req.body.dataUrl",
+  "username",
+  "password",
+  "secretariaPassword",
+  "moodlePassword",
+  "code",
+  "token",
+  "cookieJar",
+  "sesskey",
+  "wstoken",
+  "credentialsEnvelope",
+  "sessionEnvelope",
+  "credentialEnvelope",
+  "encryptedCookieJar",
+] as const;
+
 function normalizeAllowedOrigins(value: string) {
   return value
     .split(",")
@@ -64,23 +94,7 @@ export function buildApp(env: Env, deps?: AppDependencies) {
   const app = fastify({
     logger: {
       redact: {
-        paths: [
-          "req.headers.authorization",
-          "req.headers.cookie",
-          "res.headers['set-cookie']",
-          "req.body.username",
-          "req.body.password",
-          "req.body.dataUrl",
-          "username",
-          "password",
-          "cookieJar",
-          "sesskey",
-          "wstoken",
-          "credentialsEnvelope",
-          "sessionEnvelope",
-          "credentialEnvelope",
-          "encryptedCookieJar",
-        ],
+        paths: [...sensitiveLogPaths],
         censor: "[REDACTED]",
       },
     },

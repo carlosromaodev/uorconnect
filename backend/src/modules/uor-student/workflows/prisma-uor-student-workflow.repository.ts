@@ -373,6 +373,35 @@ export class PrismaUorStudentWorkflowRepository implements UorStudentWorkflowRep
           decidedAt: new Date(),
         },
       });
+      if (input.category === "market_listing" && input.status.toUpperCase() === "RESERVED") {
+        const reserved = await tx.uorStudentAggregate.updateMany({
+          where: { id: aggregate.id, status: "PUBLISHED", version: aggregate.version },
+          data: { status: "RESERVED", version: { increment: 1 } },
+        });
+        if (reserved.count !== 1) {
+          throw new UorStudentError("UOR_STUDENT_MARKET_CONFLICT", "O anúncio já não está disponível para reserva.", 409);
+        }
+      }
+      if (input.category === "community_report") {
+        const decisions = await tx.uorStudentAggregateActor.groupBy({
+          by: ["status"],
+          where: { aggregateId: aggregate.id, role: input.role.toUpperCase() },
+          _count: { _all: true },
+        });
+        const count = (status: string) => decisions.find((item) => item.status === status)?._count._all ?? 0;
+        const derivedStatus = count("CONTESTED") > 0
+          ? "CONTESTED"
+          : count("CONFIRMED") >= 2
+            ? "CONFIRMED"
+            : "REPORTED";
+        const changed = await tx.uorStudentAggregate.updateMany({
+          where: { id: aggregate.id, status: aggregate.status, version: aggregate.version },
+          data: { status: derivedStatus, version: { increment: 1 } },
+        });
+        if (changed.count !== 1) {
+          throw new UorStudentError("UOR_STUDENT_WORKFLOW_CONFLICT", "O reporte foi alterado por outra confirmação.", 409, true);
+        }
+      }
       await tx.uorStudentAggregateEvent.create({
         data: {
           aggregateId: aggregate.id,

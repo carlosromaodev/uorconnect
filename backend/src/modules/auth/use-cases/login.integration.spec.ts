@@ -46,9 +46,9 @@ vi.mock("../infra/isptec-client", () => ({
   }),
 }));
 
-// Credenciais reais (podem ser sobrepostas via env vars).
+// Identidade inteiramente simulada; a suite não depende de credenciais reais.
 const STUDENT_NUMBER = process.env.SECRETARIA_STUDENT_NUMBER ?? "20243454";
-const STUDENT_PASSWORD = process.env.SECRETARIA_PASSWORD ?? "123456789";
+const STUDENT_PASSWORD = "test-only-password";
 
 describe("LoginUseCase – integração com secretaria", () => {
   const repo: StudentRepository = {

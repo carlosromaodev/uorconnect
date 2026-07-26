@@ -75,6 +75,7 @@ describe("UorStudentAdminApplication", () => {
       client as unknown as PrismaClient,
       () => now,
       () => "123456",
+      3,
     );
   });
 
@@ -110,5 +111,81 @@ describe("UorStudentAdminApplication", () => {
     expect(result).toMatchObject({ targetId: listing.id, targetStatus: "removed" });
     expect(await client!.uorStudentAggregate.findUnique({ where: { id: listing.id }, select: { status: true } })).toEqual({ status: "REMOVED" });
     expect(await client!.uorStudentAuditEvent.findFirst({ where: { resourceId: report.id } })).toMatchObject({ domain: "moderation", product: "uor_student" });
+  });
+
+  it("publica para a Direção somente read model agregado e suprime grupos pequenos", async () => {
+    await client!.$executeRawUnsafe(`
+      INSERT INTO "Student" ("id", "institutionCode", "studentNumber", "name", "course", "academicYear", "academicPeriod", "isUorStudent", "updatedAt") VALUES
+        (3, 'UOR', '20260003', 'A', 'Engenharia', '2', '2026/1', true, CURRENT_TIMESTAMP),
+        (4, 'UOR', '20260004', 'B', 'Engenharia', '2', '2026/1', true, CURRENT_TIMESTAMP),
+        (5, 'UOR', '20260005', 'C', 'Engenharia', '2', '2026/1', true, CURRENT_TIMESTAMP),
+        (6, 'UOR', '20260006', 'D', 'Direito', '1', '2026/1', true, CURRENT_TIMESTAMP),
+        (7, 'UOR', '20260007', 'E', 'Direito', '1', '2026/1', true, CURRENT_TIMESTAMP),
+        (8, 'OUTRA', '20260003', 'F', 'Engenharia', '2', '2026/1', true, CURRENT_TIMESTAMP)
+    `);
+
+    const result = await service.directionAcademicContextReadModel(admin, "2026/1");
+    expect(result).toMatchObject({
+      producer: "uor_student",
+      authorizedConsumer: "uor_direction",
+      purpose: "institutional_academic_planning",
+      institutionCode: "UOR",
+      minimumSample: 3,
+      suppressedBuckets: 1,
+      buckets: [{ course: "Engenharia", academicYear: "2", academicPeriod: "2026/1", students: 3 }],
+    });
+    expect(JSON.stringify(result)).not.toMatch(/2026000|uorStudentPublicId|studentNumber|name|phone/i);
+    expect(await client!.uorStudentAuditEvent.findFirst({
+      where: { action: "direction.academic_context.published" },
+    })).toMatchObject({ purpose: "institutional_academic_planning", result: "succeeded" });
+  });
+
+  it("corrige o número académico sem trocar o ID interno, perfil público ou relações", async () => {
+    const aggregate = await client!.uorStudentAggregate.create({
+      data: {
+        ownerStudentId: 2,
+        institutionCode: "UOR",
+        category: "personal_event",
+        scopeKey: "2026-08-01T10:00:00Z",
+        status: "SCHEDULED",
+        payloadJson: "{}",
+      },
+    });
+    const result = await service.correctStudentNumber({
+      student: admin,
+      profileId: "10000000-0000-4000-8000-000000000002",
+      newStudentNumber: "20269999",
+      reason: "Correção confirmada pelo registo académico.",
+      traceId: "trace-number-correction",
+    });
+
+    expect(result).toEqual({
+      profileId: "10000000-0000-4000-8000-000000000002",
+      previousStudentNumber: "20260002",
+      studentNumber: "20269999",
+      relationshipsPreserved: true,
+    });
+    expect(await client!.student.findUnique({
+      where: { id: 2 },
+      select: { id: true, uorStudentPublicId: true, studentNumber: true },
+    })).toEqual({
+      id: 2,
+      uorStudentPublicId: "10000000-0000-4000-8000-000000000002",
+      studentNumber: "20269999",
+    });
+    expect(await client!.uorStudentAggregate.findUnique({
+      where: { id: aggregate.id },
+      select: { ownerStudentId: true },
+    })).toEqual({ ownerStudentId: 2 });
+    expect(await client!.uorStudentAuditEvent.findFirst({
+      where: { action: "student_number.corrected" },
+    })).toMatchObject({ resourceId: "10000000-0000-4000-8000-000000000002", traceId: "trace-number-correction" });
+
+    await expect(service.correctStudentNumber({
+      student: admin,
+      profileId: "10000000-0000-4000-8000-000000000002",
+      newStudentNumber: "20260001",
+      reason: "Tentativa de colisão para teste.",
+    })).rejects.toMatchObject({ code: "UOR_STUDENT_NUMBER_CONFLICT" });
   });
 });
