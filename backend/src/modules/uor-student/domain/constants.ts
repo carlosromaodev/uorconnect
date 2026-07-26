@@ -1,0 +1,1 @@
+export const DEFAULT_MOODLE_STUDENT_PASSWORD = "Est.2026";

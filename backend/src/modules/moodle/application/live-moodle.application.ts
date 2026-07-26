@@ -132,8 +132,30 @@ export class LiveMoodleApplication implements MoodleApplication {
     return { ...connected.result, initialSyncRunId };
   }
 
+  async retryStoredConnection(student: MoodleStudentIdentity): Promise<MoodleConnectResult> {
+    await this.sessions.reauthenticate(student);
+    const connection = await this.#getConnectionWithRecovery(student.id);
+    if (!connection) throw moodleConnectionRequired();
+    let initialSyncRunId: string | null = null;
+    try {
+      initialSyncRunId = (await this.startSync(student, "stored-credentials-retry")).id;
+    } catch {
+      // Authentication recovery is already durable. A later scheduler cycle
+      // can enqueue the provider refresh without asking for the password.
+    }
+    return {
+      connection: connectionView(connection),
+      initialSyncRunId,
+      created: false,
+    };
+  }
+
   async disconnect(student: MoodleStudentIdentity) {
     return connectionView(await this.sessions.disconnect(student));
+  }
+
+  async terminateSession(student: MoodleStudentIdentity) {
+    return connectionView(await this.sessions.terminateSession(student));
   }
 
   async getConnection(student: MoodleStudentIdentity) {

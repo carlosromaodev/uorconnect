@@ -3,13 +3,14 @@ import { describe, expect, it } from "vitest";
 
 describe("student institution schema contract", () => {
   const schema = readFileSync("prisma/schema.prisma", "utf8");
+  const studentModel = schema.match(/model Student \{[\s\S]*?\n\}/)?.[0] ?? "";
 
   it("keeps studentNumber visible while making uniqueness institution-scoped", () => {
-    expect(schema).toContain("institutionCode   String");
-    expect(schema).toContain("studentNumber     String");
-    expect(schema).not.toContain("studentNumber     String             @unique");
-    expect(schema).toContain("@@unique([institutionCode, studentNumber])");
-    expect(schema).toContain("@@index([studentNumber])");
+    expect(studentModel).toMatch(/institutionCode\s+String/);
+    expect(studentModel).toMatch(/studentNumber\s+String/);
+    expect(studentModel).not.toMatch(/studentNumber\s+String\s+@unique/);
+    expect(studentModel).toContain("@@unique([institutionCode, studentNumber])");
+    expect(studentModel).toContain("@@index([studentNumber])");
   });
 
   it("does not relate team memberships through a globally unique studentNumber", () => {

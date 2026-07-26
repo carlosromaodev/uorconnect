@@ -281,6 +281,20 @@ describe("NetpaSecretariaGateway personal data contracts", () => {
   });
 });
 
+describe("NetpaSecretariaGateway circuit breaker", () => {
+  it("isola somente o endpoint que falhou repetidamente", async () => {
+    const fetchMock = vi.fn(async () => new Response("unavailable", { status: 503 }));
+    vi.stubGlobal("fetch", fetchMock);
+    const gateway = testGateway();
+
+    for (let attempt = 0; attempt < 5; attempt += 1) {
+      await expect(gateway.getProfile(session)).rejects.toMatchObject({ code: "SECRETARIA_UNAVAILABLE" });
+    }
+    await expect(gateway.getProfile(session)).rejects.toMatchObject({ code: "SECRETARIA_CIRCUIT_OPEN", retryable: true });
+    expect(fetchMock).toHaveBeenCalledTimes(5);
+  });
+});
+
 describe("NetpaSecretariaGateway exam registration contracts", () => {
   it("expõe referência opaca e só conclui a anulação após releitura oficial", async () => {
     const page = `<html><body><script>

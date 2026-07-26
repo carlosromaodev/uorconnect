@@ -53,6 +53,7 @@ describe("PrismaMoodleRepository", () => {
       studentId: 1,
       attemptId: "attempt-a",
       leaseDurationMs: 90_000,
+      credentialsEnvelope: "v1.key.iv.tag.pending-a",
     });
     expect(attempt.acquired).toBe(true);
     expect(attempt.connection.connectionGeneration).toBe(1);
@@ -61,6 +62,7 @@ describe("PrismaMoodleRepository", () => {
       studentId: 1,
       attemptId: "attempt-b",
       leaseDurationMs: 90_000,
+      credentialsEnvelope: "v1.key.iv.tag.pending-b",
     });
     expect(competingAttempt.acquired).toBe(false);
     expect(competingAttempt.connection.connectionAttemptId).toBe("attempt-a");
@@ -129,6 +131,19 @@ describe("PrismaMoodleRepository", () => {
     expect(disconnected.connectionGeneration).toBe(2);
     expect(disconnected.credentialsEnvelope).toBeNull();
     expect(disconnected.sessionEnvelope).toBeNull();
+  });
+
+  it("termina apenas a sessão e preserva a credencial para reconexão automática", async () => {
+    await connect(repository, 1, "20260001", "session-to-terminate");
+    const before = await repository.getConnection(1);
+    const terminated = await repository.terminateSession(1);
+    expect(terminated).toMatchObject({
+      status: "DEGRADED",
+      credentialsEnvelope: before?.credentialsEnvelope,
+      sessionEnvelope: null,
+      activeSyncRunId: null,
+    });
+    expect(terminated.sessionVersion).toBe((before?.sessionVersion ?? 0) + 1);
   });
 
   it("publica snapshots inteiros, mantém UUIDs estáveis e isola proprietários", async () => {
@@ -229,6 +244,7 @@ describe("PrismaMoodleRepository", () => {
       studentId: 1,
       attemptId: "abandoned-reconnect",
       leaseDurationMs: 90_000,
+      credentialsEnvelope: "v1.key.iv.tag.reconnect",
     });
     await client!.moodleConnection.update({
       where: { studentId: 1 },
@@ -280,6 +296,7 @@ async function connect(
     studentId,
     attemptId,
     leaseDurationMs: 90_000,
+    credentialsEnvelope: `v1.key.iv.tag.${attemptId}`,
   });
   await repository.completeConnectionAttempt({
     studentId,

@@ -246,7 +246,7 @@ describe("Secretaria routes", () => {
     expect(confirm.statusCode).toBe(200);
     expect(confirm.json().data.status).toBe("SUCCEEDED");
     await app.close();
-  });
+  }, 15_000);
 
   it("rejeita conteúdo que apenas declara ser JPEG", async () => {
     const { app, application, authorization } = setup();

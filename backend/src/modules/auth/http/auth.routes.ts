@@ -70,7 +70,7 @@ const loginSchema = z.object({
   provider: z.enum(["uor", "isptec"]).optional().default("uor"),
   origin: z.preprocess(
     (value) => value === "admin" ? "uorconnect" : value,
-    z.enum(["uorconnect"]).optional(),
+    z.enum(["uorconnect", "uor_estudante"]).optional(),
   ),
 }).superRefine((value, ctx) => {
   if (value.identifierType === "username") {
@@ -550,6 +550,28 @@ const conventionalVerifySchema = z.object({
 
 const CONVENTIONAL_SMS_DISABLED_MESSAGE = "O acesso por SMS foi desativado. Usa o login oficial UOR ou ISPTEC.";
 
+export type BootstrapUorStudentLogin = (input: {
+  student: { id: number; institutionCode: string; studentNumber: string };
+  secretariaPassword: string;
+}) => Promise<void>;
+
+export async function runUorStudentLoginBootstrap(input: {
+  origin?: string;
+  provider: "uor" | "isptec";
+  password: string;
+  student: { id: number; institutionCode?: string; studentNumber: string };
+}, bootstrap?: BootstrapUorStudentLogin) {
+  if (input.origin !== "uor_estudante" || input.provider !== "uor" || !bootstrap) return;
+  await bootstrap({
+    student: {
+      id: input.student.id,
+      institutionCode: input.student.institutionCode ?? "UOR",
+      studentNumber: input.student.studentNumber,
+    },
+    secretariaPassword: input.password,
+  });
+}
+
 const studentRepository = new StudentRepository(prisma);
 const submissionRepository = new PrismaSubmissionRepository();
 let envCache: Env;
@@ -729,7 +751,10 @@ async function generateConventionalStudentNumber() {
   return `8${Date.now().toString().slice(-11)}`;
 }
 
-export async function authRoutes(app: FastifyInstance, opts: { env?: Env } = {}) {
+export async function authRoutes(app: FastifyInstance, opts: {
+  env?: Env;
+  bootstrapUorStudentLogin?: BootstrapUorStudentLogin;
+} = {}) {
   envCache = opts.env ?? loadEnv();
   const ombala = new OmbalaClient(envCache);
   const secureCookies = shouldUseSecureCookies(envCache);
@@ -855,6 +880,13 @@ export async function authRoutes(app: FastifyInstance, opts: { env?: Env } = {})
             });
             normalizedStudent = { ...normalizedStudent, profileCompletedAt: new Date() };
           }
+
+          await runUorStudentLoginBootstrap({
+            origin: request.body.origin,
+            provider: request.body.provider,
+            password: request.body.password,
+            student: normalizedStudent,
+          }, opts.bootstrapUorStudentLogin);
 
           // Run post-login side effects in parallel — none block the response
           await Promise.all([

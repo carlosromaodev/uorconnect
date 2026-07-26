@@ -17,8 +17,12 @@ export class DisabledMoodleApplication implements MoodleApplication {
   constructor(private readonly repository: MoodleRepository) {}
 
   connect: MoodleApplication["connect"] = async () => disabled();
+  retryStoredConnection: MoodleApplication["retryStoredConnection"] = async () => disabled();
   disconnect: MoodleApplication["disconnect"] = async (student) => (
     connectionView(await this.repository.disconnectAndPurge(student.id))
+  );
+  terminateSession: MoodleApplication["terminateSession"] = async (student) => (
+    connectionView(await this.repository.terminateSession(student.id))
   );
   getConnection: MoodleApplication["getConnection"] = async (student) => (
     connectionView(await this.repository.getConnection(student.id))

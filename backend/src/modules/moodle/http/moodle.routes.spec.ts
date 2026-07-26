@@ -31,7 +31,9 @@ const connection = {
 function fakeApplication(): MoodleApplication {
   return {
     connect: vi.fn().mockResolvedValue({ connection, initialSyncRunId: "550e8400-e29b-41d4-a716-446655440010", created: true }),
+    retryStoredConnection: vi.fn().mockResolvedValue({ connection, initialSyncRunId: "550e8400-e29b-41d4-a716-446655440010", created: false }),
     disconnect: vi.fn().mockResolvedValue({ ...connection, status: "DISCONNECTED", connected: false, credentialsStored: false }),
+    terminateSession: vi.fn().mockResolvedValue({ ...connection, status: "DISCONNECTED", connected: false }),
     getConnection: vi.fn().mockResolvedValue(connection),
     getProfile: vi.fn().mockResolvedValue({
       id: "550e8400-e29b-41d4-a716-446655440001",

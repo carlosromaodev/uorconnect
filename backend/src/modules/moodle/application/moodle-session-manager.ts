@@ -162,10 +162,15 @@ export class MoodleSessionManager {
     }
     const before = await this.repository.getConnection(student.id);
     const attemptId = this.#uuid();
+    const credentialsEnvelope = this.keyring.encryptJson(
+      { username: input.username, password: input.password },
+      { studentId: String(student.id), purpose: "credentials" },
+    );
     const attempt = await this.repository.beginConnectionAttempt({
       studentId: student.id,
       attemptId,
       leaseDurationMs: CONNECT_LEASE_MS,
+      credentialsEnvelope,
     });
     if (!attempt.acquired) {
       throw new MoodleError(
@@ -186,10 +191,6 @@ export class MoodleSessionManager {
       assertSameIdentity(student.studentNumber, authenticated.profile);
 
       const contextId = String(student.id);
-      const credentialsEnvelope = this.keyring.encryptJson(
-        { username: input.username, password: input.password },
-        { studentId: contextId, purpose: "credentials" },
-      );
       const sessionEnvelope = this.keyring.encryptJson(
         authenticated.session,
         { studentId: contextId, purpose: "session" },
@@ -239,9 +240,13 @@ export class MoodleSessionManager {
         studentId: student.id,
         connectionGeneration: attempt.connection.connectionGeneration,
         attemptId,
-        status: preservedExistingConnection ? "DEGRADED" : "DISCONNECTED",
+        status: preservedExistingConnection
+          ? "DEGRADED"
+          : mapped.code === "MOODLE_CREDENTIALS_INVALID" || mapped.code === "MOODLE_IDENTITY_MISMATCH"
+            ? "REAUTH_REQUIRED"
+            : "DEGRADED",
         lastErrorCode: error instanceof MoodleGatewayFailure ? error.code : error instanceof MoodleError ? error.code : "MOODLE_UNAVAILABLE",
-        clearSecrets: !preservedExistingConnection,
+        clearSecrets: false,
       }).catch(() => false);
       if (authenticated) await this.gateway.logout(authenticated.session).catch(() => undefined);
       throw mapped;
@@ -264,6 +269,24 @@ export class MoodleSessionManager {
     const tombstone = await this.repository.disconnectAndPurge(student.id);
     this.clear(student.id);
     return tombstone;
+  }
+
+  async terminateSession(student: MoodleStudentIdentity): Promise<PersistedMoodleConnection> {
+    const connection = await this.repository.getConnection(student.id);
+    if (connection?.sessionEnvelope) {
+      try {
+        const session = this.keyring.decryptJson<MoodleGatewaySession>(connection.sessionEnvelope, {
+          studentId: String(student.id),
+          purpose: "session",
+        });
+        await this.gateway.logout(session).catch(() => undefined);
+      } catch {
+        // Local envelope invalidation remains authoritative.
+      }
+    }
+    const terminated = await this.repository.terminateSession(student.id);
+    this.clear(student.id);
+    return terminated;
   }
 
   async withSession<T>(

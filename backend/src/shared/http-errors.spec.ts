@@ -21,7 +21,7 @@ describe("Portuguese HTTP error handling", () => {
           200: z.object({ ok: z.boolean() }),
         },
       },
-    }, async () => ({ ok: "yes" }));
+    }, async () => ({ ok: "yes" } as unknown as { ok: boolean }));
 
     const response = await app.inject({ method: "GET", url: "/broken-response" });
 

@@ -116,6 +116,49 @@ describe("MoodleSessionManager", () => {
       status: "DEGRADED",
       clearSecrets: false,
     }));
+    expect(repository.beginConnectionAttempt).toHaveBeenCalledWith(expect.objectContaining({
+      credentialsEnvelope: expect.any(String),
+    }));
+    keyring.destroy();
+  });
+
+  it("guarda a credencial inicial cifrada mesmo quando o Moodle exige outra senha", async () => {
+    const connecting = connection({
+      status: "CONNECTING",
+      connectionGeneration: 1,
+      connectionAttemptId: "attempt",
+      credentialsEnvelope: null,
+      sessionEnvelope: null,
+    });
+    const cancelConnectionAttempt = vi.fn().mockResolvedValue(true);
+    const beginConnectionAttempt = vi.fn().mockResolvedValue({ acquired: true, connection: connecting });
+    const repository = {
+      getConnection: vi.fn().mockResolvedValueOnce(null),
+      beginConnectionAttempt,
+      cancelConnectionAttempt,
+    } as unknown as MoodleRepository;
+    const keyring = MoodleCryptoKeyring.fromConfig("v1", `v1:${key}`);
+    const manager = new MoodleSessionManager(
+      repository,
+      gateway({ authenticate: vi.fn().mockRejectedValue(new MoodleGatewayFailure("MOODLE_AUTH_FAILED")) }),
+      keyring,
+      { l1TtlMs: 300_000, uuid: () => "attempt" },
+    );
+
+    await expect(manager.connect(
+      { id: 42, studentNumber: "2026-001" },
+      { username: "2026-001", password: "Est.2026", rememberCredentials: true },
+    )).rejects.toMatchObject({ code: "MOODLE_CREDENTIALS_INVALID" });
+    const envelope = beginConnectionAttempt.mock.calls[0]?.[0]?.credentialsEnvelope as string;
+    expect(envelope).not.toContain("Est.2026");
+    expect(keyring.decryptJson(envelope, { studentId: "42", purpose: "credentials" })).toEqual({
+      username: "2026-001",
+      password: "Est.2026",
+    });
+    expect(cancelConnectionAttempt).toHaveBeenCalledWith(expect.objectContaining({
+      status: "REAUTH_REQUIRED",
+      clearSecrets: false,
+    }));
     keyring.destroy();
   });
 

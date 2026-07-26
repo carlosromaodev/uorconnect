@@ -26,7 +26,8 @@ export function connectionView(connection: PersistedMoodleConnection | null): Mo
     };
   }
 
-  const connected = ["CONNECTED", "REFRESHING", "DEGRADED"].includes(connection.status);
+  const connected = ["CONNECTED", "REFRESHING", "DEGRADED"].includes(connection.status)
+    && Boolean(connection.sessionEnvelope);
   const actionRequired = connection.status === "REAUTH_REQUIRED"
     ? "reauthenticate" as const
     : connection.status === "DISCONNECTED"

@@ -257,6 +257,7 @@ export class PrismaMoodleRepository implements MoodleRepository {
     studentId: number;
     attemptId: string;
     leaseDurationMs: number;
+    credentialsEnvelope: string;
   }): Promise<{ acquired: boolean; connection: PersistedMoodleConnection }> {
     return this.client.$transaction(async (tx) => {
       const now = await databaseNow(tx);
@@ -291,6 +292,10 @@ export class PrismaMoodleRepository implements MoodleRepository {
           reauthLeaseOwner: null,
           reauthLeaseUntil: null,
           activeSyncRunId: null,
+          // Persist immediately for a first-time bootstrap so a transient
+          // upstream failure does not lose the credential. During reconnect,
+          // keep the last known envelope until the new authentication commits.
+          credentialsEnvelope: current.credentialsEnvelope ?? input.credentialsEnvelope,
           lastErrorCode: null,
         },
       });
@@ -446,6 +451,43 @@ export class PrismaMoodleRepository implements MoodleRepository {
       await tx.moodleEntityRef.deleteMany({ where: { studentId } });
       await tx.moodleSyncRun.deleteMany({ where: { studentId } });
       return toConnection(connection);
+    });
+  }
+
+  async terminateSession(studentId: number): Promise<PersistedMoodleConnection> {
+    return this.client.$transaction(async (tx) => {
+      const now = await databaseNow(tx);
+      const current = await tx.moodleConnection.findUnique({ where: { studentId } });
+      if (!current) {
+        return toConnection(await tx.moodleConnection.create({
+          data: { studentId, status: MoodleConnectionStatus.DISCONNECTED, lastUsedAt: now },
+        }));
+      }
+      await tx.moodleSyncRun.updateMany({
+        where: { studentId, status: { in: ["QUEUED", "RUNNING"] } },
+        data: {
+          status: MoodleSyncRunStatus.CANCELLED,
+          finishedAt: now,
+          leaseOwner: null,
+          leaseUntil: null,
+          lastErrorCode: "MOODLE_SESSION_TERMINATED",
+        },
+      });
+      return toConnection(await tx.moodleConnection.update({
+        where: { studentId },
+        data: {
+          status: current.credentialsEnvelope ? MoodleConnectionStatus.DEGRADED : MoodleConnectionStatus.DISCONNECTED,
+          sessionEnvelope: null,
+          sessionExpiresAt: null,
+          sessionVersion: { increment: 1 },
+          activeSyncRunId: null,
+          reauthLeaseOwner: null,
+          reauthLeaseUntil: null,
+          nextReauthAt: null,
+          lastUsedAt: now,
+          lastErrorCode: current.credentialsEnvelope ? "MOODLE_SESSION_TERMINATED" : null,
+        },
+      }));
     });
   }
 

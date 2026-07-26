@@ -8,6 +8,7 @@ import { type Env } from "./config/env";
 import { registerPortugueseErrorHandler } from "./shared/http-errors";
 import type { MoodleApplication, MoodleStudentIdentity } from "./modules/moodle/application/ports";
 import type { SecretariaApplication } from "./modules/secretaria/application/secretaria.application";
+import type { UorStudentApplication, UorStudentIdentity } from "./modules/uor-student/application/ports";
 
 export type AppDependencies = Record<string, unknown> & {
   moodle?: {
@@ -17,6 +18,10 @@ export type AppDependencies = Record<string, unknown> & {
   secretaria?: {
     application?: SecretariaApplication;
     findEligibleStudent?: (studentId: number) => Promise<{ id: number; studentNumber: string } | null>;
+  };
+  uorStudent?: {
+    application?: UorStudentApplication;
+    findEligibleStudent?: (studentId: number) => Promise<UorStudentIdentity | null>;
   };
 };
 
@@ -105,7 +110,7 @@ export function buildApp(env: Env, deps?: AppDependencies) {
           callback(null, isAllowedOrigin ? origin : false);
         },
     methods: ["GET", "HEAD", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization", "Idempotency-Key", "ngrok-skip-browser-warning", "x-csrf-token"],
+    allowedHeaders: ["Content-Type", "Authorization", "Idempotency-Key", "ngrok-skip-browser-warning", "x-csrf-token", "x-uor-student-mfa", "x-uor-step-up"],
     credentials: true,
     maxAge: 86400
   });

@@ -31,6 +31,8 @@ import { createMoodleApplication } from "../../modules/moodle/application/create
 import { platformContextRoutes } from "../../modules/platform-context/http/platform-context.routes";
 import { secretariaRoutes } from "../../modules/secretaria/http/secretaria.routes";
 import { createSecretariaApplication } from "../../modules/secretaria/application/create-secretaria-application";
+import { createUorStudentApplication } from "../../modules/uor-student/application/create-uor-student-application";
+import { uorStudentRoutes } from "../../modules/uor-student/http/uor-student.routes";
 
 const DEFAULT_PUBLIC_APP_URL = "http://localhost:8082";
 
@@ -60,6 +62,16 @@ function getPublicAppUrl(env: Env) {
 }
 
 export function registerRoutes(app: FastifyInstance, env: Env, deps?: AppDependencies) {
+  const secretariaApplication = createSecretariaApplication(env, deps?.secretaria?.application);
+  const moodleApplication = createMoodleApplication(env, { application: deps?.moodle?.application });
+  const uorStudentApplication = createUorStudentApplication({
+    secretaria: secretariaApplication,
+    moodle: moodleApplication,
+    cursorSecret: env.JWT_SECRET,
+    env,
+    override: deps?.uorStudent?.application,
+  });
+
   // Basic landing route so hitting "/" does not 404
   app.get("/", async () => ({ status: "ok" }));
 
@@ -69,7 +81,14 @@ export function registerRoutes(app: FastifyInstance, env: Env, deps?: AppDepende
   });
 
   app.register(healthRoutes, { prefix: "/health" });
-  app.register(authRoutes, { prefix: "/auth", env });
+  app.register(authRoutes, {
+    prefix: "/auth",
+    env,
+    bootstrapUorStudentLogin: (input: {
+      student: { id: number; institutionCode: string; studentNumber: string };
+      secretariaPassword: string;
+    }) => uorStudentApplication.bootstrapInstitutionalLogin(input),
+  });
   app.register(submissionRoutes, { prefix: "/submissions", env });
   app.register(agendaRoutes, { prefix: "/agenda", env });
   app.register(speakerRoutes, { prefix: "/speakers", env });
@@ -96,19 +115,30 @@ export function registerRoutes(app: FastifyInstance, env: Env, deps?: AppDepende
   app.register(platformContextRoutes, { prefix: "/student", context: "student" });
   app.register(platformContextRoutes, { prefix: "/events", context: "events" });
   app.register(platformContextRoutes, { prefix: "/direction", context: "direction" });
-  app.register(platformContextRoutes, { prefix: "/api/v1/student", context: "student" });
+  app.register(uorStudentRoutes, {
+    prefix: "/api/v1/student",
+    env,
+    application: uorStudentApplication,
+    findEligibleStudent: deps?.uorStudent?.findEligibleStudent,
+  });
   app.register(platformContextRoutes, { prefix: "/api/v1/events", context: "events" });
   app.register(platformContextRoutes, { prefix: "/api/v1/direction", context: "direction" });
   app.register(secretariaRoutes, {
     prefix: "/api/v1/integrations/secretaria",
     env,
-    application: createSecretariaApplication(env, deps?.secretaria?.application),
+    application: secretariaApplication,
     findEligibleStudent: deps?.secretaria?.findEligibleStudent,
+    verifyStepUp: ({ student, token, action, resourceId }) => Boolean(uorStudentApplication.stepUp?.verifyToken(
+      { ...student, institutionCode: "UOR" },
+      token,
+      action,
+      resourceId,
+    )),
   });
   app.register(moodleRoutes, {
     prefix: "/integrations/moodle",
     env,
-    application: createMoodleApplication(env, { application: deps?.moodle?.application }),
+    application: moodleApplication,
     findEligibleStudent: deps?.moodle?.findEligibleStudent,
   });
 }

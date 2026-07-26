@@ -196,6 +196,7 @@ export interface MoodleRepository {
     studentId: number;
     attemptId: string;
     leaseDurationMs: number;
+    credentialsEnvelope: string;
   }): Promise<{ acquired: boolean; connection: PersistedMoodleConnection }>;
 
   completeConnectionAttempt(input: {
@@ -219,6 +220,7 @@ export interface MoodleRepository {
   }): Promise<boolean>;
 
   disconnectAndPurge(studentId: number): Promise<PersistedMoodleConnection>;
+  terminateSession(studentId: number): Promise<PersistedMoodleConnection>;
 
   touchConnection(input: {
     studentId: number;

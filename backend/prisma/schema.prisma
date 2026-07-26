@@ -72,6 +72,39 @@ enum SecretariaSyncRunStatus {
   CANCELLED
 }
 
+enum UorStudentSyncJobStatus {
+  QUEUED
+  RUNNING
+  COMPLETED
+  FAILED
+  CANCELLED
+}
+
+enum UorStudentDataRequestType {
+  EXPORT
+  DELETE
+}
+
+enum UorStudentDataRequestStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  PARTIAL
+  FAILED
+  CANCELLED
+}
+
+enum UorStudentAcademicRuleStatus {
+  DRAFT
+  APPROVED
+  RETIRED
+}
+
+enum UorStudentSimulationStatus {
+  ACTIVE
+  ARCHIVED
+}
+
 enum SecretariaCommandStatus {
   AWAITING_CONFIRMATION
   SUBMITTING
@@ -99,80 +132,98 @@ model User {
 }
 
 model Student {
-  id                Int                @id @default(autoincrement())
-  institutionCode   String             @default("UOR")
-  studentNumber     String
-  name              String?
-  email             String?
-  course            String?
-  classCode         String?
-  academicYear      String?
-  academicPeriod    String?
-  curricularYear    String?
-  academicSyncedAt  DateTime?
-  birthDate         DateTime?
-  nationality       String?
-  phone             String?
-  alternatePhone    String?
-  avatarUrl         String?
-  university        String?
-  isUorStudent      Boolean?
-  registrationSource String?
-  bio               String?
-  address           String?
-  instagramUrl      String?
-  facebookUrl       String?
-  linkedinUrl       String?
-  githubUrl         String?
-  websiteUrl        String?
-  profileCompletedAt DateTime?
-  deletedAt         DateTime?
-  deletionReason    String?
-  lastLoginAt       DateTime?
-  createdAt         DateTime           @default(now())
-  updatedAt         DateTime           @updatedAt
-  submissions       Submission[]
-  likes             StudentLike[]
-  courseLikes       CourseLike[]
-  courseEnrollments CourseEnrollment[]
-  votes             StudentVote[]
-  comments          StudentComment[]
-  liveChatMessages  LiveChatMessage[]
-  liveChatReactions LiveChatReaction[]
-  submissionMemberships SubmissionMember[]
-  analyticsSessions AnalyticsSession[]
-  analyticsEvents   AnalyticsEvent[]
-  consentRecords    ConsentRecord[]
-  loginAudits       StudentLoginAudit[]
-  odinEvents        OdinEvent[]
-  accessCodes       StudentAccessCode[]
-  smsRecipients     SmsCampaignRecipient[]
-  whatsappRecipients WhatsAppCampaignRecipient[]
-  attendanceCredential AttendanceCredential?
-  attendanceCheckIns AttendanceCheckIn[]
-  certificates      Certificate[]
-  profileExtra      StudentProfileExtra?
-  qrActionScans         QrActionScan[]
-  passportScans         PassportScan[]
-  passportPointLedger   PassportPointLedger[]
-  passportPointRecoveries PassportPointRecovery[]
-  passportStudentBadges PassportStudentBadge[]
-  passportChallengeAnswers PassportChallengeAnswer[]
-  passportSurpriseEffects PassportSurpriseEffectLedger[]
-  exhibitorVoteScoreEvents ExhibitorScoreEvent[] @relation("ExhibitorScoreVoter")
-  exhibitorActorScoreEvents ExhibitorScoreEvent[] @relation("ExhibitorScoreActor")
-  teamMemberships       TeamMembership[]
-  teamMembershipClaims  TeamMembershipClaim[]
-  moodleConnection      MoodleConnection?
-  moodleEntityRefs      MoodleEntityRef[]
-  moodleCourseSnapshots MoodleCourseSnapshot[]
-  moodleSectionSnapshots MoodleSectionSnapshot[]
-  moodleMaterialSnapshots MoodleMaterialSnapshot[]
-  moodleSyncRuns        MoodleSyncRun[]
-  secretariaConnection SecretariaConnection?
-  secretariaSnapshots  SecretariaSnapshot[]
-  secretariaSyncRuns   SecretariaSyncRun[]
-  secretariaCommands   SecretariaCommand[]
+  id                               Int                              @id @default(autoincrement())
+  institutionCode                  String                           @default("UOR")
+  uorStudentPublicId               String?                          @unique
+  studentNumber                    String
+  name                             String?
+  email                            String?
+  course                           String?
+  classCode                        String?
+  academicYear                     String?
+  academicPeriod                   String?
+  curricularYear                   String?
+  academicSyncedAt                 DateTime?
+  birthDate                        DateTime?
+  nationality                      String?
+  phone                            String?
+  alternatePhone                   String?
+  avatarUrl                        String?
+  university                       String?
+  isUorStudent                     Boolean?
+  registrationSource               String?
+  bio                              String?
+  address                          String?
+  instagramUrl                     String?
+  facebookUrl                      String?
+  linkedinUrl                      String?
+  githubUrl                        String?
+  websiteUrl                       String?
+  profileCompletedAt               DateTime?
+  deletedAt                        DateTime?
+  deletionReason                   String?
+  lastLoginAt                      DateTime?
+  createdAt                        DateTime                         @default(now())
+  updatedAt                        DateTime                         @updatedAt
+  submissions                      Submission[]
+  likes                            StudentLike[]
+  courseLikes                      CourseLike[]
+  courseEnrollments                CourseEnrollment[]
+  votes                            StudentVote[]
+  comments                         StudentComment[]
+  liveChatMessages                 LiveChatMessage[]
+  liveChatReactions                LiveChatReaction[]
+  submissionMemberships            SubmissionMember[]
+  analyticsSessions                AnalyticsSession[]
+  analyticsEvents                  AnalyticsEvent[]
+  consentRecords                   ConsentRecord[]
+  loginAudits                      StudentLoginAudit[]
+  odinEvents                       OdinEvent[]
+  accessCodes                      StudentAccessCode[]
+  smsRecipients                    SmsCampaignRecipient[]
+  whatsappRecipients               WhatsAppCampaignRecipient[]
+  attendanceCredential             AttendanceCredential?
+  attendanceCheckIns               AttendanceCheckIn[]
+  certificates                     Certificate[]
+  profileExtra                     StudentProfileExtra?
+  qrActionScans                    QrActionScan[]
+  passportScans                    PassportScan[]
+  passportPointLedger              PassportPointLedger[]
+  passportPointRecoveries          PassportPointRecovery[]
+  passportStudentBadges            PassportStudentBadge[]
+  passportChallengeAnswers         PassportChallengeAnswer[]
+  passportSurpriseEffects          PassportSurpriseEffectLedger[]
+  exhibitorVoteScoreEvents         ExhibitorScoreEvent[]            @relation("ExhibitorScoreVoter")
+  exhibitorActorScoreEvents        ExhibitorScoreEvent[]            @relation("ExhibitorScoreActor")
+  teamMemberships                  TeamMembership[]
+  teamMembershipClaims             TeamMembershipClaim[]
+  moodleConnection                 MoodleConnection?
+  moodleEntityRefs                 MoodleEntityRef[]
+  moodleCourseSnapshots            MoodleCourseSnapshot[]
+  moodleSectionSnapshots           MoodleSectionSnapshot[]
+  moodleMaterialSnapshots          MoodleMaterialSnapshot[]
+  moodleSyncRuns                   MoodleSyncRun[]
+  secretariaConnection             SecretariaConnection?
+  secretariaSnapshots              SecretariaSnapshot[]
+  secretariaSyncRuns               SecretariaSyncRun[]
+  secretariaCommands               SecretariaCommand[]
+  uorStudentSyncJobs               UorStudentSyncJob[]
+  uorStudentPrivacyPreferences     UorStudentPrivacyPreference[]
+  uorStudentDataRequests           UorStudentDataRequest[]
+  uorStudentProfileFields          UorStudentProfileField[]
+  uorStudentAuditEvents            UorStudentAuditEvent[]
+  uorStudentSimulations            UorStudentAcademicSimulation[]
+  uorStudentOwnedAggregates        UorStudentAggregate[]            @relation("UorStudentAggregateOwner")
+  uorStudentAggregateActors        UorStudentAggregateActor[]       @relation("UorStudentAggregateActorStudent")
+  uorStudentAggregateEvents        UorStudentAggregateEvent[]       @relation("UorStudentAggregateEventActor")
+  uorStudentOwnedAuthorizations    UorStudentAuthorization[]        @relation("UorStudentAuthorizationOwner")
+  uorStudentReceivedAuthorizations UorStudentAuthorization[]        @relation("UorStudentAuthorizationRepresentative")
+  uorStudentOtpChallenges          UorStudentOtpChallenge[]
+  uorStudentNotifications          UorStudentNotification[]
+  uorStudentOfficialChanges        UorStudentOfficialChange[]
+  uorStudentRankingParticipations  UorStudentRankingParticipation[]
+  uorStudentConfigurationsCreated  UorStudentProductConfiguration[]
+  uorStudentStepUpChallenges       UorStudentStepUpChallenge[]
 
   @@unique([institutionCode, studentNumber])
   @@index([studentNumber])
@@ -182,24 +233,24 @@ model Student {
 /// Control plane for the student's official Secretaria connection. Secret
 /// columns contain authenticated-encryption envelopes only.
 model SecretariaConnection {
-  id                    Int                         @id @default(autoincrement())
-  student               Student                     @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  studentId             Int                         @unique
+  id                    Int                        @id @default(autoincrement())
+  student               Student                    @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  studentId             Int                        @unique
   status                SecretariaConnectionStatus @default(DISCONNECTED)
   upstreamStudentNumber String?
   displayName           String?
   credentialsEnvelope   String?
   sessionEnvelope       String?
-  connectionGeneration  Int                         @default(0)
-  sessionVersion        Int                         @default(0)
+  connectionGeneration  Int                        @default(0)
+  sessionVersion        Int                        @default(0)
   activeSnapshotVersion Int?
   lastAuthenticatedAt   DateTime?
   lastSuccessfulSyncAt  DateTime?
   lastUsedAt            DateTime?
   lastErrorCode         String?
-  failedReauthCount     Int                         @default(0)
-  createdAt             DateTime                    @default(now())
-  updatedAt             DateTime                    @updatedAt
+  failedReauthCount     Int                        @default(0)
+  createdAt             DateTime                   @default(now())
+  updatedAt             DateTime                   @updatedAt
 
   @@index([status, updatedAt])
 }
@@ -223,32 +274,424 @@ model SecretariaSnapshot {
 }
 
 model SecretariaSyncRun {
-  id              String                   @id @default(uuid())
-  student         Student                  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  id              String                  @id @default(uuid())
+  student         Student                 @relation(fields: [studentId], references: [id], onDelete: Cascade)
   studentId       Int
-  status          SecretariaSyncRunStatus  @default(RUNNING)
+  status          SecretariaSyncRunStatus @default(RUNNING)
   snapshotVersion Int?
   domainsJson     String
   resultJson      String?
   errorCode       String?
-  startedAt       DateTime                 @default(now())
+  startedAt       DateTime                @default(now())
   finishedAt      DateTime?
-  createdAt       DateTime                 @default(now())
-  updatedAt       DateTime                 @updatedAt
+  createdAt       DateTime                @default(now())
+  updatedAt       DateTime                @updatedAt
 
   @@index([studentId, createdAt])
   @@index([status, updatedAt])
 }
 
+/// Durable product-level orchestration. Provider workers keep ownership of
+/// their snapshots; this job only records why and when each refresh was due.
+model UorStudentSyncJob {
+  id              String                  @id @default(uuid())
+  student         Student                 @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  studentId       Int
+  institutionCode String
+  provider        String
+  operation       String
+  reason          String
+  idempotencyKey  String
+  status          UorStudentSyncJobStatus @default(QUEUED)
+  attempts        Int                     @default(0)
+  maxAttempts     Int                     @default(5)
+  nextAttemptAt   DateTime                @default(now())
+  leaseOwner      String?
+  leaseUntil      DateTime?
+  heartbeatAt     DateTime?
+  providerRunId   String?
+  lastErrorCode   String?
+  startedAt       DateTime?
+  finishedAt      DateTime?
+  createdAt       DateTime                @default(now())
+  updatedAt       DateTime                @updatedAt
+
+  @@unique([studentId, idempotencyKey])
+  @@index([status, nextAttemptAt, leaseUntil, createdAt])
+  @@index([studentId, provider, createdAt])
+  @@index([institutionCode, provider, status])
+}
+
+/// Student-declared fields are separate from official institutional fields.
+model UorStudentProfileField {
+  id              String   @id @default(uuid())
+  student         Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  studentId       Int
+  institutionCode String
+  field           String
+  valueJson       String
+  source          String   @default("student")
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@unique([studentId, field])
+  @@index([institutionCode, field])
+}
+
+model UorStudentPrivacyPreference {
+  id              String    @id @default(uuid())
+  student         Student   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  studentId       Int
+  institutionCode String
+  purpose         String
+  enabled         Boolean
+  policyVersion   String
+  fieldsJson      String
+  expiresAt       DateTime?
+  revokedAt       DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@unique([studentId, purpose])
+  @@index([institutionCode, purpose, enabled])
+}
+
+model UorStudentDataRequest {
+  id              String                      @id @default(uuid())
+  student         Student                     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  studentId       Int
+  institutionCode String
+  type            UorStudentDataRequestType
+  status          UorStudentDataRequestStatus @default(PENDING)
+  scopeJson       String
+  retentionJson   String
+  resultJson      String?
+  errorCode       String?
+  requestedAt     DateTime                    @default(now())
+  startedAt       DateTime?
+  completedAt     DateTime?
+  createdAt       DateTime                    @default(now())
+  updatedAt       DateTime                    @updatedAt
+
+  @@index([studentId, type, createdAt])
+  @@index([status, createdAt])
+  @@index([institutionCode, status])
+}
+
+model UorStudentAuditEvent {
+  id              String   @id @default(uuid())
+  student         Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  studentId       Int
+  institutionCode String
+  product         String   @default("uor_student")
+  domain          String
+  action          String
+  resourceType    String
+  resourceId      String?
+  purpose         String
+  result          String
+  traceId         String?
+  metadataJson    String?
+  createdAt       DateTime @default(now())
+
+  @@index([studentId, createdAt])
+  @@index([institutionCode, domain, createdAt])
+  @@index([resourceType, resourceId, createdAt])
+  @@index([traceId])
+}
+
+model UorStudentAcademicRule {
+  id              String                       @id @default(uuid())
+  institutionCode String
+  code            String
+  version         Int
+  name            String
+  kind            String
+  formula         String
+  parametersJson  String
+  status          UorStudentAcademicRuleStatus @default(DRAFT)
+  effectiveFrom   DateTime?
+  effectiveUntil  DateTime?
+  decisionSource  String?
+  approvedBy      String?
+  approvedAt      DateTime?
+  createdAt       DateTime                     @default(now())
+  updatedAt       DateTime                     @updatedAt
+
+  @@unique([institutionCode, code, version])
+  @@index([institutionCode, kind, status, effectiveFrom])
+}
+
+model UorStudentAcademicSimulation {
+  id              String                     @id @default(uuid())
+  student         Student                    @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  studentId       Int
+  institutionCode String
+  subjectKey      String
+  period          String?
+  ruleCode        String
+  ruleVersion     Int
+  ruleStatus      String
+  scenarioJson    String
+  resultJson      String
+  status          UorStudentSimulationStatus @default(ACTIVE)
+  createdAt       DateTime                   @default(now())
+  updatedAt       DateTime                   @updatedAt
+
+  @@index([studentId, status, updatedAt])
+  @@index([institutionCode, subjectKey, period])
+}
+
+/// Flexible product-owned aggregate store for non-official workflows. Domain
+/// applications validate category-specific payloads and state transitions;
+/// the append-only event table preserves the functional history.
+model UorStudentAggregate {
+  id              String                     @id @default(uuid())
+  owner           Student                    @relation("UorStudentAggregateOwner", fields: [ownerStudentId], references: [id], onDelete: Cascade)
+  ownerStudentId  Int
+  institutionCode String
+  category        String
+  scopeKey        String
+  status          String
+  payloadJson     String
+  version         Int                        @default(1)
+  expiresAt       DateTime?
+  createdAt       DateTime                   @default(now())
+  updatedAt       DateTime                   @updatedAt
+  actors          UorStudentAggregateActor[]
+  events          UorStudentAggregateEvent[]
+
+  @@index([ownerStudentId, category, status, updatedAt])
+  @@index([institutionCode, category, scopeKey, status])
+  @@index([category, status, expiresAt])
+}
+
+model UorStudentAggregateActor {
+  id              String              @id @default(uuid())
+  aggregate       UorStudentAggregate @relation(fields: [aggregateId], references: [id], onDelete: Cascade)
+  aggregateId     String
+  student         Student             @relation("UorStudentAggregateActorStudent", fields: [studentId], references: [id], onDelete: Cascade)
+  studentId       Int
+  institutionCode String
+  role            String
+  status          String
+  payloadJson     String?
+  decidedAt       DateTime?
+  createdAt       DateTime            @default(now())
+  updatedAt       DateTime            @updatedAt
+
+  @@unique([aggregateId, studentId, role])
+  @@index([studentId, role, status, updatedAt])
+  @@index([institutionCode, role, status])
+}
+
+model UorStudentAggregateEvent {
+  id              String              @id @default(uuid())
+  aggregate       UorStudentAggregate @relation(fields: [aggregateId], references: [id], onDelete: Cascade)
+  aggregateId     String
+  actor           Student?            @relation("UorStudentAggregateEventActor", fields: [actorStudentId], references: [id], onDelete: SetNull)
+  actorStudentId  Int?
+  institutionCode String
+  type            String
+  fromStatus      String?
+  toStatus        String?
+  payloadJson     String?
+  traceId         String?
+  createdAt       DateTime            @default(now())
+
+  @@index([aggregateId, createdAt])
+  @@index([actorStudentId, createdAt])
+  @@index([institutionCode, type, createdAt])
+}
+
+model UorStudentAuthorization {
+  id                      String                   @id @default(uuid())
+  owner                   Student                  @relation("UorStudentAuthorizationOwner", fields: [ownerStudentId], references: [id], onDelete: Cascade)
+  ownerStudentId          Int
+  representative          Student                  @relation("UorStudentAuthorizationRepresentative", fields: [representativeStudentId], references: [id], onDelete: Cascade)
+  representativeStudentId Int
+  institutionCode         String
+  product                 String                   @default("uor_student")
+  purpose                 String
+  action                  String
+  resourceType            String
+  resourceId              String
+  fieldsJson              String
+  contextHash             String
+  status                  String                   @default("PENDING")
+  startsAt                DateTime
+  expiresAt               DateTime
+  maxUses                 Int                      @default(1)
+  usedCount               Int                      @default(0)
+  decidedAt               DateTime?
+  revokedAt               DateTime?
+  createdAt               DateTime                 @default(now())
+  updatedAt               DateTime                 @updatedAt
+  otpChallenges           UorStudentOtpChallenge[]
+
+  @@index([ownerStudentId, status, expiresAt])
+  @@index([representativeStudentId, status, expiresAt])
+  @@index([institutionCode, purpose, status])
+}
+
+model UorStudentOtpChallenge {
+  id              String                  @id @default(uuid())
+  authorization   UorStudentAuthorization @relation(fields: [authorizationId], references: [id], onDelete: Cascade)
+  authorizationId String
+  actor           Student                 @relation(fields: [actorStudentId], references: [id], onDelete: Cascade)
+  actorStudentId  Int
+  contextHash     String
+  codeHash        String
+  status          String                  @default("PENDING")
+  attempts        Int                     @default(0)
+  maxAttempts     Int                     @default(5)
+  resendCount     Int                     @default(0)
+  maxResends      Int                     @default(3)
+  expiresAt       DateTime
+  verifiedAt      DateTime?
+  lockedAt        DateTime?
+  lastSentAt      DateTime                @default(now())
+  createdAt       DateTime                @default(now())
+  updatedAt       DateTime                @updatedAt
+
+  @@index([authorizationId, status, expiresAt])
+  @@index([actorStudentId, status, expiresAt])
+  @@index([contextHash, status])
+}
+
+model UorStudentNotification {
+  id               String    @id @default(uuid())
+  student          Student   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  studentId        Int
+  institutionCode  String
+  category         String
+  deduplicationKey String
+  title            String
+  body             String
+  payloadJson      String?
+  status           String    @default("UNREAD")
+  readAt           DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+
+  @@unique([studentId, deduplicationKey])
+  @@index([studentId, status, createdAt])
+  @@index([institutionCode, category, createdAt])
+}
+
+/// Auditable, privacy-minimised record of a change between two immutable
+/// Secretaria snapshots. Values are summaries; the official payload remains
+/// owned by SecretariaSnapshot and is never duplicated into notifications.
+model UorStudentOfficialChange {
+  id              String   @id @default(uuid())
+  student         Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  studentId       Int
+  institutionCode String
+  domain          String
+  event           String?
+  previousVersion Int
+  currentVersion  Int
+  beforeJson      String
+  afterJson       String
+  source          String   @default("secretaria_uor")
+  detectedAt      DateTime @default(now())
+  createdAt       DateTime @default(now())
+
+  @@unique([studentId, domain, currentVersion])
+  @@index([studentId, detectedAt])
+  @@index([institutionCode, domain, detectedAt])
+}
+
+model UorStudentOperationalAlert {
+  id                  String    @id @default(uuid())
+  institutionCode     String
+  product             String    @default("uor_student")
+  provider            String
+  domain              String
+  code                String
+  severity            String    @default("HIGH")
+  status              String    @default("OPEN")
+  deduplicationKey    String    @unique
+  occurrences         Int       @default(1)
+  firstDetectedAt     DateTime  @default(now())
+  lastDetectedAt      DateTime  @default(now())
+  resolvedAt          DateTime?
+  resolvedByStudentId Int?
+  resolution          String?
+  createdAt           DateTime  @default(now())
+  updatedAt           DateTime  @updatedAt
+
+  @@index([institutionCode, status, lastDetectedAt])
+  @@index([provider, code, status])
+}
+
+model UorStudentRankingParticipation {
+  id              String    @id @default(uuid())
+  student         Student   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  studentId       Int
+  institutionCode String
+  contextKey      String
+  enabled         Boolean   @default(false)
+  policyVersion   String
+  consentedAt     DateTime?
+  withdrawnAt     DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@unique([studentId, contextKey])
+  @@index([institutionCode, contextKey, enabled])
+}
+
+model UorStudentProductConfiguration {
+  id                 String    @id @default(uuid())
+  institutionCode    String
+  key                String
+  version            Int
+  valueJson          String
+  status             String    @default("ACTIVE")
+  effectiveFrom      DateTime
+  effectiveUntil     DateTime?
+  createdBy          Student   @relation(fields: [createdByStudentId], references: [id], onDelete: Restrict)
+  createdByStudentId Int
+  createdAt          DateTime  @default(now())
+  updatedAt          DateTime  @updatedAt
+
+  @@unique([institutionCode, key, version])
+  @@index([institutionCode, key, status, effectiveFrom])
+}
+
+model UorStudentStepUpChallenge {
+  id              String    @id @default(uuid())
+  student         Student   @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  studentId       Int
+  institutionCode String
+  contextHash     String
+  codeHash        String
+  status          String    @default("PENDING")
+  attempts        Int       @default(0)
+  maxAttempts     Int       @default(5)
+  resendCount     Int       @default(0)
+  maxResends      Int       @default(3)
+  expiresAt       DateTime
+  verifiedAt      DateTime?
+  lockedAt        DateTime?
+  lastSentAt      DateTime  @default(now())
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+
+  @@index([studentId, contextHash, status, expiresAt])
+  @@index([status, expiresAt])
+}
+
 /// Durable state machine for Secretaria writes. Payloads are authenticated-
 /// encryption envelopes and results contain only the normalized official data.
 model SecretariaCommand {
-  id                    String                   @id @default(uuid())
-  student               Student                  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  id                    String                     @id @default(uuid())
+  student               Student                    @relation(fields: [studentId], references: [id], onDelete: Cascade)
   studentId             Int
   type                  String
-  risk                  SecretariaCommandRisk    @default(MEDIUM)
-  status                SecretariaCommandStatus  @default(AWAITING_CONFIRMATION)
+  risk                  SecretariaCommandRisk      @default(MEDIUM)
+  status                SecretariaCommandStatus    @default(AWAITING_CONFIRMATION)
   idempotencyKey        String
   requestHash           String
   payloadEnvelope       String
@@ -259,8 +702,8 @@ model SecretariaCommand {
   submittedAt           DateTime?
   leaseUntil            DateTime?
   completedAt           DateTime?
-  createdAt             DateTime                 @default(now())
-  updatedAt             DateTime                 @updatedAt
+  createdAt             DateTime                   @default(now())
+  updatedAt             DateTime                   @updatedAt
   attempts              SecretariaCommandAttempt[]
 
   @@unique([studentId, type, idempotencyKey])
@@ -269,15 +712,15 @@ model SecretariaCommand {
 }
 
 model SecretariaCommandAttempt {
-  id           String             @id @default(uuid())
-  command      SecretariaCommand  @relation(fields: [commandId], references: [id], onDelete: Cascade)
+  id           String            @id @default(uuid())
+  command      SecretariaCommand @relation(fields: [commandId], references: [id], onDelete: Cascade)
   commandId    String
   attempt      Int
   status       String
   requestHash  String
   responseHash String?
   errorCode    String?
-  startedAt    DateTime           @default(now())
+  startedAt    DateTime          @default(now())
   finishedAt   DateTime?
 
   @@unique([commandId, attempt])
@@ -285,24 +728,24 @@ model SecretariaCommandAttempt {
 }
 
 model StudentProfileExtra {
-  id                         Int      @id @default(autoincrement())
-  student                    Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  studentId                  Int      @unique
-  bio                        String?
-  address                    String?
-  instagramUrl               String?
-  facebookUrl                String?
-  linkedinUrl                String?
-  githubUrl                  String?
-  websiteUrl                 String?
-  consentPhotoCredential     Boolean  @default(false)
-  consentPublicProfile       Boolean  @default(false)
-  consentSocialLinks         Boolean  @default(false)
-  consentSms                 Boolean  @default(false)
-  consentWhatsapp            Boolean  @default(false)
-  visibilityJson             String?
-  createdAt                  DateTime @default(now())
-  updatedAt                  DateTime @updatedAt
+  id                     Int      @id @default(autoincrement())
+  student                Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  studentId              Int      @unique
+  bio                    String?
+  address                String?
+  instagramUrl           String?
+  facebookUrl            String?
+  linkedinUrl            String?
+  githubUrl              String?
+  websiteUrl             String?
+  consentPhotoCredential Boolean  @default(false)
+  consentPublicProfile   Boolean  @default(false)
+  consentSocialLinks     Boolean  @default(false)
+  consentSms             Boolean  @default(false)
+  consentWhatsapp        Boolean  @default(false)
+  visibilityJson         String?
+  createdAt              DateTime @default(now())
+  updatedAt              DateTime @updatedAt
 
   @@index([studentId])
   @@index([updatedAt])
@@ -332,49 +775,49 @@ enum AnalyticsCategory {
 }
 
 model AdminAuthorizedStudent {
-  id                     Int      @id @default(autoincrement())
-  studentNumber          String   @unique
-  team                   String   @default("Geral")
-  role                   String   @default("SUPER_ADMIN")
-  permissions            String   @default("ALL")
-  isActive               Boolean  @default(true)
+  id                     Int       @id @default(autoincrement())
+  studentNumber          String    @unique
+  team                   String    @default("Geral")
+  role                   String    @default("SUPER_ADMIN")
+  permissions            String    @default("ALL")
+  isActive               Boolean   @default(true)
   revokedAt              DateTime?
   revokedByStudentNumber String?
   revocationReason       String?
-  createdAt              DateTime @default(now())
-  updatedAt              DateTime @updatedAt
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
 
   @@index([isActive, studentNumber])
 }
 
 model TeamMembership {
-  id                     Int      @id @default(autoincrement())
-  studentId              Int?
-  studentNumber          String?
-  student                Student? @relation(fields: [studentId], references: [id], onDelete: SetNull, onUpdate: Cascade)
-  fullName               String
-  firstName              String?
-  lastName               String?
-  category               String   @default("NUCLEO")
-  team                   String   @default("Núcleo")
-  role                   String   @default("Membro")
-  accessLevel            String   @default("Membro")
-  permissions            String   @default("")
-  status                 String   @default("ACTIVE")
-  version                Int      @default(1)
-  mandateLabel           String?
-  startsAt               DateTime?
-  endsAt                 DateTime?
-  source                 String   @default("MANUAL")
-  notes                  String?
-  createdByStudentNumber String?
-  verifiedAt             DateTime?
+  id                      Int                   @id @default(autoincrement())
+  studentId               Int?
+  studentNumber           String?
+  student                 Student?              @relation(fields: [studentId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  fullName                String
+  firstName               String?
+  lastName                String?
+  category                String                @default("NUCLEO")
+  team                    String                @default("Núcleo")
+  role                    String                @default("Membro")
+  accessLevel             String                @default("Membro")
+  permissions             String                @default("")
+  status                  String                @default("ACTIVE")
+  version                 Int                   @default(1)
+  mandateLabel            String?
+  startsAt                DateTime?
+  endsAt                  DateTime?
+  source                  String                @default("MANUAL")
+  notes                   String?
+  createdByStudentNumber  String?
+  verifiedAt              DateTime?
   verifiedByStudentNumber String?
-  createdAt              DateTime @default(now())
-  updatedAt              DateTime @updatedAt
-  credentials            EventTeamCredential[]
-  claims                 TeamMembershipClaim[]
-  assignedTasks          AdminTask[] @relation("AdminTaskAssignee")
+  createdAt               DateTime              @default(now())
+  updatedAt               DateTime              @updatedAt
+  credentials             EventTeamCredential[]
+  claims                  TeamMembershipClaim[]
+  assignedTasks           AdminTask[]           @relation("AdminTaskAssignee")
 
   @@index([studentId])
   @@index([studentNumber])
@@ -385,47 +828,47 @@ model TeamMembership {
 }
 
 model TeamMembershipClaim {
-  id                         Int       @id @default(autoincrement())
-  student                    Student?  @relation(fields: [studentId], references: [id], onDelete: SetNull, onUpdate: Cascade)
-  studentId                  Int?
-  studentNumber              String
-  officialName               String?
-  officialEmail              String?
-  officialCourse             String?
-  officialPhone              String?
-  requestedCategory          String    @default("NUCLEO")
-  requestedTeam              String
-  requestedRole              String
-  requestedAccessLevel       String    @default("Membro")
-  requestedPermissions       String    @default("")
-  status                     String    @default("PENDING_REVIEW")
-  photoUrl                   String?
-  email                      String?
-  phone                      String?
-  course                     String?
-  organization               String?
-  bio                        String?
-  address                    String?
-  instagramUrl               String?
-  facebookUrl                String?
-  linkedinUrl                String?
-  githubUrl                  String?
-  websiteUrl                 String?
-  consentPhotoCredential     Boolean   @default(false)
-  consentPublicProfile       Boolean   @default(false)
-  consentSocialLinks         Boolean   @default(false)
-  consentSms                 Boolean   @default(false)
-  consentWhatsapp            Boolean   @default(false)
-  sourceToken                String?
-  reviewNote                 String?
-  reviewedAt                 DateTime?
-  reviewedByStudentNumber    String?
-  teamMembership             TeamMembership? @relation(fields: [teamMembershipId], references: [id], onDelete: SetNull, onUpdate: Cascade)
-  teamMembershipId           Int?
-  credential                 EventTeamCredential? @relation(fields: [credentialId], references: [id], onDelete: SetNull, onUpdate: Cascade)
-  credentialId               Int?
-  createdAt                  DateTime  @default(now())
-  updatedAt                  DateTime  @updatedAt
+  id                      Int                  @id @default(autoincrement())
+  student                 Student?             @relation(fields: [studentId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  studentId               Int?
+  studentNumber           String
+  officialName            String?
+  officialEmail           String?
+  officialCourse          String?
+  officialPhone           String?
+  requestedCategory       String               @default("NUCLEO")
+  requestedTeam           String
+  requestedRole           String
+  requestedAccessLevel    String               @default("Membro")
+  requestedPermissions    String               @default("")
+  status                  String               @default("PENDING_REVIEW")
+  photoUrl                String?
+  email                   String?
+  phone                   String?
+  course                  String?
+  organization            String?
+  bio                     String?
+  address                 String?
+  instagramUrl            String?
+  facebookUrl             String?
+  linkedinUrl             String?
+  githubUrl               String?
+  websiteUrl              String?
+  consentPhotoCredential  Boolean              @default(false)
+  consentPublicProfile    Boolean              @default(false)
+  consentSocialLinks      Boolean              @default(false)
+  consentSms              Boolean              @default(false)
+  consentWhatsapp         Boolean              @default(false)
+  sourceToken             String?
+  reviewNote              String?
+  reviewedAt              DateTime?
+  reviewedByStudentNumber String?
+  teamMembership          TeamMembership?      @relation(fields: [teamMembershipId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  teamMembershipId        Int?
+  credential              EventTeamCredential? @relation(fields: [credentialId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  credentialId            Int?
+  createdAt               DateTime             @default(now())
+  updatedAt               DateTime             @updatedAt
 
   @@index([studentNumber, status])
   @@index([status, createdAt])
@@ -459,37 +902,37 @@ model AdminTask {
 }
 
 model AdminTaskAttachment {
-  id        String    @id @default(uuid())
-  taskId    String
-  task      AdminTask @relation(fields: [taskId], references: [id], onDelete: Cascade, onUpdate: Cascade)
-  name      String
-  dataUrl   String
-  addedAt   DateTime  @default(now())
+  id      String    @id @default(uuid())
+  taskId  String
+  task    AdminTask @relation(fields: [taskId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  name    String
+  dataUrl String
+  addedAt DateTime  @default(now())
 
   @@index([taskId])
 }
 
 model PdfDocumentJob {
-  id                     String   @id @default(uuid())
+  id                     String    @id @default(uuid())
   kind                   String
-  businessKey            String   @unique
-  status                 String   @default("queued")
+  businessKey            String    @unique
+  status                 String    @default("queued")
   fileName               String
   filePath               String?
-  contentType            String   @default("application/pdf")
+  contentType            String    @default("application/pdf")
   sizeBytes              Int?
   error                  String?
   inputHash              String?
   snapshotJson           String?
   createdByStudentNumber String?
-  attempts               Int      @default(0)
+  attempts               Int       @default(0)
   lockedAt               DateTime?
   lockOwner              String?
   startedAt              DateTime?
   completedAt            DateTime?
   expiresAt              DateTime?
-  createdAt              DateTime @default(now())
-  updatedAt              DateTime @updatedAt
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
 
   @@index([kind, status])
   @@index([expiresAt])
@@ -513,19 +956,19 @@ model JuryMember {
 }
 
 model JuryAccessCode {
-  id                   Int        @id @default(autoincrement())
-  juryMember           JuryMember @relation(fields: [juryMemberId], references: [id], onDelete: Cascade)
-  juryMemberId         Int
-  codeHash             String
-  codeLast4            String
-  expiresAt            DateTime
-  usedAt               DateTime?
-  sentAt               DateTime   @default(now())
+  id                     Int        @id @default(autoincrement())
+  juryMember             JuryMember @relation(fields: [juryMemberId], references: [id], onDelete: Cascade)
+  juryMemberId           Int
+  codeHash               String
+  codeLast4              String
+  expiresAt              DateTime
+  usedAt                 DateTime?
+  sentAt                 DateTime   @default(now())
   createdByStudentNumber String
-  providerMessageId    String?
-  providerResponseJson String?
-  deliveryStatus       String     @default("PENDING")
-  errorMessage         String?
+  providerMessageId      String?
+  providerResponseJson   String?
+  deliveryStatus         String     @default("PENDING")
+  errorMessage           String?
 
   @@index([juryMemberId, sentAt])
   @@index([expiresAt])
@@ -533,17 +976,17 @@ model JuryAccessCode {
 }
 
 model EventTeamCredential {
-  id                     Int       @id @default(autoincrement())
+  id                     Int                        @id @default(autoincrement())
   teamMembershipId       Int?
-  teamMembership         TeamMembership? @relation(fields: [teamMembershipId], references: [id], onDelete: SetNull, onUpdate: Cascade)
-  token                  String    @unique
-  publicSlug             String    @unique
-  category               String    @default("NUCLEO")
-  team                   String    @default("Núcleo")
-  role                   String    @default("Membro")
-  accessLevel            String    @default("Membro")
-  permissions            String    @default("")
-  status                 String    @default("INVITED")
+  teamMembership         TeamMembership?            @relation(fields: [teamMembershipId], references: [id], onDelete: SetNull, onUpdate: Cascade)
+  token                  String                     @unique
+  publicSlug             String                     @unique
+  category               String                     @default("NUCLEO")
+  team                   String                     @default("Núcleo")
+  role                   String                     @default("Membro")
+  accessLevel            String                     @default("Membro")
+  permissions            String                     @default("")
+  status                 String                     @default("INVITED")
   name                   String?
   email                  String?
   phone                  String?
@@ -557,11 +1000,11 @@ model EventTeamCredential {
   linkedinUrl            String?
   githubUrl              String?
   websiteUrl             String?
-  consentPhotoCredential Boolean   @default(false)
-  consentPublicProfile   Boolean   @default(false)
-  consentSocialLinks     Boolean   @default(false)
-  consentSms             Boolean   @default(false)
-  consentWhatsapp        Boolean   @default(false)
+  consentPhotoCredential Boolean                    @default(false)
+  consentPublicProfile   Boolean                    @default(false)
+  consentSocialLinks     Boolean                    @default(false)
+  consentSms             Boolean                    @default(false)
+  consentWhatsapp        Boolean                    @default(false)
   sourceSubmissionId     Int?
   sourceSubmissionRef    String?
   sourceSubmissionName   String?
@@ -576,13 +1019,13 @@ model EventTeamCredential {
   expiresAt              DateTime?
   revokedAt              DateTime?
   revokedReason          String?
-  version                Int       @default(1)
+  version                Int                        @default(1)
   reissuedFromId         Int?
   submittedAt            DateTime?
   lastPassIssuedAt       DateTime?
   lastPassSnapshotJson   String?
-  createdAt              DateTime  @default(now())
-  updatedAt              DateTime  @updatedAt
+  createdAt              DateTime                   @default(now())
+  updatedAt              DateTime                   @updatedAt
   membershipClaims       TeamMembershipClaim[]
   printBatchItems        CredentialPrintBatchItem[]
 
@@ -612,16 +1055,16 @@ model CredentialPrintTemplate {
 }
 
 model CredentialPrintBatch {
-  id                     Int                         @id @default(autoincrement())
-  code                   String                      @unique
+  id                     Int                        @id @default(autoincrement())
+  code                   String                     @unique
   title                  String
-  mode                   String                      @default("MIXED")
-  status                 String                      @default("READY")
-  totalItems             Int                         @default(0)
+  mode                   String                     @default("MIXED")
+  status                 String                     @default("READY")
+  totalItems             Int                        @default(0)
   createdByStudentNumber String?
   notes                  String?
-  createdAt              DateTime                    @default(now())
-  updatedAt              DateTime                    @updatedAt
+  createdAt              DateTime                   @default(now())
+  updatedAt              DateTime                   @updatedAt
   items                  CredentialPrintBatchItem[]
 
   @@index([mode, createdAt])
@@ -629,15 +1072,15 @@ model CredentialPrintBatch {
 }
 
 model CredentialPrintBatchItem {
-  id           Int                   @id @default(autoincrement())
+  id           Int                  @id @default(autoincrement())
   batchId      Int
-  batch        CredentialPrintBatch  @relation(fields: [batchId], references: [id], onDelete: Cascade, onUpdate: Cascade)
+  batch        CredentialPrintBatch @relation(fields: [batchId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   credentialId Int
   credential   EventTeamCredential  @relation(fields: [credentialId], references: [id], onDelete: Cascade, onUpdate: Cascade)
   position     Int
   label        String?
-  itemType     String                @default("NOMINAL")
-  createdAt    DateTime              @default(now())
+  itemType     String               @default("NOMINAL")
+  createdAt    DateTime             @default(now())
 
   @@unique([batchId, credentialId])
   @@unique([batchId, position])
@@ -701,42 +1144,42 @@ model OdinEvent {
 }
 
 model OdinAiAnalysis {
-  id                     Int      @id @default(autoincrement())
-  caseType               String
-  caseId                 String
-  riskScore              Int
-  riskLevel              String
-  narrative              String
-  fraudProbability       Int
-  legitimateProbability  Int
-  mostLikelyScenario     String
-  alternativeScenario    String
-  recommendation         String
-  confidenceLevel        String
-  actionType             String
-  patternType            String?
-  actionUrgency          String?
-  operationalState       String   @default("OPEN")
-  ruleRiskScore          Int?
-  unifiedRiskScore       Int?
-  consistencyCheck       String   @default("NOT_EVALUATED")
-  consistencyReason      String?
-  evidenceSummary        String?
-  commentAnalysis        String?
+  id                      Int              @id @default(autoincrement())
+  caseType                String
+  caseId                  String
+  riskScore               Int
+  riskLevel               String
+  narrative               String
+  fraudProbability        Int
+  legitimateProbability   Int
+  mostLikelyScenario      String
+  alternativeScenario     String
+  recommendation          String
+  confidenceLevel         String
+  actionType              String
+  patternType             String?
+  actionUrgency           String?
+  operationalState        String           @default("OPEN")
+  ruleRiskScore           Int?
+  unifiedRiskScore        Int?
+  consistencyCheck        String           @default("NOT_EVALUATED")
+  consistencyReason       String?
+  evidenceSummary         String?
+  commentAnalysis         String?
   alternativePlausibility String?
-  recommendedAction      String?
-  votesToReview          Int?
-  accountsToReview       Int?
-  notifyExpositor        Boolean  @default(false)
+  recommendedAction       String?
+  votesToReview           Int?
+  accountsToReview        Int?
+  notifyExpositor         Boolean          @default(false)
   cannotBeFalsePositiveIf String?
-  modelVersion           String
-  promptVersion          String
-  tokensUsed             Int?
-  payloadHash            String
-  rawResponseJson        String?
-  createdByStudentNumber String?
-  createdAt              DateTime @default(now())
-  feedback               OdinAiFeedback[]
+  modelVersion            String
+  promptVersion           String
+  tokensUsed              Int?
+  payloadHash             String
+  rawResponseJson         String?
+  createdByStudentNumber  String?
+  createdAt               DateTime         @default(now())
+  feedback                OdinAiFeedback[]
 
   @@index([caseType, caseId, createdAt])
   @@index([riskLevel, createdAt])
@@ -748,15 +1191,15 @@ model OdinAiAnalysis {
 }
 
 model OdinAiFeedback {
-  id                     Int            @id @default(autoincrement())
-  analysis               OdinAiAnalysis @relation(fields: [analysisId], references: [id], onDelete: Cascade)
-  analysisId             Int
-  actorStudentNumber     String?
-  useful                 Boolean
-  recommendationCorrect  Boolean?
-  realityMatched         Boolean?
-  note                   String?
-  createdAt              DateTime       @default(now())
+  id                    Int            @id @default(autoincrement())
+  analysis              OdinAiAnalysis @relation(fields: [analysisId], references: [id], onDelete: Cascade)
+  analysisId            Int
+  actorStudentNumber    String?
+  useful                Boolean
+  recommendationCorrect Boolean?
+  realityMatched        Boolean?
+  note                  String?
+  createdAt             DateTime       @default(now())
 
   @@index([analysisId, createdAt])
   @@index([actorStudentNumber, createdAt])
@@ -828,18 +1271,18 @@ model StudentVote {
 }
 
 model StudentComment {
-  id                         Int        @id @default(autoincrement())
-  student                    Student    @relation(fields: [studentId], references: [id])
-  studentId                  Int
-  submission                 Submission @relation(fields: [submissionId], references: [id])
-  submissionId               Int
-  content                    String
-  moderationStatus           String     @default("PENDING")
-  feedbackReviewedAt         DateTime?
+  id                              Int        @id @default(autoincrement())
+  student                         Student    @relation(fields: [studentId], references: [id])
+  studentId                       Int
+  submission                      Submission @relation(fields: [submissionId], references: [id])
+  submissionId                    Int
+  content                         String
+  moderationStatus                String     @default("PENDING")
+  feedbackReviewedAt              DateTime?
   feedbackReviewedByStudentNumber String?
-  feedbackReviewNote         String?
-  feedbackScoredAt           DateTime?
-  createdAt                  DateTime   @default(now())
+  feedbackReviewNote              String?
+  feedbackScoredAt                DateTime?
+  createdAt                       DateTime   @default(now())
 
   @@index([submissionId, createdAt])
   @@index([studentId, createdAt])
@@ -847,64 +1290,64 @@ model StudentComment {
 }
 
 model Submission {
-  id               Int              @id @default(autoincrement())
-  referenceCode    String           @unique
-  type             SubmissionType
-  status           SubmissionStatus @default(PENDING)
-  name             String
-  description      String
-  area             String
-  course           String?
-  stage            String?
-  category         String?
-  productType      String?
-  teamSize         Int
-  members          String
-  leaderName       String?
-  leaderPhone      String?
-  leaderEmail      String
-  needs            String
-  paymentProof     String
-  paymentConfirmed Boolean          @default(false)
-  paymentStatus    String           @default("PENDING_REVIEW")
-  paymentSubmittedAt DateTime?
-  paymentReviewedAt DateTime?
+  id                             Int                   @id @default(autoincrement())
+  referenceCode                  String                @unique
+  type                           SubmissionType
+  status                         SubmissionStatus      @default(PENDING)
+  name                           String
+  description                    String
+  area                           String
+  course                         String?
+  stage                          String?
+  category                       String?
+  productType                    String?
+  teamSize                       Int
+  members                        String
+  leaderName                     String?
+  leaderPhone                    String?
+  leaderEmail                    String
+  needs                          String
+  paymentProof                   String
+  paymentConfirmed               Boolean               @default(false)
+  paymentStatus                  String                @default("PENDING_REVIEW")
+  paymentSubmittedAt             DateTime?
+  paymentReviewedAt              DateTime?
   paymentReviewedByStudentNumber String?
-  paymentReviewNote String?
-  repoUrl          String?
-  websiteUrl       String?
-  instagramUrl     String?
-  facebookUrl      String?
-  linkedinUrl      String?
-  githubUrl        String?
-  observations     String?
-  agreeRules       Boolean
-  primaryColor     String           @default("#FD8305")
-  secondaryColor   String           @default("#223D42")
-  bannerUrl        String?
-  teamInviteToken  String?
-  teamInviteSentAt DateTime?
-  isWinner         Boolean          @default(false)
-  winnerSelectedAt DateTime?
-  deletedAt        DateTime?
-  deletedByStudentNumber String?
-  deletionReason   String?
-  projectFrozen    Boolean          @default(false)
-  createdAt        DateTime         @default(now())
-  updatedAt        DateTime         @updatedAt
-  leader           User             @relation("UserSubmissions", fields: [leaderId], references: [id])
-  leaderId         Int
-  student          Student?         @relation(fields: [studentId], references: [id])
-  studentId        Int?
-  studentNumberSnapshot String?
-  votes            Vote[]
-  reviews          Review[]
-  studentLikes     StudentLike[]
-  studentVotes     StudentVote[]
-  studentComments  StudentComment[]
-  memberConfirmations SubmissionMember[]
-  exhibitorScoreEvents ExhibitorScoreEvent[]
-  odinProjectPenalties OdinProjectPenalty[]
+  paymentReviewNote              String?
+  repoUrl                        String?
+  websiteUrl                     String?
+  instagramUrl                   String?
+  facebookUrl                    String?
+  linkedinUrl                    String?
+  githubUrl                      String?
+  observations                   String?
+  agreeRules                     Boolean
+  primaryColor                   String                @default("#FD8305")
+  secondaryColor                 String                @default("#223D42")
+  bannerUrl                      String?
+  teamInviteToken                String?
+  teamInviteSentAt               DateTime?
+  isWinner                       Boolean               @default(false)
+  winnerSelectedAt               DateTime?
+  deletedAt                      DateTime?
+  deletedByStudentNumber         String?
+  deletionReason                 String?
+  projectFrozen                  Boolean               @default(false)
+  createdAt                      DateTime              @default(now())
+  updatedAt                      DateTime              @updatedAt
+  leader                         User                  @relation("UserSubmissions", fields: [leaderId], references: [id])
+  leaderId                       Int
+  student                        Student?              @relation(fields: [studentId], references: [id])
+  studentId                      Int?
+  studentNumberSnapshot          String?
+  votes                          Vote[]
+  reviews                        Review[]
+  studentLikes                   StudentLike[]
+  studentVotes                   StudentVote[]
+  studentComments                StudentComment[]
+  memberConfirmations            SubmissionMember[]
+  exhibitorScoreEvents           ExhibitorScoreEvent[]
+  odinProjectPenalties           OdinProjectPenalty[]
 
   @@index([status, createdAt])
   @@index([type, status, createdAt])
@@ -914,27 +1357,27 @@ model Submission {
 }
 
 model OdinProjectPenalty {
-  id                         Int        @id @default(autoincrement())
-  submission                 Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
-  submissionId               Int
-  penaltyMode                String
-  requestedVoteCount         Int?
-  removedVoteCount           Int        @default(0)
-  removedPointCount          Float      @default(0)
-  reason                     String
-  automationProofSummary     String?
-  automationProofUrl         String?
-  automationEvidenceJson     String?
-  automationConfidence       Int?
-  affectedVoteIdsJson        String?
-  affectedStudentIdsJson     String?
-  affectedScoreEventIdsJson  String?
-  notifiedProjectMembers     Boolean    @default(true)
-  createdByStudentNumber     String?
-  createdAt                  DateTime   @default(now())
-  revokedAt                  DateTime?
-  revokedByStudentNumber     String?
-  revokeReason               String?
+  id                        Int        @id @default(autoincrement())
+  submission                Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  submissionId              Int
+  penaltyMode               String
+  requestedVoteCount        Int?
+  removedVoteCount          Int        @default(0)
+  removedPointCount         Float      @default(0)
+  reason                    String
+  automationProofSummary    String?
+  automationProofUrl        String?
+  automationEvidenceJson    String?
+  automationConfidence      Int?
+  affectedVoteIdsJson       String?
+  affectedStudentIdsJson    String?
+  affectedScoreEventIdsJson String?
+  notifiedProjectMembers    Boolean    @default(true)
+  createdByStudentNumber    String?
+  createdAt                 DateTime   @default(now())
+  revokedAt                 DateTime?
+  revokedByStudentNumber    String?
+  revokeReason              String?
 
   @@index([submissionId, createdAt])
   @@index([penaltyMode, createdAt])
@@ -942,27 +1385,27 @@ model OdinProjectPenalty {
 }
 
 model SubmissionMember {
-  id               Int        @id @default(autoincrement())
-  submission       Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
-  submissionId     Int
-  name             String
-  normalizedName   String
-  student          Student?   @relation(fields: [studentId], references: [id], onDelete: SetNull)
-  studentId        Int?
-  expectedStudentNumber String?
-  studentNumber    String?
-  studentName      String?
-  studentCourse    String?
-  studentPhone     String?
-  isExternal        Boolean    @default(false)
-  externalOrganization String?
-  externalReason   String?
-  exceptionApprovedAt DateTime?
+  id                               Int                   @id @default(autoincrement())
+  submission                       Submission            @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  submissionId                     Int
+  name                             String
+  normalizedName                   String
+  student                          Student?              @relation(fields: [studentId], references: [id], onDelete: SetNull)
+  studentId                        Int?
+  expectedStudentNumber            String?
+  studentNumber                    String?
+  studentName                      String?
+  studentCourse                    String?
+  studentPhone                     String?
+  isExternal                       Boolean               @default(false)
+  externalOrganization             String?
+  externalReason                   String?
+  exceptionApprovedAt              DateTime?
   exceptionApprovedByStudentNumber String?
-  confirmedAt      DateTime?
-  createdAt        DateTime   @default(now())
-  updatedAt        DateTime   @updatedAt
-  exhibitorScoreEvents ExhibitorScoreEvent[]
+  confirmedAt                      DateTime?
+  createdAt                        DateTime              @default(now())
+  updatedAt                        DateTime              @updatedAt
+  exhibitorScoreEvents             ExhibitorScoreEvent[]
 
   @@unique([submissionId, normalizedName])
   @@unique([submissionId, studentId])
@@ -974,18 +1417,18 @@ model SubmissionMember {
 }
 
 model SubmissionConfig {
-  key                 String   @id @default("default")
-  isOpen              Boolean  @default(true)
-  votingPaused        Boolean  @default(false)
-  iban                String   @default("AO006 0055 0000 3295 0561 10379")
-  accountName         String   @default("Universidade Óscar Ribas")
-  paymentAmount       String   @default("3.500 Kz")
-  paymentInstructions String?
-  projectCommunityUrl String?
+  key                  String   @id @default("default")
+  isOpen               Boolean  @default(true)
+  votingPaused         Boolean  @default(false)
+  iban                 String   @default("AO006 0055 0000 3295 0561 10379")
+  accountName          String   @default("Universidade Óscar Ribas")
+  paymentAmount        String   @default("3.500 Kz")
+  paymentInstructions  String?
+  projectCommunityUrl  String?
   businessCommunityUrl String?
-  productCommunityUrl String?
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  productCommunityUrl  String?
+  createdAt            DateTime @default(now())
+  updatedAt            DateTime @updatedAt
 }
 
 model Vote {
@@ -1000,20 +1443,20 @@ model Vote {
 }
 
 model ExhibitorScoreConfig {
-  id                     Int      @id @default(autoincrement())
-  version                Int      @unique
-  eventKey               String   @default("main-event")
-  status                 String   @default("ACTIVE")
-  active                 Boolean  @default(true)
-  weightsJson            String   @default("{}")
-  roundsJson             String   @default("[]")
-  streakBonusesJson      String   @default("[]")
+  id                     Int       @id @default(autoincrement())
+  version                Int       @unique
+  eventKey               String    @default("main-event")
+  status                 String    @default("ACTIVE")
+  active                 Boolean   @default(true)
+  weightsJson            String    @default("{}")
+  roundsJson             String    @default("[]")
+  streakBonusesJson      String    @default("[]")
   startsAt               DateTime?
   endsAt                 DateTime?
   lockedAt               DateTime?
   createdByStudentNumber String?
-  createdAt              DateTime @default(now())
-  updatedAt              DateTime @updatedAt
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
 
   @@index([eventKey, active])
   @@index([status, updatedAt])
@@ -1021,14 +1464,14 @@ model ExhibitorScoreConfig {
 }
 
 model ExhibitorScoreEvent {
-  id                     Int        @id @default(autoincrement())
-  businessKey            String     @unique
-  eventKey               String     @default("main-event")
-  submission             Submission @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  id                     Int               @id @default(autoincrement())
+  businessKey            String            @unique
+  eventKey               String            @default("main-event")
+  submission             Submission        @relation(fields: [submissionId], references: [id], onDelete: Cascade)
   submissionId           Int
-  student                Student?   @relation("ExhibitorScoreVoter", fields: [studentId], references: [id], onDelete: SetNull)
+  student                Student?          @relation("ExhibitorScoreVoter", fields: [studentId], references: [id], onDelete: SetNull)
   studentId              Int?
-  actorStudent           Student?   @relation("ExhibitorScoreActor", fields: [actorStudentId], references: [id], onDelete: SetNull)
+  actorStudent           Student?          @relation("ExhibitorScoreActor", fields: [actorStudentId], references: [id], onDelete: SetNull)
   actorStudentId         Int?
   submissionMember       SubmissionMember? @relation(fields: [submissionMemberId], references: [id], onDelete: SetNull)
   submissionMemberId     Int?
@@ -1040,22 +1483,22 @@ model ExhibitorScoreEvent {
   roundLabel             String?
   voterCourse            String?
   submissionCourse       String?
-  basePoints             Float      @default(0)
-  bonusPoints            Float      @default(0)
-  multiplier             Float      @default(1)
-  points                 Float      @default(0)
-  status                 String     @default("VALID")
+  basePoints             Float             @default(0)
+  bonusPoints            Float             @default(0)
+  multiplier             Float             @default(1)
+  points                 Float             @default(0)
+  status                 String            @default("VALID")
   reason                 String?
   metadataJson           String?
-  scoreConfigVersion     Int        @default(1)
+  scoreConfigVersion     Int               @default(1)
   lockedAt               DateTime?
   revokedAt              DateTime?
   revokedByStudentNumber String?
   revokeReason           String?
   createdByStudentNumber String?
-  awardedAt              DateTime   @default(now())
-  createdAt              DateTime   @default(now())
-  updatedAt              DateTime   @updatedAt
+  awardedAt              DateTime          @default(now())
+  createdAt              DateTime          @default(now())
+  updatedAt              DateTime          @updatedAt
 
   @@index([eventKey, action])
   @@index([submissionId, status, awardedAt])
@@ -1199,8 +1642,8 @@ model HomeSocialConfig {
 }
 
 model LiveContentConfig {
-  key         String   @id @default("default")
-  mode        String   @default("AGENDA")
+  key         String    @id @default("default")
+  mode        String    @default("AGENDA")
   title       String?
   local       String?
   speaker     String?
@@ -1211,13 +1654,13 @@ model LiveContentConfig {
   date        DateTime?
   startTime   String?
   endTime     String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 }
 
 model Course {
-  id                   Int                @id @default(autoincrement())
-  name                 String             @unique
+  id                   Int                          @id @default(autoincrement())
+  name                 String                       @unique
   description          String
   preview              String?
   communityUrl         String?
@@ -1227,23 +1670,23 @@ model Course {
   companyWebsite       String?
   companyInstagram     String?
   companyLinkedin      String?
-  isPaid               Boolean            @default(false)
+  isPaid               Boolean                      @default(false)
   priceLabel           String?
-  studentCount         Int                @default(0)
-  accentColor          String             @default("#f97316")
-  accentColorSecondary String             @default("#fb923c")
-  courseColor          String             @default("#2563eb")
-  sortOrder            Int                @default(0)
-  isPublished          Boolean            @default(true)
-  createdAt            DateTime           @default(now())
-  updatedAt            DateTime           @updatedAt
+  studentCount         Int                          @default(0)
+  accentColor          String                       @default("#f97316")
+  accentColorSecondary String                       @default("#fb923c")
+  courseColor          String                       @default("#2563eb")
+  sortOrder            Int                          @default(0)
+  isPublished          Boolean                      @default(true)
+  createdAt            DateTime                     @default(now())
+  updatedAt            DateTime                     @updatedAt
   likes                CourseLike[]
   enrollments          CourseEnrollment[]
   trainerRequests      TrainerRegistrationRequest[]
 }
 
 model TrainerRegistrationRequest {
-  id                      Int      @id @default(autoincrement())
+  id                      Int       @id @default(autoincrement())
   phone                   String
   name                    String
   email                   String?
@@ -1252,15 +1695,15 @@ model TrainerRegistrationRequest {
   linkedinUrl             String?
   portfolioUrl            String?
   organization            String?
-  selectedCourse          Course   @relation(fields: [selectedCourseId], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  selectedCourse          Course    @relation(fields: [selectedCourseId], references: [id], onDelete: Restrict, onUpdate: Cascade)
   selectedCourseId        Int
-  status                  String   @default("PENDING")
+  status                  String    @default("PENDING")
   reviewedAt              DateTime?
   reviewedByStudentNumber String?
   reviewNote              String?
   approvedMembershipId    Int?
-  createdAt               DateTime @default(now())
-  updatedAt               DateTime @updatedAt
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
 
   @@index([phone, status])
   @@index([selectedCourseId, status])
@@ -1279,23 +1722,23 @@ model CourseLike {
 }
 
 model CourseEnrollment {
-  id            Int      @id @default(autoincrement())
-  student       Student  @relation(fields: [studentId], references: [id])
-  studentId     Int
-  course        Course   @relation(fields: [courseId], references: [id])
-  courseId      Int
-  studentNumber String
-  studentName   String?
-  studentEmail  String?
-  studentCourse String?
-  paymentProof  String?
-  paymentPhone  String?
-  paymentStatus String   @default("PENDING_REVIEW")
-  paymentSubmittedAt DateTime?
-  paymentReviewedAt DateTime?
+  id                             Int       @id @default(autoincrement())
+  student                        Student   @relation(fields: [studentId], references: [id])
+  studentId                      Int
+  course                         Course    @relation(fields: [courseId], references: [id])
+  courseId                       Int
+  studentNumber                  String
+  studentName                    String?
+  studentEmail                   String?
+  studentCourse                  String?
+  paymentProof                   String?
+  paymentPhone                   String?
+  paymentStatus                  String    @default("PENDING_REVIEW")
+  paymentSubmittedAt             DateTime?
+  paymentReviewedAt              DateTime?
   paymentReviewedByStudentNumber String?
-  paymentReviewNote String?
-  createdAt     DateTime @default(now())
+  paymentReviewNote              String?
+  createdAt                      DateTime  @default(now())
 
   @@unique([studentId, courseId])
   @@index([courseId, createdAt])
@@ -1303,43 +1746,43 @@ model CourseEnrollment {
 }
 
 model SmsCampaign {
-  id                    Int                    @id @default(autoincrement())
-  title                 String?
-  message               String
-  sender                String
-  audienceType          String
-  audienceFiltersJson   String?
-  totalRecipients       Int                    @default(0)
-  successCount          Int                    @default(0)
-  failedCount           Int                    @default(0)
-  status                String                 @default("PENDING")
-  scheduleAt            DateTime?
+  id                     Int                    @id @default(autoincrement())
+  title                  String?
+  message                String
+  sender                 String
+  audienceType           String
+  audienceFiltersJson    String?
+  totalRecipients        Int                    @default(0)
+  successCount           Int                    @default(0)
+  failedCount            Int                    @default(0)
+  status                 String                 @default("PENDING")
+  scheduleAt             DateTime?
   createdByStudentNumber String
-  createdAt             DateTime               @default(now())
-  sentAt                DateTime?
-  recipients            SmsCampaignRecipient[]
+  createdAt              DateTime               @default(now())
+  sentAt                 DateTime?
+  recipients             SmsCampaignRecipient[]
 
   @@index([createdAt])
   @@index([status, createdAt])
 }
 
 model SmsCampaignRecipient {
-  id                  Int         @id @default(autoincrement())
-  campaign            SmsCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
-  campaignId          Int
-  student             Student?    @relation(fields: [studentId], references: [id])
-  studentId           Int?
-  studentNumber       String?
-  recipientName       String?
-  recipientCourse     String?
-  phone               String
-  providerTo          String
-  status              String      @default("QUEUED")
-  providerMessageId   String?
+  id                   Int         @id @default(autoincrement())
+  campaign             SmsCampaign @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+  campaignId           Int
+  student              Student?    @relation(fields: [studentId], references: [id])
+  studentId            Int?
+  studentNumber        String?
+  recipientName        String?
+  recipientCourse      String?
+  phone                String
+  providerTo           String
+  status               String      @default("QUEUED")
+  providerMessageId    String?
   providerResponseJson String?
-  errorMessage        String?
-  sentAt              DateTime?
-  createdAt           DateTime    @default(now())
+  errorMessage         String?
+  sentAt               DateTime?
+  createdAt            DateTime    @default(now())
 
   @@unique([campaignId, phone])
   @@index([campaignId])
@@ -1348,22 +1791,22 @@ model SmsCampaignRecipient {
 }
 
 model WhatsAppInstance {
-  id                     Int                    @id @default(autoincrement())
-  name                   String                 @unique
+  id                     Int                @id @default(autoincrement())
+  name                   String             @unique
   label                  String?
   phoneNumber            String?
   baseUrl                String?
   apiKey                 String?
-  status                 String                 @default("DISCONNECTED")
+  status                 String             @default("DISCONNECTED")
   qrCode                 String?
   pairingCode            String?
-  isDefault              Boolean                @default(false)
-  isActive               Boolean                @default(true)
+  isDefault              Boolean            @default(false)
+  isActive               Boolean            @default(true)
   lastConnectedAt        DateTime?
   lastCheckedAt          DateTime?
   createdByStudentNumber String
-  createdAt              DateTime               @default(now())
-  updatedAt              DateTime               @updatedAt
+  createdAt              DateTime           @default(now())
+  updatedAt              DateTime           @updatedAt
   campaigns              WhatsAppCampaign[]
 
   @@index([isActive, isDefault])
@@ -1466,19 +1909,19 @@ model PanelTopic {
 }
 
 model LiveChatMessage {
-  id              Int                @id @default(autoincrement())
-  content         String
-  attachmentUrl   String?
-  attachmentMime  String?
+  id               Int                @id @default(autoincrement())
+  content          String
+  attachmentUrl    String?
+  attachmentMime   String?
   replyToMessageId Int?
-  isPinned        Boolean            @default(false)
-  isHighlighted   Boolean            @default(false)
-  reportCount     Int                @default(0)
-  hiddenAt        DateTime?
-  student         Student            @relation(fields: [studentId], references: [id])
-  studentId       Int
-  reactions       LiveChatReaction[]
-  createdAt       DateTime           @default(now())
+  isPinned         Boolean            @default(false)
+  isHighlighted    Boolean            @default(false)
+  reportCount      Int                @default(0)
+  hiddenAt         DateTime?
+  student          Student            @relation(fields: [studentId], references: [id])
+  studentId        Int
+  reactions        LiveChatReaction[]
+  createdAt        DateTime           @default(now())
 
   @@index([createdAt])
   @@index([studentId, createdAt])
@@ -1574,20 +2017,20 @@ model AnalyticsEvent {
 }
 
 model ConsentRecord {
-  id                Int      @id @default(autoincrement())
-  visitorId         String?
-  sessionId         String?
-  student           Student? @relation(fields: [studentId], references: [id])
-  studentId         Int?
-  source            String   @default("banner")
-  consentVersion    String
-  essential         Boolean  @default(true)
-  analytics         Boolean  @default(false)
-  functional        Boolean  @default(false)
-  marketing         Boolean  @default(false)
-  lastVisitedPage   String?
-  lastCampaign      String?
-  createdAt         DateTime @default(now())
+  id              Int      @id @default(autoincrement())
+  visitorId       String?
+  sessionId       String?
+  student         Student? @relation(fields: [studentId], references: [id])
+  studentId       Int?
+  source          String   @default("banner")
+  consentVersion  String
+  essential       Boolean  @default(true)
+  analytics       Boolean  @default(false)
+  functional      Boolean  @default(false)
+  marketing       Boolean  @default(false)
+  lastVisitedPage String?
+  lastCampaign    String?
+  createdAt       DateTime @default(now())
 
   @@index([createdAt])
   @@index([studentId, createdAt])
@@ -1611,24 +2054,24 @@ model AgendaItem {
 }
 
 model AttendanceCredential {
-  id            Int                 @id @default(autoincrement())
-  token         String              @unique
-  student       Student             @relation(fields: [studentId], references: [id], onDelete: Cascade)
-  studentId     Int                 @unique
-  studentNumber String
-  studentName   String?
-  studentCourse String?
-  label         String              @default("Credencial UOR Connect")
-  eventKey      String              @default("main-event")
-  eventLabel    String              @default("Evento principal UOR Connect")
-  validFrom     DateTime?
-  validUntil    DateTime?
-  status        String              @default("ACTIVE")
-  lastCardIssuedAt DateTime?
+  id                   Int                 @id @default(autoincrement())
+  token                String              @unique
+  student              Student             @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  studentId            Int                 @unique
+  studentNumber        String
+  studentName          String?
+  studentCourse        String?
+  label                String              @default("Credencial UOR Connect")
+  eventKey             String              @default("main-event")
+  eventLabel           String              @default("Evento principal UOR Connect")
+  validFrom            DateTime?
+  validUntil           DateTime?
+  status               String              @default("ACTIVE")
+  lastCardIssuedAt     DateTime?
   lastCardSnapshotJson String?
-  createdAt     DateTime            @default(now())
-  updatedAt     DateTime            @updatedAt
-  checkIns      AttendanceCheckIn[]
+  createdAt            DateTime            @default(now())
+  updatedAt            DateTime            @updatedAt
+  checkIns             AttendanceCheckIn[]
 
   @@index([studentNumber])
   @@index([eventKey, status])
@@ -1707,29 +2150,29 @@ model AdminAuditLog {
 }
 
 model QrAction {
-  id          Int            @id @default(autoincrement())
-  token       String         @unique
-  type        String         // CHECKIN, COURSE_ENROLL, EXHIBITOR_VOTE
-  label       String
-  description String?
-  targetId    Int?           // courseId, submissionId, eventKey reference
-  targetMeta  String?        // JSON: extra context (courseName, eventLabel, etc.)
-  eventKey    String?
-  eventLabel  String?
-  active      Boolean        @default(true)
-  maxScans    Int?           // null = unlimited
-  expiresAt   DateTime?
-  smsOnScan   Boolean        @default(false)
-  smsTemplate String?        // template with {{nome}}, {{numero}}, etc.
-  smsSender   String?
-  passportMissionId Int?
-  passportMission   PassportMission? @relation(fields: [passportMissionId], references: [id], onDelete: SetNull)
-  createdAt   DateTime       @default(now())
-  updatedAt   DateTime       @updatedAt
-  scans       QrActionScan[]
-  passportScans PassportScan[]
-  passportChallenge PassportChallenge?
-  passportSurpriseQr PassportSurpriseQr?
+  id                      Int                            @id @default(autoincrement())
+  token                   String                         @unique
+  type                    String // CHECKIN, COURSE_ENROLL, EXHIBITOR_VOTE
+  label                   String
+  description             String?
+  targetId                Int? // courseId, submissionId, eventKey reference
+  targetMeta              String? // JSON: extra context (courseName, eventLabel, etc.)
+  eventKey                String?
+  eventLabel              String?
+  active                  Boolean                        @default(true)
+  maxScans                Int? // null = unlimited
+  expiresAt               DateTime?
+  smsOnScan               Boolean                        @default(false)
+  smsTemplate             String? // template with {{nome}}, {{numero}}, etc.
+  smsSender               String?
+  passportMissionId       Int?
+  passportMission         PassportMission?               @relation(fields: [passportMissionId], references: [id], onDelete: SetNull)
+  createdAt               DateTime                       @default(now())
+  updatedAt               DateTime                       @updatedAt
+  scans                   QrActionScan[]
+  passportScans           PassportScan[]
+  passportChallenge       PassportChallenge?
+  passportSurpriseQr      PassportSurpriseQr?
   passportSurpriseEffects PassportSurpriseEffectLedger[]
 
   @@index([type])
@@ -1739,16 +2182,16 @@ model QrAction {
 }
 
 model QrActionScan {
-  id            Int      @id @default(autoincrement())
-  qrAction      QrAction @relation(fields: [qrActionId], references: [id], onDelete: Cascade)
+  id            Int           @id @default(autoincrement())
+  qrAction      QrAction      @relation(fields: [qrActionId], references: [id], onDelete: Cascade)
   qrActionId    Int
-  student       Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  student       Student       @relation(fields: [studentId], references: [id], onDelete: Cascade)
   studentId     Int
   studentNumber String
   studentName   String?
-  result        String   // SUCCESS, ALREADY_DONE, EXPIRED, INACTIVE, ERROR
+  result        String // SUCCESS, ALREADY_DONE, EXPIRED, INACTIVE, ERROR
   message       String?
-  scannedAt     DateTime @default(now())
+  scannedAt     DateTime      @default(now())
   passportScan  PassportScan?
 
   @@unique([qrActionId, studentId])
@@ -1758,26 +2201,26 @@ model QrActionScan {
 }
 
 model PassportMission {
-  id              Int       @id @default(autoincrement())
-  key             String    @unique
-  type            String
-  title           String
-  description     String?
-  points          Int       @default(0)
-  active          Boolean   @default(true)
-  startsAt        DateTime?
-  endsAt          DateTime?
+  id                  Int                   @id @default(autoincrement())
+  key                 String                @unique
+  type                String
+  title               String
+  description         String?
+  points              Int                   @default(0)
+  active              Boolean               @default(true)
+  startsAt            DateTime?
+  endsAt              DateTime?
   maxPointsPerStudent Int?
-  targetType      String?
-  targetId        Int?
-  targetKey       String?
-  badgeKey        String?
-  createdAt       DateTime  @default(now())
-  updatedAt       DateTime  @updatedAt
-  qrActions       QrAction[]
-  scans           PassportScan[]
-  pointLedger     PassportPointLedger[]
-  challenges      PassportChallenge[]
+  targetType          String?
+  targetId            Int?
+  targetKey           String?
+  badgeKey            String?
+  createdAt           DateTime              @default(now())
+  updatedAt           DateTime              @updatedAt
+  qrActions           QrAction[]
+  scans               PassportScan[]
+  pointLedger         PassportPointLedger[]
+  challenges          PassportChallenge[]
 
   @@index([type, active])
   @@index([targetType, targetId])
@@ -1785,29 +2228,29 @@ model PassportMission {
 }
 
 model PassportChallenge {
-  id                     Int       @id @default(autoincrement())
-  mission                PassportMission? @relation(fields: [missionId], references: [id], onDelete: SetNull)
-  missionId              Int?
-  qrAction               QrAction? @relation(fields: [qrActionId], references: [id], onDelete: SetNull)
-  qrActionId             Int?      @unique
-  type                   String    @default("EXHIBITOR_CHALLENGE")
-  question               String
-  optionsJson            String?
-  correctAnswerHash      String
-  explanation            String?
-  maxAttempts            Int       @default(1)
-  active                 Boolean   @default(true)
-  status                 String    @default("PENDING_APPROVAL")
-  reviewNote             String?
-  version                Int       @default(1)
-  startsAt               DateTime?
-  endsAt                 DateTime?
-  createdByStudentNumber String?
-  approvedAt             DateTime?
+  id                      Int                       @id @default(autoincrement())
+  mission                 PassportMission?          @relation(fields: [missionId], references: [id], onDelete: SetNull)
+  missionId               Int?
+  qrAction                QrAction?                 @relation(fields: [qrActionId], references: [id], onDelete: SetNull)
+  qrActionId              Int?                      @unique
+  type                    String                    @default("EXHIBITOR_CHALLENGE")
+  question                String
+  optionsJson             String?
+  correctAnswerHash       String
+  explanation             String?
+  maxAttempts             Int                       @default(1)
+  active                  Boolean                   @default(true)
+  status                  String                    @default("PENDING_APPROVAL")
+  reviewNote              String?
+  version                 Int                       @default(1)
+  startsAt                DateTime?
+  endsAt                  DateTime?
+  createdByStudentNumber  String?
+  approvedAt              DateTime?
   approvedByStudentNumber String?
-  createdAt              DateTime  @default(now())
-  updatedAt              DateTime  @updatedAt
-  answers                PassportChallengeAnswer[]
+  createdAt               DateTime                  @default(now())
+  updatedAt               DateTime                  @updatedAt
+  answers                 PassportChallengeAnswer[]
 
   @@index([missionId, active])
   @@index([type, active])
@@ -1816,21 +2259,21 @@ model PassportChallenge {
 }
 
 model PassportChallengeAnswer {
-  id             Int       @id @default(autoincrement())
-  challenge      PassportChallenge @relation(fields: [challengeId], references: [id], onDelete: Cascade)
-  challengeId    Int
-  student        Student?  @relation(fields: [studentId], references: [id], onDelete: SetNull)
-  studentId      Int?
-  studentNumber  String
-  studentName    String?
-  studentCourse  String?
-  answerHash     String
-  challengeVersion Int    @default(1)
-  correct        Boolean
-  attemptNumber  Int
-  pointsAwarded  Int       @default(0)
-  message        String?
-  answeredAt     DateTime  @default(now())
+  id               Int               @id @default(autoincrement())
+  challenge        PassportChallenge @relation(fields: [challengeId], references: [id], onDelete: Cascade)
+  challengeId      Int
+  student          Student?          @relation(fields: [studentId], references: [id], onDelete: SetNull)
+  studentId        Int?
+  studentNumber    String
+  studentName      String?
+  studentCourse    String?
+  answerHash       String
+  challengeVersion Int               @default(1)
+  correct          Boolean
+  attemptNumber    Int
+  pointsAwarded    Int               @default(0)
+  message          String?
+  answeredAt       DateTime          @default(now())
 
   @@unique([challengeId, studentNumber, challengeVersion, attemptNumber])
   @@index([studentNumber, answeredAt])
@@ -1838,29 +2281,29 @@ model PassportChallengeAnswer {
 }
 
 model PassportSurpriseQr {
-  id                     Int       @id @default(autoincrement())
-  qrAction               QrAction  @relation(fields: [qrActionId], references: [id], onDelete: Cascade)
-  qrActionId             Int       @unique
-  displayCode            String?   @unique
+  id                     Int                            @id @default(autoincrement())
+  qrAction               QrAction                       @relation(fields: [qrActionId], references: [id], onDelete: Cascade)
+  qrActionId             Int                            @unique
+  displayCode            String?                        @unique
   batchCode              String?
   name                   String
   description            String?
   effectType             String
-  effectValue            Int       @default(0)
+  effectValue            Int                            @default(0)
   dynamicRulesJson       String?
-  targetScope            String    @default("SURPRISE_BONUS")
-  rarity                 String    @default("COMMON")
-  visibility             String    @default("VISIBLE")
+  targetScope            String                         @default("SURPRISE_BONUS")
+  rarity                 String                         @default("COMMON")
+  visibility             String                         @default("VISIBLE")
   maxUsesTotal           Int?
-  maxUsesPerStudent      Int       @default(1)
+  maxUsesPerStudent      Int                            @default(1)
   negativeCapPerStudent  Int?
-  active                 Boolean   @default(true)
+  active                 Boolean                        @default(true)
   startsAt               DateTime?
   endsAt                 DateTime?
   printedAt              DateTime?
   createdByStudentNumber String?
-  createdAt              DateTime  @default(now())
-  updatedAt              DateTime  @updatedAt
+  createdAt              DateTime                       @default(now())
+  updatedAt              DateTime                       @updatedAt
   effects                PassportSurpriseEffectLedger[]
 
   @@index([effectType, active])
@@ -1871,14 +2314,14 @@ model PassportSurpriseQr {
 }
 
 model PassportSurpriseEffectLedger {
-  id             Int       @id @default(autoincrement())
-  businessKey    String    @unique
+  id             Int                 @id @default(autoincrement())
+  businessKey    String              @unique
   surpriseQr     PassportSurpriseQr? @relation(fields: [surpriseQrId], references: [id], onDelete: SetNull)
   surpriseQrId   Int?
-  qrAction       QrAction? @relation(fields: [qrActionId], references: [id], onDelete: SetNull)
+  qrAction       QrAction?           @relation(fields: [qrActionId], references: [id], onDelete: SetNull)
   qrActionId     Int?
   qrActionScanId Int?
-  student        Student?  @relation(fields: [studentId], references: [id], onDelete: SetNull)
+  student        Student?            @relation(fields: [studentId], references: [id], onDelete: SetNull)
   studentId      Int?
   studentNumber  String
   studentName    String?
@@ -1889,10 +2332,10 @@ model PassportSurpriseEffectLedger {
   beforePoints   Int
   afterPoints    Int
   deltaPoints    Int
-  status         String    @default("VALID")
+  status         String              @default("VALID")
   message        String?
   metadataJson   String?
-  appliedAt      DateTime  @default(now())
+  appliedAt      DateTime            @default(now())
 
   @@index([studentNumber, appliedAt])
   @@index([studentId, appliedAt])
@@ -1903,28 +2346,28 @@ model PassportSurpriseEffectLedger {
 }
 
 model PassportScan {
-  id             Int       @id @default(autoincrement())
-  businessKey    String    @unique
-  student        Student?  @relation(fields: [studentId], references: [id], onDelete: SetNull)
-  studentId      Int?
-  studentNumber  String
-  studentName    String?
-  studentCourse  String?
-  mission        PassportMission? @relation(fields: [missionId], references: [id], onDelete: SetNull)
-  missionId      Int?
-  qrAction       QrAction? @relation(fields: [qrActionId], references: [id], onDelete: SetNull)
-  qrActionId     Int?
-  qrActionScan   QrActionScan? @relation(fields: [qrActionScanId], references: [id], onDelete: SetNull)
-  qrActionScanId Int?      @unique
-  result         String
-  pointsAwarded  Int       @default(0)
-  message        String?
-  metadataJson   String?
-  reviewStatus   String    @default("AUTO")
-  reviewedAt     DateTime?
+  id                      Int              @id @default(autoincrement())
+  businessKey             String           @unique
+  student                 Student?         @relation(fields: [studentId], references: [id], onDelete: SetNull)
+  studentId               Int?
+  studentNumber           String
+  studentName             String?
+  studentCourse           String?
+  mission                 PassportMission? @relation(fields: [missionId], references: [id], onDelete: SetNull)
+  missionId               Int?
+  qrAction                QrAction?        @relation(fields: [qrActionId], references: [id], onDelete: SetNull)
+  qrActionId              Int?
+  qrActionScan            QrActionScan?    @relation(fields: [qrActionScanId], references: [id], onDelete: SetNull)
+  qrActionScanId          Int?             @unique
+  result                  String
+  pointsAwarded           Int              @default(0)
+  message                 String?
+  metadataJson            String?
+  reviewStatus            String           @default("AUTO")
+  reviewedAt              DateTime?
   reviewedByStudentNumber String?
-  reviewNote     String?
-  scannedAt      DateTime  @default(now())
+  reviewNote              String?
+  scannedAt               DateTime         @default(now())
 
   @@index([studentNumber, scannedAt])
   @@index([studentId, scannedAt])
@@ -1935,9 +2378,9 @@ model PassportScan {
 }
 
 model PassportPointLedger {
-  id                     Int       @id @default(autoincrement())
-  businessKey            String    @unique
-  student                Student?  @relation(fields: [studentId], references: [id], onDelete: SetNull)
+  id                     Int              @id @default(autoincrement())
+  businessKey            String           @unique
+  student                Student?         @relation(fields: [studentId], references: [id], onDelete: SetNull)
   studentId              Int?
   studentNumber          String
   studentName            String?
@@ -1947,10 +2390,10 @@ model PassportPointLedger {
   sourceType             String
   sourceId               String
   points                 Int
-  status                 String    @default("VALID")
+  status                 String           @default("VALID")
   reason                 String?
   metadataJson           String?
-  awardedAt              DateTime  @default(now())
+  awardedAt              DateTime         @default(now())
   revokedAt              DateTime?
   revokedByStudentNumber String?
   revokeReason           String?
@@ -1963,68 +2406,68 @@ model PassportPointLedger {
 }
 
 model PassportPointRecovery {
-  id                     Int       @id @default(autoincrement())
-  businessKey            String    @unique
-  student                Student?  @relation(fields: [studentId], references: [id], onDelete: SetNull)
-  studentId              Int?
-  studentNumber          String
-  studentName            String?
-  phone                  String?
-  amountKz               Int       @default(300)
-  requestedPoints        Int       @default(60)
-  awardedPoints          Int       @default(0)
-  status                 String    @default("PENDING_REVIEW")
-  paymentReference       String?
-  paymentProofUrl        String?
-  note                   String?
+  id                      Int       @id @default(autoincrement())
+  businessKey             String    @unique
+  student                 Student?  @relation(fields: [studentId], references: [id], onDelete: SetNull)
+  studentId               Int?
+  studentNumber           String
+  studentName             String?
+  phone                   String?
+  amountKz                Int       @default(300)
+  requestedPoints         Int       @default(60)
+  awardedPoints           Int       @default(0)
+  status                  String    @default("PENDING_REVIEW")
+  paymentReference        String?
+  paymentProofUrl         String?
+  note                    String?
   reviewedByStudentNumber String?
-  reviewedAt             DateTime?
-  ledgerId               Int?
-  createdAt              DateTime  @default(now())
-  updatedAt              DateTime  @updatedAt
+  reviewedAt              DateTime?
+  ledgerId                Int?
+  createdAt               DateTime  @default(now())
+  updatedAt               DateTime  @updatedAt
 
   @@index([studentNumber, createdAt])
   @@index([status, createdAt])
 }
 
 model PassportRankingFreeze {
-  id                     Int      @id @default(autoincrement())
-  active                 Boolean  @default(true)
-  note                   String?
-  snapshotJson           String
-  frozenByStudentNumber  String?
-  frozenAt               DateTime @default(now())
-  createdAt              DateTime @default(now())
+  id                    Int      @id @default(autoincrement())
+  active                Boolean  @default(true)
+  note                  String?
+  snapshotJson          String
+  frozenByStudentNumber String?
+  frozenAt              DateTime @default(now())
+  createdAt             DateTime @default(now())
 
   @@index([active, frozenAt])
   @@index([frozenByStudentNumber, frozenAt])
 }
 
 model PassportBadge {
-  id             Int      @id @default(autoincrement())
-  key            String   @unique
-  label          String
-  description    String?
-  icon           String?
-  ruleType       String
-  ruleValue      Int      @default(1)
-  active         Boolean  @default(true)
-  createdAt      DateTime @default(now())
-  updatedAt      DateTime @updatedAt
-  studentBadges  PassportStudentBadge[]
+  id            Int                    @id @default(autoincrement())
+  key           String                 @unique
+  label         String
+  description   String?
+  icon          String?
+  ruleType      String
+  ruleValue     Int                    @default(1)
+  active        Boolean                @default(true)
+  createdAt     DateTime               @default(now())
+  updatedAt     DateTime               @updatedAt
+  studentBadges PassportStudentBadge[]
 
   @@index([active])
   @@index([ruleType])
 }
 
 model PassportStudentBadge {
-  id            Int      @id @default(autoincrement())
-  student       Student? @relation(fields: [studentId], references: [id], onDelete: SetNull)
+  id            Int           @id @default(autoincrement())
+  student       Student?      @relation(fields: [studentId], references: [id], onDelete: SetNull)
   studentId     Int?
   studentNumber String
   badge         PassportBadge @relation(fields: [badgeId], references: [id], onDelete: Cascade)
   badgeId       Int
-  awardedAt     DateTime @default(now())
+  awardedAt     DateTime      @default(now())
   metadataJson  String?
 
   @@unique([studentNumber, badgeId])

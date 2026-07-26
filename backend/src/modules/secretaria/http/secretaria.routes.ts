@@ -7,7 +7,7 @@ import type { Env } from "../../../config/env";
 import { authGuard } from "../../auth/http/auth.middleware";
 import { SecretariaError, isSecretariaError } from "../domain/errors";
 import type { SecretariaApplication } from "../application/secretaria.application";
-import { escapeHtml, renderPdfFromHtml } from "../../reports/http/pdf-report.utils";
+import { renderUorEstudanteReceiptPdf } from "./uor-estudante-finance-pdf";
 
 const metaSchema = z.object({
   traceId: z.string(),
@@ -72,6 +72,7 @@ export type SecretariaRoutesOptions = {
   env: Env;
   application: SecretariaApplication;
   findEligibleStudent?: (studentId: number) => Promise<{ id: number; studentNumber: string } | null>;
+  verifyStepUp?: (input: { student: { id: number; studentNumber: string }; token: string; action: string; resourceId: string }) => boolean;
 };
 
 function errorPayload(request: FastifyRequest, error: SecretariaError) {
@@ -129,20 +130,6 @@ async function normalizedPhoto(dataUrl: string) {
   } finally {
     source.fill(0);
   }
-}
-
-function receiptHtml(fields: Record<string, string | boolean | null>, observedAt: string) {
-  const labels: Record<string, string> = {
-    description: "Descrição", dueDate: "Vencimento", invoiced: "Faturado", paid: "Pago",
-    itemType: "Tipo", quantity: "Quantidade", amount: "Valor", surcharge: "Acréscimo",
-    discount: "Desconto", vat: "IVA", debtAmount: "Dívida", modality: "Modalidade",
-    voided: "Anulado", installment: "Prestação", notes: "Observações",
-  };
-  const rows = Object.entries(fields).map(([key, value]) => `<tr><th>${escapeHtml(labels[key] ?? key)}</th><td>${escapeHtml(typeof value === "boolean" ? (value ? "Sim" : "Não") : value ?? "—")}</td></tr>`).join("");
-  return `<!doctype html><html lang="pt"><head><meta charset="utf-8"><style>
-    @page{size:A4;margin:18mm}body{font:14px Arial,sans-serif;color:#17212b}h1{font-size:22px;margin:0 0 6px}.note{color:#5f6f7d;margin:0 0 24px}table{width:100%;border-collapse:collapse}th,td{padding:9px 10px;border:1px solid #d7dee5;text-align:left}th{width:35%;background:#f4f7f9}.footer{margin-top:22px;font-size:11px;color:#657786}</style></head><body>
-    <h1>Extrato de pagamento</h1><p class="note">Dados consultados na Secretaria UOR. Documento informativo; não substitui recibo fiscal.</p><table>${rows}</table>
-    <p class="footer">Consulta realizada em ${escapeHtml(observedAt)}.</p></body></html>`;
 }
 
 async function defaultFindEligibleStudent(studentId: number) {
@@ -301,7 +288,10 @@ export async function secretariaRoutes(app: FastifyInstance, opts: SecretariaRou
       try {
         const { receiptRef } = request.params as z.infer<typeof receiptParamsSchema>;
         const receipt = await opts.application.getReceipt(request.student!, receiptRef);
-        const pdf = await renderPdfFromHtml(receiptHtml(receipt.fields, receipt.observedAt), { footerLabel: "UOR Estudante · Secretaria" });
+        const pdf = await renderUorEstudanteReceiptPdf(receipt.fields, receipt.observedAt, {
+          studentNumber: request.student!.studentNumber,
+          documentId: receiptRef,
+        });
         const etag = `"${createHash("sha256").update(pdf).digest("hex")}"`;
         const clear = () => pdf.fill(0);
         reply.raw.once("finish", clear);
@@ -557,10 +547,20 @@ export async function secretariaRoutes(app: FastifyInstance, opts: SecretariaRou
       schema: { tags: ["Secretaria - Comandos"], params: commandParamsSchema, body: commandConfirmationBodySchema, response: { 200: envelopeSchema, ...errorResponses } },
     }, async (request, reply) => {
       try {
+        const commandId = (request.params as z.infer<typeof commandParamsSchema>).commandId;
+        const command = await opts.application.getCommand(request.student!, commandId);
+        if (command.risk === "HIGH" && !opts.verifyStepUp?.({
+          student: request.student!,
+          token: String(request.headers["x-uor-step-up"] ?? ""),
+          action: "external_command.confirm",
+          resourceId: commandId,
+        })) {
+          throw new SecretariaError("SECRETARIA_STEP_UP_REQUIRED", "Esta operação exige confirmação contextual recente por OTP.", 403);
+        }
         return {
           data: await opts.application.confirmCommand(
             request.student!,
-            (request.params as z.infer<typeof commandParamsSchema>).commandId,
+            commandId,
             (request.body as z.infer<typeof commandConfirmationBodySchema>).confirmation,
           ),
           meta: meta(request, { coverage: "live" }),

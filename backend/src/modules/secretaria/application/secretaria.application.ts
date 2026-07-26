@@ -398,11 +398,14 @@ export class LiveSecretariaApplication implements SecretariaApplication {
         failed.push(domain);
       }
     }
-    const fallbackSnapshots = connection.activeSnapshotVersion && failed.length
+    const previousSnapshots = connection.activeSnapshotVersion
       ? await this.db.secretariaSnapshot.findMany({
-        where: { studentId: student.id, snapshotVersion: connection.activeSnapshotVersion, domain: { in: failed } },
+        where: { studentId: student.id, snapshotVersion: connection.activeSnapshotVersion },
       })
       : [];
+    const completedSet = new Set(completed);
+    const failedSet = new Set(failed);
+    const carriedSnapshots = previousSnapshots.filter((snapshot) => !completedSet.has(snapshot.domain));
     const status = completed.length === domains.length ? "COMPLETED" : completed.length ? "PARTIAL" : "FAILED";
     await this.db.$transaction(async (tx) => {
       for (const entry of snapshots) {
@@ -419,16 +422,19 @@ export class LiveSecretariaApplication implements SecretariaApplication {
           },
         });
       }
-      for (const previous of fallbackSnapshots) {
-        const stale = { ...(JSON.parse(previous.payloadJson) as SecretariaDataset), coverage: "stale" as const };
+      for (const previous of carriedSnapshots) {
+        const failedRefresh = failedSet.has(previous.domain);
+        const carried = failedRefresh
+          ? { ...(JSON.parse(previous.payloadJson) as SecretariaDataset), coverage: "stale" as const }
+          : JSON.parse(previous.payloadJson) as SecretariaDataset;
         await tx.secretariaSnapshot.create({
           data: {
             studentId: student.id,
             domain: previous.domain,
             snapshotVersion: version,
-            payloadJson: JSON.stringify(stale),
+            payloadJson: JSON.stringify(carried),
             itemCount: previous.itemCount,
-            coverage: "stale",
+            coverage: failedRefresh ? "stale" : previous.coverage,
             sourceHash: previous.sourceHash,
             observedAt: previous.observedAt,
           },

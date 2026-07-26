@@ -632,6 +632,7 @@ function gradeReviewHash(record: Record<string, unknown>) {
 
 export class NetpaSecretariaGateway implements SecretariaGateway {
   readonly #baseUrl: URL;
+  readonly #circuits = new Map<string, { failures: number; openUntil: number }>();
 
   constructor(private readonly options: {
     baseUrl: string;
@@ -648,10 +649,17 @@ export class NetpaSecretariaGateway implements SecretariaGateway {
   async #bufferRequest(path: string, init: RequestInit = {}): Promise<{ response: Response; bytes: Buffer }> {
     const url = new URL(path, this.#baseUrl);
     if (url.origin !== this.#baseUrl.origin) throw new SecretariaError("SECRETARIA_UNSAFE_REDIRECT", "A Secretaria devolveu um destino não permitido.", 502);
+    const circuitKey = `${init.method ?? "GET"}:${url.pathname}`;
+    const circuit = this.#circuits.get(circuitKey);
+    if (circuit && circuit.openUntil > Date.now()) {
+      throw new SecretariaError("SECRETARIA_CIRCUIT_OPEN", "Esta capacidade da Secretaria está temporariamente isolada após falhas consecutivas.", 503, true);
+    }
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), this.options.timeoutMs);
     try {
       const response = await fetch(url, { ...init, signal: controller.signal, redirect: "manual" });
+      if (response.status >= 500) this.#recordCircuitFailure(circuitKey);
+      else this.#circuits.delete(circuitKey);
       const bytes = Buffer.from(await response.arrayBuffer());
       if (bytes.length > this.options.maxResponseBytes) {
         bytes.fill(0);
@@ -660,11 +668,18 @@ export class NetpaSecretariaGateway implements SecretariaGateway {
       return { response, bytes };
     } catch (error) {
       if (error instanceof SecretariaError) throw error;
+      this.#recordCircuitFailure(circuitKey);
       const timeoutFailure = error instanceof Error && error.name === "AbortError";
       throw new SecretariaError("SECRETARIA_UNAVAILABLE", timeoutFailure ? "A Secretaria excedeu o tempo limite." : "A Secretaria está temporariamente indisponível.", 503, true, "none", { cause: error });
     } finally {
       clearTimeout(timeout);
     }
+  }
+
+  #recordCircuitFailure(key: string) {
+    const previous = this.#circuits.get(key);
+    const failures = (previous?.openUntil && previous.openUntil <= Date.now() ? 0 : previous?.failures ?? 0) + 1;
+    this.#circuits.set(key, { failures, openUntil: failures >= 5 ? Date.now() + 30_000 : 0 });
   }
 
   async #request(path: string, init: RequestInit = {}): Promise<{ response: Response; text: string }> {

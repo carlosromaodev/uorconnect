@@ -44,7 +44,9 @@ export type MoodleDownload = {
 
 export interface MoodleApplication {
   connect(student: MoodleStudentIdentity, input: MoodleConnectInput): Promise<MoodleConnectResult>;
+  retryStoredConnection(student: MoodleStudentIdentity): Promise<MoodleConnectResult>;
   disconnect(student: MoodleStudentIdentity): Promise<MoodleConnectionView>;
+  terminateSession(student: MoodleStudentIdentity): Promise<MoodleConnectionView>;
   getConnection(student: MoodleStudentIdentity): Promise<MoodleConnectionView>;
   getProfile(student: MoodleStudentIdentity): Promise<MoodleProfile>;
   getOverview(student: MoodleStudentIdentity): Promise<{ data: MoodleOverview; syncedAt: Date | null; stale: boolean; snapshotVersion: number | null }>;

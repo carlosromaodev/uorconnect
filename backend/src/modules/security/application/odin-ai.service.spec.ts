@@ -187,7 +187,7 @@ describe("ODIN AI analysis service", () => {
           providerResponseJson: "{\"raw\":true}",
         }],
       },
-    } as OdinAiCaseContext);
+    } as unknown as OdinAiCaseContext);
 
     const serialized = JSON.stringify(payload);
 

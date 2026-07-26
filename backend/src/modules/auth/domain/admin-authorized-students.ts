@@ -23,6 +23,7 @@ export const ALL_ADMIN_PERMISSIONS = [
   "SECURITY",
   "STUDENTS",
   "WINNERS",
+  "UOR_STUDENT",
 ] as const;
 
 export type AdminPermission = typeof ALL_ADMIN_PERMISSIONS[number];
@@ -52,6 +53,7 @@ export const ADMIN_PERMISSION_LABELS: Record<AdminPermission, string> = {
   SECURITY: "Segurança",
   STUDENTS: "Estudantes",
   WINNERS: "Vencedores",
+  UOR_STUDENT: "UOR Estudante",
 };
 
 export type AdminRole = "SUPER_ADMIN" | "TEAM_LEAD" | "MEMBER";

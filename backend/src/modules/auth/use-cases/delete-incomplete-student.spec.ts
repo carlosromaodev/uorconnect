@@ -20,7 +20,20 @@ function makeStudent(overrides: Partial<StudentWithStats> = {}): StudentWithStat
     _count: {
       likes: 0,
       votes: 0,
-      comments: 0
+      comments: 0,
+      courseEnrollments: 0,
+      certificates: 0,
+      attendanceCheckIns: 0,
+      submissions: 0,
+      submissionMemberships: 0,
+      liveChatMessages: 0,
+      passportScans: 0,
+      passportPointLedger: 0,
+      passportChallengeAnswers: 0,
+      passportStudentBadges: 0,
+      passportSurpriseEffects: 0,
+      exhibitorVoteScoreEvents: 0,
+      exhibitorActorScoreEvents: 0,
     },
     ...overrides
   };

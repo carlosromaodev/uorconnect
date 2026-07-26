@@ -86,6 +86,7 @@ const prismaMock = vi.hoisted(() => ({
     findFirst: vi.fn(),
   },
   student: {
+    findFirst: vi.fn(),
     findUnique: vi.fn(),
   },
   studentComment: {
@@ -125,6 +126,9 @@ const challenge = {
 describe("passport game rules", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    prismaMock.student.findFirst.mockImplementation(({ where }) =>
+      prismaMock.student.findUnique({ where }),
+    );
     prismaMock.passportMission.upsert.mockImplementation(({ create }) =>
       Promise.resolve({
         id: create.key === "exhibitor-challenge" ? 44 : create.key === "nucleus-member-bonus" ? 55 : 1,

@@ -1,66 +1,53 @@
 import { describe, expect, it } from "vitest";
-import type {
-  PersistedCourseSnapshot,
-  PersistedMaterialSnapshot,
-  PersistedSectionSnapshot,
-} from "../domain/repository";
-import { courseView, materialView, sectionView } from "./moodle-presenters";
+import type { PersistedMoodleConnection } from "../domain/repository";
+import { connectionView } from "./moodle-presenters";
 
-const oldSync = new Date("2026-07-18T08:00:00.000Z");
-const stagingSync = new Date("2026-07-19T12:00:00.000Z");
+function connection(overrides: Partial<PersistedMoodleConnection> = {}): PersistedMoodleConnection {
+  const now = new Date("2026-07-22T10:00:00.000Z");
+  return {
+    studentId: 7,
+    status: "DEGRADED",
+    moodleUserId: null,
+    profilePublicId: "2fe7502c-adbb-4cad-8ef8-c2701fb6471a",
+    moodleStudentNumber: null,
+    displayName: null,
+    email: null,
+    timezone: null,
+    profileSyncedAt: null,
+    credentialsEnvelope: "encrypted-credentials",
+    sessionEnvelope: null,
+    connectionGeneration: 1,
+    sessionVersion: 0,
+    activeSnapshotVersion: null,
+    activeSyncRunId: null,
+    connectionAttemptId: null,
+    connectionAttemptLeaseUntil: null,
+    sessionExpiresAt: null,
+    reauthLeaseOwner: null,
+    reauthLeaseUntil: null,
+    failedReauthCount: 0,
+    nextReauthAt: null,
+    lastAuthenticatedAt: null,
+    lastSuccessfulSyncAt: null,
+    lastUsedAt: null,
+    lastErrorCode: "MOODLE_UNAVAILABLE",
+    createdAt: now,
+    updatedAt: now,
+    ...overrides,
+  };
+}
 
-describe("Moodle stale presenters", () => {
-  it("expõe a data da origem preservada e não o timestamp novo de staging", () => {
-    const course = {
-      publicId: "c",
-      name: "Curso",
-      shortName: "C",
-      category: null,
-      descriptionText: null,
-      startAt: null,
-      endAt: null,
-      visible: true,
-      hiddenByStudent: false,
-      favourite: false,
-      progressAvailable: false,
-      progressPercent: null,
-      stale: true,
-      sourceSyncedAt: oldSync,
-      syncedAt: stagingSync,
-    } as PersistedCourseSnapshot;
-    const section = {
-      publicId: "s",
-      coursePublicId: "c",
-      title: "Secção",
-      position: 1,
-      summaryText: null,
-      visible: true,
-      available: true,
-      stale: true,
-      sourceSyncedAt: oldSync,
-      syncedAt: stagingSync,
-    } as PersistedSectionSnapshot;
-    const material = {
-      publicId: "m",
-      coursePublicId: "c",
-      sectionPublicId: "s",
-      type: "file",
-      title: "Material",
-      descriptionText: null,
-      available: true,
-      openAvailable: false,
-      downloadAvailable: false,
-      locatorEnvelope: null,
-      mimeType: null,
-      fileName: null,
-      sizeBytes: null,
-      stale: true,
-      sourceSyncedAt: oldSync,
-      syncedAt: stagingSync,
-    } as PersistedMaterialSnapshot;
+describe("connectionView", () => {
+  it("não anuncia ligação ativa quando a primeira autenticação falhou sem sessão", () => {
+    expect(connectionView(connection())).toMatchObject({
+      status: "DEGRADED",
+      connected: false,
+      credentialsStored: true,
+      retryable: true,
+    });
+  });
 
-    expect(courseView(course).lastSyncedAt).toBe(oldSync.toISOString());
-    expect(sectionView(section).lastSyncedAt).toBe(oldSync.toISOString());
-    expect(materialView(material).lastSyncedAt).toBe(oldSync.toISOString());
+  it("mantém uma sessão anterior utilizável durante degradação transitória", () => {
+    expect(connectionView(connection({ sessionEnvelope: "encrypted-session" })).connected).toBe(true);
   });
 });
